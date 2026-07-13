@@ -745,7 +745,7 @@ const AppSidebar: React.FC = () => {
       start_date: range.start_date,
       end_date: range.end_date,
       time_unit: "SUMMARY",
-      max_wait_seconds: 20,
+      max_wait_seconds: 1800,
       poll_every_seconds: 5,
     };
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import time, re, uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -189,6 +190,55 @@ def pick_profile_id(profiles: List[Dict[str, Any]], wanted_country_codes: set[st
         if cc in wanted:
             return str(pid)
     return None
+
+
+def normalize_ads_country_code(country_code: Any) -> str:
+    cc = str(country_code or "").upper().strip()
+    return "UK" if cc == "GB" else cc
+
+
+def normalize_ads_country_filter(countries: Optional[Any]) -> Optional[set[str]]:
+    if not countries:
+        return None
+
+    country_values = [countries] if isinstance(countries, str) else countries
+    wanted = {normalize_ads_country_code(c) for c in country_values if str(c or "").strip()}
+    return wanted or None
+
+
+def flatten_ads_profiles(
+    profiles_by_region: Dict[str, List[Dict[str, Any]]],
+    wanted_countries: Optional[Any] = None,
+    regions: Optional[set[str]] = None,
+) -> List[Dict[str, Any]]:
+    wanted = normalize_ads_country_filter(wanted_countries)
+    out: List[Dict[str, Any]] = []
+
+    for region, profiles in (profiles_by_region or {}).items():
+        if regions and region not in regions:
+            continue
+
+        for profile in profiles or []:
+            profile_id = profile.get("profileId")
+            if not profile_id:
+                continue
+
+            cc = (
+                profile.get("countryCode")
+                or (profile.get("accountInfo") or {}).get("countryCode")
+                or ""
+            )
+            country_label = normalize_ads_country_code(cc)
+
+            if wanted and country_label not in wanted:
+                continue
+
+            p = dict(profile)
+            p["_region"] = region
+            p["_country_label"] = country_label
+            out.append(p)
+
+    return out
 
 
 @dataclass
@@ -1058,3 +1108,142 @@ class AmazonAdsReportingClient:
             raise RuntimeError(f"Amazon Ads API error {resp.status_code}: {resp.text}")
 
         raise RuntimeError(f"Amazon Ads API error 429: Throttled after {max_attempts} attempts")
+
+
+def _bounded_report_workers(profile_count: int, requested_workers: Optional[int] = None) -> int:
+    if profile_count <= 0:
+        return 1
+
+    if requested_workers is None:
+        requested_workers = 4
+
+    try:
+        workers = int(requested_workers)
+    except Exception:
+        workers = 4
+
+    return max(1, min(profile_count, workers, 8))
+
+
+def fetch_report_rows_for_profiles(
+    *,
+    access_token: str,
+    profiles: List[Dict[str, Any]],
+    create_method_name: str,
+    start_date: str,
+    end_date: str,
+    time_unit: str,
+    timeout: int = 60,
+    max_wait_seconds: int = 1800,
+    poll_every_seconds: int = 10,
+    max_workers: Optional[int] = None,
+    continue_on_error: bool = False,
+    strict_row_dicts: bool = False,
+    row_extra: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Create, wait for, and download Amazon Ads reports across profiles in parallel.
+
+    Amazon report generation is async and often dominates wall time. Running each
+    profile in its own bounded worker prevents one profile's wait from blocking
+    all the others.
+    """
+    usable_profiles = [
+        p for p in (profiles or [])
+        if p.get("profileId") and p.get("_region") in ADS_ENDPOINTS
+    ]
+    if not usable_profiles:
+        return [], []
+
+    workers = _bounded_report_workers(len(usable_profiles), max_workers)
+    extra = row_extra or {}
+
+    def _fetch_one(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        profile_id = str(profile["profileId"])
+        region = str(profile["_region"])
+        country = profile.get("_country_label") or ""
+
+        auth = AmazonAdsAuthContext(access_token=access_token, profile_id=profile_id)
+        ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[region], auth=auth, timeout=timeout)
+
+        create_report = getattr(ads, create_method_name)
+        report_id = create_report(start_date, end_date, time_unit=time_unit)
+        location = ads.wait_until_ready(
+            report_id,
+            max_wait_seconds=max_wait_seconds,
+            poll_every_seconds=poll_every_seconds,
+        )
+        rows = ads.download_gzip_json(location)
+
+        if not isinstance(rows, list):
+            raise RuntimeError(f"Report returned unexpected type: {type(rows)}")
+
+        annotated_rows: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                if strict_row_dicts:
+                    raise RuntimeError(f"Report returned non-dict row type: {type(row)}")
+                continue
+
+            annotated = dict(row)
+            annotated["_profileId"] = profile_id
+            annotated["_country"] = country
+            annotated.update(extra)
+            annotated_rows.append(annotated)
+
+        meta = {
+            "region": region,
+            "country": country,
+            "profile_id": profile_id,
+            "report_id": str(report_id),
+            "rows": len(annotated_rows),
+        }
+        return annotated_rows, meta
+
+    merged_rows: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+
+    if workers == 1:
+        for profile in usable_profiles:
+            try:
+                rows, _ = _fetch_one(profile)
+                merged_rows.extend(rows)
+            except Exception as e:
+                errors.append({
+                    "profile_id": str(profile.get("profileId") or ""),
+                    "country": profile.get("_country_label"),
+                    "region": profile.get("_region"),
+                    "step": "report_download",
+                    "error": str(e),
+                })
+                if not continue_on_error:
+                    raise
+        return merged_rows, errors
+
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="amazon-ads-report") as executor:
+        futures = {executor.submit(_fetch_one, profile): profile for profile in usable_profiles}
+
+        for future in as_completed(futures):
+            profile = futures[future]
+            try:
+                rows, _ = future.result()
+                merged_rows.extend(rows)
+            except Exception as e:
+                errors.append({
+                    "profile_id": str(profile.get("profileId") or ""),
+                    "country": profile.get("_country_label"),
+                    "region": profile.get("_region"),
+                    "step": "report_download",
+                    "error": str(e),
+                })
+
+    if errors and not continue_on_error:
+        first = errors[0]
+        raise RuntimeError(
+            "Amazon Ads report failed for "
+            f"profile_id={first.get('profile_id')} "
+            f"country={first.get('country')} region={first.get('region')}: "
+            f"{first.get('error')}"
+        )
+
+    return merged_rows, errors

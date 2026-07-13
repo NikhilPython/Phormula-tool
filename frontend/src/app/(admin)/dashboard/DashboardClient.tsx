@@ -847,7 +847,7 @@ const ensureSdReportSeedOncePerDay = async (
             end_date,
             time_unit: "DAILY",
             countries: [country], // ["UK"] or ["US"]
-            max_wait_seconds: 900,
+            max_wait_seconds: 1800,
             poll_every_seconds: 10,
         };
 
@@ -2088,13 +2088,16 @@ export default function DashboardPage() {
         adsBackgroundErrorRef.current = null;
 
         try {
-            await ensureSpReportSeedOncePerDay(baseURL, jwtToken, country);
+            const adsSeedTasks = [
+                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country),
+                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country),
+            ];
 
             if (country === "UK" || country === "US") {
-                await ensureSdReportSeedOncePerDay(baseURL, jwtToken, country);
+                adsSeedTasks.push(ensureSdReportSeedOncePerDay(baseURL, jwtToken, country));
             }
 
-            await ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country);
+            await Promise.all(adsSeedTasks);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthToNumber(monthName.toLowerCase());

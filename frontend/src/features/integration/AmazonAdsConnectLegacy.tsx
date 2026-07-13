@@ -228,42 +228,40 @@ async function seedAdsReportsOnConnect(
             detail?: string
         ) => void;
         onCompleteStep?: (step: number) => void;
+        onActiveSteps?: (steps: number[]) => void;
     }
 ) {
     const onStep = hooks?.onStep;
     const onCompleteStep = hooks?.onCompleteStep;
+    const onActiveSteps = hooks?.onActiveSteps;
 
     const start_date = getIstMonthStartISO();
     const end_date = getIstTodayISO();
 
-    // STEP 1 — Sponsored Product
-    onStep?.(1, "Sponsored Product", 15, "Starting Sponsored Product sync...");
-    await postJson(`/api/ads/manager/sp_advertised_product_report`, {
+    onActiveSteps?.([1, 2, 3]);
+    onStep?.(1, "Amazon Ads reports", 20, "Starting Sponsored Product, Display, and Brand sync...");
+    const spSyncTask = postJson(`/api/ads/manager/sp_advertised_product_report`, {
         start_date,
         end_date,
         time_unit: "DAILY",
         countries: [country],
         return_excel: false,
+    }).then(() => {
+        onCompleteStep?.(1);
     });
-    onStep?.(1, "Sponsored Product", 100, "Sponsored Product synced");
-    onCompleteStep?.(1);
 
-    // STEP 2 — Sponsored Display
-    onStep?.(2, "Sponsored Display", 15, "Starting Sponsored Display sync...");
-    await postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
+    const sdSyncTask = postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
         start_date,
         end_date,
         time_unit: "DAILY",
         countries: [country],
-        max_wait_seconds: 900,
+        max_wait_seconds: 1800,
         poll_every_seconds: 10,
+    }).then(() => {
+        onCompleteStep?.(2);
     });
-    onStep?.(2, "Sponsored Display", 100, "Sponsored Display synced");
-    onCompleteStep?.(2);
 
-    // STEP 3 — Sponsored Brand + Monthly Sync
-    onStep?.(3, "Sponsored Brand", 20, "Starting Sponsored Brand sync...");
-    await postJson(`/api/ads/manager/sb_keyword_report`, {
+    const sbSyncTask = postJson(`/api/ads/manager/sb_keyword_report`, {
         start_date,
         end_date,
         time_unit: "SUMMARY",
@@ -271,7 +269,10 @@ async function seedAdsReportsOnConnect(
         return_excel: false,
     });
 
-    onStep?.(3, "Sponsored Brand", 65, "Building monthly SP/SD summary...");
+    await Promise.all([spSyncTask, sdSyncTask, sbSyncTask]);
+
+    onActiveSteps?.([3]);
+    onStep?.(3, "Ads summary", 75, "Building monthly and daily ads tables...");
 
    const { month, year } = getCurrentMonthYearIST();
 
@@ -293,6 +294,7 @@ await postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload);
 const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
     open,
     currentStep,
+    activeSteps,
     completedSteps,
     dashboardSteps,
     stepProgress,
@@ -302,6 +304,7 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
 }: {
     open: boolean;
     currentStep: number;
+    activeSteps: Set<number>;
     completedSteps: Set<number>;
     dashboardSteps: { num: number; label: string }[];
     stepProgress: {
@@ -327,9 +330,10 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
     }, [open, stepProgress.active, loadingStartedAt]);
 
     const totalEstimatedSeconds = useMemo(() => {
-        return dashboardSteps.reduce((sum, step) => {
-            return sum + (estimatedSecondsMap[step.num] ?? 20);
-        }, 0);
+        const reportSeconds = Math.max(
+            ...dashboardSteps.map((step) => estimatedSecondsMap[step.num] ?? 20)
+        );
+        return reportSeconds + 120;
     }, [dashboardSteps, estimatedSecondsMap]);
 
     const estimatedTime = useMemo(() => {
@@ -343,6 +347,19 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
 
         return `${mm}:${ss}`;
     }, [timerNow, loadingStartedAt, stepProgress.active, totalEstimatedSeconds]);
+
+    const displayActiveSteps = useMemo(() => {
+        if (
+            activeSteps.size === 0 &&
+            currentStep === 3 &&
+            completedSteps.size === 0 &&
+            stepProgress.percentage <= 25
+        ) {
+            return new Set(dashboardSteps.map((step) => step.num));
+        }
+
+        return activeSteps;
+    }, [activeSteps, completedSteps.size, currentStep, dashboardSteps, stepProgress.percentage]);
 
     if (!open) return null;
 
@@ -427,7 +444,8 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
 
                     {dashboardSteps.map((step) => {
                         const isCompleted = completedSteps.has(step.num);
-                        const isActive = currentStep === step.num;
+                        const isActive =
+                            !isCompleted && (displayActiveSteps.has(step.num) || currentStep === step.num);
 
                         return (
                             <div
@@ -496,9 +514,9 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                 </div>
 
                 <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <p className="text-xs text-slate-400 truncate">
+                    {/* <p className="text-xs text-slate-400 truncate">
                         {stepProgress.detail || "Initialising sync…"}
-                    </p>
+                    </p> */}
 
                     <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3">
                         <span className="text-xs text-slate-400">Estimated:</span>
@@ -507,9 +525,17 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                         </span>
                     </div>
 
-                    <span className="text-xs text-slate-400 shrink-0">
-                        Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
-                    </span>
+                    {/* <span className="text-xs text-slate-400 shrink-0">
+                        {(() => {
+                            const runningCount = dashboardSteps.filter(
+                                (step) => displayActiveSteps.has(step.num) && !completedSteps.has(step.num)
+                            ).length;
+
+                            if (runningCount > 1) return `${runningCount} tasks running`;
+
+                            return `Step ${Math.min(currentStep, dashboardSteps.length)} of ${dashboardSteps.length}`;
+                        })()}
+                    </span> */}
                 </div>
             </div>
         </div>
@@ -553,6 +579,7 @@ export default function AmazonAdsConnect({
 
 
     const [currentStep, setCurrentStep] = useState<number>(0);
+    const [activeSteps, setActiveSteps] = useState<Set<number>>(new Set());
     const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
@@ -568,8 +595,45 @@ export default function AmazonAdsConnect({
         detail: "",
     });
 
+    const stepLabels: Record<number, string> = {
+        1: "Sponsored Product",
+        2: "Sponsored Display",
+        3: "Sponsored Brand",
+    };
+
     const markStepComplete = (step: number) => {
-        setCompletedSteps((prev) => new Set([...prev, step]));
+        setActiveSteps((prev) => {
+            const next = new Set(prev);
+            next.delete(step);
+            if (next.size > 0) {
+                setCurrentStep(Math.min(...Array.from(next)));
+            }
+            return next;
+        });
+
+        setCompletedSteps((prev) => {
+            const next = new Set([...prev, step]);
+            const reportPct = Math.min(65, 20 + next.size * 15);
+
+            setStepProgress((progress) => {
+                if (!progress.active || progress.percentage >= 100) return progress;
+
+                return {
+                    ...progress,
+                    percentage: Math.max(progress.percentage, reportPct),
+                    detail: `${stepLabels[step] || "Ads report"} synced. Waiting for remaining work...`,
+                };
+            });
+
+            return next;
+        });
+    };
+
+    const setRunningSteps = (steps: number[]) => {
+        setActiveSteps(new Set(steps));
+        if (steps.length > 0) {
+            setCurrentStep(Math.min(...steps));
+        }
     };
 
     const setStep = (
@@ -579,6 +643,7 @@ export default function AmazonAdsConnect({
         detail?: string
     ) => {
         setCurrentStep(step);
+        setActiveSteps((prev) => new Set([...prev, step]));
         setStepProgress({
             active: true,
             label,
@@ -589,6 +654,7 @@ export default function AmazonAdsConnect({
 
     const resetStepState = () => {
         setCurrentStep(0);
+        setActiveSteps(new Set());
         setCompletedSteps(new Set());
         setLoadingStartedAt(null);
         setStepProgress({
@@ -655,6 +721,7 @@ export default function AmazonAdsConnect({
             setIsSyncModalDismissed(false);
             setLoadingStartedAt(Date.now());
             setCurrentStep(1);
+            setActiveSteps(new Set([1]));
             setCompletedSteps(new Set());
             setStepProgress({
                 active: true,
@@ -666,6 +733,7 @@ export default function AmazonAdsConnect({
             await seedAdsReportsOnConnect(resolvedCountry, {
                 onStep: setStep,
                 onCompleteStep: markStepComplete,
+                onActiveSteps: setRunningSteps,
             });
 
             console.log("Ads sync complete, showing success popup");
@@ -857,6 +925,7 @@ export default function AmazonAdsConnect({
                 <AdsSyncLoaderModal
                     open={true}
                     currentStep={currentStep}
+                    activeSteps={activeSteps}
                     completedSteps={completedSteps}
                     dashboardSteps={dashboardSteps}
                     stepProgress={stepProgress}

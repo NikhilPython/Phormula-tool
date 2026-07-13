@@ -9,14 +9,14 @@ from flask import send_file, jsonify
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import func
 
-from app.routes.advertisement_api_routes import (
-    get_ads_access_token_from_refresh,
-    list_top_level_profiles_all_regions,
+from app.utils.amazon_ads_utils_reporting import (
+    fetch_report_rows_for_profiles,
     find_manager_profile_id,
+    flatten_ads_profiles,
+    get_ads_access_token_from_refresh,
     list_child_profiles_all_regions,
-    ADS_ENDPOINTS,
-    AmazonAdsAuthContext,
-    AmazonAdsReportingClient,
+    list_top_level_profiles_all_regions,
+    normalize_ads_country_filter,
 )
 from app.utils.ads_helpers import (
     _get_user_row,
@@ -43,11 +43,7 @@ def run_sp_advertised_product_report_service(
     """
     u = _get_user_row(user_id)
 
-    wanted_countries = countries
-    if wanted_countries:
-        wanted_countries = {str(x).upper() for x in wanted_countries}
-    else:
-        wanted_countries = None
+    wanted_countries = normalize_ads_country_filter(countries)
 
     if time_unit not in {"DAILY", "SUMMARY"}:
         raise ValueError("time_unit must be DAILY or SUMMARY")
@@ -68,49 +64,26 @@ def run_sp_advertised_product_report_service(
     else:
         child_by_region = top_profiles
 
-    all_profiles = []
-    for region, profs in child_by_region.items():
-        for p in profs or []:
-            cc = (p.get("countryCode") or "").upper()
-            label = "UK" if cc == "GB" else cc
-            p["_region"] = region
-            p["_country_label"] = label
-            all_profiles.append(p)
-
-    if wanted_countries:
-        all_profiles = [p for p in all_profiles if p.get("_country_label") in wanted_countries]
+    all_profiles = flatten_ads_profiles(child_by_region, wanted_countries)
 
     if not all_profiles:
         raise ValueError("No advertiser profiles found (or your country filter removed all).")
 
-    merged_rows = []
-
-    for p in all_profiles:
-        profile_id = p.get("profileId")
-        if not profile_id:
-            continue
-
-        region = p["_region"]
-        base_url = ADS_ENDPOINTS[region]
-
-        auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-        ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
-
-        report_id = ads.create_sp_advertised_product_report(start_date, end_date, time_unit=time_unit)
-        location = ads.wait_until_ready(report_id, max_wait_seconds=1800, poll_every_seconds=10)
-        rows = ads.download_gzip_json(location)
-
-        if not isinstance(rows, list):
-            raise RuntimeError(f"Report returned unexpected type: {type(rows)}")
-
-        for r in rows:
-            if isinstance(r, dict):
-                r["_profileId"] = str(profile_id)
-                r["_country"] = p["_country_label"]
-                merged_rows.append(r)
+    merged_rows, download_errors = fetch_report_rows_for_profiles(
+        access_token=access_token,
+        profiles=all_profiles,
+        create_method_name="create_sp_advertised_product_report",
+        start_date=start_date,
+        end_date=end_date,
+        time_unit=time_unit,
+        max_wait_seconds=1800,
+        poll_every_seconds=10,
+        max_workers=4,
+        strict_row_dicts=True,
+    )
 
     if not merged_rows:
-        raise ValueError("Reports returned no rows")
+        raise ValueError(f"Reports returned no rows. download_errors={download_errors[:5]}")
 
     df = pd.DataFrame(merged_rows)
 

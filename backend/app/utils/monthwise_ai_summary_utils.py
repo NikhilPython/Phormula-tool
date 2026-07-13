@@ -393,6 +393,32 @@ def build_productwise_adsmonthly_table_name(
     month_num = int(timeline)
     return f"adsmonthly_{user_id}_{str(country).lower()}_{month_num}_{year}".lower()
 
+def build_productwise_adsmonthly_table_names(
+    user_id: int,
+    country: str,
+    timeline: str,
+    year: int
+) -> list[str]:
+    """
+    Candidate productwise ads table names.
+
+    Primary pattern:
+        adsmonthly_{user_id}_{country}_{month_number}_{year}
+
+    Fallbacks cover month-name variants if older data was created that way.
+    """
+    month_num = int(timeline)
+    month_name = month_name_from_timeline(str(month_num))
+    country_key = str(country).lower()
+
+    candidates = [
+        f"adsmonthly_{user_id}_{country_key}_{month_num}_{year}",
+        f"adsmonthly_{user_id}_{country_key}_{month_name}_{year}",
+        f"adsmonthly_{user_id}_{country_key}_{month_name}{year}",
+    ]
+
+    return list(dict.fromkeys(name.lower() for name in candidates))
+
 def fetch_productwise_adsmonthly_table(
     user_id: int,
     country: str,
@@ -403,19 +429,31 @@ def fetch_productwise_adsmonthly_table(
     Fetch productwise adsmonthly table.
     Returns empty DataFrame if table does not exist.
     """
-    table = build_productwise_adsmonthly_table_name(
+    tables = build_productwise_adsmonthly_table_names(
         user_id=user_id,
         country=country,
         timeline=timeline,
         year=year,
     )
 
-    query = f'SELECT * FROM public."{table}"'
+    for table in tables:
+        query = f'SELECT * FROM public."{table}"'
 
-    try:
-        return pd.read_sql(query, phormula_engine)
-    except Exception:
-        return pd.DataFrame()
+        try:
+            return pd.read_sql(query, phormula_engine)
+        except Exception:
+            continue
+
+    return pd.DataFrame()
+
+
+def _get_case_insensitive_column(df: pd.DataFrame, names: list[str]) -> str | None:
+    lookup = {str(col).strip().lower(): col for col in df.columns}
+    for name in names:
+        match = lookup.get(str(name).strip().lower())
+        if match is not None:
+            return match
+    return None
 
 
 def apply_productwise_ads_cm2_from_adsmonthly(
@@ -485,8 +523,6 @@ def apply_productwise_ads_cm2_from_adsmonthly(
     # Reset only SKU/detail rows.
     # Keep TOTAL row cm2_profit from the main monthly table.
     df.loc[~total_mask, "productwise_ads_spend"] = 0.0
-    df.loc[~total_mask, "cm2_profit"] = 0.0
-    df.loc[~total_mask, "cm2_profit_per_unit"] = 0.0
 
     df_ads = fetch_productwise_adsmonthly_table(
         user_id=user_id,
@@ -495,41 +531,44 @@ def apply_productwise_ads_cm2_from_adsmonthly(
         year=year,
     )
 
-    # If productwise ads table is missing, keep TOTAL row CM2 untouched.
-    # SKU rows stay 0 as per your earlier requested fallback.
-    if df_ads.empty:
-        return df
+    if not df_ads.empty:
+        df_ads = _normalize_sku_col(df_ads.copy())
 
-    df_ads = _normalize_sku_col(df_ads.copy())
+        # adsmonthly.products contains the SKU values used in skuwisemonthly.sku.
+        ads_product_col = _get_case_insensitive_column(
+            df_ads,
+            ["sku", "products", "product"],
+        )
+        ads_spend_col = _get_case_insensitive_column(df_ads, ["spend"])
 
-    # adsmonthly table uses "products" column, but it contains SKU values
-    if "sku" not in df_ads.columns and "products" in df_ads.columns:
-        df_ads.rename(columns={"products": "sku"}, inplace=True)
+        if ads_product_col and ads_spend_col:
+            if ads_product_col != "sku":
+                df_ads.rename(columns={ads_product_col: "sku"}, inplace=True)
+            if ads_spend_col != "spend":
+                df_ads.rename(columns={ads_spend_col: "spend"}, inplace=True)
 
-    if "sku" not in df_ads.columns or "spend" not in df_ads.columns:
-        return df
+            df["sku_key"] = df["sku"].astype(str).str.strip().str.upper()
+            df_ads["sku_key"] = df_ads["sku"].astype(str).str.strip().str.upper()
 
-    df["sku_key"] = df["sku"].astype(str).str.strip().str.upper()
-    df_ads["sku_key"] = df_ads["sku"].astype(str).str.strip().str.upper()
+            df_ads = df_ads[
+                ~df_ads["sku_key"].str.lower().isin(TOTAL_LABELS)
+            ].copy()
 
-    df_ads = df_ads[
-        ~df_ads["sku_key"].str.lower().isin(TOTAL_LABELS)
-    ].copy()
+            df_ads["spend"] = pd.to_numeric(df_ads["spend"], errors="coerce").fillna(0).abs()
 
-    df_ads["spend"] = pd.to_numeric(df_ads["spend"], errors="coerce").fillna(0).abs()
+            ads_by_sku = (
+                df_ads.groupby("sku_key", as_index=False)["spend"]
+                .sum()
+                .rename(columns={"spend": "productwise_ads_spend"})
+            )
 
-    ads_by_sku = (
-        df_ads.groupby("sku_key", as_index=False)["spend"]
-        .sum()
-        .rename(columns={"spend": "productwise_ads_spend"})
-    )
+            df = df.merge(ads_by_sku, on="sku_key", how="left", suffixes=("", "_from_ads"))
+            total_mask = df["sku"].astype(str).str.strip().str.lower().isin(TOTAL_LABELS)
 
-    df = df.merge(ads_by_sku, on="sku_key", how="left", suffixes=("", "_from_ads"))
-
-    df["productwise_ads_spend"] = (
-        pd.to_numeric(df["productwise_ads_spend_from_ads"], errors="coerce")
-        .fillna(0)
-    )
+            df.loc[~total_mask, "productwise_ads_spend"] = (
+                pd.to_numeric(df.loc[~total_mask, "productwise_ads_spend_from_ads"], errors="coerce")
+                .fillna(0)
+            )
 
     # Recalculate CM2 only for SKU/detail rows.
     # Do not touch TOTAL row because overall summary AI payload should use table total.

@@ -4,7 +4,7 @@ import calendar, json, hashlib
 import re
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
-import jwt, time
+import jwt
 import pandas as pd
 from flask import Blueprint, jsonify, request, send_file, Response
 from app import db
@@ -19,10 +19,10 @@ from app.utils.amazon_ads_utils_reporting import (
     find_manager_profile_id,
     list_child_profiles_all_regions,
     pick_profile_id,
-    ADS_ENDPOINTS,
     tokeninfo,
-    AmazonAdsAuthContext,
-    AmazonAdsReportingClient,
+    fetch_report_rows_for_profiles,
+    flatten_ads_profiles,
+    normalize_ads_country_filter,
 )
 from app.models.user_models import amazon_sponsored_brands_keywords
 from openpyxl.utils import get_column_letter
@@ -384,11 +384,7 @@ def manager_sp_advertised_product_report():
         time_unit = (data.get("time_unit") or "SUMMARY").upper()
         return_excel = bool(data.get("return_excel", True))
 
-        wanted_countries = data.get("countries")
-        if wanted_countries:
-            wanted_countries = {str(x).upper() for x in wanted_countries}
-        else:
-            wanted_countries = None
+        wanted_countries = normalize_ads_country_filter(data.get("countries"))
 
         if time_unit not in {"DAILY", "SUMMARY"}:
             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
@@ -415,18 +411,7 @@ def manager_sp_advertised_product_report():
         else:
             child_by_region = top_profiles
 
-        # Flatten profiles with region + normalized country label
-        all_profiles = []
-        for region, profs in child_by_region.items():
-            for p in profs or []:
-                cc = (p.get("countryCode") or "").upper()
-                label = "UK" if cc == "GB" else cc
-                p["_region"] = region
-                p["_country_label"] = label
-                all_profiles.append(p)
-
-        if wanted_countries:
-            all_profiles = [p for p in all_profiles if p.get("_country_label") in wanted_countries]
+        all_profiles = flatten_ads_profiles(child_by_region, wanted_countries)
 
         if not all_profiles:
             return jsonify({
@@ -434,35 +419,25 @@ def manager_sp_advertised_product_report():
                          "This usually means the Amazon login that consented has no API-linked Ads profiles."
             }), 400
 
-        merged_rows = []
-
-        for p in all_profiles:
-            profile_id = p.get("profileId")
-            if not profile_id:
-                continue
-
-            region = p["_region"]
-            base_url = ADS_ENDPOINTS[region]
-
-            auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-            ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
-
-            report_id = ads.create_sp_advertised_product_report(start_date, end_date, time_unit=time_unit)
-            location = ads.wait_until_ready(report_id, max_wait_seconds=1800, poll_every_seconds=10)
-            rows = ads.download_gzip_json(location)
-
-            if not isinstance(rows, list):
-                raise RuntimeError(f"Report returned unexpected type: {type(rows)}")
-            if rows and not isinstance(rows[0], dict):
-                raise RuntimeError(f"Report returned non-dict rows. first_row_type={type(rows[0])}")
-
-            for r in rows:
-                r["_profileId"] = str(profile_id)
-                r["_country"] = p["_country_label"]
-                merged_rows.append(r)
+        max_workers = int(data.get("max_workers") or 4)
+        merged_rows, download_errors = fetch_report_rows_for_profiles(
+            access_token=access_token,
+            profiles=all_profiles,
+            create_method_name="create_sp_advertised_product_report",
+            start_date=start_date,
+            end_date=end_date,
+            time_unit=time_unit,
+            max_wait_seconds=int(data.get("max_wait_seconds") or 1800),
+            poll_every_seconds=int(data.get("poll_every_seconds") or 10),
+            max_workers=max_workers,
+            strict_row_dicts=True,
+        )
 
         if not merged_rows:
-            return jsonify({"error": "Reports returned no rows"}), 400
+            return jsonify({
+                "error": "Reports returned no rows",
+                "download_errors": download_errors[:50],
+            }), 400
 
         df = pd.DataFrame(merged_rows)
 
@@ -2051,11 +2026,7 @@ def sp_advertised_product_report_period():
         time_unit = (data.get("time_unit") or "SUMMARY").upper()
         return_excel = bool(data.get("return_excel", False))  # this route returns JSON by default
 
-        wanted_countries = data.get("countries")
-        if wanted_countries:
-            wanted_countries = {str(x).upper() for x in wanted_countries}
-        else:
-            wanted_countries = None
+        wanted_countries = normalize_ads_country_filter(data.get("countries"))
 
         if year < 2000 or year > 2100:
             return jsonify({"error": "year looks invalid"}), 400
@@ -2079,18 +2050,7 @@ def sp_advertised_product_report_period():
         else:
             child_by_region = top_profiles
 
-        # Flatten profiles
-        all_profiles = []
-        for region, profs in child_by_region.items():
-            for p in profs or []:
-                cc = (p.get("countryCode") or "").upper()
-                label = "UK" if cc == "GB" else cc
-                p["_region"] = region
-                p["_country_label"] = label
-                all_profiles.append(p)
-
-        if wanted_countries:
-            all_profiles = [p for p in all_profiles if p.get("_country_label") in wanted_countries]
+        all_profiles = flatten_ads_profiles(child_by_region, wanted_countries)
 
         if not all_profiles:
             return jsonify({"error": "No advertiser profiles found (or country filter removed all)."}), 400
@@ -2098,36 +2058,34 @@ def sp_advertised_product_report_period():
         merged_rows = []
 
         # ✅ fetch each month-range for each profile
-        for p in all_profiles:
-            profile_id = p.get("profileId")
-            if not profile_id:
-                continue
+        download_errors = []
+        max_workers = int(data.get("max_workers") or 4)
 
-            region = p["_region"]
-            base_url = ADS_ENDPOINTS[region]
-            auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-            ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
+        for start_dt, end_dt in date_ranges:
+            start_str = start_dt.isoformat()
+            end_str = end_dt.isoformat()
 
-            for start_dt, end_dt in date_ranges:
-                start_str = start_dt.isoformat()
-                end_str = end_dt.isoformat()
-
-                report_id = ads.create_sp_advertised_product_report(start_str, end_str, time_unit=time_unit)
-                location = ads.wait_until_ready(report_id, max_wait_seconds=1800, poll_every_seconds=10)
-                rows = ads.download_gzip_json(location)
-
-                if not isinstance(rows, list):
-                    raise RuntimeError(f"Report returned unexpected type: {type(rows)}")
-
-                for r in rows:
-                    r["_profileId"] = str(profile_id)
-                    r["_country"] = p["_country_label"]
-                    r["_range_start"] = start_str
-                    r["_range_end"] = end_str
-                    merged_rows.append(r)
+            rows, errors = fetch_report_rows_for_profiles(
+                access_token=access_token,
+                profiles=all_profiles,
+                create_method_name="create_sp_advertised_product_report",
+                start_date=start_str,
+                end_date=end_str,
+                time_unit=time_unit,
+                max_wait_seconds=int(data.get("max_wait_seconds") or 1800),
+                poll_every_seconds=int(data.get("poll_every_seconds") or 10),
+                max_workers=max_workers,
+                strict_row_dicts=True,
+                row_extra={"_range_start": start_str, "_range_end": end_str},
+            )
+            merged_rows.extend(rows)
+            download_errors.extend(errors)
 
         if not merged_rows:
-            return jsonify({"error": "Reports returned no rows"}), 400
+            return jsonify({
+                "error": "Reports returned no rows",
+                "download_errors": download_errors[:50],
+            }), 400
 
         df = pd.DataFrame(merged_rows)
 
@@ -2299,7 +2257,7 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
         time_unit = (data.get("time_unit") or "SUMMARY").upper()
 
         # ✅ Increase default window for real "one hit"
-        max_wait_seconds = int(data.get("max_wait_seconds") or 900)  # 15 min
+        max_wait_seconds = int(data.get("max_wait_seconds") or 1800)
         poll_every_seconds = int(data.get("poll_every_seconds") or 10)
 
         if time_unit not in {"DAILY", "SUMMARY"}:
@@ -2310,14 +2268,9 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
             return jsonify({"error": "Amazon Ads not connected"}), 400
 
         # ✅ REQUIRE countries
-        wanted = {str(c).upper().strip() for c in (data.get("countries") or []) if str(c).strip()}
+        wanted = normalize_ads_country_filter(data.get("countries"))
         if not wanted:
             return jsonify({"error": "countries[] is required. Example: {\"countries\":[\"UK\"]}"}), 400
-
-        # normalize
-        if "GB" in wanted:
-            wanted.discard("GB")
-            wanted.add("UK")
 
         # map countries -> regions (your logic)
         regions_to_use = set()
@@ -2341,143 +2294,33 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
             if manager_profile_id else top_profiles
         )
 
-        # -----------------------------
-        # Create report(s) ONLY for wanted countries
-        # -----------------------------
-        reports = []
-        for region, profiles in (child_by_region or {}).items():
-            if region not in regions_to_use:
-                continue
+        all_profiles = flatten_ads_profiles(child_by_region, wanted, regions=regions_to_use)
 
-            for p in profiles or []:
-                profile_id = p.get("profileId")
-                if not profile_id:
-                    continue
-
-                cc = (p.get("countryCode") or "").upper()
-                country_label = "UK" if cc == "GB" else cc
-
-                # strict filter
-                if country_label not in wanted:
-                    continue
-
-                auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-                ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[region], auth=auth, timeout=60)
-
-                report_id = ads.create_sd_advertised_product_report(start_date, end_date, time_unit)
-
-                reports.append({
-                    "region": region,
-                    "country": country_label,
-                    "profile_id": str(profile_id),
-                    "report_id": str(report_id),
-                })
-
-        if not reports:
+        if not all_profiles:
             return jsonify({
                 "error": "No advertiser profiles found for requested countries.",
                 "countries": sorted(list(wanted)),
                 "regions_used": sorted(list(regions_to_use)),
             }), 400
 
-        # -----------------------------
-        # Poll (robust): backoff + fail-fast
-        # -----------------------------
-        deadline = time.time() + max_wait_seconds
-        status_map = {}
-
-        # start with poll_every_seconds, then back off up to 60s
-        interval = max(2, poll_every_seconds)
-        max_interval = 60
-
-        DONE = {"COMPLETED", "SUCCESS"}
-        FAIL = {"FAILURE", "FAILED", "CANCELLED", "CANCELED"}
-
-        while True:
-            all_done = True
-            any_failed = False
-            failed_list = []
-
-            for r in reports:
-                auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
-                ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
-
-                st = ads.get_report_status(r["report_id"]) or {}
-                status_map[r["report_id"]] = st
-
-                status = (st.get("status") or "").upper()
-
-                if status in FAIL:
-                    any_failed = True
-                    failed_list.append({**r, "status": status, "report": st})
-
-                if status not in DONE:
-                    all_done = False
-
-            if any_failed:
-                return jsonify({
-                    "error": "One or more reports failed.",
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "time_unit": time_unit,
-                    "failed": failed_list,
-                }), 502
-
-            if all_done:
-                break
-
-            if time.time() >= deadline:
-                pending_debug = []
-                for r in reports:
-                    st = status_map.get(r["report_id"]) or {}
-                    pending_debug.append({
-                        "region": r["region"],
-                        "country": r["country"],
-                        "profile_id": r["profile_id"],
-                        "report_id": r["report_id"],
-                        "status": (st.get("status") or "UNKNOWN"),
-                        "report": st,
-                    })
-
-                return jsonify({
-                    "error": "Report not ready within max_wait_seconds. Increase max_wait_seconds.",
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "time_unit": time_unit,
-                    "countries": sorted(list(wanted)),
-                    "max_wait_seconds": max_wait_seconds,
-                    "last_poll_interval_seconds": interval,
-                    "pending": pending_debug,
-                }), 504
-
-            time.sleep(interval)
-            interval = min(max_interval, int(interval * 1.5))  # backoff
-
-        # -----------------------------
-        # Download
-        # -----------------------------
-        rows_all = []
-        for r in reports:
-            st = status_map.get(r["report_id"]) or {}
-            url = st.get("url") or st.get("location")
-            if not url:
-                return jsonify({
-                    "error": f"Report completed but url missing for report_id={r['report_id']}",
-                    "report": st
-                }), 500
-
-            auth = AmazonAdsAuthContext(access_token=access_token, profile_id=r["profile_id"])
-            ads = AmazonAdsReportingClient(base_url=ADS_ENDPOINTS[r["region"]], auth=auth, timeout=60)
-
-            rows = ads.download_gzip_json(url)
-            for row in (rows or []):
-                if isinstance(row, dict):
-                    row["_profileId"] = r["profile_id"]
-                    row["_country"] = r["country"]
-                    rows_all.append(row)
+        rows_all, download_errors = fetch_report_rows_for_profiles(
+            access_token=access_token,
+            profiles=all_profiles,
+            create_method_name="create_sd_advertised_product_report",
+            start_date=start_date,
+            end_date=end_date,
+            time_unit=time_unit,
+            max_wait_seconds=max_wait_seconds,
+            poll_every_seconds=poll_every_seconds,
+            max_workers=int(data.get("max_workers") or 4),
+            strict_row_dicts=False,
+        )
 
         if not rows_all:
-            return jsonify({"error": "Report completed but returned no rows"}), 400
+            return jsonify({
+                "error": "Report completed but returned no rows",
+                "download_errors": download_errors[:50],
+            }), 400
 
         df = pd.DataFrame(rows_all)
 
@@ -2575,7 +2418,7 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
             "end_date": end_date,
             "time_unit": time_unit,
             "countries": sorted(list(wanted)),
-            "profiles_used": len(reports),
+            "profiles_used": len(all_profiles),
             "rows_saved": len(inserts),
         }), 200
 
@@ -2606,14 +2449,7 @@ def manager_sb_keyword_report():
         time_unit = (data.get("time_unit") or "SUMMARY").upper()
         return_excel = bool(data.get("return_excel", True))
 
-        wanted_countries = data.get("countries")
-        if wanted_countries:
-            wanted_countries = {str(x).upper().strip() for x in wanted_countries if str(x).strip()}
-            if "GB" in wanted_countries:
-                wanted_countries.discard("GB")
-                wanted_countries.add("UK")
-        else:
-            wanted_countries = None
+        wanted_countries = normalize_ads_country_filter(data.get("countries"))
 
         if time_unit not in {"DAILY", "SUMMARY"}:
             return jsonify({"error": "time_unit must be DAILY or SUMMARY"}), 400
@@ -2640,18 +2476,7 @@ def manager_sb_keyword_report():
             if manager_profile_id else top_profiles
         )
 
-        # flatten profiles with region + normalized country label
-        all_profiles = []
-        for region, profs in (child_by_region or {}).items():
-            for p in profs or []:
-                cc = (p.get("countryCode") or "").upper()
-                label = "UK" if cc == "GB" else cc
-                p["_region"] = region
-                p["_country_label"] = label
-                all_profiles.append(p)
-
-        if wanted_countries:
-            all_profiles = [p for p in all_profiles if p.get("_country_label") in wanted_countries]
+        all_profiles = flatten_ads_profiles(child_by_region, wanted_countries)
 
         if not all_profiles:
             return jsonify({"error": "No advertiser profiles found (or your country filter removed all)."}), 400
@@ -2661,54 +2486,27 @@ def manager_sb_keyword_report():
         download_errors = []
         join_warnings = []
 
-        # ---------------------------
-        # 1) Fetch report for profiles
-        # ---------------------------
         for p in all_profiles:
             profile_id = p.get("profileId")
             if not profile_id:
                 continue
-
-            region = p["_region"]
-            base_url = ADS_ENDPOINTS[region]
-
-            auth = AmazonAdsAuthContext(access_token=access_token, profile_id=str(profile_id))
-            ads = AmazonAdsReportingClient(base_url=base_url, auth=auth, timeout=60)
-
             join_maps[str(profile_id)] = {
                 "campaign_to_portfolio": {},
                 "portfolioid_to_name": {},
             }
 
-            # create + download report
-            try:
-                report_id = ads.create_sb_keyword_report(start_date, end_date, time_unit=time_unit)
-                location = ads.wait_until_ready(report_id, max_wait_seconds=1800, poll_every_seconds=10)
-                rows = ads.download_gzip_json(location)
-            except Exception as e:
-                download_errors.append({
-                    "profile_id": str(profile_id),
-                    "country": p.get("_country_label"),
-                    "region": region,
-                    "step": "report_download",
-                    "error": str(e),
-                })
-                continue
-
-            if not isinstance(rows, list):
-                download_errors.append({
-                    "profile_id": str(profile_id),
-                    "step": "rows_type",
-                    "error": f"Report returned unexpected type: {type(rows)}",
-                })
-                continue
-
-            for r in rows:
-                if not isinstance(r, dict):
-                    continue
-                r["_profileId"] = str(profile_id)
-                r["_country"] = p["_country_label"]
-                merged_rows.append(r)
+        merged_rows, download_errors = fetch_report_rows_for_profiles(
+            access_token=access_token,
+            profiles=all_profiles,
+            create_method_name="create_sb_keyword_report",
+            start_date=start_date,
+            end_date=end_date,
+            time_unit=time_unit,
+            max_wait_seconds=int(data.get("max_wait_seconds") or 1800),
+            poll_every_seconds=int(data.get("poll_every_seconds") or 10),
+            max_workers=int(data.get("max_workers") or 4),
+            continue_on_error=True,
+        )
 
         if not merged_rows:
             return jsonify({
