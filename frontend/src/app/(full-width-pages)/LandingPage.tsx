@@ -5,6 +5,7 @@ import { PhormulaBeamHero } from "@/components/landing-page/PhormulaBeamHero";
 import Services from "@/components/landing-page/Services";
 import Image from "next/image";
 import FaqAccordion from "@/components/landing-page/FaqAccordion";
+import Link from "next/link";
 
 export const metadata = {
   title: "Phormula — AI Financial Intelligence for D2C & Amazon Sellers",
@@ -34,8 +35,13 @@ export default function LandingPage() {
           </ul>
 
           <div className="nav-actions">
-            <a className="btn btn-outline" href="#demo">Book demo</a>
-            <a className="btn btn-teal !text-yellow-200" href="#demo">Get started</a>
+            <Link className="btn btn-outline" href="/signin">
+  Book demo
+</Link>
+
+<Link className="btn btn-teal !text-yellow-200" href="/signin">
+  Get started
+</Link>
           </div>
         </div>
       </header>
