@@ -338,6 +338,11 @@ const monthIndexMap: Record<string, number> = {
 };
 
 type FetchedPeriods = Record<string, string[]>;
+type UploadPeriodSource = {
+  month?: string | number | null;
+  month_num?: string | number | null;
+  year?: string | number | null;
+};
 
 
 const readFetchedPeriods = (): FetchedPeriods => {
@@ -399,6 +404,73 @@ const monthNames = [
   "November",
   "December",
 ];
+
+const normalizeFetchedMonth = (
+  month?: string | number | null,
+  monthNum?: string | number | null
+) => {
+  const monthKey = String(month ?? "").trim().toLowerCase();
+
+  if (monthKey && monthIndexMap[monthKey] !== undefined) {
+    return monthKey;
+  }
+
+  const numericMonth = Number(monthNum ?? month);
+
+  if (
+    Number.isInteger(numericMonth) &&
+    numericMonth >= 1 &&
+    numericMonth <= 12
+  ) {
+    return monthNames[numericMonth - 1].toLowerCase();
+  }
+
+  return "";
+};
+
+const buildFetchedPeriodsFromUploads = (uploads: unknown): FetchedPeriods => {
+  if (!Array.isArray(uploads)) return {};
+
+  const periods: FetchedPeriods = {};
+
+  uploads.forEach((upload) => {
+    const row = upload as UploadPeriodSource;
+    const year = String(row.year ?? "").trim();
+    const month = normalizeFetchedMonth(row.month, row.month_num);
+
+    if (!year || !month) return;
+
+    if (!periods[year]) periods[year] = [];
+    if (!periods[year].includes(month)) periods[year].push(month);
+  });
+
+  Object.keys(periods).forEach((year) => {
+    periods[year] = periods[year].sort(
+      (a, b) => (monthIndexMap[a] ?? 99) - (monthIndexMap[b] ?? 99)
+    );
+  });
+
+  return periods;
+};
+
+const getLatestFetchedPeriodFromMap = (periods: FetchedPeriods) => {
+  const latest = Object.entries(periods)
+    .flatMap(([year, yearMonths]) =>
+      yearMonths.map((month) => ({
+        year,
+        month,
+        monthIndex: monthIndexMap[month] ?? -1,
+      }))
+    )
+    .filter((period) => period.monthIndex >= 0)
+    .sort((a, b) => {
+      const yearDiff = Number(b.year) - Number(a.year);
+      if (yearDiff !== 0) return yearDiff;
+      return b.monthIndex - a.monthIndex;
+    })[0];
+
+  return latest ? { year: latest.year, month: latest.month } : null;
+};
 
 const getLastCompletedMonth = () => {
   const now = new Date();
@@ -5665,6 +5737,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   });
 
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter | "">("");
+  const [availablePeriods, setAvailablePeriods] =
+    useState<FetchedPeriods | null>(null);
 
   const salesLast30DaysLabel = buildSalesLast30DaysLabel(
     range,
@@ -7874,6 +7948,88 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
 
   useEffect(() => {
+    if (isDemoMode) {
+      setAvailablePeriods(null);
+      return;
+    }
+
+    if (!countryName) {
+      setAvailablePeriods(null);
+      return;
+    }
+
+    let ignore = false;
+    setAvailablePeriods(null);
+
+    const fetchAvailablePeriods = async () => {
+      try {
+        const authToken =
+          token ??
+          (typeof window !== "undefined"
+            ? localStorage.getItem("jwtToken")
+            : null);
+
+        const url = new URL(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
+        );
+
+        url.searchParams.set("country", countryName);
+        url.searchParams.set("period", "monthly");
+
+        if (countryName.toLowerCase() === "global" && homeCurrency) {
+          url.searchParams.set("homeCurrency", homeCurrency);
+        }
+
+        const res = await fetch(url.toString(), {
+          method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          cache: "no-store",
+        });
+
+        if (ignore) return;
+
+        if (!res.ok) {
+          setAvailablePeriods(null);
+          return;
+        }
+
+        const data = await res.json();
+        const nextPeriods = buildFetchedPeriodsFromUploads(data?.uploads);
+
+        if (ignore) return;
+
+        setAvailablePeriods(nextPeriods);
+        writeFetchedPeriods(nextPeriods);
+
+        const latestFetchedPeriod =
+          getLatestFetchedPeriodFromMap(nextPeriods);
+
+        if (typeof window !== "undefined") {
+          if (latestFetchedPeriod) {
+            localStorage.setItem(
+              "latestFetchedPeriod",
+              JSON.stringify(latestFetchedPeriod)
+            );
+          } else {
+            localStorage.removeItem("latestFetchedPeriod");
+          }
+        }
+      } catch (error) {
+        if (!ignore) {
+          console.error("Error fetching available periods:", error);
+          setAvailablePeriods(null);
+        }
+      }
+    };
+
+    fetchAvailablePeriods();
+
+    return () => {
+      ignore = true;
+    };
+  }, [countryName, fetchCurrencyKey, homeCurrency, isDemoMode, token]);
+
+  useEffect(() => {
     if (isDemoMode) return;
     if (!countryName) return;
 
@@ -9067,6 +9223,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onMonthChange={handleMonthChange}
             onQuarterChange={handleQuarterChange}
             onYearChange={handleYearChange}
+            availablePeriods={availablePeriods}
             allowedRanges={
               activeTab === "skuwiseProfit"
                 ? ["quarterly", "yearly"]

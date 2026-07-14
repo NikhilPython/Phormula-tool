@@ -7,6 +7,7 @@ import { FaAngleDown } from "react-icons/fa";
 
 export type Range = "monthly" | "quarterly" | "yearly";
 export type RangeValue = Range | "";
+export type AvailablePeriods = Record<string, string[]>;
 
 interface Props {
   range: RangeValue | undefined;
@@ -19,6 +20,7 @@ interface Props {
   onQuarterChange: (v: string) => void;
   onYearChange: (v: string) => void;
   allowedRanges?: Range[];
+  availablePeriods?: AvailablePeriods | null;
 }
 
 const ALL_RANGES: Range[] = ["monthly", "quarterly", "yearly"];
@@ -48,6 +50,13 @@ const monthToQuarter = (m?: string) => {
   return `Q${Math.floor(idx / 3) + 1}`;
 };
 
+const quarterToMonths: Record<string, string[]> = {
+  Q1: ["january", "february", "march"],
+  Q2: ["april", "may", "june"],
+  Q3: ["july", "august", "september"],
+  Q4: ["october", "november", "december"],
+};
+
 const MIN_YEAR = 2024;
 
 const PeriodFiltersTable: React.FC<Props> = (props) => {
@@ -61,6 +70,7 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     onQuarterChange,
     onYearChange,
     allowedRanges = ALL_RANGES,
+    availablePeriods,
   } = props;
 
   const safeRange: Range | "" =
@@ -82,6 +92,8 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   );
 
   const selectedYearNum = Number(selectedYear);
+  const hasAvailabilityRules =
+    availablePeriods !== undefined && availablePeriods !== null;
 
   const getLatestPeriod = (): LatestPeriod | null => {
     if (typeof window === "undefined") return null;
@@ -163,6 +175,99 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     return months;
   };
 
+  const getFetchedMonthsForYear = (y: number) => {
+    if (!hasAvailabilityRules) return months;
+
+    return Array.from(
+      new Set(
+        (availablePeriods?.[String(y)] ?? [])
+          .map((m) => String(m || "").toLowerCase())
+          .filter((m) => months.includes(m))
+      )
+    );
+  };
+
+  const fetchedMonthExistsInYear = (y: number, m: string) => {
+    if (!hasAvailabilityRules) return true;
+    return getFetchedMonthsForYear(y).includes(m.toLowerCase());
+  };
+
+  const fetchedQuarterExistsInYear = (y: number, q: string) => {
+    if (!hasAvailabilityRules) return true;
+
+    const quarterMonths = quarterToMonths[q] ?? [];
+    if (!quarterMonths.length) return true;
+
+    return quarterMonths.some((m) => fetchedMonthExistsInYear(y, m));
+  };
+
+  const yearHasFetchedMonths = (y: number) => {
+    if (!hasAvailabilityRules) return true;
+
+    const historicMonths = getAllowedMonthsForYear(y);
+    if (!historicMonths.length) return false;
+
+    return historicMonths.some((m) => fetchedMonthExistsInYear(y, m));
+  };
+
+  const getLatestAvailablePeriod = (): LatestPeriod | null => {
+    if (!hasAvailabilityRules) return null;
+
+    const candidates = Object.entries(availablePeriods ?? {}).flatMap(
+      ([year, yearMonths]) => {
+        const y = Number(year);
+        if (!Number.isFinite(y)) return [];
+
+        return yearMonths
+          .map((month) => ({
+            year: String(y),
+            month: String(month || "").toLowerCase(),
+          }))
+          .filter(({ month }) => months.includes(month))
+          .filter(({ month }) => getAllowedMonthsForYear(y).includes(month));
+      }
+    );
+
+    if (!candidates.length) return null;
+
+    return candidates.sort((a, b) => {
+      const yDiff = Number(b.year) - Number(a.year);
+      if (yDiff !== 0) return yDiff;
+      return monthIndex(b.month) - monthIndex(a.month);
+    })[0];
+  };
+
+  const hasSelectableMonthlyPeriod = () => {
+    if (!hasAvailabilityRules) return true;
+    return yearList.some((y) =>
+      getAllowedMonthsForYear(y).some((m) => fetchedMonthExistsInYear(y, m))
+    );
+  };
+
+  const hasSelectableQuarterlyPeriod = () => {
+    if (!hasAvailabilityRules) return true;
+    return yearList.some((y) =>
+      ["Q1", "Q2", "Q3", "Q4"].some(
+        (q) => quarterAllowedInYear(y, q) && fetchedQuarterExistsInYear(y, q)
+      )
+    );
+  };
+
+  const hasSelectableYearlyPeriod = () => {
+    if (!hasAvailabilityRules) return true;
+    return yearList.some((y) => yearHasFetchedMonths(y));
+  };
+
+  const isRangeDisabled = (r: Range) => {
+    if (!allowedRanges.includes(r)) return true;
+
+    if (r === "monthly") return !hasSelectableMonthlyPeriod();
+    if (r === "quarterly") return !hasSelectableQuarterlyPeriod();
+    if (r === "yearly") return !hasSelectableYearlyPeriod();
+
+    return false;
+  };
+
   /* =========================
      Range change (seed from latestFetchedPeriod but normalized to historic)
      ========================= */
@@ -174,7 +279,7 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     // Keep the current selected year.
     if (nextRange === "yearly") return;
 
-    const latest = getLatestPeriod();
+    const latest = getLatestAvailablePeriod() ?? getLatestPeriod();
     if (!latest?.month || !latest?.year) return;
 
     const y = Number(latest.year);
@@ -238,16 +343,22 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
   const isMonthDisabled = (m: string) => {
     const mIdx = months.indexOf(m);
     if (mIdx === -1) return false;
-    if (selectedYearNum === currentYear) return mIdx >= currentMonthIndex;
-    return false;
+    if (selectedYearNum === currentYear && mIdx >= currentMonthIndex) {
+      return true;
+    }
+    if (Number.isNaN(selectedYearNum)) return false;
+    return !fetchedMonthExistsInYear(selectedYearNum, m);
   };
 
   // In currentYear: disable quarters whose START month is current month or later
   const isQuarterDisabled = (q: string) => {
-    if (selectedYearNum !== currentYear) return false;
     const qNum = Number(q.replace("Q", ""));
     const quarterStartMonth = (qNum - 1) * 3; // Q1=0, Q2=3...
-    return quarterStartMonth >= currentMonthIndex;
+    if (selectedYearNum === currentYear && quarterStartMonth >= currentMonthIndex) {
+      return true;
+    }
+    if (Number.isNaN(selectedYearNum)) return false;
+    return !fetchedQuarterExistsInYear(selectedYearNum, q);
   };
 
   /* =========================
@@ -276,11 +387,33 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     if (y < MIN_YEAR || y > currentYear) return true;
 
     if (safeRange === "monthly" && selectedMonth) {
-      return !monthAllowedInYear(y, selectedMonth);
+      return (
+        !monthAllowedInYear(y, selectedMonth) ||
+        !fetchedMonthExistsInYear(y, selectedMonth)
+      );
     }
 
     if (safeRange === "quarterly" && selectedQuarter) {
-      return !quarterAllowedInYear(y, selectedQuarter);
+      return (
+        !quarterAllowedInYear(y, selectedQuarter) ||
+        !fetchedQuarterExistsInYear(y, selectedQuarter)
+      );
+    }
+
+    if (safeRange === "monthly") {
+      return !getAllowedMonthsForYear(y).some((m) =>
+        fetchedMonthExistsInYear(y, m)
+      );
+    }
+
+    if (safeRange === "quarterly") {
+      return !["Q1", "Q2", "Q3", "Q4"].some(
+        (q) => quarterAllowedInYear(y, q) && fetchedQuarterExistsInYear(y, q)
+      );
+    }
+
+    if (safeRange === "yearly") {
+      return !yearHasFetchedMonths(y);
     }
 
     return false;
@@ -311,13 +444,19 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
             Period
           </option>
           {allowedRanges.includes("monthly") && (
-            <option value="monthly">Monthly</option>
+            <option value="monthly" disabled={isRangeDisabled("monthly")}>
+              Monthly
+            </option>
           )}
           {allowedRanges.includes("quarterly") && (
-            <option value="quarterly">Quarterly</option>
+            <option value="quarterly" disabled={isRangeDisabled("quarterly")}>
+              Quarterly
+            </option>
           )}
           {allowedRanges.includes("yearly") && (
-            <option value="yearly">Yearly</option>
+            <option value="yearly" disabled={isRangeDisabled("yearly")}>
+              Yearly
+            </option>
           )}
         </select>
         <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
@@ -341,14 +480,14 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
 
             {safeRange === "monthly" &&
               months.map((m) => (
-                <option key={m} value={m}>
+                <option key={m} value={m} disabled={isMonthDisabled(m)}>
                   {cap(m)}
                 </option>
               ))}
 
             {safeRange === "quarterly" &&
               ["Q1", "Q2", "Q3", "Q4"].map((q) => (
-                <option key={q} value={q}>
+                <option key={q} value={q} disabled={isQuarterDisabled(q)}>
                   {q}
                 </option>
               ))}
