@@ -764,20 +764,21 @@ const getIstMonthToTodayRangeISO = () => ({
 const ensureSpReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
-    country: string // "UK" | "US" | "CA"
+    country: string, // "UK" | "US" | "CA"
+    force = false
 ) => {
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
     // once per user + country + day
     const storageKey = `sp_report_seed_daily_${userId}_${country}_${end_date}`;
-    if (localStorage.getItem(storageKey) === "1") return;
+    if (!force && localStorage.getItem(storageKey) === "1") return;
 
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
         // re-check after lock to avoid race
-        if (localStorage.getItem(storageKey) === "1") return;
+        if (!force && localStorage.getItem(storageKey) === "1") return;
 
         const body = {
             start_date,
@@ -826,20 +827,21 @@ const ensureSpReportSeedOncePerDay = async (
 const ensureSdReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
-    country: string // "UK" | "US"
+    country: string, // "UK" | "US"
+    force = false
 ) => {
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
     // once per user + country + day
     const storageKey = `sd_report_seed_daily_${userId}_${country}_${end_date}`;
-    if (localStorage.getItem(storageKey) === "1") return;
+    if (!force && localStorage.getItem(storageKey) === "1") return;
 
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
         // re-check after lock to avoid race
-        if (localStorage.getItem(storageKey) === "1") return;
+        if (!force && localStorage.getItem(storageKey) === "1") return;
 
         // ✅ BODY EXACTLY AS REQUESTED (same keys/shape)
         const body = {
@@ -881,20 +883,21 @@ const ensureSdReportSeedOncePerDay = async (
 const ensureSbKeywordReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
-    country: string // "UK" | "US" | "CA"
+    country: string, // "UK" | "US" | "CA"
+    force = false
 ) => {
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
     // once per user + country + day
     const storageKey = `sb_keyword_report_seed_daily_${userId}_${country}_${end_date}`;
-    if (localStorage.getItem(storageKey) === "1") return;
+    if (!force && localStorage.getItem(storageKey) === "1") return;
 
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
         // re-check after lock to avoid race
-        if (localStorage.getItem(storageKey) === "1") return;
+        if (!force && localStorage.getItem(storageKey) === "1") return;
 
         // ✅ BODY EXACTLY AS REQUESTED
         const body = {
@@ -2064,7 +2067,11 @@ export default function DashboardPage() {
     const adsSeedErrorRef = useRef<string | null>(null);
     const adsBackgroundErrorRef = useRef<string | null>(null);
 
-    const runAdsBackgroundSync = useCallback(async () => {
+    const runAdsBackgroundSync = useCallback(async ({
+        forceReportSync = false,
+    }: {
+        forceReportSync?: boolean;
+    } = {}) => {
         if (adsBackgroundLoadingRef.current) return;
         if (isMonthYearNA) return;
         if (platform === "shopify") return;
@@ -2089,12 +2096,14 @@ export default function DashboardPage() {
 
         try {
             const adsSeedTasks = [
-                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country),
-                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country),
+                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
+                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
             ];
 
             if (country === "UK" || country === "US") {
-                adsSeedTasks.push(ensureSdReportSeedOncePerDay(baseURL, jwtToken, country));
+                adsSeedTasks.push(
+                    ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)
+                );
             }
 
             await Promise.all(adsSeedTasks);
@@ -3832,7 +3841,13 @@ export default function DashboardPage() {
         ]
     );
 
-    const runDashboardLoadWithSteps = useCallback(async ({ dataOnlyRefresh = false }: { dataOnlyRefresh?: boolean } = {}) => {
+    const runDashboardLoadWithSteps = useCallback(async ({
+        dataOnlyRefresh = false,
+        forceAdsReportSync = false,
+    }: {
+        dataOnlyRefresh?: boolean;
+        forceAdsReportSync?: boolean;
+    } = {}) => {
         if (isMonthYearNA) {
             resetStepState();
             return;
@@ -3878,7 +3893,7 @@ export default function DashboardPage() {
 
             if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
-                void runAdsBackgroundSync();
+                void runAdsBackgroundSync({ forceReportSync: forceAdsReportSync });
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
@@ -4655,7 +4670,10 @@ export default function DashboardPage() {
 
             await fetchCountryTime();
 
-            await runDashboardLoadWithSteps({ dataOnlyRefresh: true });
+            await runDashboardLoadWithSteps({
+                dataOnlyRefresh: true,
+                forceAdsReportSync: true,
+            });
 
             const refreshedAt = Date.now();
             setLastRefreshAt(refreshedAt);
