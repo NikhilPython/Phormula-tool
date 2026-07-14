@@ -484,8 +484,6 @@ def _run_feepreview_upload_pipeline_from_fee_table(
     user_id: int,
     country: str,
     marketplace: str,
-    transit_time: int,
-    stock_unit: int,
     filename_hint: str = "SPAPI_FEE_PREVIEW",
 ):
     country = (country or "").lower().strip()
@@ -593,8 +591,6 @@ def _run_feepreview_upload_pipeline_from_fee_table(
         Column("id", Integer, primary_key=True),
         Column("user_id", Integer, nullable=False),
         Column("country", String(255), nullable=False),
-        Column("transit_time", Integer, nullable=False),
-        Column("stock_unit", Integer, nullable=False),
         Column("product_group", String(255), nullable=False),
         Column("estimated_fees", Float, nullable=True),
         Column("referral_fee", Float, nullable=True),
@@ -649,8 +645,6 @@ def _run_feepreview_upload_pipeline_from_fee_table(
     # add fixed cols
     df["user_id"] = user_id
     df["country"] = country
-    df["transit_time"] = int(transit_time)
-    df["stock_unit"] = int(stock_unit)
     df["marketplace"] = mp
     df["file_name"] = filename_hint
     df["product_barcode"] = None
@@ -671,7 +665,7 @@ def _run_feepreview_upload_pipeline_from_fee_table(
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     insert_cols = [
-        "user_id", "country", "transit_time", "stock_unit", "product_group", "estimated_fees", "referral_fee",
+        "user_id", "country", "product_group", "estimated_fees", "referral_fee",
         "estimated_referral_fee", "marketplace", "file_name", "sku", "fnsku", "amazon_store", "asin",
         "product_barcode", "sku_cost_price", "product_name", "brand", "price", "fulfilled_by", "has_local_inventory",
         "sales_price", "longest_side", "median_side", "shortest_side", "length_and_girth", "unit_of_dimension",
@@ -815,8 +809,6 @@ def _run_feepreview_upload_pipeline_from_fee_table(
         user_id=user_id, country=country, marketplace=mp
     ).first()
     if existing_profile:
-        existing_profile.transit_time = transit_time
-        existing_profile.stock_unit = stock_unit
         db.session.commit()
     else:
         db.session.add(
@@ -824,8 +816,6 @@ def _run_feepreview_upload_pipeline_from_fee_table(
                 user_id=user_id,
                 country=country,
                 marketplace=mp,
-                transit_time=transit_time,
-                stock_unit=stock_unit,
             )
         )
         db.session.commit()
@@ -1042,8 +1032,6 @@ def fees_sync_and_upload():
             user_id=user_id,
             country=country,
             marketplace=mp,
-            transit_time=int(data.get("transit_time") or 0),
-            stock_unit=int(data.get("stock_unit") or 0),
             filename_hint="SPAPI_FEE_PREVIEW",
         )
 
