@@ -1253,6 +1253,17 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["year"] = year
         sum_row["product_name"] = "TOTAL"
 
+        # Recalculate percentage from TOTAL values.
+        # Do not use the sum of individual SKU percentages.
+        sum_row["promotional_rebates_percentage"] = (
+            (
+                float(sum_row["promotional_rebates"])
+                / float(sum_row["Net Sales"])
+            ) * 100
+            if float(sum_row["Net Sales"]) != 0
+            else 0
+        )
+
         sum_row["profit%"] = (
             sum_row["profit"] / sum_row["Net Sales"]
         ) * 100 if sum_row["Net Sales"] != 0 else 0
@@ -1583,8 +1594,7 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         monetary_columns = [
             "asp", "gross_sales", "refund_sales", "tex_and_credits", "net_sales",
-            "promotional_rebates", "promotional_rebates_percentage",
-            "cost_of_unit_sold", "selling_fees", "fba_fees", "amazon_fee",
+            "promotional_rebates","cost_of_unit_sold", "selling_fees", "fba_fees", "amazon_fee",
             "net_taxes", "net_credits", "misc_transaction", "other_transaction_fees",
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
@@ -2237,6 +2247,15 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sum_row["year"] = str(year)
         sum_row["country"] = country
         sum_row["user_id"] = user_id
+
+        sum_row["promotional_rebates_percentage"] = (
+            (
+                float(sum_row["promotional_rebates"])
+                / float(sum_row["net_sales"])
+            ) * 100
+            if float(sum_row["net_sales"]) != 0
+            else 0
+        )
 
         sum_row["profit_percentage"] = (
             (sum_row["profit"] / sum_row["net_sales"]) * 100
@@ -2982,6 +3001,15 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sum_row["year"] = str(year)
         sum_row["country"] = country
         sum_row["user_id"] = user_id
+
+        sum_row["promotional_rebates_percentage"] = (
+            (
+                float(sum_row["promotional_rebates"])
+                / float(sum_row["net_sales"])
+            ) * 100
+            if float(sum_row["net_sales"]) != 0
+            else 0
+        )
 
         sum_row["profit_percentage"] = (
             (sum_row["profit"] / sum_row["net_sales"]) * 100
