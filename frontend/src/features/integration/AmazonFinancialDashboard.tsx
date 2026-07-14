@@ -116,6 +116,7 @@ type FetchEtaUnit = {
 
 type FetchEtaPlan = {
   startedAt: number;
+  estimatedTotalSeconds: number;
   activeUnitId?: string;
   units: FetchEtaUnit[];
 };
@@ -1268,6 +1269,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
   const [busy, setBusy] = useState(false);
 
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [dynamicProgress, setDynamicProgress] = useState(0);
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(24);
 
   // 6-step progress tracking
@@ -1438,20 +1440,41 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     return Math.max(1, Math.ceil(remaining));
   }, [getEtaEstimate]);
 
+  const calculateDynamicProgressPercentage = useCallback(() => {
+    const plan = etaPlanRef.current;
+    if (!plan) return 0;
+
+    if (plan.units.length > 0 && plan.units.every((unit) => unit.completedAt)) {
+      return 100;
+    }
+
+    const remaining = calculateDynamicRemainingSeconds();
+    if (remaining === null || !plan.estimatedTotalSeconds) return 0;
+
+    const progress =
+      ((plan.estimatedTotalSeconds - remaining) / plan.estimatedTotalSeconds) *
+      100;
+
+    return Math.min(99, Math.max(0, Math.round(progress)));
+  }, [calculateDynamicRemainingSeconds]);
+
   const startEtaPlan = useCallback(
     (units: FetchEtaUnit[]) => {
       etaSamplesRef.current = {};
-      etaPlanRef.current = {
-        startedAt: Date.now(),
-        units,
-      };
-
       const initialEstimate = units.reduce(
         (total, unit) => total + getEtaEstimate(unit.type, unit.fallbackSeconds),
         0
       );
+      const estimatedTotalSeconds = Math.max(1, Math.ceil(initialEstimate));
 
-      setRemainingSeconds(Math.max(1, Math.ceil(initialEstimate)));
+      etaPlanRef.current = {
+        startedAt: Date.now(),
+        estimatedTotalSeconds,
+        units,
+      };
+
+      setRemainingSeconds(estimatedTotalSeconds);
+      setDynamicProgress(0);
     },
     [getEtaEstimate]
   );
@@ -1468,8 +1491,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       plan.activeUnitId = unitId;
       setRemainingSeconds(calculateDynamicRemainingSeconds());
+      setDynamicProgress((prev) =>
+        Math.max(prev, calculateDynamicProgressPercentage())
+      );
     },
-    [calculateDynamicRemainingSeconds]
+    [calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds]
   );
 
   const completeEtaUnit = useCallback(
@@ -1501,8 +1527,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       }
 
       setRemainingSeconds(calculateDynamicRemainingSeconds());
+      setDynamicProgress((prev) =>
+        Math.max(prev, calculateDynamicProgressPercentage())
+      );
     },
-    [calculateDynamicRemainingSeconds, etaScope]
+    [calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds, etaScope]
   );
 
   const runEtaUnit = useCallback(
@@ -1522,17 +1551,24 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     if (!busy) {
       etaPlanRef.current = null;
       setRemainingSeconds(null);
+      setDynamicProgress(0);
       return;
     }
 
     const interval = window.setInterval(() => {
       setRemainingSeconds(calculateDynamicRemainingSeconds());
+      setDynamicProgress((prev) =>
+        Math.max(prev, calculateDynamicProgressPercentage())
+      );
     }, 1000);
 
     setRemainingSeconds(calculateDynamicRemainingSeconds());
+    setDynamicProgress((prev) =>
+      Math.max(prev, calculateDynamicProgressPercentage())
+    );
 
     return () => window.clearInterval(interval);
-  }, [busy, calculateDynamicRemainingSeconds]);
+  }, [busy, calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds]);
 
   const markStepComplete = (step: number) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
@@ -2232,6 +2268,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       : remainingSeconds <= 5
         ? "Finishing up..."
         : formatEtaDuration(remainingSeconds);
+  const displayProgressPercentage = Math.min(100, Math.max(0, dynamicProgress));
 
   const splitStepLabel = (label: string) => {
     const words = label.trim().split(/\s+/);
@@ -2502,7 +2539,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                 </div>
 
                 <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
-                  {stepProgress.percentage}%
+                  {displayProgressPercentage}%
                 </span>
               </div>
 
@@ -2511,7 +2548,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                 <div
                   className="h-full rounded-full transition-all duration-500 ease-in-out"
                   style={{
-                    width: `${stepProgress.percentage}%`,
+                    width: `${displayProgressPercentage}%`,
                     background: "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
                   }}
                 />
