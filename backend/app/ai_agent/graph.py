@@ -57,9 +57,21 @@ advisor_llm = ChatOpenAI(model="gpt-4.1", api_key=OPENAI_API_KEY, temperature=0.
 
 ALIAS_MAP = {
 
+    "net sales": "net_sales",
+    "sales": "net_sales",
+    "revenue": "net_sales",
+    "net revenue": "net_sales",
+    "turnover": "net_sales",
+    "gross sales": "gross_sales",
+
     "quantity": "total_quantity",
+    "units sold": "total_quantity",
+    "sold units": "total_quantity",
+    "ordered units": "total_quantity",
     "return quantity": "return_quantity",
     "return units": "return_quantity",
+    "returns": "return_quantity",
+    "return rate": "return_quantity",
     "total quantity": "total_quantity",
     "net units" : "total_quantity",
     "units" : "total_quantity",
@@ -85,6 +97,7 @@ ALIAS_MAP = {
 
     "selling fees": "selling_fees",
     "refund selling fees": "refund_selling_fees",
+    "fba fee": "fba_fees",
     "fba fees": "fba_fees",
     "amazon fee": "amazon_fee",
 
@@ -98,18 +111,29 @@ ALIAS_MAP = {
 
     # CM2 productwise / total separation
     "productwise cm2 profit": "cm2_profit",
+    "productwise cm2profit": "cm2_profit",
     "product wise cm2 profit": "cm2_profit",
+    "product wise cm2profit": "cm2_profit",
     "by product cm2 profit": "cm2_profit",
+    "by product cm2profit": "cm2_profit",
     "sku wise cm2 profit": "cm2_profit",
+    "sku wise cm2profit": "cm2_profit",
     "sku cm2 profit": "cm2_profit",
+    "sku cm2profit": "cm2_profit",
 
     "total cm2 profit": "total_cm2_profit",
+    "total cm2profit": "total_cm2_profit",
     "overall cm2 profit": "total_cm2_profit",
+    "overall cm2profit": "total_cm2_profit",
     "monthly cm2 profit": "total_cm2_profit",
+    "monthly cm2profit": "total_cm2_profit",
     "whole month cm2 profit": "total_cm2_profit",
+    "whole month cm2profit": "total_cm2_profit",
 
     # Default CM2 query should use total/month CM2
     "cm2 profit": "total_cm2_profit",
+    "cm2profit": "total_cm2_profit",
+    "cm2": "total_cm2_profit",
 
     "reimbursement for lost inventory": "lost_total",
 
@@ -224,11 +248,20 @@ ALIAS_MAP = {
 
     "sales mix": "sales_mix",
     "profit mix": "profit_mix",
+    "acos": "acos",
+    "a cos": "acos",
+    "ad cost of sales": "acos",
 
     "stock": "available",
     "available stock": "available",
     "inventory": "available",
     "available inventory": "available",
+    "inbound stock": "inbound_quantity",
+    "inbound inventory": "inbound_quantity",
+    "reserved stock": "total_reserved_quantity",
+    "reserved inventory": "total_reserved_quantity",
+    "unfulfillable stock": "unfulfillable_quantity",
+    "unfulfillable inventory": "unfulfillable_quantity",
     "sell through": "sell_through",
     "days of supply": "days_of_supply",
 
@@ -335,20 +368,26 @@ def _normalize(text: str) -> str:
 
 def _extract_requested_countries(query: str) -> List[str]:
     q = _normalize(query)
+    q_no_dots = q.replace(".", "")
 
     countries = []
 
     # ✅ Add global detection first
-    if re.search(r"\bglobal\b|\bworldwide\b|\ball countries\b|\boverall\b", q):
+    if re.search(r"\bglobal\b|\bworldwide\b|\ball countries\b|\ball marketplaces\b|\boverall\b", q_no_dots):
         countries.append("global")
 
-    if re.search(r"\buk\b|\bunited kingdom\b", q):
+    if re.search(r"\buk\b|\bgreat britain\b|\bbritain\b|\bunited kingdom\b|\bamazon uk\b", q_no_dots):
         countries.append("uk")
 
-    if re.search(r"\bus\b|\busa\b|\bunited states\b", q):
+    if re.search(r"\bus\b|\busa\b|\bunited states\b|\bamerica\b|\bamazon us\b", q_no_dots):
         countries.append("us")
 
-    if "both countries" in q or "both country" in q:
+    if (
+        "both countries" in q_no_dots
+        or "both country" in q_no_dots
+        or "both marketplaces" in q_no_dots
+        or "both markets" in q_no_dots
+    ):
         countries = ["uk", "us"]
 
     return list(dict.fromkeys(countries))
@@ -388,12 +427,22 @@ def _match_product(rows: List[Dict[str, Any]], product_query: Optional[str]) -> 
     if not rows or not product_query:
         return None
     pq = product_query.lower().strip()
-    exact = [r for r in rows if pq == str(r.get("product_name", "")).lower().strip()]
+    exact = [
+        r for r in rows
+        if pq == str(r.get("product_name", "")).lower().strip()
+        or pq == str(r.get("sku", "")).lower().strip()
+    ]
     if exact:
-        return pq
-    contains = [r for r in rows if pq in str(r.get("product_name", "")).lower().strip()]
+        row = exact[0]
+        return str(row.get("product_name") or row.get("sku") or product_query).lower().strip()
+    contains = [
+        r for r in rows
+        if pq in str(r.get("product_name", "")).lower().strip()
+        or pq in str(r.get("sku", "")).lower().strip()
+    ]
     if contains:
-        return str(contains[0].get("product_name", "")).lower().strip() or pq
+        row = contains[0]
+        return str(row.get("product_name") or row.get("sku") or product_query).lower().strip()
     return None
 
 
@@ -642,23 +691,30 @@ def _resolve_product_queries_from_data(engine: Any, user_id: int, country: str, 
     try:
         latest = latest_available_month(engine, user_id, country)
         sample = get_metric_for_month(engine, user_id, country, "net_sales", latest.month, latest.year)
-        names = []
+        alias_to_product: Dict[str, str] = {}
         for row in sample.get("per_sku", []):
             name = str(row.get("product_name") or "").strip().lower()
+            sku = str(row.get("sku") or "").strip().lower()
             if name:
-                names.append(name)
-        if not names:
+                alias_to_product[name] = name
+            if sku:
+                alias_to_product[sku] = name or sku
+        if not alias_to_product:
             return []
         q = _normalize(query)
-        exact = [name for name in names if re.search(rf"\b{re.escape(name)}\b", q)]
+        exact = [
+            product
+            for alias, product in alias_to_product.items()
+            if re.search(rf"\b{re.escape(alias)}\b", q)
+        ]
         if exact:
             return list(dict.fromkeys(exact))[:5]
         ngrams = _query_ngrams(query)
         matches: List[str] = []
         for ng in ngrams:
-            for name in names:
-                if ng == name or ng in name or name in ng:
-                    matches.append(name)
+            for alias, product in alias_to_product.items():
+                if ng == alias or ng in alias or alias in ng:
+                    matches.append(product)
         return list(dict.fromkeys(matches))[:5]
     except Exception:
         logger.debug("Product resolution from data failed", exc_info=True)
@@ -676,9 +732,14 @@ def _fallback_plan(query: str, email_requested: bool = False) -> RequestPlan:
     if any(x in q for x in ["what is", "what does", "explain", "meaning of"]):
         if metric_name and "my" not in q and "last" not in q and "month" not in q:
             return RequestPlan("explain", "absolute", "lookup", "value_lookup", False, "short", metric_name=metric_name)
-    analysis_type = "growth" if any(x in q for x in ["change", "growth", "increase", "decrease", "trend", "drop"]) else "absolute"
-    reasoning_mode = "decision" if any(x in q for x in ["improve", "optimize", "should", "recommend", "fix"]) else ("analysis" if any(x in q for x in ["why", "reason", "underperform"]) or analysis_type == "growth" else "lookup")
-    answer_shape = "trend" if analysis_type == "growth" else "single_value"
+    if "trend" in q:
+        analysis_type = "trend"
+    elif any(x in q for x in ["change", "growth", "increase", "decrease", "drop"]):
+        analysis_type = "growth"
+    else:
+        analysis_type = "absolute"
+    reasoning_mode = "decision" if any(x in q for x in ["improve", "optimize", "should", "recommend", "fix"]) else ("analysis" if any(x in q for x in ["why", "reason", "underperform"]) or analysis_type in {"growth", "trend"} else "lookup")
+    answer_shape = "trend" if analysis_type in {"growth", "trend"} else "single_value"
     ranking_direction = None
     top_n = None
     if any(x in q for x in ["top", "best"]):
@@ -737,7 +798,10 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
         response_mode = result.response_mode or fallback.response_mode
         if not wants_detailed_response and reasoning_mode in {"analysis", "decision"}:
             response_mode = "short"
-        if analysis_type != "growth" and any(word in q for word in ["change", "increase", "decrease", "growth", "decline", "drop"]):
+        if "trend" in q and not any(word in q for word in ["change", "increase", "decrease", "growth", "decline", "drop"]):
+            analysis_type = "trend"
+            answer_shape = "trend"
+        if analysis_type not in {"growth", "trend"} and any(word in q for word in ["change", "increase", "decrease", "growth", "decline", "drop"]):
             analysis_type = "growth"
         if reasoning_mode != "decision" and any(trigger in q for trigger in ["improve", "optimize", "should", "recommend", "fix"]):
             reasoning_mode = "decision"
@@ -923,6 +987,10 @@ def _build_tool_plan(state: AgentState) -> List[str]:
 
         # multi product → standard
         if state.get("product_queries") and len(state.get("product_queries") or []) > 1:
+            return ["standard_analysis"]
+
+        # product-specific trend/growth questions need a monthly series, not a SKU deep dive
+        if state.get("analysis_type") in {"trend", "growth"} or state.get("answer_shape") == "trend":
             return ["standard_analysis"]
 
         # single product deep dive
@@ -1689,8 +1757,13 @@ def _compute_sku_intelligence(state: AgentState) -> AgentState:
     if previous_pack:
         summary_points.append(f"Sales changed by {deltas['net_sales']:,.2f}, profit changed by {deltas['profit']:,.2f}, and units changed by {deltas['total_quantity']:,.2f} vs the previous comparable period.")
         summary_points.extend(root_cause.get("summary", [])[:3])
-    trend_n = payload.get("n", 6) if payload.get("type") == "last_n_months" else 6
-    trend_months = _last_n_window(engine, state["user_id"], state["country"], trend_n)
+    trend_months = _months_from_period_payload(
+        engine,
+        state,
+        state["country"],
+        effective_payload,
+        default_n=6,
+    )
     trend_metric = metric_name if metric_name not in {"sales_mix", "profit_mix"} else ("net_sales" if metric_name == "sales_mix" else "profit")
     trend = build_time_series_analysis(engine, state["user_id"], state["country"], trend_metric, trend_months, product_match=product_match)
     result = {"product_match": product_match, "current": current_pack, "previous": previous_pack, "deltas": deltas, "summary_points": summary_points, "trend": trend, "root_cause": root_cause}
@@ -2084,10 +2157,13 @@ def _compute_standard_analysis(state: AgentState) -> AgentState:
         if analysis_type == "trend":
             logger.info("[ROUTE] Trend analysis")
 
-            if payload.get("type") == "last_n_months":
-                months_full = _last_n_window(engine, state["user_id"], state["country"], payload.get("n", 6))
-            else:
-                months_full = _last_n_window(engine, state["user_id"], state["country"], 6)
+            months_full = _months_from_period_payload(
+                engine,
+                state,
+                state["country"],
+                payload,
+                default_n=6,
+            )
 
             if not months_full:
                 logger.warning("[TREND] No months found")
@@ -2822,12 +2898,24 @@ FORECAST_QUERY_TERMS = [
     "forecast",
     "forecasted",
     "forecasting",
+    "expected",
+    "expectation",
     "projected",
     "projection",
     "predict",
     "predicted",
+    "upcoming",
+    "next month",
+    "next 2 months",
+    "next 3 months",
+    "future",
     "future demand",
+    "expected demand",
+    "demand forecast",
     "future sales",
+    "stock should",
+    "stock needed",
+    "stock need",
     "dispatch",
     "purchase order",
     "po planning",
@@ -3018,8 +3106,15 @@ def _month_keys_between(start_month: int, start_year: int, end_month: int, end_y
     return months
 
 
-def _summary_months_for_country(engine: Any, state: AgentState, country: str) -> List[MonthKey]:
-    payload = state.get("period_payload") or {}
+def _months_from_period_payload(
+    engine: Any,
+    state: AgentState,
+    country: str,
+    payload: Optional[Dict[str, Any]] = None,
+    *,
+    default_n: int = 6,
+) -> List[MonthKey]:
+    payload = payload or state.get("period_payload") or {}
     if payload.get("type") == "growth_base":
         payload = _prepare_period_payload(payload.get("base") or {}, "absolute")
 
@@ -3044,11 +3139,14 @@ def _summary_months_for_country(engine: Any, state: AgentState, country: str) ->
             int(payload["end_year"]),
         )
 
-    if ptype == "last_n_months":
-        return _last_n_window(engine, state["user_id"], country, int(payload.get("n") or 6))
+    if ptype in {"last_n", "last_n_months"}:
+        return _last_n_window(engine, state["user_id"], country, int(payload.get("n") or default_n))
 
-    latest = latest_available_month(engine, state["user_id"], country)
-    return [latest]
+    return _last_n_window(engine, state["user_id"], country, default_n)
+
+
+def _summary_months_for_country(engine: Any, state: AgentState, country: str) -> List[MonthKey]:
+    return _months_from_period_payload(engine, state, country, default_n=1)
 
 
 def _summary_period_label(state: AgentState, months: List[MonthKey]) -> str:

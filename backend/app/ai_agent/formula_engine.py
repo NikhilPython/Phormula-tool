@@ -1204,13 +1204,18 @@ def parse_last_n(text: str):
 # -------------------------------
 
 def parse_range(text: str):
-    parts = re.split(r"\bto\b|\s*-\s*", text)
+    between_match = re.search(r"\bbetween\s+(.+?)\s+and\s+(.+)$", text)
+    if between_match:
+        parts = [between_match.group(1), between_match.group(2)]
+    else:
+        parts = re.split(r"\bto\b|\bthrough\b|\buntil\b|\s*-\s*", text)
 
     if len(parts) != 2:
         return None
 
-    left = extract_month_year(parts[0])
-    right = extract_month_year(parts[1])
+    default_year = extract_year(text)
+    left = extract_month_year(parts[0], default_year=default_year)
+    right = extract_month_year(parts[1], default_year=default_year)
 
     if left and right:
         start_year, start_month = left
@@ -1273,8 +1278,8 @@ def parse_comparison(text: str):
         }
 
     # quarter vs quarter
-    q1 = parse_quarter(left)
-    q2 = parse_quarter(right)
+    q1 = parse_quarter(left if extract_year(left) else f"{left} {inferred_year}")
+    q2 = parse_quarter(right if extract_year(right) else f"{right} {inferred_year}")
 
     if q1 and q2:
         return {
@@ -1442,6 +1447,22 @@ def parse_period(query: str) -> Dict:
     if rng:
         return rng
 
+    # 1️⃣ comparison first (before generic multi-month detection)
+    cmp = parse_comparison(text)
+    if cmp:
+        return cmp
+
+    # -------- QUARTER DETECTION --------
+    q = parse_quarter(text)
+    if q:
+        return {
+            "type": "range",
+            "start_month": q[1],
+            "start_year": q[0],
+            "end_month": q[2],
+            "end_year": q[0],
+        }
+
     # -------- MONTH DETECTION (FIXED) --------
     month_pattern = (
         r"\b("
@@ -1476,11 +1497,6 @@ def parse_period(query: str) -> Dict:
             "type": "multi_month",
             "months": months
         }
-
-    # 1️⃣ comparison first (highest priority)
-    cmp = parse_comparison(text)
-    if cmp:
-        return cmp
 
     # 2️⃣ relative periods
     rel = parse_relative_period(text)

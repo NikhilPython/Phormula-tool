@@ -237,11 +237,11 @@ def normalize_skuwisemonthly_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.copy()
 
-    alias_map = {
-        # Productwise ads compatibility
-        "advertising_total": "ads_spend",
-        "advertising_fees": "ads_spend",
+    def copy_if_missing(expected_col: str, source_col: str) -> None:
+        if expected_col not in df.columns and source_col in df.columns:
+            df[expected_col] = df[source_col]
 
+    alias_map = {
         # Productwise COGS compatibility
         "cost_of_unit_sold": "cogs",
 
@@ -259,8 +259,17 @@ def normalize_skuwisemonthly_columns(df: pd.DataFrame) -> pd.DataFrame:
     }
 
     for expected_col, source_col in alias_map.items():
-        if expected_col not in df.columns and source_col in df.columns:
-            df[expected_col] = df[source_col]
+        copy_if_missing(expected_col, source_col)
+
+    # Ads and CM2 columns changed names across historical uploads.
+    # Keep both product-level and month-total metric names queryable for old and new tables.
+    copy_if_missing("ads_spend", "advertising_total")
+    copy_if_missing("advertising_total", "ads_spend")
+    copy_if_missing("advertising_fees", "ads_spend")
+    copy_if_missing("total_ads", "advertising_total")
+    copy_if_missing("total_ads", "ads_spend")
+    copy_if_missing("total_cm2_profit", "cm2_profit")
+    copy_if_missing("cm2_profit", "total_cm2_profit")
 
     return df
 

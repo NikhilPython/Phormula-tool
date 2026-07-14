@@ -64,6 +64,10 @@ const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
       id: String(m.id),
       sender: m.sender,
       text: m.text,
+      serverId:
+        m.sender === "bot"
+          ? Number.parseInt(String(m.id).split("-")[0], 10) || undefined
+          : undefined,
       timestamp: m.timestamp ? Date.parse(m.timestamp) : Date.now(),
       suggestedQuestions: Array.isArray(m.suggested_questions)
         ? m.suggested_questions.filter((q: unknown) => typeof q === "string")
@@ -170,6 +174,8 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           data?.result ||
           data?.message ||
           "No response",
+        serverId: typeof data?.history_id === "number" ? data.history_id : undefined,
+        promptText: text,
         suggestedQuestions,
         timestamp: Date.now(),
       };
@@ -228,9 +234,10 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          kind: feedback,
           message_id: msg.serverId,
-          feedback,
-          original_prompt: msg.promptText,
+          message: msg.promptText,
+          response: msg.text,
           additional_feedback,
         }),
       });

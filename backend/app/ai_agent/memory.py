@@ -13,7 +13,7 @@ def save_chat_turn(
     message: str,
     response: str,
     meta: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> int:
     row = ChatHistory(
         user_id=user_id,
         message=(message or "")[:1000],   # keep this (safe)
@@ -23,6 +23,7 @@ def save_chat_turn(
 
     db.session.add(row)
     db.session.commit()
+    return int(row.id)
 
 
 def recent_chat_history(user_id: int, limit: int = 8) -> List[Dict[str, Any]]:
