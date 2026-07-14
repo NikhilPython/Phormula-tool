@@ -321,8 +321,6 @@ async function ensureFeesPrimedOnce(params: {
         country,
         marketplace_id: marketplaceId,
         region: regionUsed,
-        transit_time: 0,
-        stock_unit: 0,
       }),
     });
 
