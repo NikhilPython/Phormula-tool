@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   FaCheckCircle as CheckCircle2,
@@ -85,6 +85,142 @@ function getHistoricFetchMessage(params: {
   }
 
   return `Fetching ${formattedMonth}`;
+}
+
+type FetchEtaUnitType =
+  | "currency"
+  | "categoryFees"
+  | "feePreview"
+  | "productInfo"
+  | "inventorySurcharge"
+  | "inventoryAged"
+  | "inventoryLedger"
+  | "historicMonth"
+  | "liveMtd"
+  | "liveBi"
+  | "finalize"
+  | "forecast"
+  | "dispatch"
+  | "purchaseOrder"
+  | "plottingGraph";
+
+type FetchEtaUnit = {
+  id: string;
+  type: FetchEtaUnitType;
+  label: string;
+  fallbackSeconds: number;
+  startedAt?: number;
+  completedAt?: number;
+  actualSeconds?: number;
+};
+
+type FetchEtaPlan = {
+  startedAt: number;
+  activeUnitId?: string;
+  units: FetchEtaUnit[];
+};
+
+type FetchEtaHistory = Record<
+  string,
+  {
+    avgSeconds: number;
+    samples: number;
+    updatedAt: number;
+  }
+>;
+
+const ETA_HISTORY_STORAGE_KEY = "amazonFetchEtaHistory:v1";
+const MAX_ETA_HISTORY_SAMPLES = 20;
+const MIN_ACTIVE_ETA_SECONDS = 8;
+
+const DEFAULT_FETCH_ETA_SECONDS: Record<FetchEtaUnitType, number> = {
+  currency: 2,
+  categoryFees: 240,
+  feePreview: 5,
+  productInfo: 45,
+  inventorySurcharge: 25,
+  inventoryAged: 45,
+  inventoryLedger: 90,
+  historicMonth: 60,
+  liveMtd: 35,
+  liveBi: 30,
+  finalize: 2,
+  forecast: 75,
+  dispatch: 30,
+  purchaseOrder: 60,
+  plottingGraph: 2,
+};
+
+function clampEtaSeconds(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return MIN_ACTIVE_ETA_SECONDS;
+  return Math.min(Math.max(value, 1), 60 * 60);
+}
+
+function etaHistoryKey(scope: string, type: FetchEtaUnitType) {
+  return `${scope}:${type}`;
+}
+
+function readEtaHistory(): FetchEtaHistory {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(ETA_HISTORY_STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getStoredEtaSeconds(scope: string, type: FetchEtaUnitType) {
+  const history = readEtaHistory();
+  const entry = history[etaHistoryKey(scope, type)];
+
+  if (!entry || !Number.isFinite(entry.avgSeconds)) return null;
+  return clampEtaSeconds(entry.avgSeconds);
+}
+
+function updateStoredEtaSeconds(
+  scope: string,
+  type: FetchEtaUnitType,
+  actualSeconds: number
+) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const history = readEtaHistory();
+    const key = etaHistoryKey(scope, type);
+    const previous = history[key];
+    const boundedActual = clampEtaSeconds(actualSeconds);
+    const previousWeight = previous
+      ? Math.min(previous.samples, MAX_ETA_HISTORY_SAMPLES - 1)
+      : 0;
+    const avgSeconds =
+      previousWeight > 0
+        ? (previous.avgSeconds * previousWeight + boundedActual) /
+          (previousWeight + 1)
+        : boundedActual;
+
+    history[key] = {
+      avgSeconds: Math.round(clampEtaSeconds(avgSeconds)),
+      samples: Math.min(previousWeight + 1, MAX_ETA_HISTORY_SAMPLES),
+      updatedAt: Date.now(),
+    };
+
+    window.localStorage.setItem(ETA_HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    // ETA history is only a convenience; failed storage should not block sync.
+  }
+}
+
+function formatEtaDuration(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function updateLatestFetchedPeriod(monthSlug: string, yearStr: string) {
@@ -766,7 +902,10 @@ async function runForecastAndPoSequence(params: {
   year: number | string;
   month: number | string;
   setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
+  runEtaUnit?: <T>(unitId: string, fn: () => Promise<T>) => Promise<T>;
 }) {
+  const runMeasured =
+    params.runEtaUnit ?? (async <T,>(_unitId: string, fn: () => Promise<T>) => fn());
   const selectedMonthName = getMonthNameFromInput(params.month);
   const selectedYearStr = String(params.year);
 
@@ -789,11 +928,13 @@ async function runForecastAndPoSequence(params: {
     `Running inventory forecast for ${currentGoingMonthName} ${currentGoingYearStr}...`
   );
 
-  await runForecast({
-    country: params.country,
-    year: currentGoingYearStr,
-    month: currentGoingMonthName,
-  });
+  await runMeasured("forecast", () =>
+    runForecast({
+      country: params.country,
+      year: currentGoingYearStr,
+      month: currentGoingMonthName,
+    })
+  );
 
   params.setStep(
     8,
@@ -802,11 +943,13 @@ async function runForecastAndPoSequence(params: {
     `Fetching dispatch file for ${dispatchPeriod.month} ${dispatchPeriod.year}...`
   );
 
-  await fetchDispatchFile({
-    country: params.country,
-    month: dispatchPeriod.month,
-    year: dispatchPeriod.year,
-  });
+  await runMeasured("dispatch", () =>
+    fetchDispatchFile({
+      country: params.country,
+      month: dispatchPeriod.month,
+      year: dispatchPeriod.year,
+    })
+  );
 
   params.setStep(
     8,
@@ -815,34 +958,38 @@ async function runForecastAndPoSequence(params: {
     `Checking purchase order file for ${currentGoingMonthName} ${currentGoingYearStr}...`
   );
 
-  let poRes = await fetchGeneratedPOFile({
-    country: params.country,
-    month: currentGoingMonthLower,
-    year: currentGoingYearStr,
+  const poRes = await runMeasured("purchaseOrder", async () => {
+    let response = await fetchGeneratedPOFile({
+      country: params.country,
+      month: currentGoingMonthLower,
+      year: currentGoingYearStr,
+    });
+
+    if (!response.ok && response.status === 404) {
+      params.setStep(
+        8,
+        "Forecast",
+        75,
+        `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
+      );
+
+      await runPurchaseOrder({
+        country: params.country,
+        year: currentGoingYearStr,
+        month: currentGoingMonthLower,
+      });
+
+      params.setStep(8, "Forecast", 90, "Fetching purchase order file...");
+
+      response = await fetchGeneratedPOFile({
+        country: params.country,
+        month: currentGoingMonthLower,
+        year: currentGoingYearStr,
+      });
+    }
+
+    return response;
   });
-
-  if (!poRes.ok && poRes.status === 404) {
-    params.setStep(
-      8,
-      "Forecast",
-      75,
-      `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
-    );
-
-    await runPurchaseOrder({
-      country: params.country,
-      year: currentGoingYearStr,
-      month: currentGoingMonthLower,
-    });
-
-    params.setStep(8, "Forecast", 90, "Fetching purchase order file...");
-
-    poRes = await fetchGeneratedPOFile({
-      country: params.country,
-      month: currentGoingMonthLower,
-      year: currentGoingYearStr,
-    });
-  }
 
   if (!poRes.ok) {
     const msg = await readErrorMessage(poRes);
@@ -1120,8 +1267,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   const [busy, setBusy] = useState(false);
 
-  // const TOTAL_FETCH_SECONDS = 15 * 60;
-
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(24);
 
@@ -1152,65 +1297,242 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     fail: 0,
   });
 
-  const getEstimatedFetchSeconds = (period: number | null) => {
-    switch (period) {
-      case 1:
-        return 12 * 60;
-      case 3:
-        return 15 * 60;
-      case 6:
-        return 20 * 60;
-      case 12:
-        return 25 * 60;
-      case 24:
-        return 30 * 60;
-      default:
-        return 15 * 60;
-    }
-  };
+  const etaPlanRef = useRef<FetchEtaPlan | null>(null);
+  const etaSamplesRef = useRef<Partial<Record<FetchEtaUnitType, number[]>>>({});
+  const etaScope = useMemo(
+    () => `${countryUsed || "unknown"}:${marketplaceIdUsed || "unknown"}`,
+    [countryUsed, marketplaceIdUsed]
+  );
 
-  // useEffect(() => {
-  //   if (!busy) {
-  //     setRemainingSeconds(null);
-  //     return;
-  //   }
+  const getEtaEstimate = useCallback(
+    (
+      type: FetchEtaUnitType,
+      fallbackSeconds: number = DEFAULT_FETCH_ETA_SECONDS[type]
+    ) => {
+      const currentSamples = etaSamplesRef.current[type];
 
-  //   setRemainingSeconds(TOTAL_FETCH_SECONDS);
+      if (currentSamples?.length) {
+        const avg =
+          currentSamples.reduce((sum, value) => sum + value, 0) /
+          currentSamples.length;
+        return clampEtaSeconds(avg);
+      }
 
-  //   const interval = setInterval(() => {
-  //     setRemainingSeconds((prev) => {
-  //       if (!prev || prev <= 1) {
-  //         clearInterval(interval);
-  //         return 0;
-  //       }
-  //       return prev - 1;
-  //     });
-  //   }, 1000);
+      return getStoredEtaSeconds(etaScope, type) ?? clampEtaSeconds(fallbackSeconds);
+    },
+    [etaScope]
+  );
 
-  //   return () => clearInterval(interval);
-  // }, [busy]);
+  const makeEtaUnit = useCallback(
+    (
+      id: string,
+      type: FetchEtaUnitType,
+      label: string,
+      fallbackSeconds: number = DEFAULT_FETCH_ETA_SECONDS[type]
+    ): FetchEtaUnit => ({
+      id,
+      type,
+      label,
+      fallbackSeconds: getEtaEstimate(type, fallbackSeconds),
+    }),
+    [getEtaEstimate]
+  );
+
+  const buildFetchEtaUnits = useCallback(
+    (params: {
+      months: Array<{ y: number; mNum: number }>;
+      surchargeMonths?: Array<{ y: number; mNum: number }>;
+      includeLiveData?: boolean;
+      includeFinalize?: boolean;
+      includeForecast?: boolean;
+    }) => {
+      const units: FetchEtaUnit[] = [
+        makeEtaUnit("currency", "currency", "Currency conversion"),
+        makeEtaUnit("categoryFees", "categoryFees", "Category fees"),
+        makeEtaUnit("feePreview", "feePreview", "Fee preview"),
+        makeEtaUnit("productInfo", "productInfo", "Product information"),
+      ];
+
+      const surchargeMonths = params.surchargeMonths ?? params.months;
+
+      surchargeMonths.forEach(({ y, mNum }) => {
+        units.push(
+          makeEtaUnit(
+            `inventorySurcharge:${y}-${two(mNum)}`,
+            "inventorySurcharge",
+            `Aged surcharge ${formatFetchMonth(y, mNum)}`
+          )
+        );
+      });
+
+      units.push(
+        makeEtaUnit("inventoryAged", "inventoryAged", "Aged inventory"),
+        makeEtaUnit("inventoryLedger", "inventoryLedger", "Inventory ledger")
+      );
+
+      params.months.forEach(({ y, mNum }) => {
+        units.push(
+          makeEtaUnit(
+            `historicMonth:${y}-${two(mNum)}`,
+            "historicMonth",
+            `Historic data ${formatFetchMonth(y, mNum)}`
+          )
+        );
+      });
+
+      if (params.includeLiveData) {
+        units.push(
+          makeEtaUnit("liveMtd", "liveMtd", "MTD transactions"),
+          makeEtaUnit("liveBi", "liveBi", "Live BI")
+        );
+      }
+
+      if (params.includeFinalize) {
+        units.push(makeEtaUnit("finalize", "finalize", "Finalizing"));
+      }
+
+      if (params.includeForecast) {
+        units.push(
+          makeEtaUnit("forecast", "forecast", "Inventory forecast"),
+          makeEtaUnit("dispatch", "dispatch", "Dispatch file"),
+          makeEtaUnit("purchaseOrder", "purchaseOrder", "Purchase order")
+        );
+      }
+
+      units.push(makeEtaUnit("plottingGraph", "plottingGraph", "Plotting graph"));
+
+      return units;
+    },
+    [makeEtaUnit]
+  );
+
+  const calculateDynamicRemainingSeconds = useCallback(() => {
+    const plan = etaPlanRef.current;
+    if (!plan) return null;
+
+    const now = Date.now();
+    const remaining = plan.units.reduce((total, unit) => {
+      if (unit.completedAt) return total;
+
+      const estimate = getEtaEstimate(unit.type, unit.fallbackSeconds);
+
+      if (!unit.startedAt) {
+        return total + estimate;
+      }
+
+      const elapsed = Math.max((now - unit.startedAt) / 1000, 0);
+
+      if (elapsed < estimate) {
+        return total + (estimate - elapsed);
+      }
+
+      const overrunBuffer = Math.max(
+        MIN_ACTIVE_ETA_SECONDS,
+        estimate * 0.2,
+        elapsed * 0.15
+      );
+
+      return total + overrunBuffer;
+    }, 0);
+
+    return Math.max(1, Math.ceil(remaining));
+  }, [getEtaEstimate]);
+
+  const startEtaPlan = useCallback(
+    (units: FetchEtaUnit[]) => {
+      etaSamplesRef.current = {};
+      etaPlanRef.current = {
+        startedAt: Date.now(),
+        units,
+      };
+
+      const initialEstimate = units.reduce(
+        (total, unit) => total + getEtaEstimate(unit.type, unit.fallbackSeconds),
+        0
+      );
+
+      setRemainingSeconds(Math.max(1, Math.ceil(initialEstimate)));
+    },
+    [getEtaEstimate]
+  );
+
+  const startEtaUnit = useCallback(
+    (unitId: string) => {
+      const plan = etaPlanRef.current;
+      if (!plan) return;
+
+      const unit = plan.units.find((item) => item.id === unitId);
+      if (unit && !unit.startedAt && !unit.completedAt) {
+        unit.startedAt = Date.now();
+      }
+
+      plan.activeUnitId = unitId;
+      setRemainingSeconds(calculateDynamicRemainingSeconds());
+    },
+    [calculateDynamicRemainingSeconds]
+  );
+
+  const completeEtaUnit = useCallback(
+    (unitId: string) => {
+      const plan = etaPlanRef.current;
+      if (!plan) return;
+
+      const unit = plan.units.find((item) => item.id === unitId);
+      if (!unit || unit.completedAt) return;
+
+      const completedAt = Date.now();
+      const startedAt = unit.startedAt ?? completedAt;
+      const actualSeconds = clampEtaSeconds((completedAt - startedAt) / 1000);
+
+      unit.startedAt = startedAt;
+      unit.completedAt = completedAt;
+      unit.actualSeconds = actualSeconds;
+
+      const samples = etaSamplesRef.current[unit.type] ?? [];
+      etaSamplesRef.current[unit.type] = [
+        ...samples.slice(-(MAX_ETA_HISTORY_SAMPLES - 1)),
+        actualSeconds,
+      ];
+
+      updateStoredEtaSeconds(etaScope, unit.type, actualSeconds);
+
+      if (plan.activeUnitId === unitId) {
+        plan.activeUnitId = undefined;
+      }
+
+      setRemainingSeconds(calculateDynamicRemainingSeconds());
+    },
+    [calculateDynamicRemainingSeconds, etaScope]
+  );
+
+  const runEtaUnit = useCallback(
+    async <T,>(unitId: string, fn: () => Promise<T>): Promise<T> => {
+      startEtaUnit(unitId);
+
+      try {
+        return await fn();
+      } finally {
+        completeEtaUnit(unitId);
+      }
+    },
+    [completeEtaUnit, startEtaUnit]
+  );
 
   useEffect(() => {
     if (!busy) {
+      etaPlanRef.current = null;
       setRemainingSeconds(null);
       return;
     }
 
-    const estimatedSeconds = getEstimatedFetchSeconds(selectedPeriod);
-    setRemainingSeconds(estimatedSeconds);
-
-    const interval = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (!prev || prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
+    const interval = window.setInterval(() => {
+      setRemainingSeconds(calculateDynamicRemainingSeconds());
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [busy, selectedPeriod]);
+    setRemainingSeconds(calculateDynamicRemainingSeconds());
+
+    return () => window.clearInterval(interval);
+  }, [busy, calculateDynamicRemainingSeconds]);
 
   const markStepComplete = (step: number) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
@@ -1273,10 +1595,20 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setCurrentStep(1);
       setCompletedSteps(new Set());
       setStepProgress({ active: true, label: "", percentage: 0 });
+      startEtaPlan(
+        buildFetchEtaUnits({
+          months: [{ y, mNum }],
+          includeLiveData: true,
+          includeForecast: !!(selectedPeriod && selectedPeriod >= 6),
+        })
+      );
 
       // Step 1: Currency Conversion
       setStep(1, "Currency Conversion", 0, "Converting currency rates...");
-      await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate currency conversion
+      await runEtaUnit(
+        "currency",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 500))
+      ); // Simulate currency conversion
       markStepComplete(1);
 
       // Step 2: Category Fees (takes ~4 minutes)
@@ -1293,13 +1625,15 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       }, 2400); // Update every 2.4 seconds to reach ~95% in ~4 minutes
 
       try {
-        await ensureFeesPrimedOnce({
-          country: countryUsed,
-          regionUsed,
-          marketplaceId: marketplaceIdUsed,
-          year: y,
-          month: mNum,
-        });
+        await runEtaUnit("categoryFees", () =>
+          ensureFeesPrimedOnce({
+            country: countryUsed,
+            regionUsed,
+            marketplaceId: marketplaceIdUsed,
+            year: y,
+            month: mNum,
+          })
+        );
         clearInterval(progressInterval);
         setStep(2, "Category Fees", 100, "Category fees synced successfully");
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1311,17 +1645,22 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       // Step 3: Fee Preview
       setStep(3, "Fee Preview", 0, "Preparing fee preview...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await runEtaUnit(
+        "feePreview",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      );
       markStepComplete(3);
 
       // Step 4: Product Information
       setStep(4, "Product Information", 0, "Fetching Amazon product information...");
 
-      await fetchProductInformation({
-        marketplace_id: marketplaceIdUsed,
-        store_in_db: true,
-        full_details: true,
-      });
+      await runEtaUnit("productInfo", () =>
+        fetchProductInformation({
+          marketplace_id: marketplaceIdUsed,
+          store_in_db: true,
+          full_details: true,
+        })
+      );
 
       setStep(4, "Product Information", 100, "Product information synced successfully");
       markStepComplete(4);
@@ -1331,28 +1670,32 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
       // 1) Hit aged-surcharge FIRST
-      await syncInventoryAgedSurchargeOnce({
-        country: countryUsed,
-        marketplace_id: marketplaceIdUsed,
-        month: mNum,
-        year: y,
-        store_in_db: true,
-      });
+      await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, () =>
+        syncInventoryAgedSurchargeOnce({
+          country: countryUsed,
+          marketplace_id: marketplaceIdUsed,
+          month: mNum,
+          year: y,
+          store_in_db: true,
+        })
+      );
 
       setStep(5, "Inventory", 35, "Syncing aged inventory data...");
 
       // 2) Existing aged inventory API
-      await syncInventoryAgedOnce(countryUsed);
+      await runEtaUnit("inventoryAged", () => syncInventoryAgedOnce(countryUsed));
 
       setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
 
       // 3) Existing ledger summary API
-      await fetchInventoryLedgerSummary({
-        marketplace_id: marketplaceIdUsed,
-        month: `${y}-${two(mNum)}`,
-        store_in_db: true,
-        keep_first_last: false,
-      });
+      await runEtaUnit("inventoryLedger", () =>
+        fetchInventoryLedgerSummary({
+          marketplace_id: marketplaceIdUsed,
+          month: `${y}-${two(mNum)}`,
+          store_in_db: true,
+          keep_first_last: false,
+        })
+      );
 
       setStep(5, "Inventory", 100, "Inventory data synced successfully");
       markStepComplete(5);
@@ -1367,34 +1710,40 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           monthNum: mNum,
         })
       );
-      await fetchMonthlyTransactionsExcel({
-        year: y,
-        month: mNum,
-        marketplace_id: marketplaceIdUsed,
-        country: countryUsed,
-        run_upload_pipeline: true,
-        store_in_db: true,
-      });
+      await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
+        fetchMonthlyTransactionsExcel({
+          year: y,
+          month: mNum,
+          marketplace_id: marketplaceIdUsed,
+          country: countryUsed,
+          run_upload_pipeline: true,
+          store_in_db: true,
+        })
+      );
       markStepComplete(6);
 
       // Step 7: Live Data
       setStep(7, "Live Data", 0, "Fetching MTD transactions...");
 
-      await fetchMtdTransactions({
-        marketplace_id: marketplaceIdUsed,
-        country: countryUsed,
-        store_in_db: true,
-      });
+      await runEtaUnit("liveMtd", () =>
+        fetchMtdTransactions({
+          marketplace_id: marketplaceIdUsed,
+          country: countryUsed,
+          store_in_db: true,
+        })
+      );
 
       setStep(7, "Live Data", 50, "Fetching live MTD BI data...");
 
       const monthName = fullMonthNames[mNum - 1]; // convert 3 → March
 
-      await fetchLiveMtdBi({
-        country: countryUsed,
-        month: monthName,
-        year: y,
-      });
+      await runEtaUnit("liveBi", () =>
+        fetchLiveMtdBi({
+          country: countryUsed,
+          month: monthName,
+          year: y,
+        })
+      );
 
       setStep(7, "Live Data", 100, "Live BI data ready");
       markStepComplete(7);
@@ -1411,6 +1760,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           year: y,
           month: mNum,
           setStep,
+          runEtaUnit,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -1423,7 +1773,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const plottingGraphStep = selectedPeriod && selectedPeriod >= 6 ? 9 : 8;
 
       setStep(plottingGraphStep, "Plotting Graph", 0, "Preparing charts...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await runEtaUnit(
+        "plottingGraph",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      );
 
       setStep(plottingGraphStep, "Plotting Graph", 100, "Charts ready");
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1480,10 +1833,21 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setCurrentStep(1);
       setCompletedSteps(new Set());
       setRangeProgress({ currentMonth: 0, totalMonths: months.length, ok: 0, fail: 0 });
+      startEtaPlan(
+        buildFetchEtaUnits({
+          months,
+          surchargeMonths: selectedPeriod === 24 ? months.slice(-12) : months,
+          includeFinalize: true,
+          includeForecast: !!(selectedPeriod && selectedPeriod >= 6),
+        })
+      );
 
       // Step 1: Currency Conversion
       setStep(1, "Currency Conversion", 0, "Converting currency rates...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await runEtaUnit(
+        "currency",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 500))
+      );
       markStepComplete(1);
 
       // Step 2: Category Fees (takes ~4 minutes, only once)
@@ -1500,13 +1864,15 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       }, 2400); // Update every 2.4 seconds to reach ~95% in ~4 minutes
 
       try {
-        await ensureFeesPrimedOnce({
-          country: countryUsed,
-          regionUsed,
-          marketplaceId: marketplaceIdUsed,
-          year: months[0].y,
-          month: months[0].mNum,
-        });
+        await runEtaUnit("categoryFees", () =>
+          ensureFeesPrimedOnce({
+            country: countryUsed,
+            regionUsed,
+            marketplaceId: marketplaceIdUsed,
+            year: months[0].y,
+            month: months[0].mNum,
+          })
+        );
         clearInterval(progressInterval);
         setStep(2, "Category Fees", 100, "Category fees synced successfully");
         await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1518,17 +1884,22 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       // Step 3: Fee Preview
       setStep(3, "Fee Preview", 0, "Preparing fee preview...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await runEtaUnit(
+        "feePreview",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      );
       markStepComplete(3);
 
       // Step 4: Product Information
       setStep(4, "Product Information", 0, "Fetching Amazon product information...");
 
-      await fetchProductInformation({
-        marketplace_id: marketplaceIdUsed,
-        store_in_db: true,
-        full_details: true,
-      });
+      await runEtaUnit("productInfo", () =>
+        fetchProductInformation({
+          marketplace_id: marketplaceIdUsed,
+          store_in_db: true,
+          full_details: true,
+        })
+      );
 
       setStep(4, "Product Information", 100, "Product information synced successfully");
       markStepComplete(4);
@@ -1558,30 +1929,34 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${surchargeMonths.length})...`
           );
 
-          await syncInventoryAgedSurchargeOnce({
-            country: countryUsed,
-            marketplace_id: marketplaceIdUsed,
-            month: mNum,
-            year: y,
-            store_in_db: true,
-          });
+          await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, () =>
+            syncInventoryAgedSurchargeOnce({
+              country: countryUsed,
+              marketplace_id: marketplaceIdUsed,
+              month: mNum,
+              year: y,
+              store_in_db: true,
+            })
+          );
         }
 
         setStep(5, "Inventory", 35, "Syncing aged inventory data...");
 
         // 2) Existing aged inventory API
-        await syncInventoryAgedOnce(countryUsed);
+        await runEtaUnit("inventoryAged", () => syncInventoryAgedOnce(countryUsed));
 
         setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
 
         // 3) Existing ledger-summary API
-        await fetchInventoryLedgerSummary({
-          marketplace_id: marketplaceIdUsed,
-          start_date: ledgerRange.start_date,
-          end_date: ledgerRange.end_date,
-          store_in_db: true,
-          keep_first_last: false,
-        });
+        await runEtaUnit("inventoryLedger", () =>
+          fetchInventoryLedgerSummary({
+            marketplace_id: marketplaceIdUsed,
+            start_date: ledgerRange.start_date,
+            end_date: ledgerRange.end_date,
+            store_in_db: true,
+            keep_first_last: false,
+          })
+        );
 
         setStep(5, "Inventory", 100, "Inventory data synced successfully");
         markStepComplete(5);
@@ -1613,14 +1988,16 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         setRangeProgress({ currentMonth: i + 1, totalMonths: months.length, ok, fail });
 
         try {
-          await fetchMonthlyTransactionsExcel({
-            year: y,
-            month: mNum,
-            marketplace_id: marketplaceIdUsed,
-            country: countryUsed,
-            run_upload_pipeline: true,
-            store_in_db: true,
-          });
+          await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
+            fetchMonthlyTransactionsExcel({
+              year: y,
+              month: mNum,
+              marketplace_id: marketplaceIdUsed,
+              country: countryUsed,
+              run_upload_pipeline: true,
+              store_in_db: true,
+            })
+          );
           ok++;
           setRangeProgress((prev) => ({ ...prev, ok }));
         } catch (e: any) {
@@ -1636,7 +2013,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       // Step 7: Live Data
       setStep(7, "Live Data", 100, "Finalizing data sync...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await runEtaUnit(
+        "finalize",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 500))
+      );
       markStepComplete(7);
 
       // Step 8: Inventory Forecast + Purchase Order
@@ -1653,6 +2033,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           year: last.y,
           month: last.mNum,
           setStep,
+          runEtaUnit,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -1665,7 +2046,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const plottingGraphStep = selectedPeriod && selectedPeriod >= 6 ? 9 : 8;
 
       setStep(plottingGraphStep, "Plotting Graph", 0, "Preparing charts...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await runEtaUnit(
+        "plottingGraph",
+        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      );
 
       setStep(plottingGraphStep, "Plotting Graph", 100, "Charts ready");
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1842,6 +2226,12 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
   }, [selectedPeriod]);
 
   const visibleSteps = steps;
+  const etaText =
+    remainingSeconds === null
+      ? "Estimating..."
+      : remainingSeconds <= 5
+        ? "Finishing up..."
+        : formatEtaDuration(remainingSeconds);
 
   const splitStepLabel = (label: string) => {
     const words = label.trim().split(/\s+/);
@@ -2263,15 +2653,12 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                   </p>
 
                   {/* Center */}
-                  {remainingSeconds !== null && (
-                    <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
-                      <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
-                      <span className="font-medium tabular-nums text-slate-600">
-                        {Math.floor(remainingSeconds / 60)}:
-                        {String(remainingSeconds % 60).padStart(2, "0")}
-                      </span>
-                    </div>
-                  )}
+                  <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
+                    <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
+                    <span className="font-medium tabular-nums text-slate-600">
+                      {etaText}
+                    </span>
+                  </div>
 
                   {/* Right */}
                   <span className="text-[13px] text-slate-400 text-right whitespace-nowrap">

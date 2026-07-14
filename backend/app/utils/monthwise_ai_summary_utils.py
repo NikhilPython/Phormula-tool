@@ -645,20 +645,62 @@ def build_rolling_monthly_series(
 
     return series
 
-def fetch_month_end_inventory_lookup(user_id: int):
+INVENTORY_MARKETPLACE_IDS_BY_COUNTRY = {
+    "uk": ["A1F83G8C2ARO7P"],
+    "gb": ["A1F83G8C2ARO7P"],
+    "united kingdom": ["A1F83G8C2ARO7P"],
+    "us": ["ATVPDKIKX0DER"],
+    "usa": ["ATVPDKIKX0DER"],
+    "united states": ["ATVPDKIKX0DER"],
+    "global": ["A1F83G8C2ARO7P", "ATVPDKIKX0DER"],
+}
 
-    query = text("""
+
+def _inventory_marketplace_ids_for_country(country: str | None) -> list[str] | None:
+    country_key = str(country or "").strip().lower()
+    if not country_key:
+        return None
+
+    if country_key.startswith("global"):
+        return INVENTORY_MARKETPLACE_IDS_BY_COUNTRY["global"]
+
+    return INVENTORY_MARKETPLACE_IDS_BY_COUNTRY.get(country_key)
+
+
+def fetch_month_end_inventory_lookup(user_id: int, country: str | None = None):
+    marketplace_ids = _inventory_marketplace_ids_for_country(country)
+
+    params = {"user_id": user_id}
+    marketplace_filter = ""
+
+    if marketplace_ids:
+        placeholders = []
+        for idx, marketplace_id in enumerate(marketplace_ids):
+            param_name = f"marketplace_id_{idx}"
+            placeholders.append(f":{param_name}")
+            params[param_name] = marketplace_id
+
+        marketplace_filter = (
+            "AND marketplace_id IN ("
+            + ", ".join(placeholders)
+            + ")"
+        )
+
+    query = text(f"""
         SELECT
+            id,
             msku,
+            marketplace_id,
             disposition,
             date,
             ending_warehouse_balance
         FROM monthwise_inventory
         WHERE user_id = :user_id
+        {marketplace_filter}
     """)
 
     with amazon_engine.connect() as conn:
-        df = pd.read_sql(query, conn, params={"user_id": user_id})
+        df = pd.read_sql(query, conn, params=params)
 
     if df.empty:
         return {}
@@ -666,12 +708,22 @@ def fetch_month_end_inventory_lookup(user_id: int):
     df["date"] = pd.to_datetime(df["date"])
     df["year"] = df["date"].dt.year
     df["month"] = df["date"].dt.month
+    df["msku_key"] = df["msku"].astype(str).str.strip()
+    df["marketplace_key"] = df["marketplace_id"].astype(str).str.strip()
+    df["disposition_key"] = df["disposition"].astype(str).str.strip().str.upper()
+    df["ending_warehouse_balance"] = pd.to_numeric(
+        df["ending_warehouse_balance"],
+        errors="coerce"
+    ).fillna(0)
 
-    df = df.sort_values("date")
+    df = df.sort_values(["date", "id"])
 
-    # take LAST snapshot per sku + disposition + month
+    # take LAST snapshot per sku + marketplace + disposition + month
     month_end = (
-        df.groupby(["msku", "disposition", "year", "month"], as_index=False)
+        df.groupby(
+            ["msku_key", "marketplace_key", "disposition_key", "year", "month"],
+            as_index=False
+        )
         .last()
     )
 
@@ -679,7 +731,7 @@ def fetch_month_end_inventory_lookup(user_id: int):
 
     for _, r in month_end.iterrows():
 
-        key = (str(r["msku"]), int(r["year"]), int(r["month"]))
+        key = (str(r["msku_key"]), int(r["year"]), int(r["month"]))
 
         if key not in lookup:
             lookup[key] = {
@@ -688,7 +740,7 @@ def fetch_month_end_inventory_lookup(user_id: int):
                 "expired_inventory": 0
             }
 
-        disp = str(r["disposition"]).upper()
+        disp = str(r["disposition_key"]).upper()
         units = float(r["ending_warehouse_balance"])
 
         if disp == "SELLABLE":
@@ -706,13 +758,14 @@ def enrich_sku_current_with_selected_inventory(
     sku_current: dict,
     *,
     user_id: int,
+    country: str | None = None,
     year: int,
     month: int,
 ) -> dict:
     """
     Adds current-only selected-period inventory fields to each SKU.
 
-    current_inventory = sellable_inventory + damaged_inventory + expired_inventory
+    current_inventory = country-specific sellable_inventory
     selected_period_coverage_ratio = current_inventory / selected period total_quantity
 
     No previous value.
@@ -723,7 +776,7 @@ def enrich_sku_current_with_selected_inventory(
     if not isinstance(sku_current, dict) or not sku_current:
         return sku_current or {}
 
-    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id, country=country)
 
     output = {}
 
@@ -783,7 +836,7 @@ def build_portfolio_inventory_coverage_summary(
     total_quantity = _total_value(df_current_total, "total_quantity")
     total_quantity = safe_float(total_quantity)
 
-    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id, country=country)
 
     total_sellable_inventory = 0.0
 
@@ -836,7 +889,7 @@ def build_rolling_sku_series(
     series = []
 
     # 🔹 fetch inventory once
-    inventory_lookup = fetch_month_end_inventory_lookup(user_id)
+    inventory_lookup = fetch_month_end_inventory_lookup(user_id, country=country)
 
     sku_key = str(sku).strip()
 
@@ -4754,6 +4807,7 @@ def get_or_create_summary(
         sku_current = enrich_sku_current_with_selected_inventory(
             sku_current,
             user_id=user_id,
+            country=country,
             year=year,
             month=int(timeline),
         )

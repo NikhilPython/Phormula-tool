@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FaLink } from "react-icons/fa";
 import { TiTick } from "react-icons/ti";
 import Button from "@/components/ui/button/Button";
@@ -19,6 +19,131 @@ type ApiErrorResponse = {
 };
 
 type AdsCountry = "UK" | "US" | "CA";
+
+type AdsEtaUnitType =
+    | "spReport"
+    | "sdReport"
+    | "sbReport"
+    | "monthlyAdsDb"
+    | "dailyAdsDb";
+
+type AdsEtaUnit = {
+    id: string;
+    type: AdsEtaUnitType;
+    label: string;
+    fallbackSeconds: number;
+    startedAt?: number;
+    completedAt?: number;
+    actualSeconds?: number;
+};
+
+type AdsEtaGroup = {
+    id: string;
+    mode: "parallel" | "sequential";
+    units: AdsEtaUnit[];
+};
+
+type AdsEtaPlan = {
+    startedAt: number;
+    estimatedTotalSeconds: number;
+    groups: AdsEtaGroup[];
+};
+
+type AdsEtaHistory = Record<
+    string,
+    {
+        avgSeconds: number;
+        samples: number;
+        updatedAt: number;
+    }
+>;
+
+const ADS_ETA_HISTORY_STORAGE_KEY = "amazonAdsFetchEtaHistory:v2";
+const MAX_ADS_ETA_HISTORY_SAMPLES = 20;
+const MIN_ACTIVE_ADS_ETA_SECONDS = 8;
+
+const DEFAULT_ADS_ETA_SECONDS: Record<AdsEtaUnitType, number> = {
+    spReport: 480,
+    sdReport: 480,
+    sbReport: 480,
+    monthlyAdsDb: 60,
+    dailyAdsDb: 60,
+};
+
+function clampAdsEtaSeconds(value: number) {
+    if (!Number.isFinite(value) || value <= 0) return MIN_ACTIVE_ADS_ETA_SECONDS;
+    return Math.min(Math.max(value, 1), 60 * 60);
+}
+
+function adsEtaHistoryKey(scope: string, type: AdsEtaUnitType) {
+    return `${scope}:${type}`;
+}
+
+function readAdsEtaHistory(): AdsEtaHistory {
+    if (typeof window === "undefined") return {};
+
+    try {
+        const raw = window.localStorage.getItem(ADS_ETA_HISTORY_STORAGE_KEY);
+        if (!raw) return {};
+
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function getStoredAdsEtaSeconds(scope: string, type: AdsEtaUnitType) {
+    const history = readAdsEtaHistory();
+    const entry = history[adsEtaHistoryKey(scope, type)];
+
+    if (!entry || !Number.isFinite(entry.avgSeconds)) return null;
+    return clampAdsEtaSeconds(entry.avgSeconds);
+}
+
+function updateStoredAdsEtaSeconds(
+    scope: string,
+    type: AdsEtaUnitType,
+    actualSeconds: number
+) {
+    if (typeof window === "undefined") return;
+
+    try {
+        const history = readAdsEtaHistory();
+        const key = adsEtaHistoryKey(scope, type);
+        const previous = history[key];
+        const boundedActual = clampAdsEtaSeconds(actualSeconds);
+        const previousWeight = previous
+            ? Math.min(previous.samples, MAX_ADS_ETA_HISTORY_SAMPLES - 1)
+            : 0;
+        const avgSeconds =
+            previousWeight > 0
+                ? (previous.avgSeconds * previousWeight + boundedActual) /
+                (previousWeight + 1)
+                : boundedActual;
+
+        history[key] = {
+            avgSeconds: Math.round(clampAdsEtaSeconds(avgSeconds)),
+            samples: Math.min(previousWeight + 1, MAX_ADS_ETA_HISTORY_SAMPLES),
+            updatedAt: Date.now(),
+        };
+
+        window.localStorage.setItem(
+            ADS_ETA_HISTORY_STORAGE_KEY,
+            JSON.stringify(history)
+        );
+    } catch {
+        // ETA history is optional; ads sync should continue even if storage fails.
+    }
+}
+
+function formatAdsEtaDuration(totalSeconds: number) {
+    const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+    const minutes = Math.floor(safeSeconds / 60);
+    const seconds = safeSeconds % 60;
+
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 const mapCountry = (country?: string): AdsCountry => {
     const upper = (country || "").toUpperCase();
@@ -229,45 +354,54 @@ async function seedAdsReportsOnConnect(
         ) => void;
         onCompleteStep?: (step: number) => void;
         onActiveSteps?: (steps: number[]) => void;
+        runEtaUnit?: <T>(unitId: string, fn: () => Promise<T>) => Promise<T>;
     }
 ) {
     const onStep = hooks?.onStep;
     const onCompleteStep = hooks?.onCompleteStep;
     const onActiveSteps = hooks?.onActiveSteps;
+    const runEtaUnit =
+        hooks?.runEtaUnit ?? (async <T,>(_unitId: string, fn: () => Promise<T>) => fn());
 
     const start_date = getIstMonthStartISO();
     const end_date = getIstTodayISO();
 
     onActiveSteps?.([1, 2, 3]);
     onStep?.(1, "Amazon Ads reports", 20, "Starting Sponsored Product, Display, and Brand sync...");
-    const spSyncTask = postJson(`/api/ads/manager/sp_advertised_product_report`, {
-        start_date,
-        end_date,
-        time_unit: "DAILY",
-        countries: [country],
-        return_excel: false,
-    }).then(() => {
+    const spSyncTask = runEtaUnit("spReport", () =>
+        postJson(`/api/ads/manager/sp_advertised_product_report`, {
+            start_date,
+            end_date,
+            time_unit: "DAILY",
+            countries: [country],
+            return_excel: false,
+        })
+    ).then(() => {
         onCompleteStep?.(1);
     });
 
-    const sdSyncTask = postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
-        start_date,
-        end_date,
-        time_unit: "DAILY",
-        countries: [country],
-        max_wait_seconds: 1800,
-        poll_every_seconds: 10,
-    }).then(() => {
+    const sdSyncTask = runEtaUnit("sdReport", () =>
+        postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
+            start_date,
+            end_date,
+            time_unit: "DAILY",
+            countries: [country],
+            max_wait_seconds: 1800,
+            poll_every_seconds: 10,
+        })
+    ).then(() => {
         onCompleteStep?.(2);
     });
 
-    const sbSyncTask = postJson(`/api/ads/manager/sb_keyword_report`, {
-        start_date,
-        end_date,
-        time_unit: "SUMMARY",
-        countries: [country],
-        return_excel: false,
-    });
+    const sbSyncTask = runEtaUnit("sbReport", () =>
+        postJson(`/api/ads/manager/sb_keyword_report`, {
+            start_date,
+            end_date,
+            time_unit: "SUMMARY",
+            countries: [country],
+            return_excel: false,
+        })
+    );
 
     await Promise.all([spSyncTask, sdSyncTask, sbSyncTask]);
 
@@ -283,9 +417,13 @@ async function seedAdsReportsOnConnect(
         include: ["SP", "SD", "SB"],
     };
 
-    await postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload);
+    await runEtaUnit("monthlyAdsDb", () =>
+        postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload)
+    );
 
-    await postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload);
+    await runEtaUnit("dailyAdsDb", () =>
+        postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload)
+    );
 
     onStep?.(3, "Sponsored Brand", 100, "Sponsored Brand and monthly sync complete");
     onCompleteStep?.(3);
@@ -298,8 +436,8 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
     completedSteps,
     dashboardSteps,
     stepProgress,
-    loadingStartedAt,
-    estimatedSecondsMap,
+    progressPercentage,
+    estimatedTime,
     onDismiss,
 }: {
     open: boolean;
@@ -313,53 +451,22 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
         percentage: number;
         detail?: string;
     };
-    loadingStartedAt: number | null;
-    estimatedSecondsMap: Record<number, number>;
+    progressPercentage: number;
+    estimatedTime: string;
     onDismiss?: () => void;
 }) {
-    const [timerNow, setTimerNow] = useState(Date.now());
-
-    useEffect(() => {
-        if (!open || !stepProgress.active || !loadingStartedAt) return;
-
-        const interval = setInterval(() => {
-            setTimerNow(Date.now());
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [open, stepProgress.active, loadingStartedAt]);
-
-    const totalEstimatedSeconds = useMemo(() => {
-        const reportSeconds = Math.max(
-            ...dashboardSteps.map((step) => estimatedSecondsMap[step.num] ?? 20)
-        );
-        return reportSeconds + 120;
-    }, [dashboardSteps, estimatedSecondsMap]);
-
-    const estimatedTime = useMemo(() => {
-        if (!stepProgress.active || !loadingStartedAt) return "00:00";
-
-        const elapsedSec = Math.floor((timerNow - loadingStartedAt) / 1000);
-        const remainingSec = Math.max(totalEstimatedSeconds - elapsedSec, 0);
-
-        const mm = String(Math.floor(remainingSec / 60)).padStart(2, "0");
-        const ss = String(remainingSec % 60).padStart(2, "0");
-
-        return `${mm}:${ss}`;
-    }, [timerNow, loadingStartedAt, stepProgress.active, totalEstimatedSeconds]);
-
     const displayActiveSteps = useMemo(() => {
         if (
             activeSteps.size === 0 &&
             currentStep === 3 &&
             completedSteps.size === 0 &&
-            stepProgress.percentage <= 25
+            progressPercentage <= 25
         ) {
             return new Set(dashboardSteps.map((step) => step.num));
         }
 
         return activeSteps;
-    }, [activeSteps, completedSteps.size, currentStep, dashboardSteps, stepProgress.percentage]);
+    }, [activeSteps, completedSteps.size, currentStep, dashboardSteps, progressPercentage]);
 
     if (!open) return null;
 
@@ -400,7 +507,7 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                     </div>
 
                     <span className="text-sm font-bold text-[#5EA68E] tabular-nums">
-                        {stepProgress.percentage}%
+                        {progressPercentage}%
                     </span>
                 </div>
 
@@ -408,7 +515,7 @@ const AdsSyncLoaderModal = React.memo(function AdsSyncLoaderModal({
                     <div
                         className="h-full rounded-full transition-all duration-500 ease-in-out"
                         style={{
-                            width: `${stepProgress.percentage}%`,
+                            width: `${progressPercentage}%`,
                             background:
                                 "linear-gradient(90deg, #5EA68E 0%, #37455F 100%)",
                         }}
@@ -582,7 +689,11 @@ export default function AmazonAdsConnect({
     const [currentStep, setCurrentStep] = useState<number>(0);
     const [activeSteps, setActiveSteps] = useState<Set<number>>(new Set());
     const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
-    const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
+    const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+    const [dynamicProgress, setDynamicProgress] = useState(0);
+    const etaPlanRef = useRef<AdsEtaPlan | null>(null);
+    const etaSamplesRef = useRef<Partial<Record<AdsEtaUnitType, number[]>>>({});
+    const etaScope = useMemo(() => `amazon-ads:${resolvedCountry}`, [resolvedCountry]);
 
     const [stepProgress, setStepProgress] = useState<{
         active: boolean;
@@ -601,6 +712,257 @@ export default function AmazonAdsConnect({
         2: "Sponsored Display",
         3: "Sponsored Brand",
     };
+
+    const getEtaEstimate = useCallback(
+        (
+            type: AdsEtaUnitType,
+            fallbackSeconds: number = DEFAULT_ADS_ETA_SECONDS[type]
+        ) => {
+            const currentSamples = etaSamplesRef.current[type];
+
+            if (currentSamples?.length) {
+                const avg =
+                    currentSamples.reduce((sum, value) => sum + value, 0) /
+                    currentSamples.length;
+                return clampAdsEtaSeconds(avg);
+            }
+
+            return getStoredAdsEtaSeconds(etaScope, type) ?? clampAdsEtaSeconds(fallbackSeconds);
+        },
+        [etaScope]
+    );
+
+    const makeEtaUnit = useCallback(
+        (
+            id: string,
+            type: AdsEtaUnitType,
+            label: string,
+            fallbackSeconds: number = DEFAULT_ADS_ETA_SECONDS[type]
+        ): AdsEtaUnit => ({
+            id,
+            type,
+            label,
+            fallbackSeconds: getEtaEstimate(type, fallbackSeconds),
+        }),
+        [getEtaEstimate]
+    );
+
+    const buildAdsEtaGroups = useCallback(
+        (): AdsEtaGroup[] => [
+            {
+                id: "reports",
+                mode: "parallel",
+                units: [
+                    makeEtaUnit("spReport", "spReport", "Sponsored Product report"),
+                    makeEtaUnit("sdReport", "sdReport", "Sponsored Display report"),
+                    makeEtaUnit("sbReport", "sbReport", "Sponsored Brand report"),
+                ],
+            },
+            {
+                id: "adsTables",
+                mode: "sequential",
+                units: [
+                    makeEtaUnit("monthlyAdsDb", "monthlyAdsDb", "Monthly ads table"),
+                    makeEtaUnit("dailyAdsDb", "dailyAdsDb", "Daily ads table"),
+                ],
+            },
+        ],
+        [makeEtaUnit]
+    );
+
+    const calculateUnitRemainingSeconds = useCallback(
+        (unit: AdsEtaUnit) => {
+            if (unit.completedAt) return 0;
+
+            const estimate = getEtaEstimate(unit.type, unit.fallbackSeconds);
+
+            if (!unit.startedAt) {
+                return estimate;
+            }
+
+            const elapsed = Math.max((Date.now() - unit.startedAt) / 1000, 0);
+
+            if (elapsed < estimate) {
+                return estimate - elapsed;
+            }
+
+            const overrunElapsed = elapsed - estimate;
+            const softOverrunBuffer = estimate * 0.2 - overrunElapsed * 0.2;
+
+            return Math.max(MIN_ACTIVE_ADS_ETA_SECONDS, softOverrunBuffer);
+        },
+        [getEtaEstimate]
+    );
+
+    const calculateDynamicRemainingSeconds = useCallback(() => {
+        const plan = etaPlanRef.current;
+        if (!plan) return null;
+
+        const remaining = plan.groups.reduce((total, group) => {
+            const unitRemaining = group.units.map(calculateUnitRemainingSeconds);
+
+            if (group.mode === "parallel") {
+                return total + Math.max(0, ...unitRemaining);
+            }
+
+            return total + unitRemaining.reduce((sum, value) => sum + value, 0);
+        }, 0);
+
+        return Math.max(1, Math.ceil(remaining));
+    }, [calculateUnitRemainingSeconds]);
+
+    const calculateDynamicProgressPercentage = useCallback(() => {
+        const plan = etaPlanRef.current;
+        if (!plan) return 0;
+
+        const allUnits = plan.groups.flatMap((group) => group.units);
+        if (allUnits.length > 0 && allUnits.every((unit) => unit.completedAt)) {
+            return 100;
+        }
+
+        const remaining = plan.groups.reduce((total, group) => {
+            const unitRemaining = group.units.map(calculateUnitRemainingSeconds);
+
+            if (group.mode === "parallel") {
+                return total + Math.max(0, ...unitRemaining);
+            }
+
+            return total + unitRemaining.reduce((sum, value) => sum + value, 0);
+        }, 0);
+
+        if (!plan.estimatedTotalSeconds) return 0;
+
+        const progress =
+            ((plan.estimatedTotalSeconds - remaining) / plan.estimatedTotalSeconds) * 100;
+
+        return Math.min(99, Math.max(0, Math.round(progress)));
+    }, [calculateUnitRemainingSeconds]);
+
+    const startEtaPlan = useCallback(
+        (groups: AdsEtaGroup[]) => {
+            etaSamplesRef.current = {};
+            const initialEstimate = groups.reduce((total, group) => {
+                const unitEstimates = group.units.map((unit) =>
+                    getEtaEstimate(unit.type, unit.fallbackSeconds)
+                );
+
+                if (group.mode === "parallel") {
+                    return total + Math.max(0, ...unitEstimates);
+                }
+
+                return total + unitEstimates.reduce((sum, value) => sum + value, 0);
+            }, 0);
+
+            const estimatedTotalSeconds = Math.max(1, Math.ceil(initialEstimate));
+
+            etaPlanRef.current = {
+                startedAt: Date.now(),
+                estimatedTotalSeconds,
+                groups,
+            };
+
+            setRemainingSeconds(estimatedTotalSeconds);
+            setDynamicProgress(0);
+        },
+        [getEtaEstimate]
+    );
+
+    const findEtaUnit = useCallback((unitId: string) => {
+        const plan = etaPlanRef.current;
+        if (!plan) return null;
+
+        for (const group of plan.groups) {
+            const unit = group.units.find((item) => item.id === unitId);
+            if (unit) return unit;
+        }
+
+        return null;
+    }, []);
+
+    const startEtaUnit = useCallback(
+        (unitId: string) => {
+            const unit = findEtaUnit(unitId);
+
+            if (unit && !unit.startedAt && !unit.completedAt) {
+                unit.startedAt = Date.now();
+            }
+
+            setRemainingSeconds(calculateDynamicRemainingSeconds());
+            setDynamicProgress((prev) =>
+                Math.max(prev, calculateDynamicProgressPercentage())
+            );
+        },
+        [calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds, findEtaUnit]
+    );
+
+    const completeEtaUnit = useCallback(
+        (unitId: string) => {
+            const unit = findEtaUnit(unitId);
+            if (!unit || unit.completedAt) return;
+
+            const completedAt = Date.now();
+            const startedAt = unit.startedAt ?? completedAt;
+            const actualSeconds = clampAdsEtaSeconds((completedAt - startedAt) / 1000);
+
+            unit.startedAt = startedAt;
+            unit.completedAt = completedAt;
+            unit.actualSeconds = actualSeconds;
+
+            const samples = etaSamplesRef.current[unit.type] ?? [];
+            etaSamplesRef.current[unit.type] = [
+                ...samples.slice(-(MAX_ADS_ETA_HISTORY_SAMPLES - 1)),
+                actualSeconds,
+            ];
+
+            updateStoredAdsEtaSeconds(etaScope, unit.type, actualSeconds);
+            setRemainingSeconds(calculateDynamicRemainingSeconds());
+            setDynamicProgress((prev) =>
+                Math.max(prev, calculateDynamicProgressPercentage())
+            );
+        },
+        [calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds, etaScope, findEtaUnit]
+    );
+
+    const runEtaUnit = useCallback(
+        async <T,>(unitId: string, fn: () => Promise<T>): Promise<T> => {
+            startEtaUnit(unitId);
+
+            try {
+                return await fn();
+            } finally {
+                completeEtaUnit(unitId);
+            }
+        },
+        [completeEtaUnit, startEtaUnit]
+    );
+
+    useEffect(() => {
+        if (!isConnecting || !stepProgress.active) {
+            etaPlanRef.current = null;
+            setRemainingSeconds(null);
+            setDynamicProgress(0);
+            return;
+        }
+
+        const interval = window.setInterval(() => {
+            setRemainingSeconds(calculateDynamicRemainingSeconds());
+            setDynamicProgress((prev) =>
+                Math.max(prev, calculateDynamicProgressPercentage())
+            );
+        }, 1000);
+
+        setRemainingSeconds(calculateDynamicRemainingSeconds());
+        setDynamicProgress((prev) =>
+            Math.max(prev, calculateDynamicProgressPercentage())
+        );
+
+        return () => window.clearInterval(interval);
+    }, [
+        calculateDynamicProgressPercentage,
+        calculateDynamicRemainingSeconds,
+        isConnecting,
+        stepProgress.active,
+    ]);
 
     const markStepComplete = (step: number) => {
         setActiveSteps((prev) => {
@@ -657,7 +1019,9 @@ export default function AmazonAdsConnect({
         setCurrentStep(0);
         setActiveSteps(new Set());
         setCompletedSteps(new Set());
-        setLoadingStartedAt(null);
+        etaPlanRef.current = null;
+        setRemainingSeconds(null);
+        setDynamicProgress(0);
         setStepProgress({
             active: false,
             label: "",
@@ -682,11 +1046,23 @@ export default function AmazonAdsConnect({
         { num: 3, label: "Sponsored Brand" },
     ];
 
-    const STEP_ESTIMATED_SECONDS: Record<number, number> = {
-        1: 200,
-        2: 200,
-        3: 200,
-    };
+    const estimatedTimeText =
+        remainingSeconds === null
+            ? "Estimating..."
+            : etaPlanRef.current?.groups.some((group) =>
+                group.units.some((unit) => {
+                    if (!unit.startedAt || unit.completedAt) return false;
+
+                    const estimate = getEtaEstimate(unit.type, unit.fallbackSeconds);
+                    const elapsed = (Date.now() - unit.startedAt) / 1000;
+
+                    return elapsed >= estimate;
+                })
+            )
+                ? "Still syncing..."
+                : remainingSeconds <= 5
+                ? "Finishing up..."
+                : formatAdsEtaDuration(remainingSeconds);
 
 
     const stopPolling = () => {
@@ -720,7 +1096,6 @@ export default function AmazonAdsConnect({
             setIsConnecting(true);
             setShowSuccessPopup(false);
             setIsSyncModalDismissed(false);
-            setLoadingStartedAt(Date.now());
             setCurrentStep(1);
             setActiveSteps(new Set([1]));
             setCompletedSteps(new Set());
@@ -730,15 +1105,18 @@ export default function AmazonAdsConnect({
                 percentage: 0,
                 detail: "",
             });
+            startEtaPlan(buildAdsEtaGroups());
 
             await seedAdsReportsOnConnect(resolvedCountry, {
                 onStep: setStep,
                 onCompleteStep: markStepComplete,
                 onActiveSteps: setRunningSteps,
+                runEtaUnit,
             });
 
             console.log("Ads sync complete, showing success popup");
 
+            setDynamicProgress(100);
             setStepProgress((prev) => ({
                 ...prev,
                 active: false,
@@ -930,8 +1308,8 @@ export default function AmazonAdsConnect({
                     completedSteps={completedSteps}
                     dashboardSteps={dashboardSteps}
                     stepProgress={stepProgress}
-                    loadingStartedAt={loadingStartedAt}
-                    estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
+                    progressPercentage={dynamicProgress}
+                    estimatedTime={estimatedTimeText}
                     onDismiss={handleCloseModal}
                 />
             ) : (
