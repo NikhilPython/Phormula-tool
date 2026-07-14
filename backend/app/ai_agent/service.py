@@ -451,8 +451,9 @@ def run_agent(
     result = _graph.invoke(state)
     result = verify_and_correct_answer(result, user_query)
     suggested_questions = build_suggested_questions(result, user_query)
+    history_id = None
     try:
-        save_chat_turn(
+        history_id = save_chat_turn(
             user_id=user_id,
             message=user_query,
             response=result.get("final_response", ""),
@@ -495,6 +496,7 @@ def run_agent(
         "sku_intelligence_result": result.get("sku_intelligence_result"),
         "answer_validation": result.get("answer_validation"),
         "suggested_questions": suggested_questions,
+        "history_id": history_id,
         "memory": history,
         "error": result.get("error"),
     }

@@ -153,10 +153,20 @@ def _months_from_payload(
     payload: Optional[Dict[str, Any]],
 ) -> List[MonthKey]:
     payload = payload or {}
+    if payload.get("type") == "growth_base":
+        payload = payload.get("base") or {}
+
     ptype = payload.get("type")
 
     if ptype == "single" and payload.get("month") and payload.get("year"):
         return [MonthKey(year=int(payload["year"]), month=int(payload["month"]))]
+
+    if ptype == "multi_month":
+        return [
+            MonthKey(year=int(item["year"]), month=int(item["month"]))
+            for item in payload.get("months", [])
+            if item.get("month") and item.get("year")
+        ]
 
     if ptype == "last_n_months":
         return get_last_n_month_keys(engine, user_id, country, int(payload.get("n") or 6))
