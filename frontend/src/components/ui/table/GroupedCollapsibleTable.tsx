@@ -559,7 +559,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const tableStyle: React.CSSProperties = {
     tableLayout: "fixed",
-    width: anyGroupExpanded ? `${requiredTableWidth}px` : "100%",
+    width: "100%",
     minWidth: anyGroupExpanded ? `${requiredTableWidth}px` : "100%",
   };
 
