@@ -72,6 +72,7 @@ export default function DashboardLiveSalesTab({
     shopifyPrevDeriv,
     finalBiDailySeriesHome,
     finalBiPeriods,
+    dashboardAllowedEndISO,
     biUiLoading,
     biError,
     currencySymbol,
@@ -531,6 +532,7 @@ export default function DashboardLiveSalesTab({
                                                         error={shouldShowDummyUi ? null : biError}
                                                         selectedStartDay={selectedStartDay}
                                                         selectedEndDay={selectedEndDay}
+                                                        currentDataEndDate={dashboardAllowedEndISO}
                                                         currencySymbol={currencySymbol}
                                                     />
 
@@ -660,6 +662,7 @@ export default function DashboardLiveSalesTab({
                                             error={shouldShowDummyUi ? null : biError}
                                             selectedStartDay={selectedStartDay}
                                             selectedEndDay={selectedEndDay}
+                                            currentDataEndDate={dashboardAllowedEndISO}
                                             currencySymbol={currencySymbol}
                                         />
                                     </div>

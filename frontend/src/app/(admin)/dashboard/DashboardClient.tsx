@@ -10726,6 +10726,7 @@ export default function DashboardPage() {
                         shopifyPrevDeriv={shopifyPrevDeriv}
                         finalBiDailySeriesHome={finalBiDailySeriesHome}
                         finalBiPeriods={finalBiPeriods}
+                        dashboardAllowedEndISO={dashboardAllowedEndISO}
                         biUiLoading={biUiLoading}
                         biError={biError}
                         currencySymbol={currencySymbol}

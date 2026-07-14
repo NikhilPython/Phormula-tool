@@ -33,8 +33,10 @@ type DailySeries = {
 
 type PeriodInfo = {
   label: string;
-  start_date: string; // YYYY-MM-DD
-  end_date: string; // YYYY-MM-DD
+  start_date?: string; // YYYY-MM-DD
+  end_date?: string; // YYYY-MM-DD
+  start?: string; // YYYY-MM-DD
+  end?: string; // YYYY-MM-DD
 };
 
 type Props = {
@@ -53,18 +55,41 @@ type Props = {
   selectedEndDay?: number | null;
   currencySymbol?: string;
   fullMonthMode?: boolean;
+  currentDataEndDate?: string | null;
+};
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const getPeriodStartDate = (p?: PeriodInfo) => p?.start_date || p?.start || "";
+const getPeriodEndDate = (p?: PeriodInfo) => p?.end_date || p?.end || "";
+const stripDayRangeFromLabel = (label: string) =>
+  label.replace(/\s+\d+\s*[\u2013-]\s*\d+$/g, "");
+
+const getPeriodMonthKey = (p?: PeriodInfo, fallbackLabel?: string) => {
+  const src = getPeriodStartDate(p) || getPeriodEndDate(p);
+  if (/^\d{4}-\d{2}/.test(src)) return src.slice(0, 7);
+
+  const label = stripDayRangeFromLabel(p?.label || fallbackLabel || "");
+  const match = label.match(/\b([A-Za-z]{3})'(\d{2})\b/);
+  if (!match) return "";
+
+  const monthIndex = MONTH_NAMES.findIndex(
+    (month) => month.toLowerCase() === match[1].toLowerCase()
+  );
+  if (monthIndex < 0) return "";
+
+  return `20${match[2]}-${String(monthIndex + 1).padStart(2, "0")}`;
 };
 
 const monthTickLabel = (p?: PeriodInfo) => {
-  const src = p?.start_date || p?.end_date || "";
+  const src = getPeriodStartDate(p) || getPeriodEndDate(p);
   if (!src) return p?.label || "";
 
   const [y, m] = src.split("-");
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const mi = Number(m) - 1;
 
   if (!Number.isFinite(mi) || mi < 0 || mi > 11) return p?.label || "";
-  return `${monthNames[mi]}'${y.slice(-2)}`;
+  return `${MONTH_NAMES[mi]}'${y.slice(-2)}`;
 };
 
 const clampDay = (d: number) => Math.max(1, Math.min(31, d));
@@ -84,9 +109,11 @@ const LiveLineChart: React.FC<{
   metric: ChartMetric;
   prevLabel?: string;
   currLabel?: string;
+  currentPeriod?: PeriodInfo;
   currencySymbol?: string;
   selectedStartDay?: number | null;
   selectedEndDay?: number | null;
+  currentDataEndDate?: string | null;
   showPrevious?: boolean;
   showCurrent?: boolean;
   fullMonthMode?: boolean;
@@ -97,9 +124,11 @@ const LiveLineChart: React.FC<{
   metric,
   prevLabel,
   currLabel,
+  currentPeriod,
   currencySymbol,
   selectedStartDay,
   selectedEndDay,
+  currentDataEndDate,
   showPrevious = true,
   showCurrent = true,
   fullMonthMode = false,
@@ -113,6 +142,30 @@ const LiveLineChart: React.FC<{
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const s = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
     const e = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
+    const currentPeriodStartDay = useMemo(() => {
+      const day = getDay(getPeriodStartDate(currentPeriod));
+      return Number.isFinite(day) ? clampDay(day) : 1;
+    }, [currentPeriod]);
+    const currentDataEndDay = useMemo(() => {
+      const day = getDay(currentDataEndDate || "");
+      return Number.isFinite(day) ? clampDay(day) : null;
+    }, [currentDataEndDate]);
+    const shouldCapCurrentToDataEnd = useMemo(() => {
+      if (!currentDataEndDate) return false;
+      return getPeriodMonthKey(currentPeriod, currLabel) === currentDataEndDate.slice(0, 7);
+    }, [currentDataEndDate, currentPeriod, currLabel]);
+    const expectedCurrentEndDay = useMemo(() => {
+      const explicitEndDay = getDay(getPeriodEndDate(currentPeriod));
+      const periodEndDay = Number.isFinite(explicitEndDay) ? clampDay(explicitEndDay) : null;
+
+      if (periodEndDay != null) {
+        return shouldCapCurrentToDataEnd && currentDataEndDay != null
+          ? Math.min(periodEndDay, currentDataEndDay)
+          : periodEndDay;
+      }
+
+      return shouldCapCurrentToDataEnd ? currentDataEndDay : null;
+    }, [currentPeriod, shouldCapCurrentToDataEnd, currentDataEndDay]);
 
     // ✅ responsive sizing
     const [isCompactView, setIsCompactView] = useState(false);
@@ -225,7 +278,10 @@ const LiveLineChart: React.FC<{
       };
 
       const currDays = dataCurr
-        .filter(hasRealMetricValue)
+        .filter((point) =>
+          hasRealMetricValue(point) &&
+          (!shouldCapCurrentToDataEnd || !currentDataEndDate || point.date <= currentDataEndDate)
+        )
         .map((d) => getDay(d.date))
         .filter(Number.isFinite)
         .sort((a, b) => a - b);
@@ -236,10 +292,16 @@ const LiveLineChart: React.FC<{
         .filter(Number.isFinite)
         .sort((a, b) => a - b);
 
+      const currentVisibleEndDays = [
+        currDays.length ? currDays[currDays.length - 1] : null,
+        expectedCurrentEndDay,
+      ].filter((day): day is number => day != null && Number.isFinite(day));
+      const maxCurrentVisibleDay = currentVisibleEndDays.length
+        ? Math.max(...currentVisibleEndDays)
+        : null;
+
       if (rangeActive && s != null && e != null) {
-        const maxFetchedCurrentDay = currDays.length
-          ? currDays[currDays.length - 1]
-          : e;
+        const maxFetchedCurrentDay = maxCurrentVisibleDay ?? e;
 
         const finalEndDay = fullMonthMode ? e : Math.min(e, maxFetchedCurrentDay);
 
@@ -260,9 +322,9 @@ const LiveLineChart: React.FC<{
 
       // ✅ Normal mode:
       // show only current MTD days, e.g. July 1-2 and June 1-2.
-      if (currDays.length) {
-        const minDay = currDays[0];
-        const maxDay = currDays[currDays.length - 1];
+      if (currDays.length || expectedCurrentEndDay != null) {
+        const minDay = currDays[0] ?? currentPeriodStartDay;
+        const maxDay = maxCurrentVisibleDay ?? currDays[currDays.length - 1];
 
         return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
       }
@@ -275,7 +337,7 @@ const LiveLineChart: React.FC<{
       }
 
       return [];
-    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode]);
+    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
 
     const xAxis = useMemo(() => allDays.map(String), [allDays]);
 
@@ -291,10 +353,15 @@ const LiveLineChart: React.FC<{
 
     const currData = useMemo(() => {
       return allDays.map((day) => {
-        const pt = dataCurr.find((d) => getDay(d.date) === day);
-        return pickValue(pt);
+        const pt = dataCurr.find(
+          (d) =>
+            getDay(d.date) === day &&
+            (!shouldCapCurrentToDataEnd || !currentDataEndDate || d.date <= currentDataEndDate)
+        );
+        const value = pickValue(pt);
+        return day === expectedCurrentEndDay && value == null ? 0 : value;
       });
-    }, [allDays, dataCurr, metric]);
+    }, [allDays, dataCurr, metric, expectedCurrentEndDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
 
     /**
      * ✅ Critical fix:
@@ -371,7 +438,17 @@ const LiveLineChart: React.FC<{
 
             const stripRange = (name: string) => (name || "").replace(/\s*\d+\s*[–-]\s*\d+\s*$/g, "");
 
-            const lines = params
+            const currentSeriesName = stripRange(currLabel || "Current MTD");
+            const previousSeriesName = stripRange(prevLabel || "Previous");
+            const getTooltipOrder = (p: TooltipSeriesParam) => {
+              const seriesName = stripRange(p.seriesName ?? "");
+              if (seriesName === currentSeriesName) return 0;
+              if (seriesName === previousSeriesName) return 1;
+              return 2;
+            };
+
+            const lines = [...params]
+              .sort((a, b) => getTooltipOrder(a) - getTooltipOrder(b))
               // ✅ hide synthetic pad points in tooltip
               .filter((p) => !(p?.data && typeof p.data === "object" && p.data.__isPad))
               .map((p) => {
@@ -603,6 +680,7 @@ export default function LiveBiLineChartPanel({
   selectedEndDay,
   currencySymbol,
   fullMonthMode = false,
+  currentDataEndDate,
 }: Props) {
 
   const CHART_METRIC_KEY = "performance-trend-chart-metric";
@@ -803,6 +881,8 @@ export default function LiveBiLineChartPanel({
                   ? stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))
                   : currLegend
               }
+              currentPeriod={periods?.current_mtd}
+              currentDataEndDate={currentDataEndDate}
               currencySymbol={currencySymbol}
               selectedStartDay={isExpanded ? null : selectedStartDay}
               selectedEndDay={isExpanded ? null : selectedEndDay}
