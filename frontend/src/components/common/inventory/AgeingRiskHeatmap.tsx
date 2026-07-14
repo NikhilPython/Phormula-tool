@@ -47,6 +47,8 @@ export type AgeingRiskHeatmapRow = {
     [bucketKey: string]: string | number | boolean | undefined;
 };
 
+export type AgeingRiskUnitSalesDataKey = "salesLast30Days" | "unitsSold";
+
 type AgeingRiskHeatmapProps = {
     title?: string;
     subtitle?: string;
@@ -54,6 +56,7 @@ type AgeingRiskHeatmapProps = {
     buckets: AgeingBucket[];
     defaultVisibleRows?: number;
     salesLast30DaysLabel?: string;
+    unitSalesDataKey?: AgeingRiskUnitSalesDataKey;
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
 
     onDownloadInventoryExcel?: () => void;
@@ -178,6 +181,31 @@ const hasSellableBreakdown = (rows: AgeingRiskHeatmapRow[]) => {
     );
 };
 
+const getUnitSalesValue = (
+    row: AgeingRiskHeatmapRow,
+    unitSalesDataKey: AgeingRiskUnitSalesDataKey = "salesLast30Days"
+) => {
+    const primaryValue =
+        unitSalesDataKey === "unitsSold"
+            ? row.unitsSold
+            : row.salesLast30Days;
+
+    const fallbackValue =
+        unitSalesDataKey === "unitsSold"
+            ? row.salesLast30Days
+            : row.unitsSold;
+
+    const hasPrimaryValue =
+        primaryValue !== null &&
+        primaryValue !== undefined;
+
+    const value = hasPrimaryValue ? primaryValue : fallbackValue;
+
+    const n = Number(value ?? 0);
+
+    return Number.isFinite(n) ? n : 0;
+};
+
 const buildAggregateRow = (
     label: string,
     rows: AgeingRiskHeatmapRow[],
@@ -185,7 +213,8 @@ const buildAggregateRow = (
     flags?: {
         isOthersRow?: boolean;
         isTotalRow?: boolean;
-    }
+    },
+    unitSalesDataKey: AgeingRiskUnitSalesDataKey = "salesLast30Days"
 ): AgeingRiskHeatmapRow => {
     const aggregate: AgeingRiskHeatmapRow = {
         productName: label,
@@ -228,27 +257,29 @@ const buildAggregateRow = (
     );
     aggregate.salesRank = "";
 
-    aggregate.unitsSold = rows.reduce(
-        (sum, row) => sum + Number(row.unitsSold || 0),
-        0
-    );
+    aggregate.unitsSold = rows.some(
+        (row) => row.unitsSold !== null && row.unitsSold !== undefined
+    )
+        ? rows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0)
+        : undefined;
 
-    aggregate.salesLast30Days = rows.reduce(
-        (sum, row) => sum + Number(row.salesLast30Days || 0),
-        0
-    );
+    aggregate.salesLast30Days = rows.some(
+        (row) => row.salesLast30Days !== null && row.salesLast30Days !== undefined
+    )
+        ? rows.reduce((sum, row) => sum + Number(row.salesLast30Days || 0), 0)
+        : undefined;
 
     aggregate.inventoryAlert = "";
 
     // ✅ For Others only:
-    // Coverage Ratio = aggregated available / aggregated Sales Last 30 Days
+    // Coverage Ratio = aggregated available / selected unit-sales value
     if (flags?.isOthersRow) {
         const totalAvailable = Number(aggregate.available || 0);
-        const totalSalesLast30Days = Number(aggregate.salesLast30Days || 0);
+        const totalUnitSales = getUnitSalesValue(aggregate, unitSalesDataKey);
 
         aggregate.coverageRatio =
-            totalSalesLast30Days > 0
-                ? totalAvailable / totalSalesLast30Days
+            totalUnitSales > 0
+                ? totalAvailable / totalUnitSales
                 : 0;
 
         return aggregate;
@@ -377,8 +408,11 @@ const buildPercentageRow = (
     return percentageRow;
 };
 
-const getUnitSalesSortValue = (row: AgeingRiskHeatmapRow) => {
-    return Number(row.salesLast30Days ?? row.unitsSold ?? 0);
+const getUnitSalesSortValue = (
+    row: AgeingRiskHeatmapRow,
+    unitSalesDataKey: AgeingRiskUnitSalesDataKey = "salesLast30Days"
+) => {
+    return getUnitSalesValue(row, unitSalesDataKey);
 };
 
 const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
@@ -388,6 +422,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     buckets,
     defaultVisibleRows = 9,
     salesLast30DaysLabel = "Unit Sales in Last 30 Days",
+    unitSalesDataKey = "salesLast30Days",
     onProductClick,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
@@ -453,15 +488,15 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
 
         const sortedData = [...productRows].sort((a, b) => {
-            const aUnitSales = getUnitSalesSortValue(a);
-            const bUnitSales = getUnitSalesSortValue(b);
+            const aUnitSales = getUnitSalesSortValue(a, unitSalesDataKey);
+            const bUnitSales = getUnitSalesSortValue(b, unitSalesDataKey);
 
             return bUnitSales - aUnitSales;
         });
 
         const calculatedTotalRow = buildAggregateRow("Total", sortedData, buckets, {
             isTotalRow: true,
-        });
+        }, unitSalesDataKey);
 
         const totalRow = backendTotalRow
             ? {
@@ -542,10 +577,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
-        });
+        }, unitSalesDataKey);
 
         return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary]);
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey]);
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};
@@ -1010,7 +1045,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             if (colKey === "salesLast30Days") {
                 if (row.isPercentageRow) return "";
 
-                return numberDisplay(row.salesLast30Days);
+                return numberDisplay(getUnitSalesValue(row, unitSalesDataKey));
             }
 
             if (colKey === "coverageRatio") {
@@ -1075,6 +1110,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         bucketMaxValues,
         showSellableBreakdown,
         salesLast30DaysLabel,
+        unitSalesDataKey,
     ]);
 
     const handleDownloadExcel = () => {
@@ -1082,6 +1118,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             onDownloadInventoryExcel();
             return;
         }
+
+        const excelRows =
+            unitSalesDataKey === "salesLast30Days"
+                ? displayRows
+                : displayRows.map((row) => ({
+                    ...row,
+                    salesLast30Days: getUnitSalesValue(row, unitSalesDataKey),
+                }));
 
         exportAgeingRiskHeatmapExcel({
             filename: excelFilename,
@@ -1092,7 +1136,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             companyName: excelCompanyName,
             brandName: excelBrandName,
             buckets,
-            dataRows: displayRows,
+            dataRows: excelRows,
             showInventoryAlerts,
             salesLast30DaysLabel,
         });

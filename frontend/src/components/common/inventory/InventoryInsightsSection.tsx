@@ -2,8 +2,9 @@
 
 import React from "react";
 import AgeingRiskHeatmap, {
-    AgeingBucket,
-    AgeingRiskHeatmapRow,
+    type AgeingBucket,
+    type AgeingRiskHeatmapRow,
+    type AgeingRiskUnitSalesDataKey,
 } from "@/components/common/inventory/AgeingRiskHeatmap";
 
 import SkuAgeingDonutChart, {
@@ -41,6 +42,7 @@ type InventoryInsightsSectionProps = {
     showInventoryAlerts?: boolean;
     heatmapExcelPlatformLabel?: string;
     showHeatmapExcelDownload?: boolean;
+    unitSalesDataKey?: AgeingRiskUnitSalesDataKey;
     heatmapExcelFilename?: string;
     heatmapExcelTitleLine?: string;
     heatmapExcelCountryLabel?: string;
@@ -96,6 +98,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     canDownloadInventoryExcel = false,
     onHeatmapProductClick,
     salesLast30DaysLabel,
+    unitSalesDataKey,
     showInventoryAlerts = true,
     showHeatmapExcelDownload = true,
     heatmapExcelFilename = "ageing-risk-heatmap.xlsx",
@@ -151,6 +154,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         excelBrandName={heatmapExcelBrandName}
                         inventoryAgeSummary={inventoryAgeSummary}
                         salesLast30DaysLabel={salesLast30DaysLabel}
+                        unitSalesDataKey={unitSalesDataKey}
                     />
                 )}
 

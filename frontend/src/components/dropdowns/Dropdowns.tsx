@@ -38,6 +38,7 @@ import InventoryInsightsSection from "@/components/common/inventory/InventoryIns
 import type {
   AgeingBucket,
   AgeingRiskHeatmapRow,
+  AgeingRiskUnitSalesDataKey,
 } from "@/components/common/inventory/AgeingRiskHeatmap";
 
 import type {
@@ -230,6 +231,8 @@ type InventoryCurrentApiResponse = {
   // ✅ ADD THESE
   month?: string;
   year?: number;
+  requested_month?: string;
+  requested_year?: number;
 
   country_key?: string;
 
@@ -4576,18 +4579,79 @@ const getSelectedCountryInventoryResponse = (
   };
 };
 
+const getMonthNameAliases = (monthName?: string) => {
+  const normalizedMonth = String(monthName || "").trim().toLowerCase();
+  const numericMonth = Number(normalizedMonth);
+  const monthIndex =
+    monthIndexMap[normalizedMonth] ??
+    (
+      Number.isInteger(numericMonth) &&
+        numericMonth >= 1 &&
+        numericMonth <= 12
+        ? numericMonth - 1
+        : undefined
+    );
+
+  if (monthIndex === undefined) return [];
+
+  const fullMonth = monthNames[monthIndex].toLowerCase();
+
+  return [fullMonth, fullMonth.slice(0, 3)];
+};
+
 const getCurrentMonthUnitsSoldKeyForResponse = (
   res?: InventoryCurrentApiResponse,
-  sampleRow?: InventoryCurrentRow
+  sampleRow?: InventoryCurrentRow,
+  preferredMonth?: string
 ) => {
-  return (
-    res?.columns?.find((column) =>
-      String(column).toLowerCase().startsWith("current month units sold")
-    ) ||
-    Object.keys(sampleRow ?? {}).find((key) =>
-      String(key).toLowerCase().startsWith("current month units sold")
-    )
+  const keys = Array.from(
+    new Set([...(res?.columns ?? []), ...Object.keys(sampleRow ?? {})])
   );
+
+  const normalizeColumnName = (key: string) =>
+    String(key || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const candidates = keys.filter((key) =>
+    normalizeColumnName(key).startsWith("current month units sold")
+  );
+
+  const preferredMonths = [
+    res?.requested_month,
+    res?.month,
+    preferredMonth,
+  ].filter(Boolean) as string[];
+
+  for (const monthName of preferredMonths) {
+    const aliases = getMonthNameAliases(monthName);
+    const matchedKey = candidates.find((key) => {
+      const normalizedKey = normalizeColumnName(key);
+
+      return aliases.some((alias) => normalizedKey.includes(alias));
+    });
+
+    if (matchedKey) return matchedKey;
+  }
+
+  return candidates[0];
+};
+
+const getCurrentMonthUnitsSoldValue = (
+  row: InventoryCurrentRow,
+  columnKey?: string
+) => {
+  if (!columnKey) return undefined;
+
+  const value = row?.[columnKey];
+
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  return toNum(value);
 };
 
 const getSalesLast30DaysValue = (row: InventoryCurrentRow) => {
@@ -4801,7 +4865,8 @@ const buildInventoryInsightsFromResponses = (
 
   const currentMonthUnitsSoldKey = getCurrentMonthUnitsSoldKeyForResponse(
     latestResponse,
-    latestRows?.[0]
+    latestRows?.[0],
+    selectedMonthForRank
   );
 
   const heatmapData: AgeingRiskHeatmapRow[] = latestRows.map((row) => {
@@ -4898,9 +4963,7 @@ const buildInventoryInsightsFromResponses = (
       totalUnits,
       unsellableUnits,
 
-      unitsSold: currentMonthUnitsSoldKey
-        ? toNum(row?.[currentMonthUnitsSoldKey])
-        : 0,
+      unitsSold: getCurrentMonthUnitsSoldValue(row, currentMonthUnitsSoldKey),
 
       salesRank:
         row?.["sales-rank"] ??
@@ -4953,10 +5016,9 @@ const buildInventoryInsightsFromResponses = (
 
       unsellableUnits: toNum(backendTotalRawRow?.["unfulfillable-quantity"]),
 
-      unitsSold: toNum(
+      unitsSold: getCurrentMonthUnitsSoldValue(
+        backendTotalRawRow,
         currentMonthUnitsSoldKey
-          ? backendTotalRawRow?.[currentMonthUnitsSoldKey]
-          : 0
       ),
 
       salesLast30Days: getSalesLast30DaysValue(backendTotalRawRow),
@@ -4978,7 +5040,9 @@ const buildInventoryInsightsFromResponses = (
     buildBackendPercentageHeatmapRow(backendPercentageRawRow);
 
   const sortedHeatmapData = [...heatmapData].sort(
-    (a, b) => toNum((b as any).salesLast30Days) - toNum((a as any).salesLast30Days)
+    (a, b) =>
+      toNum((b as any).unitsSold ?? (b as any).salesLast30Days) -
+      toNum((a as any).unitsSold ?? (a as any).salesLast30Days)
   );
 
   const finalHeatmapData = [
@@ -5746,6 +5810,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedQuarter,
     selectedYear
   );
+  const inventoryHeatmapUnitSalesDataKey: AgeingRiskUnitSalesDataKey = "unitsSold";
 
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(
     isDemoMode ? DEMO_UPLOAD_HISTORY : null
@@ -10587,6 +10652,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     )}
                     heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
                     salesLast30DaysLabel={salesLast30DaysLabel}
+                    unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
                   />
                 </>
               ) : (

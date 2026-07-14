@@ -26,6 +26,7 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import type {
   AgeingBucket,
   AgeingRiskHeatmapRow,
+  AgeingRiskUnitSalesDataKey,
 } from "@/components/common/inventory/AgeingRiskHeatmap";
 
 import type {
@@ -974,6 +975,8 @@ type InventoryCurrentApiResponse = {
 
   month?: string;
   year?: number;
+  requested_month?: string;
+  requested_year?: number;
   country_key?: string;
   inventory_age_summary?: {
     total?: number;
@@ -2177,6 +2180,80 @@ const getSelectedCountryInventoryResponse = (
   };
 };
 
+const getMonthNameAliases = (monthName?: string) => {
+  const normalizedMonth = String(monthName || "").trim().toLowerCase();
+  const numericMonth = Number(normalizedMonth);
+  const monthIndex =
+    allMonths.indexOf(normalizedMonth) >= 0
+      ? allMonths.indexOf(normalizedMonth)
+      : Number.isInteger(numericMonth) &&
+        numericMonth >= 1 &&
+        numericMonth <= 12
+        ? numericMonth - 1
+        : -1;
+
+  if (monthIndex < 0) return [];
+
+  const fullMonth = allMonths[monthIndex];
+
+  return [fullMonth, fullMonth.slice(0, 3)];
+};
+
+const getCurrentMonthUnitsSoldKeyForResponse = (
+  res?: InventoryCurrentApiResponse,
+  sampleRow?: InventoryCurrentRow,
+  preferredMonth?: string
+) => {
+  const keys = Array.from(
+    new Set([...(res?.columns ?? []), ...Object.keys(sampleRow ?? {})])
+  );
+
+  const normalizeColumnName = (key: string) =>
+    String(key || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const candidates = keys.filter((key) =>
+    normalizeColumnName(key).startsWith("current month units sold")
+  );
+
+  const preferredMonths = [
+    res?.requested_month,
+    res?.month,
+    preferredMonth,
+  ].filter(Boolean) as string[];
+
+  for (const monthName of preferredMonths) {
+    const aliases = getMonthNameAliases(monthName);
+    const matchedKey = candidates.find((key) => {
+      const normalizedKey = normalizeColumnName(key);
+
+      return aliases.some((alias) => normalizedKey.includes(alias));
+    });
+
+    if (matchedKey) return matchedKey;
+  }
+
+  return candidates[0];
+};
+
+const getCurrentMonthUnitsSoldValue = (
+  row: InventoryCurrentRow,
+  columnKey?: string
+) => {
+  if (!columnKey) return undefined;
+
+  const value = row?.[columnKey];
+
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  return toNum(value);
+};
+
 const getSelectedCountryAgeSummaryResponses = (
   responses: InventoryAgeSummaryApiResponse[],
   selectedCountry: string
@@ -2424,13 +2501,11 @@ const buildInventoryInsightsFromResponses = (
     (bucket) => bucket.key === 'zeroToNinety'
   );
 
-  const currentMonthUnitsSoldKey =
-    (latestInventoryResponse as any)?.columns?.find((column: string) =>
-      String(column).toLowerCase().startsWith("current month units sold")
-    ) ||
-    Object.keys(productRows?.[0] ?? {}).find((key) =>
-      String(key).toLowerCase().startsWith("current month units sold")
-    );
+  const currentMonthUnitsSoldKey = getCurrentMonthUnitsSoldKeyForResponse(
+    latestInventoryResponse,
+    productRows?.[0],
+    selectedMonthForRank
+  );
 
   const heatmapData: AgeingRiskHeatmapRow[] = productRows
     .map((row) => {
@@ -2462,9 +2537,10 @@ const buildInventoryInsightsFromResponses = (
 
       const totalUnits = sellableUnits || bucketTotal;
 
-      const unitsSold = currentMonthUnitsSoldKey
-        ? toNum(row?.[currentMonthUnitsSoldKey])
-        : 0;
+      const unitsSold = getCurrentMonthUnitsSoldValue(
+        row,
+        currentMonthUnitsSoldKey
+      );
 
       // ✅ Needed for Others coverage ratio
       const salesLast30Days = getInventoryRowSalesLast30Days(row);
@@ -2547,9 +2623,10 @@ const buildInventoryInsightsFromResponses = (
       inboundUnits: getInventoryRowInboundUnits(backendTotalRawRow),
       unsellableUnits: getInventoryRowUnfulfillableUnits(backendTotalRawRow),
 
-      unitsSold: currentMonthUnitsSoldKey
-        ? toNum(backendTotalRawRow?.[currentMonthUnitsSoldKey])
-        : 0,
+      unitsSold: getCurrentMonthUnitsSoldValue(
+        backendTotalRawRow,
+        currentMonthUnitsSoldKey
+      ),
 
       // ✅ backend total Sales Last 30 Days
       salesLast30Days: getInventoryRowSalesLast30Days(backendTotalRawRow),
@@ -2568,8 +2645,14 @@ const buildInventoryInsightsFromResponses = (
   const backendPercentageHeatmapRow =
     buildBackendPercentageHeatmapRow(backendPercentageRawRow);
 
+  const sortedHeatmapData = [...heatmapData].sort(
+    (a, b) =>
+      toNum((b as any).unitsSold ?? (b as any).salesLast30Days) -
+      toNum((a as any).unitsSold ?? (a as any).salesLast30Days)
+  );
+
   const finalHeatmapData = [
-    ...heatmapData,
+    ...sortedHeatmapData,
     ...(backendTotalHeatmapRow ? [backendTotalHeatmapRow] : []),
     ...(backendPercentageHeatmapRow ? [backendPercentageHeatmapRow] : []),
   ];
@@ -3616,6 +3699,7 @@ export default function InputCostPage({ params }: Params) {
     selectedQuarter,
     selectedYear
   );
+  const inventoryHeatmapUnitSalesDataKey: AgeingRiskUnitSalesDataKey = "unitsSold";
   const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
     useState<"uk" | "us">("uk");
 
@@ -6604,6 +6688,7 @@ export default function InputCostPage({ params }: Params) {
                     heatmapExcelCompanyName={userData?.company_name || ""}
                     heatmapExcelBrandName={userData?.brand_name || ""}
                     salesLast30DaysLabel={salesLast30DaysLabel}
+                    unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
                   />
                 </>
               ) : (
