@@ -3228,9 +3228,24 @@ const DUMMY_WAREHOUSE_DATA = [
 type AnyRow = Record<string, any>;
 
 type LedgerDBReadParams =
-  | { range: 'monthly'; month: string; year: string; country?: string }
-  | { range: 'quarterly'; quarter: string; year: string; country?: string }
-  | { range: 'yearly'; year: string; country?: string };
+  | { range: 'monthly'; month: string; year: string; country?: string; marketplaceId?: string | null }
+  | { range: 'quarterly'; quarter: string; year: string; country?: string; marketplaceId?: string | null }
+  | { range: 'yearly'; year: string; country?: string; marketplaceId?: string | null };
+
+const MARKETPLACE_ID_BY_COUNTRY: Record<string, string> = {
+  uk: "A1F83G8C2ARO7P",
+  gb: "A1F83G8C2ARO7P",
+  us: "ATVPDKIKX0DER",
+  usa: "ATVPDKIKX0DER",
+  ca: "A2EUQ1WTGCTBG2",
+  canada: "A2EUQ1WTGCTBG2",
+};
+
+const getMarketplaceIdForCountry = (country?: string) => {
+  const normalizedCountry = String(country || "").trim().toLowerCase();
+
+  return MARKETPLACE_ID_BY_COUNTRY[normalizedCountry] || null;
+};
 
 const monthNameToNumber = (m: string) => {
   const idx = allMonths.indexOf((m || '').toLowerCase());
@@ -3685,6 +3700,10 @@ export default function InputCostPage({ params }: Params) {
   const LEDGER_DB_STORE_QUARTER = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-quarter`;
   const LEDGER_DB_STORE_YEAR = `${API_BASE}/amazon_api/inventory/ledger-summary/db/store-year`;
 
+  const marketplaceId = useMemo(
+    () => getMarketplaceIdForCountry(countryName),
+    [countryName]
+  );
 
   const inputCostNameToSkuMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -4445,7 +4464,7 @@ export default function InputCostPage({ params }: Params) {
 
 
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
-    const { range, year, country } = params;
+    const { range, year, country, marketplaceId } = params;
 
     const q: Record<string, any> = {
       year,
@@ -4453,6 +4472,7 @@ export default function InputCostPage({ params }: Params) {
     };
 
     if (country) q.country = country;
+    if (marketplaceId) q.marketplace_id = marketplaceId;
 
     let endpoint = LEDGER_DB_STORE_YEAR;
 
@@ -4507,6 +4527,7 @@ export default function InputCostPage({ params }: Params) {
           month: selectedMonth,
           year: selectedYear,
           country: countryName,
+          marketplaceId,
         };
       } else if (range === 'quarterly') {
         payload = {
@@ -4514,12 +4535,14 @@ export default function InputCostPage({ params }: Params) {
           quarter: selectedQuarter,
           year: selectedYear,
           country: countryName,
+          marketplaceId,
         };
       } else {
         payload = {
           range: 'yearly',
           year: selectedYear,
           country: countryName,
+          marketplaceId,
         };
       }
 
@@ -5044,7 +5067,16 @@ export default function InputCostPage({ params }: Params) {
     void fetchReconTableData();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, range, selectedMonth, selectedQuarter, selectedYear, countryName, isNA]);
+  }, [
+    activeTab,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+    countryName,
+    marketplaceId,
+    isNA,
+  ]);
 
   useEffect(() => {
     if (activeTab !== 'lost-compensation') return;
