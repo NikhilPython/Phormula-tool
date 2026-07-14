@@ -17,7 +17,7 @@ const getAuthToken = () =>
 const isAmazonConnected = (region?: string) =>
   typeof window !== "undefined"
     ? localStorage.getItem(region ? `amazonConnected_${region}` : "amazonConnected") ===
-      "true"
+    "true"
     : false;
 
 const getMarketplaceId = (region?: string) =>
@@ -100,9 +100,9 @@ async function api(path: string, options: RequestInit = {}) {
   if (!res.ok) {
     throw new Error(
       (data as any)?.error ||
-        (data as any)?.message ||
-        (data as any)?.detail ||
-        `HTTP ${res.status}`
+      (data as any)?.message ||
+      (data as any)?.detail ||
+      `HTTP ${res.status}`
     );
   }
 
@@ -241,9 +241,9 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
     if (
       stockUnit === "" ||
       Number.isNaN(parsedStockUnit) ||
-      parsedStockUnit < 0
+      parsedStockUnit <= 0
     ) {
-      nextErrors.stockUnit = "Stock unit must be a non-negative integer";
+      nextErrors.stockUnit = "Stock unit must be a positive integer";
     } else if (!Number.isInteger(parsedStockUnit)) {
       nextErrors.stockUnit = "Stock unit must be an integer";
     }
@@ -367,8 +367,8 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
       if (!authUrl) {
         throw new Error(
           (data as any)?.error ||
-            (data as any)?.message ||
-            "Failed to get Amazon login URL"
+          (data as any)?.message ||
+          "Failed to get Amazon login URL"
         );
       }
 
@@ -617,9 +617,8 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                 size="sm"
                 onClick={handleAmazonLogin}
                 disabled={isConnecting}
-                className={`w-full ${
-                  isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
-                }`}
+                className={`w-full ${isConnecting ? "bg-blue-700 cursor-not-allowed" : "bg-blue-700"
+                  }`}
               >
                 <FaLink className="h-4 w-4 opacity-90" />
                 {isConnecting ? "Working..." : "Connect"}
@@ -638,7 +637,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
                   <input
                     type="number"
-                    min="0"
+                    min="1"
                     step="1"
                     value={stockUnit}
                     onChange={(e) => setStockUnit(e.target.value)}
@@ -683,11 +682,10 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                   size="sm"
                   onClick={handleSaveCountryProfile}
                   disabled={isSavingProfile}
-                  className={`w-full ${
-                    isSavingProfile
+                  className={`w-full ${isSavingProfile
                       ? "bg-blue-700 cursor-not-allowed"
                       : "bg-blue-700"
-                  }`}
+                    }`}
                 >
                   {isSavingProfile ? "Saving..." : "Submit"}
                 </Button>
