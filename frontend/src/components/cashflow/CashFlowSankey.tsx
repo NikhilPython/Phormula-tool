@@ -661,7 +661,7 @@ const CashFlowSankey: React.FC<Props> = ({
 
               deltaText:
                 hasPrevious && deltaNumber !== null
-                  ? `${deltaNumber < 0 ? "\u25BC" : "\u25B2"} ${Math.abs(deltaNumber)}%`
+                  ? `${deltaNumber < 0 ? "\u25BC" : "\u25B2"} ${Math.abs(deltaNumber).toFixed(2)}%`
                   : "-",
 
               deltaClassName:
