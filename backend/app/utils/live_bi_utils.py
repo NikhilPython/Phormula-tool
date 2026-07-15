@@ -1201,6 +1201,16 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     gross_sales_df = (
         df.groupby("sku", as_index=False)["gross_sales"].sum()
     )
+
+    promotional_rebates_df = (
+        df.assign(
+            promotional_rebates=safe_num(df["promotional_rebates"]),
+            promotional_rebates_tax=safe_num(df["promotional_rebates_tax"]),
+        )
+        .groupby("sku", as_index=False)[["promotional_rebates", "promotional_rebates_tax"]]
+        .sum()
+    )
+
     # ---- amazon fees per SKU ----
     for c in ["selling_fees", "fba_fees"]:
         if c not in df.columns:
@@ -1258,6 +1268,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         qty_df
         .merge(name_df, on="sku", how="left")
         .merge(product_sales_df, on="sku", how="left")
+        .merge(promotional_rebates_df, on="sku", how="left")
         .merge(gross_sales_df, on="sku", how="left")  # ✅ NEW
         .merge(amazon_fees_df, on="sku", how="left")  # ✅ NEW
         .merge(sales_by[["sku", "sales_metric"]], on="sku", how="left")
@@ -1268,6 +1279,8 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     # ---- compute final fields ----
     metrics["quantity"] = safe_num(metrics.get("quantity", 0.0))
     metrics["product_sales"] = safe_num(metrics.get("product_sales", 0.0))
+    metrics["promotional_rebates"] = safe_num(metrics.get("promotional_rebates", 0.0))
+    metrics["promotional_rebates_tax"] = safe_num(metrics.get("promotional_rebates_tax", 0.0))
     metrics["gross_sales"] = safe_num(metrics.get("gross_sales", 0.0))  # ✅ NEW
     metrics["selling_fees"] = safe_num(metrics.get("selling_fees", 0.0))
     metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
@@ -1280,6 +1293,11 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
 
     metrics["net_sales"] = metrics["sales_metric"]
     metrics["profit"] = metrics["profit_metric"]
+    metrics["promotional_rebates_percentage"] = np.where(
+        metrics["net_sales"] != 0,
+        (metrics["promotional_rebates"] / metrics["net_sales"]) * 100.0,
+        0.0,
+    )
 
     # asp & per-unit profitability (based on net_sales)
     qty_nonzero = metrics["quantity"].replace(0, np.nan)
@@ -1300,6 +1318,9 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         "product_name",
         "quantity",
         "product_sales",
+        "promotional_rebates",
+        "promotional_rebates_percentage",
+        "promotional_rebates_tax",
         "gross_sales",  # ✅ NEW
         "selling_fees",  # ✅ NEW
         "fba_fees",  # ✅ NEW

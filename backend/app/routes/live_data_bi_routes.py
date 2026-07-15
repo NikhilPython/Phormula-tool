@@ -6421,6 +6421,7 @@ def _build_aligned_totals(skuwise_items_global,extra_totals,total_previous_net_s
 
     net_sales = _safe_float(total.get("net_sales"))
     profit = _safe_float(total.get("profit"))
+    promotional_rebates = _safe_float(total.get("promotional_rebates"))
 
     advertising = _safe_float(extra_totals.get("advertising"))
     platform_fee = _safe_float(extra_totals.get("platform_fee"))
@@ -6436,6 +6437,11 @@ def _build_aligned_totals(skuwise_items_global,extra_totals,total_previous_net_s
         "total_previous_platform_fees": round(platform_fee, 2),
         "total_previous_profit_cm2": round(cm2_profit, 2),
         "total_previous_profit_percentage": round(cm2_percentage, 2),
+        "total_previous_promotional_rebates": round(promotional_rebates, 2),
+        "total_previous_promotional_rebates_percentage": round(
+            (promotional_rebates / net_sales) * 100 if net_sales else 0,
+            6
+        ),
         "total_previous_rembursement_fee": round(
             _safe_float(
                 total_previous_rembursement_fee_full_month
@@ -6718,6 +6724,8 @@ def get_previous_global_data_for_live_bi(
             "total_previous_platform_fees": 0,
             "total_previous_profit_cm2": 0,
             "total_previous_profit_percentage": 0,
+            "total_previous_promotional_rebates": 0,
+            "total_previous_promotional_rebates_percentage": 0,
             "total_previous_rembursement_fee": 0,
             "total_previous_net_sales_full_month": 0,
         }

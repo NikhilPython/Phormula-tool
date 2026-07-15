@@ -9892,7 +9892,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   const deltaText =
                     typeof diffPct === "number"
-                      ? `${diffPct >= 0 ? "â–²" : "â–¼"} ${Math.abs(diffPct).toFixed(2)}%`
+                      ? `${diffPct >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(diffPct).toFixed(2)}%`
                       : "-";
 
                   return [

@@ -478,13 +478,64 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
 
 function getGrandTotalRow(rows: any[] = []) {
     return (
-        rows.find((r) => r?.sku === "GRAND_TOTAL") ||
-        rows.find((r) => String(r?.product_name || "").toLowerCase() === "grand total") ||
+        rows.find((r) => ["GRAND_TOTAL", "TOTAL"].includes(String(r?.sku || "").toUpperCase())) ||
+        rows.find((r) => ["grand total", "total"].includes(String(r?.product_name || "").toLowerCase())) ||
         rows.find((r) => r?.isTotal) ||
         rows[rows.length - 1] ||
         {}
     );
 }
+
+const pickFirstNonZeroNumber = (...values: any[]) => {
+    let fallback = 0;
+    let hasFallback = false;
+
+    for (const value of values) {
+        if (value === undefined || value === null || value === "") continue;
+
+        const n = toNumber(value);
+
+        if (!hasFallback) {
+            fallback = n;
+            hasFallback = true;
+        }
+
+        if (n !== 0) return n;
+    }
+
+    return fallback;
+};
+
+const pickPromotionalRebates = (...sources: any[]) =>
+    pickFirstNonZeroNumber(
+        ...sources.map((source) =>
+            source?.promotional_rebates ??
+            source?.total_promotional_rebates ??
+            source?.total_previous_promotional_rebates ??
+            source?.promotions
+        )
+    );
+
+const calculatePromotionalRebatesPct = (
+    promotionalRebates: number,
+    netSales: number,
+    ...sources: any[]
+) => {
+    const explicitPct = pickFirstNonZeroNumber(
+        ...sources.map((source) =>
+            source?.promotional_rebates_percentage ??
+            source?.total_promotional_rebates_percentage ??
+            source?.total_previous_promotional_rebates_percentage ??
+            source?.promotions_percentage
+        )
+    );
+
+    return Math.abs(
+        netSales
+            ? (promotionalRebates / netSales) * 100
+            : explicitPct
+    );
+};
 
 function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
     const grand = getGrandTotalRow(rows);
@@ -6524,6 +6575,27 @@ export default function DashboardPage() {
 
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
+        const previousGlobalRows = Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
+            ? previousSkuwiseGlobalData.skuwise_items_global
+            : [];
+        const previousGlobalGrand = getGrandTotalRow(previousGlobalRows);
+        const currentPromotionsRaw = pickPromotionalRebates(
+            globalGrand,
+            (data as any)?.derived_totals_global,
+            (data as any)?.derived_totals
+        );
+        const previousPromotionsRaw = pickPromotionalRebates(
+            prevDerived,
+            prevAligned,
+            previousGlobalGrand,
+            data?.previous_period?.totals
+        );
+        const previousPromotionsNetSales = pickFirstNonZeroNumber(
+            prevDerived.net_sales,
+            prevAligned.total_previous_net_sales,
+            previousGlobalGrand.net_sales,
+            data?.previous_period?.totals?.net_sales
+        );
 
         return {
             units: getNetUnits(globalGrand),
@@ -6558,23 +6630,22 @@ export default function DashboardPage() {
                 prevDerived.cm2_profit_percentage
             ),
 
-            promotions: Math.abs(toNumber(
-                globalGrand.promotional_rebates ??
-                (data as any)?.derived_totals_global?.promotional_rebates
-            )),
-            prevPromotions: Math.abs(toNumber(prevDerived.promotional_rebates)),
-            promotionsPct: Math.abs(
-                toNumber(globalGrand.net_sales)
-                    ? (toNumber(globalGrand.promotional_rebates) / toNumber(globalGrand.net_sales)) * 100
-                    : toNumber(
-                        (data as any)?.derived_totals_global?.promotional_rebates_percentage ??
-                        globalGrand.promotional_rebates_percentage
-                    )
+            promotions: Math.abs(currentPromotionsRaw),
+            prevPromotions: Math.abs(previousPromotionsRaw),
+            promotionsPct: calculatePromotionalRebatesPct(
+                currentPromotionsRaw,
+                toNumber(globalGrand.net_sales),
+                globalGrand,
+                (data as any)?.derived_totals_global,
+                (data as any)?.derived_totals
             ),
-            prevPromotionsPct: Math.abs(
-                toNumber(prevDerived.net_sales)
-                    ? (toNumber(prevDerived.promotional_rebates) / toNumber(prevDerived.net_sales)) * 100
-                    : toNumber(prevDerived.promotional_rebates_percentage)
+            prevPromotionsPct: calculatePromotionalRebatesPct(
+                previousPromotionsRaw,
+                previousPromotionsNetSales,
+                prevDerived,
+                prevAligned,
+                previousGlobalGrand,
+                data?.previous_period?.totals
             ),
         };
     }, [
@@ -6669,13 +6740,26 @@ export default function DashboardPage() {
     const stickyPreviousTotals = useMemo(() => {
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
+        const previousGlobalRows = Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
+            ? previousSkuwiseGlobalData.skuwise_items_global
+            : [];
+        const previousGlobalGrand = getGrandTotalRow(previousGlobalRows);
 
-        const prevNetSales = toNumber(prevDerived.net_sales);
+        const prevNetSales = pickFirstNonZeroNumber(
+            prevDerived.net_sales,
+            prevAligned.total_previous_net_sales,
+            previousGlobalGrand.net_sales
+        );
         const prevAds = toNumber(
             prevAligned.total_previous_advertising ??
             prevDerived.advertising_fees
         );
-        const prevPromotions = Math.abs(toNumber(prevDerived.promotional_rebates));
+        const prevPromotionsRaw = pickPromotionalRebates(
+            prevDerived,
+            prevAligned,
+            previousGlobalGrand
+        );
+        const prevPromotions = Math.abs(prevPromotionsRaw);
 
         return {
             units: toNumber(prevDerived.quantity),
@@ -6699,10 +6783,12 @@ export default function DashboardPage() {
             ),
 
             promotions: prevPromotions,
-            promotionsPct: Math.abs(
-                prevNetSales
-                    ? (toNumber(prevDerived.promotional_rebates) / prevNetSales) * 100
-                    : toNumber(prevDerived.promotional_rebates_percentage)
+            promotionsPct: calculatePromotionalRebatesPct(
+                prevPromotionsRaw,
+                prevNetSales,
+                prevDerived,
+                prevAligned,
+                previousGlobalGrand
             ),
         };
     }, [previousSkuwiseGlobalData]);
@@ -10386,6 +10472,34 @@ export default function DashboardPage() {
                 ? previousSkuwiseGlobalData?.aligned_totals_uk || {}
                 : previousSkuwiseGlobalData?.aligned_totals_us || {};
 
+        const previousRows =
+            country === "uk"
+                ? Array.isArray(previousSkuwiseGlobalData?.skuwise_items_uk)
+                    ? previousSkuwiseGlobalData.skuwise_items_uk
+                    : []
+                : Array.isArray(previousSkuwiseGlobalData?.skuwise_items_us)
+                    ? previousSkuwiseGlobalData.skuwise_items_us
+                    : [];
+        const previousGrand = getGrandTotalRow(previousRows);
+        const currentDerived =
+            country === "uk"
+                ? (data as any)?.derived_totals_uk || {}
+                : (data as any)?.derived_totals_us || {};
+        const currentPromotionsRaw = pickPromotionalRebates(
+            currentGrand,
+            currentDerived
+        );
+        const previousPromotionsRaw = pickPromotionalRebates(
+            prevDerived,
+            prevAligned,
+            previousGrand
+        );
+        const previousPromotionsNetSales = pickFirstNonZeroNumber(
+            prevDerived.net_sales,
+            prevAligned.total_previous_net_sales,
+            previousGrand.net_sales
+        );
+
         return {
             units: getNetUnits(currentGrand),
             prevUnits: toNumber(
@@ -10443,17 +10557,20 @@ export default function DashboardPage() {
                 prevDerived.cm2_profit_percentage
             ),
 
-            promotions: Math.abs(toNumber(currentGrand.promotional_rebates)),
-            prevPromotions: Math.abs(toNumber(prevDerived.promotional_rebates)),
-            promotionsPct: Math.abs(
-                toNumber(currentGrand.net_sales)
-                    ? (toNumber(currentGrand.promotional_rebates) / toNumber(currentGrand.net_sales)) * 100
-                    : toNumber(currentGrand.promotional_rebates_percentage)
+            promotions: Math.abs(currentPromotionsRaw),
+            prevPromotions: Math.abs(previousPromotionsRaw),
+            promotionsPct: calculatePromotionalRebatesPct(
+                currentPromotionsRaw,
+                toNumber(currentGrand.net_sales),
+                currentGrand,
+                currentDerived
             ),
-            prevPromotionsPct: Math.abs(
-                toNumber(prevDerived.net_sales)
-                    ? (toNumber(prevDerived.promotional_rebates) / toNumber(prevDerived.net_sales)) * 100
-                    : toNumber(prevDerived.promotional_rebates_percentage)
+            prevPromotionsPct: calculatePromotionalRebatesPct(
+                previousPromotionsRaw,
+                previousPromotionsNetSales,
+                prevDerived,
+                prevAligned,
+                previousGrand
             ),
         };
     }, [data, previousSkuwiseGlobalData]);
