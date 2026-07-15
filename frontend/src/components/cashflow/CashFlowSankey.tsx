@@ -558,7 +558,12 @@ const CashFlowSankey: React.FC<Props> = ({
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 2xl:gap-3 mb-6">
         {cards.map((c) => {
-          const p = getChangePercent(c.value, c.prev);
+          const p = c.isDiscount
+  ? getChangePercent(
+      Math.abs(c.value || 0),
+      Math.abs(c.prev || 0)
+    )
+  : getChangePercent(c.value, c.prev);
 
           const shouldShowPositive =
             c.label === "Marketplace Fees" ||
@@ -642,12 +647,21 @@ const CashFlowSankey: React.FC<Props> = ({
             {
               label: `${formatPrevLabel(previousLabel || "Previous")}`,
               valueText: previousValueText,
-              deltaText: hasPrevious && p ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%` : "-",
+
+              deltaText:
+                hasPrevious && p
+                  ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%`
+                  : "-",
+
               deltaClassName:
                 hasPrevious && p
-                  ? Number(p) < 0
-                    ? "text-red-600"
-                    : "text-green-600"
+                  ? c.isDiscount
+                    ? Number(p) < 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                    : Number(p) < 0
+                      ? "text-red-600"
+                      : "text-green-600"
                   : "text-gray-400",
             },
           ];
