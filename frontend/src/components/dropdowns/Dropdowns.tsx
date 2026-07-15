@@ -9572,6 +9572,26 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   return `${formatWholeMoney(displayAmount)} (${formatPercent(Math.abs(pct))})`;
                 };
 
+                const formatCurrentAmountWithPct = (
+                  amount: number,
+                  pct: number,
+                  absoluteAmount = false
+                ) => {
+                  const displayAmount = absoluteAmount ? Math.abs(amount) : amount;
+
+                  return (
+                    <div className="flex items-baseline gap-1 leading-tight">
+                      <span className="text-sm 2xl:text-lg font-semibold">
+                        {formatWholeMoney(displayAmount)}
+                      </span>
+
+                      <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                        ({formatPercent(Math.abs(pct))})
+                      </span>
+                    </div>
+                  );
+                };
+
                 const isSummaryZero =
                   summary.unit_sold === 0 &&
                   summary.total_sales === 0 &&
@@ -9958,7 +9978,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "cm2",
                     title: "CM2 Profit",
-                    value: formatAmountWithPct(
+                    value: formatCurrentAmountWithPct(
                       roundMoney(summary.cm2_profit),
                       cm2Margin
                     ),
@@ -9972,12 +9992,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "promotions",
                     title: "Promotions",
-                    value: formatAmountWithPct(
+                    value: formatCurrentAmountWithPct(
                       roundMoney(promotionsAmount),
                       promotionsPercent,
                       true
                     ),
-                    className: "bg-white border border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]",
+                    className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
                     comparisons: buildAmountPctComparisonRows(
                       roundMoney(promotionsAmount),
                       (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),

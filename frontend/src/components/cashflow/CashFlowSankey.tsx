@@ -266,12 +266,13 @@ const CashFlowSankey: React.FC<Props> = ({
       isCurrency: true,
     },
     {
-      label: "Promotional Discount",
+      label: "Promotions",
       value: data.promotional_rebates,
       prev: previous_summary?.promotional_rebates,
       icon: <FaPercent size={16} />,
       bg: "bg-white",
-      border: "border-[#B8C78C] border-t-4 border-t-[#B8C78C]", // 🔴 red border
+      border: "border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+
       isCurrency: true,
       isDiscount: true,
       isNegative: true, // 👈 ADD THIS
@@ -301,7 +302,7 @@ const CashFlowSankey: React.FC<Props> = ({
       prev: previous_summary?.cashflow,
       icon: <FaWallet size={16} />,
       bg: "bg-white",
-      border: "border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
+      border: "border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
       isCurrency: true,
     },
     {
@@ -321,10 +322,10 @@ const CashFlowSankey: React.FC<Props> = ({
     units: "#FDD36F",
     grossSales: "#75BBDA",         // was orange, now blue
     netSales: "#ED9F50",           // was blue, now orange
-    promotionalDiscount: "#B8C78C",
+    promotionalDiscount: "#7B9A6D",
     marketplaceFees: "#B75A5A",
     others: "#3A8EA4",
-    cashGenerated: "#7B9A6D",
+    cashGenerated: "#B8C78C",
     netReimbursement: "#C49466",
   };
 
@@ -383,7 +384,7 @@ const CashFlowSankey: React.FC<Props> = ({
         signColor: "#2E7D32",
       },
       {
-        name: "Discount",
+        name: "Promotions",
         value: data.promotional_rebates || 0,
         sign: "-",
         barColor: sankeyColorMap.promotionalDiscount,

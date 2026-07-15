@@ -121,6 +121,26 @@ export default function DashboardLiveSalesTab({
         return `${formatDisplayAmount(amountToShow, amountLabel)} (${fmtPct2(pctToShow)})`;
     };
 
+    const formatCurrentAmountWithPct = (
+        amount: number | null | undefined,
+        pct: number | null | undefined,
+        amountLabel: string,
+        absoluteAmount = false
+    ) => {
+        const numericAmount = Number(amount ?? 0) || 0;
+        const amountToShow = absoluteAmount ? Math.abs(numericAmount) : numericAmount;
+        const pctToShow = Math.abs(Number(pct ?? 0) || 0);
+
+        return (
+            <span className="inline-flex items-baseline gap-1 leading-tight">
+                <span>{formatDisplayAmount(amountToShow, amountLabel)}</span>
+                <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                    ({fmtPct2(pctToShow)})
+                </span>
+            </span>
+        );
+    };
+
     return (
                     <div
                         id="live-sales"
@@ -314,7 +334,7 @@ export default function DashboardLiveSalesTab({
                                                                 : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                        formatter={(val) => formatAmountWithPct(
+                                                        formatter={(val) => formatCurrentAmountWithPct(
                                                             val,
                                                             shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct,
                                                             "CM2 Profit"
@@ -338,7 +358,7 @@ export default function DashboardLiveSalesTab({
                                                                 : safeDeltaPct(globalMtdCardData.promotions, globalMtdCardData.prevPromotions)
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                        formatter={(val) => formatAmountWithPct(
+                                                        formatter={(val) => formatCurrentAmountWithPct(
                                                             val,
                                                             shouldShowDummyUi ? dummyStatData.promotionsPct.current : globalMtdCardData.promotionsPct,
                                                             "Promotions",
@@ -351,7 +371,7 @@ export default function DashboardLiveSalesTab({
                                                             true
                                                         )}
                                                         bottomLabel={prevLabel}
-                                                        className="border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]"
+                                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                                     />
                                                 </div>
                                             ) : (
@@ -505,7 +525,7 @@ export default function DashboardLiveSalesTab({
                                                     previous={mtdCm2ProfitPreviousDisplay}
                                                     deltaPct={mtdCm2ProfitDelta}
                                                     loading={!shouldShowDummyUi && loading}
-                                                    formatter={(val) => formatAmountWithPct(val, mtdCm2ProfitPctCurrent, "CM2 Profit")}
+                                                    formatter={(val) => formatCurrentAmountWithPct(val, mtdCm2ProfitPctCurrent, "CM2 Profit")}
                                                     previousFormatter={(val) => formatAmountWithPct(val, mtdCm2ProfitPctPrevious, "CM2 Profit")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
@@ -517,10 +537,10 @@ export default function DashboardLiveSalesTab({
                                                     previous={mtdPromotionsPreviousDisplay}
                                                     deltaPct={mtdPromotionsDelta}
                                                     loading={!shouldShowDummyUi && loading}
-                                                    formatter={(val) => formatAmountWithPct(val, mtdPromotionsPctCurrent, "Promotions", true)}
+                                                    formatter={(val) => formatCurrentAmountWithPct(val, mtdPromotionsPctCurrent, "Promotions", true)}
                                                     previousFormatter={(val) => formatAmountWithPct(val, mtdPromotionsPctPrevious, "Promotions", true)}
                                                     bottomLabel={prevLabel}
-                                                    className="border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]"
+                                                    className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                                 />
                                             </div>
                                         )}

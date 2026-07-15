@@ -3124,6 +3124,30 @@ export default function DashboardPage() {
         [formatDisplayAmount]
     );
 
+    const formatCurrentAmountWithPct = useCallback(
+        (
+            amount: number | null | undefined,
+            pct: number | null | undefined,
+            amountLabel: string,
+            absoluteAmount = false
+        ) => {
+            const amountToShow = absoluteAmount
+                ? Math.abs(toNumberSafe(amount ?? 0))
+                : toNumberSafe(amount ?? 0);
+            const pctToShow = Math.abs(toNumberSafe(pct ?? 0));
+
+            return (
+                <span className="inline-flex items-baseline gap-1 leading-tight">
+                    <span>{formatDisplayAmount(amountToShow, amountLabel)}</span>
+                    <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                        ({fmtPct2(pctToShow)})
+                    </span>
+                </span>
+            );
+        },
+        [formatDisplayAmount]
+    );
+
     const formatDisplayAmountNoDecimals = useCallback(
         (value: number | null | undefined) => {
             const n = Math.round(toNumberSafe(value ?? 0));
@@ -8367,7 +8391,7 @@ export default function DashboardPage() {
             ),
 
             formatter: (val: number) =>
-                formatAmountWithPct(
+                formatCurrentAmountWithPct(
                     val,
                     shouldShowDummyUi
                         ? dummyStatData.cm2ProfitPct.current
@@ -10661,7 +10685,7 @@ export default function DashboardPage() {
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={safeDeltaPct(c.cm2Profit, c.prevCm2Profit)}
-                        formatter={(val) => formatAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
+                        formatter={(val) => formatCurrentAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
                         bottomLabel={prevLabel}
                         className="border-[#A8BE7A] border-t-4"
@@ -10673,10 +10697,10 @@ export default function DashboardPage() {
                         current={c.promotions}
                         previous={c.prevPromotions}
                         deltaPct={safeDeltaPct(c.promotions, c.prevPromotions)}
-                        formatter={(val) => formatAmountWithPct(val, c.promotionsPct, "Promotions", true)}
+                        formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}
-                        className="border-[#8FA7D6] border-t-4"
+                        className="border-[#7B9A6D] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
                     />
                 </div>
@@ -10770,7 +10794,7 @@ export default function DashboardPage() {
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={null}
-                        formatter={(val) => formatAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
+                        formatter={(val) => formatCurrentAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
                         bottomLabel={prevLabel}
                         className="border-[#B8C78C] border-t-4"
@@ -10782,10 +10806,10 @@ export default function DashboardPage() {
                         current={c.promotions}
                         previous={c.prevPromotions}
                         deltaPct={null}
-                        formatter={(val) => formatAmountWithPct(val, c.promotionsPct, "Promotions", true)}
+                        formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}
-                        className="border-[#8FA7D6] border-t-4"
+                        className="border-[#7B9A6D] border-t-4"
                         loading={!shouldShowDummyUi && loading}
                     />
                 </div>
