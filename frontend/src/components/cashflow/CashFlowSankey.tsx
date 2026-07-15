@@ -577,7 +577,10 @@ const CashFlowSankey: React.FC<Props> = ({
                 {formatCurrencyRoundedWithSign(Math.abs(c.value || 0))}
                 <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                   (
-                  {(((Math.abs(c.value || 0)) / (data.gross_sales || 1)) * 100).toFixed(2)}
+                  {(
+                    (Math.abs(c.value || 0) / Math.abs(data.net_sales || 1)) *
+                    100
+                  ).toFixed(2)}
                   %)
                 </span>
               </>
@@ -606,10 +609,10 @@ const CashFlowSankey: React.FC<Props> = ({
             : c.label === "Units"
               ? formatInteger(c.prev)
               : c.isDiscount
-                ? previous_summary?.gross_sales
+                ? previous_summary?.net_sales
                   ? `${formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))} (${(
                     (Math.abs(c.prev || 0) /
-                      Math.abs(previous_summary.gross_sales)) *
+                      Math.abs(previous_summary.net_sales)) *
                     100
                   ).toFixed(2)}%)`
                   : formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))
