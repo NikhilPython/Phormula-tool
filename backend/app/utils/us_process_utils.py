@@ -1253,6 +1253,15 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["year"] = year
         sum_row["product_name"] = "TOTAL"
 
+        # Gross Sales TOTAL must exactly equal the sum of SKU gross_sales rows.
+        sum_row["gross_sales"] = round(
+            pd.to_numeric(
+                sku_grouped["gross_sales"],
+                errors="coerce"
+            ).fillna(0.0).sum(),
+            2
+        )
+
         # Recalculate percentage from TOTAL values.
         # Do not use the sum of individual SKU percentages.
         sum_row["promotional_rebates_percentage"] = (

@@ -605,7 +605,13 @@ const CashFlowSankey: React.FC<Props> = ({
             : c.label === "Units"
               ? formatInteger(c.prev)
               : c.isDiscount
-                ? formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))
+                ? previous_summary?.gross_sales
+                  ? `${formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))} (${(
+                    (Math.abs(c.prev || 0) /
+                      Math.abs(previous_summary.gross_sales)) *
+                    100
+                  ).toFixed(2)}%)`
+                  : formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))
                 : `${c.isCurrency
                   ? formatCurrencyByLabel(
                     c.label,
