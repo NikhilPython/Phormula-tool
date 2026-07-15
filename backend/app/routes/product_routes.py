@@ -265,7 +265,12 @@ def aggregate_monthly_sku_rows(rows):
     derived_fields = {
         "asp",
         "average_selling_price",
-        "avg_selling_price"
+        "avg_selling_price",
+        "cm2_margins",
+        "cm2_profit_percentage",
+        "cm2_profit_per",
+        "cm2_profit_per_unit",
+        "promotional_rebates_percentage",
     }
 
     for row in rows:
@@ -307,15 +312,33 @@ def aggregate_monthly_sku_rows(rows):
                 if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
                     grouped[key][col] = (grouped[key].get(col) or 0) + (value or 0)
 
-    # Recalculate ASP from final aggregated totals.
-    # Formula: ASP = net_sales / total_quantity
+    def safe_number(value):
+        try:
+            if value is None or value == "":
+                return 0.0
+            return float(value)
+        except Exception:
+            return 0.0
+
+    # Recalculate derived values from final aggregated totals.
     for row in grouped.values():
-        net_sales = row.get("net_sales") or 0
-        total_quantity = row.get("total_quantity") or 0
+        net_sales = safe_number(row.get("net_sales"))
+        total_quantity = safe_number(row.get("total_quantity"))
+        cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
+        promotional_rebates = safe_number(row.get("promotional_rebates"))
 
         asp = net_sales / total_quantity if total_quantity else 0
+        cm2_margin = (cm2_profit / net_sales) * 100 if net_sales else 0
+        promotional_rebates_percentage = (
+            (promotional_rebates / net_sales) * 100 if net_sales else 0
+        )
 
         row["asp"] = asp
+        row["cm2_margins"] = cm2_margin
+        row["cm2_profit_percentage"] = cm2_margin
+        row["cm2_profit_per"] = cm2_margin
+        row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
+        row["promotional_rebates_percentage"] = promotional_rebates_percentage
 
         if "average_selling_price" in row:
             row["average_selling_price"] = asp

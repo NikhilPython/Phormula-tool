@@ -67,6 +67,8 @@ type Summary = {
   cm2_margins?: number;
   cm2_profit_percentage?: number;
   cm2_profit_per?: number;
+  promotional_rebates?: number;
+  promotional_rebates_percentage?: number;
   total_cous?: number;
   otherwplatform?: number;
   advertising_total?: number;
@@ -92,6 +94,8 @@ type UploadRow = {
   cm2_margins?: number;
   cm2_profit_percentage?: number;
   cm2_profit_per?: number;
+  promotional_rebates?: number;
+  promotional_rebates_percentage?: number;
   total_profit: number;
   tacos?: number;
 };
@@ -3555,6 +3559,8 @@ const DEMO_SUMMARY: Summary = {
   cm2_profit_total: 0,
   cm2_margins: 0,
   cm2_profit_percentage: 0,
+  promotional_rebates: 0,
+  promotional_rebates_percentage: 0,
   total_cous: 0,
   otherwplatform: 0,
   advertising_total: 0,
@@ -3569,6 +3575,10 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     total_product_sales: 0,
     total_expense: 0,
     cm2_profit: 0,
+    cm2_margins: 0,
+    cm2_profit_percentage: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
     total_cous: 0,
     otherwplatform: 0,
     advertising_total: 0,
@@ -3582,6 +3592,10 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     total_product_sales: 0,
     total_expense: 0,
     cm2_profit: 0,
+    cm2_margins: 0,
+    cm2_profit_percentage: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
     total_cous: 0,
     otherwplatform: 0,
     advertising_total: 0,
@@ -3595,6 +3609,10 @@ const DEMO_SUMMARY_COMPARISONS: SummaryComparisons = {
     total_product_sales: 0,
     total_expense: 0,
     cm2_profit: 0,
+    cm2_margins: 0,
+    cm2_profit_percentage: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
     total_cous: 0,
     otherwplatform: 0,
     advertising_total: 0,
@@ -6596,6 +6614,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     cm2_profit_total: 0,
     cm2_margins: 0,
     cm2_profit_percentage: 0,
+    promotional_rebates: 0,
+    promotional_rebates_percentage: 0,
     total_cous: 0,
     otherwplatform: 0,
     advertising_total: 0,
@@ -6730,6 +6750,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       row?.cm2_profit_percentage_value
     );
 
+    const promotionalRebates = toNum(row?.promotional_rebates);
+    const promotionalRebatesPercentage =
+      netSales !== 0
+        ? (promotionalRebates / netSales) * 100
+        : toNum(row?.promotional_rebates_percentage);
+
     return {
       unit_sold: toNum(row?.total_quantity),
       total_sales: netSales,
@@ -6748,6 +6774,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       cm2_margins: cm2Margins,
       cm2_profit_percentage: cm2Margins,
       cm2_profit_per: cm2ProfitPer,
+      promotional_rebates: promotionalRebates,
+      promotional_rebates_percentage: promotionalRebatesPercentage,
 
       total_cous: toNum(row?.cost_of_unit_sold),
 
@@ -6799,6 +6827,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       row?.cm2_profit_percentage_value
     );
 
+    const promotionalRebates = toNum(row?.promotional_rebates);
+    const promotionalRebatesPercentage =
+      netSales !== 0
+        ? (promotionalRebates / netSales) * 100
+        : toNum(row?.promotional_rebates_percentage);
+
     return {
       country,
       month:
@@ -6831,6 +6865,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       cm2_margins: cm2Margins,
       cm2_profit_percentage: cm2Margins,
       cm2_profit_per: cm2ProfitPer,
+      promotional_rebates: promotionalRebates,
+      promotional_rebates_percentage: promotionalRebatesPercentage,
 
       tacos: calculateTacos(netSales, advertisingTotalFinal),
     };
@@ -8896,6 +8932,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum((totalRow as any)?.cm2_profit_total) ||
       toNum((totalRow as any)?.cm2_profit);
 
+    const promotionalRebates =
+      toNum((totalRow as any)?.promotional_rebates) ||
+      sumSkuRows(rows, "promotional_rebates");
+
+    const promotionalRebatesPercentage =
+      netSales !== 0
+        ? (promotionalRebates / netSales) * 100
+        : toNum((totalRow as any)?.promotional_rebates_percentage);
+
+    const cm2Margin =
+      toNum(
+        (totalRow as any)?.cm2_margins ??
+        (totalRow as any)?.cm2_profit_percentage
+      ) || (netSales !== 0 ? (cm2 / netSales) * 100 : 0);
+
     return {
       unit_sold: units,
       total_sales: netSales,
@@ -8905,6 +8956,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       cm2_profit: cm2,
       cm2_profit_total: cm2,
+      cm2_margins: cm2Margin,
+      cm2_profit_percentage: cm2Margin,
+      promotional_rebates: promotionalRebates,
+      promotional_rebates_percentage: promotionalRebatesPercentage,
 
       total_cous:
         toNum((totalRow as any)?.cost_of_unit_sold) ||
@@ -8955,6 +9010,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (totalRow as any)?.cm2_profit
     );
 
+    const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
+    const promotionalRebatesPercentage =
+      netSales !== 0
+        ? (promotionalRebates / netSales) * 100
+        : toNum((totalRow as any)?.promotional_rebates_percentage);
+
+    const cm2Margins = toNum(
+      (totalRow as any)?.cm2_margins ??
+      (totalRow as any)?.cm2_profit_percentage ??
+      (netSales !== 0 ? (cm2ProfitTotal / netSales) * 100 : 0)
+    );
+
+    const cm2ProfitPer = toNum(
+      (totalRow as any)?.cm2_profit_per ??
+      (netSales !== 0 ? (cm2ProfitTotal / netSales) * 100 : 0)
+    );
+
     return [
       {
         country: period.countryVal,
@@ -8985,6 +9057,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         // CM2 Profit
         cm2_profit: cm2ProfitTotal,
         cm2_profit_total: cm2ProfitTotal,
+        cm2_margins: cm2Margins,
+        cm2_profit_percentage: cm2Margins,
+        cm2_profit_per: cm2ProfitPer,
+        promotional_rebates: promotionalRebates,
+        promotional_rebates_percentage: promotionalRebatesPercentage,
 
         tacos: calculateTacos(netSales, advertisingTotalFinal),
       },
@@ -9042,13 +9119,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (totalRow as any)?.cm2_profit_percentage_value
     );
 
+    const netSales = toNum((totalRow as any)?.net_sales);
+    const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
+    const promotionalRebatesPercentage =
+      netSales !== 0
+        ? (promotionalRebates / netSales) * 100
+        : toNum((totalRow as any)?.promotional_rebates_percentage);
+
     return [
       {
         country: countryVal,
         month: monthVal.toLowerCase(),
         year: yearVal,
 
-        total_sales: toNum((totalRow as any)?.net_sales),
+        total_sales: netSales,
         total_amazon_fee: toNum((totalRow as any)?.amazon_fee),
         total_cous: toNum((totalRow as any)?.cost_of_unit_sold),
 
@@ -9071,6 +9155,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         cm2_margins: cm2Margins,
         cm2_profit_percentage: cm2Margins,
         cm2_profit_per: cm2ProfitPer,
+        promotional_rebates: promotionalRebates,
+        promotional_rebates_percentage: promotionalRebatesPercentage,
       },
     ];
   };
@@ -9519,14 +9605,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 const formatAspMoney = (val: number) =>
                   formatMoney(toNum(val), { decimals: 2 });
 
+                const formatAmountWithPct = (
+                  amount: number,
+                  pct: number,
+                  absoluteAmount = false
+                ) => {
+                  const displayAmount = absoluteAmount ? Math.abs(amount) : amount;
+
+                  return `${formatWholeMoney(displayAmount)} (${formatPercent(Math.abs(pct))})`;
+                };
+
                 const isSummaryZero =
                   summary.unit_sold === 0 &&
                   summary.total_sales === 0 &&
                   summary.total_expense === 0 &&
                   summary.cm2_profit === 0;
-
-                const cm2Percent =
-                  netSales > 0 ? (summary.cm2_profit / netSales) * 100 : 0;
 
                 // ---------- generic comparisons helper ----------
                 const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
@@ -9709,116 +9802,85 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 };
 
                 // ---------- CM2% comparisons ----------
-                const getCm2Percent = (s?: Summary) =>
-                  Number(
-                    s?.cm2_margins ??
-                    s?.cm2_profit_percentage ??
-                    0
-                  );
+                const getCm2Percent = (s?: Summary) => {
+                  const explicitValue = [
+                    s?.cm2_margins,
+                    s?.cm2_profit_percentage,
+                    s?.cm2_profit_per,
+                  ]
+                    .map((value) => toNum(value))
+                    .find((value) => value !== 0);
+
+                  if (typeof explicitValue === "number") {
+                    return explicitValue;
+                  }
+
+                  const sales = toNum(s?.total_sales);
+                  return sales !== 0 ? (toNum(s?.cm2_profit) / sales) * 100 : 0;
+                };
 
                 const cm2Margin = getCm2Percent(summary);
+                const promotionsAmount = Math.abs(toNum(summary.promotional_rebates));
+                const getPromotionsPercent = (s?: Summary) => {
+                  const rebates = toNum(s?.promotional_rebates);
+                  const sales = toNum(s?.total_sales);
+                  const hasRebates =
+                    s?.promotional_rebates !== undefined &&
+                    s?.promotional_rebates !== null;
 
-                const renderCm2PercentComparisons = () => {
-                  const yNum = Number(selectedYear);
-
-                  const label =
-                    range === "monthly"
-                      ? selectedMonth && yNum
-                        ? getPrevMonthLabel(selectedMonth, yNum)
-                        : "Prev month"
-                      : range === "quarterly"
-                        ? selectedQuarter && yNum
-                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                          : "Prev quarter"
-                        : yNum
-                          ? getPrevYearLabel(yNum)
-                          : "Prev year";
-
-                  const prevVal =
-                    range === "monthly"
-                      ? comparisons?.lastMonth
-                        ? getCm2Percent(comparisons.lastMonth)
-                        : undefined
-                      : range === "quarterly"
-                        ? comparisons?.lastQuarter
-                          ? getCm2Percent(comparisons.lastQuarter)
-                          : undefined
-                        : comparisons?.lastYear
-                          ? getCm2Percent(comparisons.lastYear)
-                          : undefined;
-
-                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
-                  const diffPct =
-                    hasPrev && prevVal !== 0 ? ((cm2Percent - prevVal) / prevVal) * 100 : null;
-
-                  const diffClass =
-                    typeof diffPct === "number"
-                      ? diffPct >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
-                      : "text-gray-400";
-
-                  return (
-                    <div className="mt-3 space-y-1.5">
-                      <div className="flex items-end text-charcoal-500 justify-between gap-3 text-[10px] 2xl:text-xs leading-tight tabular-nums">
-                        <div className="min-w-0">
-                          <div className="whitespace-nowrap">
-                            {label}:
-                          </div>
-                          <div className="whitespace-nowrap">
-                            {hasPrev ? formatPercent(prevVal!) : "-"}
-                          </div>
-                        </div>
-
-                        <span className={`font-bold whitespace-nowrap ${diffClass}`}>
-                          {typeof diffPct === "number" ? (
-                            <>
-                              {diffPct >= 0 ? "▲" : "▼"} {Math.abs(diffPct).toFixed(1)}%
-                            </>
-                          ) : (
-                            "-"
-                          )}
-                        </span>
-                      </div>
-                    </div>
+                  return Math.abs(
+                    hasRebates && sales !== 0
+                      ? (rebates / sales) * 100
+                      : toNum(s?.promotional_rebates_percentage)
                   );
                 };
 
-                const buildCm2PercentComparisonRows = () => {
+                const promotionsPercent = getPromotionsPercent(summary);
+
+                const getActivePreviousComparison = () => {
                   const yNum = Number(selectedYear);
 
-                  const label =
-                    range === "monthly"
-                      ? selectedMonth && yNum
-                        ? getPrevMonthLabel(selectedMonth, yNum)
-                        : "Prev month"
-                      : range === "quarterly"
-                        ? selectedQuarter && yNum
+                  if (range === "monthly") {
+                    return {
+                      label:
+                        selectedMonth && yNum
+                          ? getPrevMonthLabel(selectedMonth, yNum)
+                          : "Prev month",
+                      summary: comparisons?.lastMonth,
+                    };
+                  }
+
+                  if (range === "quarterly") {
+                    return {
+                      label:
+                        selectedQuarter && yNum
                           ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                          : "Prev quarter"
-                        : yNum
-                          ? getPrevYearLabel(yNum)
-                          : "Prev year";
+                          : "Prev quarter",
+                      summary: comparisons?.lastQuarter,
+                    };
+                  }
 
-                  const prevVal =
-                    range === "monthly"
-                      ? comparisons?.lastMonth
-                        ? getCm2Percent(comparisons.lastMonth)
-                        : undefined
-                      : range === "quarterly"
-                        ? comparisons?.lastQuarter
-                          ? getCm2Percent(comparisons.lastQuarter)
-                          : undefined
-                        : comparisons?.lastYear
-                          ? getCm2Percent(comparisons.lastYear)
-                          : undefined;
+                  return {
+                    label: yNum ? getPrevYearLabel(yNum) : "Prev year",
+                    summary: comparisons?.lastYear,
+                  };
+                };
 
-                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-
+                const buildAmountPctComparisonRows = (
+                  currentAmount: number,
+                  getPreviousAmount: (s?: Summary) => number,
+                  getPreviousPct: (s?: Summary) => number,
+                  absoluteAmount = false
+                ) => {
+                  const { label, summary: previousSummary } = getActivePreviousComparison();
+                  const previousAmount = getPreviousAmount(previousSummary);
+                  const previousPct = getPreviousPct(previousSummary);
+                  const hasPrev =
+                    typeof previousAmount === "number" &&
+                    Number.isFinite(previousAmount);
                   const diffPct =
-                    hasPrev && prevVal !== 0
-                      ? ((cm2Margin - prevVal) / Math.abs(prevVal)) * 100
+                    hasPrev && previousAmount !== 0
+                      ? ((currentAmount - previousAmount) / Math.abs(previousAmount)) * 100
                       : null;
 
                   const deltaClassName =
@@ -9830,13 +9892,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   const deltaText =
                     typeof diffPct === "number"
-                      ? `${diffPct >= 0 ? "▲" : "▼"} ${Math.abs(diffPct).toFixed(1)}%`
+                      ? `${diffPct >= 0 ? "â–²" : "â–¼"} ${Math.abs(diffPct).toFixed(2)}%`
                       : "-";
 
                   return [
                     {
                       label,
-                      valueText: hasPrev ? formatPercent(prevVal!) : "-",
+                      valueText: hasPrev
+                        ? formatAmountWithPct(previousAmount, previousPct, absoluteAmount)
+                        : "-",
                       deltaText,
                       deltaClassName,
                     },
@@ -9937,21 +10001,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   {
                     key: "cm2",
                     title: "CM2 Profit",
-                    value: renderMoneyWithPerUnit(
+                    value: formatAmountWithPct(
                       roundMoney(summary.cm2_profit),
-                      summary.unit_sold,
-                      true,
-                      0
+                      cm2Margin
                     ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                    comparisons: buildComparisonsRows("cm2_profit", formatWholeMoney),
+                    comparisons: buildAmountPctComparisonRows(
+                      roundMoney(summary.cm2_profit),
+                      (s) => roundMoney(toNum(s?.cm2_profit)),
+                      getCm2Percent
+                    ),
                   },
                   {
-                    key: "cm2Pct",
-                    title: "CM2 Profit %",
-                    value: formatPercent(cm2Margin),
-                    className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-                    comparisons: buildCm2PercentComparisonRows(),
+                    key: "promotions",
+                    title: "Promotions",
+                    value: formatAmountWithPct(
+                      roundMoney(promotionsAmount),
+                      promotionsPercent,
+                      true
+                    ),
+                    className: "bg-white border border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]",
+                    comparisons: buildAmountPctComparisonRows(
+                      roundMoney(promotionsAmount),
+                      (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),
+                      getPromotionsPercent,
+                      true
+                    ),
                   },
                 ];
 
