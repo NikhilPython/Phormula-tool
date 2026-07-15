@@ -2134,7 +2134,7 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     _accumulate_shipping_from_breakdowns(item_breakdowns)
     _accumulate_shipping_from_breakdowns(tx_breakdowns)
 
-    postage_credits = shipping_credits + shipping_credits_tax
+    postage_credits = shipping_credits 
 
     
 
