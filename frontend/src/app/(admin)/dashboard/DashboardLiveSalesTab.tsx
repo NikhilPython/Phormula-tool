@@ -357,6 +357,7 @@ export default function DashboardLiveSalesTab({
                                                                 ? safeDeltaPct(dummyStatData.promotions.current, dummyStatData.promotions.previous)
                                                                 : safeDeltaPct(globalMtdCardData.promotions, globalMtdCardData.prevPromotions)
                                                         }
+                                                        inverseDelta
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatCurrentAmountWithPct(
                                                             val,
@@ -536,6 +537,7 @@ export default function DashboardLiveSalesTab({
                                                     current={mtdPromotionsCurrentDisplay}
                                                     previous={mtdPromotionsPreviousDisplay}
                                                     deltaPct={mtdPromotionsDelta}
+                                                    inverseDelta
                                                     loading={!shouldShowDummyUi && loading}
                                                     formatter={(val) => formatCurrentAmountWithPct(val, mtdPromotionsPctCurrent, "Promotions", true)}
                                                     previousFormatter={(val) => formatAmountWithPct(val, mtdPromotionsPctPrevious, "Promotions", true)}

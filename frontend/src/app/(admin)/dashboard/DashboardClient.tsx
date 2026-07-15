@@ -10697,6 +10697,7 @@ export default function DashboardPage() {
                         current={c.promotions}
                         previous={c.prevPromotions}
                         deltaPct={safeDeltaPct(c.promotions, c.prevPromotions)}
+                        inverseDelta
                         formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}
@@ -10806,6 +10807,7 @@ export default function DashboardPage() {
                         current={c.promotions}
                         previous={c.prevPromotions}
                         deltaPct={null}
+                        inverseDelta
                         formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}

@@ -46,7 +46,7 @@ export default function AmazonStatCard({
     deltaToShow != null &&
     (inverseDelta ? deltaToShow < 0 : deltaToShow >= 0);
 
-  const arrow = deltaToShow == null ? "" : isIncrease ? "▲" : "▼";
+  const arrow = deltaToShow == null ? "" : isIncrease ? "\u25B2" : "\u25BC";
 
   const deltaColor =
     deltaToShow == null
@@ -57,7 +57,7 @@ export default function AmazonStatCard({
 
   const deltaContent =
     deltaToShow == null ? (
-      "—"
+      "\u2014"
     ) : (
       <>
         <span className="mr-0.5">{arrow}</span>
@@ -85,7 +85,7 @@ export default function AmazonStatCard({
         <div className="flex flex-col min-w-0">
           <span className="truncate">{bottomLabel}:</span>
           <span className="font-medium truncate">
-            {previous == null ? "—" : previousFormatter(prevVal)}
+            {previous == null ? "\u2014" : previousFormatter(prevVal)}
           </span>
         </div>
 

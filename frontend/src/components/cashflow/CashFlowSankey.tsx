@@ -558,12 +558,23 @@ const CashFlowSankey: React.FC<Props> = ({
     <div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 2xl:gap-3 mb-6">
         {cards.map((c) => {
-          const p = c.isDiscount
-  ? getChangePercent(
-      Math.abs(c.value || 0),
-      Math.abs(c.prev || 0)
-    )
-  : getChangePercent(c.value, c.prev);
+          const lowerIsBetter =
+            c.isDiscount ||
+            c.label === "Marketplace Fees" ||
+            c.label === "Others";
+          const currentForDelta = c.isDiscount
+            ? Math.round(Math.abs(c.value || 0))
+            : lowerIsBetter
+              ? Math.abs(c.value || 0)
+              : c.value;
+          const previousForDelta = c.isDiscount
+            ? Math.round(Math.abs(c.prev || 0))
+            : lowerIsBetter
+              ? Math.abs(c.prev || 0)
+              : c.prev;
+          const p = getChangePercent(currentForDelta, previousForDelta);
+          const deltaNumber =
+            p === undefined || Number.isNaN(Number(p)) ? null : Number(p);
 
           const shouldShowPositive =
             c.label === "Marketplace Fees" ||
@@ -649,19 +660,21 @@ const CashFlowSankey: React.FC<Props> = ({
               valueText: previousValueText,
 
               deltaText:
-                hasPrevious && p
-                  ? `${Number(p) < 0 ? "▼" : "▲"} ${Math.abs(Number(p))}%`
+                hasPrevious && deltaNumber !== null
+                  ? `${deltaNumber < 0 ? "\u25BC" : "\u25B2"} ${Math.abs(deltaNumber)}%`
                   : "-",
 
               deltaClassName:
-                hasPrevious && p
-                  ? c.isDiscount
-                    ? Number(p) < 0
-                      ? "text-green-600"
-                      : "text-red-600"
-                    : Number(p) < 0
-                      ? "text-red-600"
-                      : "text-green-600"
+                hasPrevious && deltaNumber !== null
+                  ? deltaNumber === 0
+                    ? "text-gray-400"
+                    : lowerIsBetter
+                      ? deltaNumber < 0
+                        ? "text-green-600"
+                        : "text-red-600"
+                      : deltaNumber < 0
+                        ? "text-red-600"
+                        : "text-green-600"
                   : "text-gray-400",
             },
           ];

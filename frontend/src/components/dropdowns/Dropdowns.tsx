@@ -9847,7 +9847,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   currentAmount: number,
                   getPreviousAmount: (s?: Summary) => number,
                   getPreviousPct: (s?: Summary) => number,
-                  absoluteAmount = false
+                  absoluteAmount = false,
+                  lowerIsBetter = false
                 ) => {
                   const { label, summary: previousSummary } = getActivePreviousComparison();
                   const previousAmount = getPreviousAmount(previousSummary);
@@ -9862,9 +9863,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                   const deltaClassName =
                     typeof diffPct === "number"
-                      ? diffPct >= 0
-                        ? "text-emerald-600"
-                        : "text-red-600"
+                      ? diffPct === 0
+                        ? "text-gray-400"
+                        : lowerIsBetter
+                          ? diffPct < 0
+                            ? "text-emerald-600"
+                            : "text-red-600"
+                          : diffPct > 0
+                            ? "text-emerald-600"
+                            : "text-red-600"
                       : "text-gray-400";
 
                   const deltaText =
@@ -10002,6 +10009,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       roundMoney(promotionsAmount),
                       (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),
                       getPromotionsPercent,
+                      true,
                       true
                     ),
                   },
