@@ -1334,6 +1334,26 @@ const getAdvertisingTotalValue = (row: any) =>
     row?.cost_of_advertisement
   );
 
+const getAdvertisingBaseValue = (row: any) => {
+  const directValue = pickFirstNonZeroNum(
+    row?.advertising_total,
+    row?.cost_of_advertisement
+  );
+
+  if (directValue !== 0) return directValue;
+
+  const childTotal =
+    toNum(row?.brand_spend) +
+    toNum(
+      row?.dealsvouchar_ads ??
+      row?.dealvouchars_ads ??
+      row?.dealsvoucher_ads ??
+      row?.deals_voucher_ads
+    );
+
+  return childTotal !== 0 ? childTotal : directValue;
+};
+
 const getCm2ProfitValue = (row: any) =>
   pickFirstNonZeroNum(
     row?.cm2_profit_total,
@@ -6788,6 +6808,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const mapSkuTotalToSummary = (row: any): Summary => {
     const netSales = toNum(row?.net_sales);
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
     const cm2ProfitTotal = getCm2ProfitValue(row);
     const cm2Margins = getCm2MarginValue(row, netSales, cm2ProfitTotal);
@@ -6824,7 +6845,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       otherwplatform: Math.abs(toNum(row?.platform_fee)),
 
-      advertising_total: advertisingTotalFinal,
+      advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
 
       total_amazon_fee: toNum(row?.amazon_fee),
@@ -6842,8 +6863,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     country: string
   ): UploadRow => {
     const netSales = toNum(row?.net_sales);
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
-    const advertisingTotal = advertisingTotalFinal;
 
     const cm1Profit = toNum(row?.profit);
 
@@ -8796,7 +8817,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const isTotalRow = productName.trim().toLowerCase() === "total";
       const netSales = toNum(row.net_sales);
-      const advertisingTotal = Math.abs(getAdvertisingTotalValue(row));
+      const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
+      const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
       const cm2Profit = getCm2ProfitValue(row);
       const cm2Margin = getCm2MarginValue(row, netSales, cm2Profit);
       const cm2ProfitPer = getCm2PerValue(row, netSales, cm2Profit);
@@ -8826,7 +8848,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         amazon_fee: toNum(row.amazon_fee),
 
         advertising_total: advertisingTotal,
-        advertising_total_final: advertisingTotal,
+        advertising_total_final: advertisingTotalFinal,
         visible_ads: toNum(row.visible_ads),
         dealsvouchar_ads: toNum(row.dealsvouchar_ads),
 
@@ -8933,8 +8955,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum(totalRow?.net_units_sold) ||
       sumSkuRows(rows, "total_quantity");
 
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
-    const advertisingTotal = advertisingTotalFinal;
 
     const cm2 = getCm2ProfitValue(totalRow);
 
@@ -8993,8 +9015,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (!totalRow) return [];
 
     const netSales = toNum((totalRow as any)?.net_sales);
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
-    const advertisingTotal = advertisingTotalFinal;
 
     const cm1Profit = toNum((totalRow as any)?.profit);
 
@@ -9072,8 +9094,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm1Profit = toNum((totalRow as any)?.profit);
 
     const netSales = toNum((totalRow as any)?.net_sales);
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
-    const advertisingTotal = advertisingTotalFinal;
     const cm2ProfitTotal = getCm2ProfitValue(totalRow);
     const cm2Margins = getCm2MarginValue(totalRow, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(totalRow, netSales, cm2ProfitTotal);
@@ -9423,11 +9445,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   })}`;
                 };
 
-                const costOfAds = summary.advertising_total ?? 0;
+                const costOfAds =
+                  summary.advertising_total_final ??
+                  summary.advertising_total ??
+                  0;
 
                 const getRoas = (s?: Summary) => {
                   const ns = s?.total_sales ?? 0;            // net sales
-                  const ads = s?.advertising_total ?? 0;     // cost of ads
+                  const ads =
+                    s?.advertising_total_final ??
+                    s?.advertising_total ??
+                    0;                                      // final cost of ads
                   return ns > 0 ? (ads / ns) * 100 : 0;
                 };
 
@@ -9652,6 +9680,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                     // ✅ define metric behavior INLINE
                     const isCostMetric =
+                      metric === "advertising_total_final" ||
                       metric === "advertising_total" ||
                       metric === "total_amazon_fee";
 
@@ -9972,7 +10001,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                    comparisons: buildComparisonsRows("advertising_total", formatWholeMoney),
+                    comparisons: buildComparisonsRows("advertising_total_final", formatWholeMoney),
                   },
                   {
                     key: "tacos",

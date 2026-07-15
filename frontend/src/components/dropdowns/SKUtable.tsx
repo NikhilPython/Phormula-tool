@@ -685,6 +685,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
       : toNumber(totals.visible_ads);
   }, [hasCm2Data, totals.brand_spend, totals.visible_ads]);
 
+  const costOfAdvertisementValue = useMemo(() => {
+    if (hasCm2Data) {
+      const childTotal =
+        toNumber(visibilityAdsValue) + toNumber(totals.dealsvouchar_ads);
+
+      if (childTotal !== 0) return childTotal;
+    }
+
+    return toNumber(totals.advertising_total);
+  }, [hasCm2Data, totals.advertising_total, totals.dealsvouchar_ads, visibilityAdsValue]);
+
   const [tableSort, setTableSort] = useState<{
     key: string;
     direction: "asc" | "desc";
@@ -1598,7 +1609,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const summaryRows: SummaryRow[] = [
         {
           product_name: "Cost of Advertisement",
-          [summaryValueColumnKey]: Math.abs(Number(totals.advertising_total || 0)),
+          [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
           __bold: 1,
         },
         {
@@ -1725,7 +1736,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
       excelRows,
       totals,
       frontendTacos,
+      costOfAdvertisementValue,
       countryName,
+      hasCm2Data,
+      visibilityAdsValue,
       getExtraRows,
       getDisplayProductNameFromRow,
       buildExcelColumnsFromUI,
@@ -2255,7 +2269,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       type: "section",
                       id: "ads",
                       label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
-                      endValue: formatValue(totals.advertising_total, "advertising_total"),
+                      endValue: formatValue(costOfAdvertisementValue, "advertising_total"),
                       defaultCollapsed: true,
                       children: [
                         {
