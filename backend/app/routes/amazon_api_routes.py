@@ -2304,6 +2304,15 @@ def get_current_global_data_for_live_bi(user_id: int):
         "brand_spend": round(float(total_row.get("brand_spend", 0.0) or 0.0), 2),
         "net_sales": round(total_net_sales, 2),
         "gross_sales": round(float(total_row.get("gross_sales", 0.0) or 0.0), 2),
+        "promotional_rebates": round(float(total_row.get("promotional_rebates", 0.0) or 0.0), 2),
+        "promotional_rebates_percentage": round(
+            (
+                float(total_row.get("promotional_rebates", 0.0) or 0.0)
+                / total_net_sales
+                * 100
+            ) if total_net_sales else 0,
+            6
+        ),
         "asp": round(float(total_row.get("asp", 0.0) or 0.0), 2),
         "profit": round(float(total_row.get("profit", 0.0) or 0.0), 2),
         "tax_and_credits": round(float(total_row.get("tax_and_credits", 0.0) or 0.0), 2),
@@ -2977,6 +2986,10 @@ def finances_mtd_transactions():
     total_ads = float(advertising_fee_total or 0.0)
 
     total_cm2_profit = float(cm2_profit_dashboard or 0.0)
+    promotional_rebates_total = float(totals.get("promotional_rebates", 0.0) or 0.0)
+    promotional_rebates_percentage = (
+        promotional_rebates_total / float(net_sales) * 100.0
+    ) if float(net_sales or 0.0) else 0.0
 
     total_cm2_margins = (
         total_cm2_profit / float(net_sales) * 100.0
@@ -3006,6 +3019,8 @@ def finances_mtd_transactions():
         "net_sales": round(net_sales, 2),
         "gross_sales": round(gross_sales_total, 2),
         "refund_sales": round(float(refund_sales_total or 0.0), 2),
+        "promotional_rebates": round(promotional_rebates_total, 2),
+        "promotional_rebates_percentage": round(promotional_rebates_percentage, 6),
         "asp": round(asp, 2),
         "profit": round(profit_total, 2),
         "cm2_profit": round(cm2_profit_dashboard, 2),
@@ -3782,6 +3797,8 @@ def finances_mtd_transactions():
             "net_sales",
             "gross_sales",
             "refund_sales",
+            "promotional_rebates",
+            "promotional_rebates_percentage",
             "asp",
             "profit",
             "cm2_profit",

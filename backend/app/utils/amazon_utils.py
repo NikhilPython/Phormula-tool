@@ -2742,6 +2742,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "platform_fee": 0.0,
                 "advertising_fees": 0.0,
                 "cm2_profit": 0.0,
+                "promotional_rebates": 0.0,
+                "promotional_rebates_percentage": 0.0,
                 "previous_net_reimbursement": 0.0,
                 "cogs": 0.0,
                 "amazon_fees": 0.0,
@@ -2777,6 +2779,10 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
     # ✅ net_sales stays as you had it (product_sales + promotional_rebates)
     net_sales_total = float((ps + pr).sum())
+    promotional_rebates_total = float(pr.sum())
+    promotional_rebates_percentage = (
+        promotional_rebates_total / net_sales_total * 100.0
+    ) if net_sales_total else 0.0
 
     # Profit total from sku_metrics (keeps your current logic)
     profit_total = sum(float(x.get("profit", 0.0) or 0.0) for x in sku_metrics)
@@ -2853,6 +2859,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         "advertising_fees": round(advertising_fee_total, 2),
         "cm2_profit": round(cm2_profit, 2),
         "profit_percentage": round(profit_percentage, 2),
+        "promotional_rebates": round(promotional_rebates_total, 2),
+        "promotional_rebates_percentage": round(promotional_rebates_percentage, 6),
 
         "previous_net_reimbursement": round(previous_net_reimbursement, 2),
 

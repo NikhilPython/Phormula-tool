@@ -16,6 +16,8 @@ export const dummyStatData = {
     tacos: { current: 0, previous: 0, deltaPct: 0 },
     cm2Profit: { current: 0, previous: 0, deltaPct: 0 },
     cm2ProfitPct: { current: 0, previous: 0, deltaPct: 0 },
+    promotions: { current: 0, previous: 0, deltaPct: 0 },
+    promotionsPct: { current: 0, previous: 0, deltaPct: 0 },
 };
 
 export const dummyLiveBusinessClientData: ApiResponse & {

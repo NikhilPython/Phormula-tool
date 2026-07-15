@@ -6462,6 +6462,7 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
     net_sales = _safe_float(total.get("net_sales"))
     profit = _safe_float(total.get("profit"))
     tax_and_credits = _safe_float(total.get("tax_and_credits"))
+    promotional_rebates = _safe_float(total.get("promotional_rebates"))
 
     advertising = _safe_float(extra_totals.get("advertising"))
     platform_fee = _safe_float(extra_totals.get("platform_fee"))
@@ -6485,6 +6486,11 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
         "net_sales": round(net_sales, 2),
         "profit": round(profit, 2),
         "tax_and_credits": round(tax_and_credits, 2),
+        "promotional_rebates": round(promotional_rebates, 2),
+        "promotional_rebates_percentage": round(
+            (promotional_rebates / net_sales) * 100 if net_sales else 0,
+            6
+        ),
 
         "cogs": round(cogs, 2),
         "advertising_fees": round(advertising, 2),
@@ -6526,6 +6532,8 @@ def _convert_uk_to_usd(df, rate):
         "unit_wise_profitability",
         "selling_fees",
         "fba_fees",
+        "promotional_rebates",
+        "promotional_rebates_tax",
         "tax_and_credits",  # ✅ NEW
     ]
     for col in money_cols:
@@ -6631,6 +6639,9 @@ def _append_total_row(items, country):
     total["asp"] = net_sales / qty if qty else 0
     total["unit_wise_profitability"] = profit / qty if qty else 0
     total["sales_mix"] = 100.0
+    total["promotional_rebates_percentage"] = (
+        total.get("promotional_rebates", 0) / net_sales * 100
+    ) if net_sales else 0
     total["sku"] = "TOTAL"
     total["product_name"] = "Total"
     total["country"] = country
@@ -6723,6 +6734,8 @@ def get_previous_global_data_for_live_bi(
             "amazon_fees": 0,
             "platform_fees": 0,
             "cm2_profit": 0,
+            "promotional_rebates": 0,
+            "promotional_rebates_percentage": 0,
             "asp": 0,
             "profit_percentage": 0,
             "cm2_profit_percentage": 0,

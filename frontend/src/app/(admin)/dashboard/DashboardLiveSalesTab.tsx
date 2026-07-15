@@ -41,7 +41,6 @@ export default function DashboardLiveSalesTab({
     formatDisplayAmount,
     prevLabel,
     fmtPct2,
-    deltaPctPoints,
     renderCountryMtdCards,
     useBiForAmazonCards,
     biCardKpis,
@@ -65,7 +64,11 @@ export default function DashboardLiveSalesTab({
     mtdCm2ProfitDelta,
     mtdCm2ProfitPctCurrent,
     mtdCm2ProfitPctPrevious,
-    mtdCm2ProfitPctDelta,
+    mtdPromotionsCurrentDisplay,
+    mtdPromotionsPreviousDisplay,
+    mtdPromotionsDelta,
+    mtdPromotionsPctCurrent,
+    mtdPromotionsPctPrevious,
     hasShopifyCard,
     shopify,
     shopifyDeriv,
@@ -105,6 +108,18 @@ export default function DashboardLiveSalesTab({
     dashboardCompletedTimeZone,
 }: DashboardLiveSalesTabProps) {
     const RangePicker = DashboardRangePicker;
+    const formatAmountWithPct = (
+        amount: number | null | undefined,
+        pct: number | null | undefined,
+        amountLabel: string,
+        absoluteAmount = false
+    ) => {
+        const numericAmount = Number(amount ?? 0) || 0;
+        const amountToShow = absoluteAmount ? Math.abs(numericAmount) : numericAmount;
+        const pctToShow = Math.abs(Number(pct ?? 0) || 0);
+
+        return `${formatDisplayAmount(amountToShow, amountLabel)} (${fmtPct2(pctToShow)})`;
+    };
 
     return (
                     <div
@@ -299,26 +314,44 @@ export default function DashboardLiveSalesTab({
                                                                 : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                        formatter={(val) => formatAmountWithPct(
+                                                            val,
+                                                            shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct,
+                                                            "CM2 Profit"
+                                                        )}
+                                                        previousFormatter={(val) => formatAmountWithPct(
+                                                            val,
+                                                            shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct,
+                                                            "CM2 Profit"
+                                                        )}
                                                         bottomLabel={prevLabel}
                                                         className="border-[#A8BF7A] border-t-4 border-t-[#A8BF7A]"
                                                     />
 
                                                     <AmazonStatCard
-                                                        label="CM2 Profit %"
-                                                        current={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct}
-                                                        previous={shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct}
+                                                        label="Promotions"
+                                                        current={shouldShowDummyUi ? dummyStatData.promotions.current : globalMtdCardData.promotions}
+                                                        previous={shouldShowDummyUi ? dummyStatData.promotions.previous : globalMtdCardData.prevPromotions}
                                                         deltaPct={
                                                             shouldShowDummyUi
-                                                                ? deltaPctPoints(dummyStatData.cm2ProfitPct.current, dummyStatData.cm2ProfitPct.previous)
-                                                                : deltaPctPoints(globalMtdCardData.cm2Pct, globalMtdCardData.prevCm2Pct)
+                                                                ? safeDeltaPct(dummyStatData.promotions.current, dummyStatData.promotions.previous)
+                                                                : safeDeltaPct(globalMtdCardData.promotions, globalMtdCardData.prevPromotions)
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
-                                                        formatter={fmtPct2}
-                                                        previousFormatter={fmtPct2}
+                                                        formatter={(val) => formatAmountWithPct(
+                                                            val,
+                                                            shouldShowDummyUi ? dummyStatData.promotionsPct.current : globalMtdCardData.promotionsPct,
+                                                            "Promotions",
+                                                            true
+                                                        )}
+                                                        previousFormatter={(val) => formatAmountWithPct(
+                                                            val,
+                                                            shouldShowDummyUi ? dummyStatData.promotionsPct.previous : globalMtdCardData.prevPromotionsPct,
+                                                            "Promotions",
+                                                            true
+                                                        )}
                                                         bottomLabel={prevLabel}
-                                                        className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                                                        className="border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]"
                                                     />
                                                 </div>
                                             ) : (
@@ -472,22 +505,22 @@ export default function DashboardLiveSalesTab({
                                                     previous={mtdCm2ProfitPreviousDisplay}
                                                     deltaPct={mtdCm2ProfitDelta}
                                                     loading={!shouldShowDummyUi && loading}
-                                                    formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                                                    previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                                                    formatter={(val) => formatAmountWithPct(val, mtdCm2ProfitPctCurrent, "CM2 Profit")}
+                                                    previousFormatter={(val) => formatAmountWithPct(val, mtdCm2ProfitPctPrevious, "CM2 Profit")}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#B8C78C] border-t-4 border-t-[#B8C78C]"
                                                 />
 
                                                 <AmazonStatCard
-                                                    label="CM2 Profit %"
-                                                    current={mtdCm2ProfitPctCurrent}
-                                                    previous={mtdCm2ProfitPctPrevious}
-                                                    deltaPct={mtdCm2ProfitPctDelta}
+                                                    label="Promotions"
+                                                    current={mtdPromotionsCurrentDisplay}
+                                                    previous={mtdPromotionsPreviousDisplay}
+                                                    deltaPct={mtdPromotionsDelta}
                                                     loading={!shouldShowDummyUi && loading}
-                                                    formatter={fmtPct2}
-                                                    previousFormatter={fmtPct2}
+                                                    formatter={(val) => formatAmountWithPct(val, mtdPromotionsPctCurrent, "Promotions", true)}
+                                                    previousFormatter={(val) => formatAmountWithPct(val, mtdPromotionsPctPrevious, "Promotions", true)}
                                                     bottomLabel={prevLabel}
-                                                    className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                                                    className="border-[#8FA7D6] border-t-4 border-t-[#8FA7D6]"
                                                 />
                                             </div>
                                         )}

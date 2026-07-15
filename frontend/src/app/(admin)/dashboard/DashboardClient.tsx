@@ -128,6 +128,7 @@ const ROUND_LABELS = [
     "Net Sales",
     "Cost of Ads",
     "CM2 Profit",
+    "Promotions",
 ];
 
 
@@ -3007,7 +3008,7 @@ export default function DashboardPage() {
 
             const shouldRound =
                 label &&
-                ["Gross Sales", "Net Sales", "Cost of Ads", "CM2 Profit"].includes(label);
+                ["Gross Sales", "Net Sales", "Cost of Ads", "CM2 Profit", "Promotions"].includes(label);
 
             const options = shouldRound
                 ? {
@@ -3053,6 +3054,23 @@ export default function DashboardPage() {
             }
         },
         [displayCurrency]
+    );
+
+    const formatAmountWithPct = useCallback(
+        (
+            amount: number | null | undefined,
+            pct: number | null | undefined,
+            amountLabel: string,
+            absoluteAmount = false
+        ) => {
+            const amountToShow = absoluteAmount
+                ? Math.abs(toNumberSafe(amount ?? 0))
+                : toNumberSafe(amount ?? 0);
+            const pctToShow = Math.abs(toNumberSafe(pct ?? 0));
+
+            return `${formatDisplayAmount(amountToShow, amountLabel)} (${fmtPct2(pctToShow)})`;
+        },
+        [formatDisplayAmount]
     );
 
     const formatDisplayAmountNoDecimals = useCallback(
@@ -4881,6 +4899,13 @@ export default function DashboardPage() {
             profit: toNumberSafe(prevTotals?.profit ?? 0),
             cm2Profit: toNumberSafe(prevTotals?.cm2_profit ?? 0),
             profitPct: toNumberSafe(prevTotals?.profit_percentage ?? 0),
+            promotions: Math.abs(toNumberSafe(prevTotals?.promotional_rebates ?? 0)),
+            promotionsPct: Math.abs(
+                toNumberSafe(prevTotals?.net_sales ?? 0)
+                    ? (toNumberSafe(prevTotals?.promotional_rebates ?? 0) /
+                        toNumberSafe(prevTotals?.net_sales ?? 0)) * 100
+                    : toNumberSafe(prevTotals?.promotional_rebates_percentage ?? 0)
+            ),
         };
     }, [prevTotals]);
 
@@ -4932,12 +4957,6 @@ export default function DashboardPage() {
                     : null,
         };
     }, [curr, prev]);
-
-    const deltaPctPoints = (currentPct: number, previousPct: number) => {
-        const c = Number(currentPct) || 0;
-        const p = Number(previousPct) || 0;
-        return c - p;
-    };
 
     const deltaPctAbs = (currentPct: number, previousPct: number) => {
         const c = Number(currentPct) || 0;
@@ -6538,6 +6557,25 @@ export default function DashboardPage() {
                 prevAligned.total_previous_profit_percentage ??
                 prevDerived.cm2_profit_percentage
             ),
+
+            promotions: Math.abs(toNumber(
+                globalGrand.promotional_rebates ??
+                (data as any)?.derived_totals_global?.promotional_rebates
+            )),
+            prevPromotions: Math.abs(toNumber(prevDerived.promotional_rebates)),
+            promotionsPct: Math.abs(
+                toNumber(globalGrand.net_sales)
+                    ? (toNumber(globalGrand.promotional_rebates) / toNumber(globalGrand.net_sales)) * 100
+                    : toNumber(
+                        (data as any)?.derived_totals_global?.promotional_rebates_percentage ??
+                        globalGrand.promotional_rebates_percentage
+                    )
+            ),
+            prevPromotionsPct: Math.abs(
+                toNumber(prevDerived.net_sales)
+                    ? (toNumber(prevDerived.promotional_rebates) / toNumber(prevDerived.net_sales)) * 100
+                    : toNumber(prevDerived.promotional_rebates_percentage)
+            ),
         };
     }, [
         platform,
@@ -6601,6 +6639,13 @@ export default function DashboardPage() {
             row.cm2_profit_per
         );
 
+        const promotions = Math.abs(toNumber(row.promotional_rebates));
+        const promotionsPct = Math.abs(
+            netSales
+                ? (toNumber(row.promotional_rebates) / netSales) * 100
+                : toNumber(row.promotional_rebates_percentage)
+        );
+
         return {
             units,
             netSales,
@@ -6609,6 +6654,8 @@ export default function DashboardPage() {
             tacos,
             cm2Profit,
             cm2MarginPct,
+            promotions,
+            promotionsPct,
         };
     }, [
         platform,
@@ -6628,6 +6675,7 @@ export default function DashboardPage() {
             prevAligned.total_previous_advertising ??
             prevDerived.advertising_fees
         );
+        const prevPromotions = Math.abs(toNumber(prevDerived.promotional_rebates));
 
         return {
             units: toNumber(prevDerived.quantity),
@@ -6648,6 +6696,13 @@ export default function DashboardPage() {
             cm2MarginPct: toNumber(
                 prevAligned.total_previous_profit_percentage ??
                 prevDerived.cm2_profit_percentage
+            ),
+
+            promotions: prevPromotions,
+            promotionsPct: Math.abs(
+                prevNetSales
+                    ? (toNumber(prevDerived.promotional_rebates) / prevNetSales) * 100
+                    : toNumber(prevDerived.promotional_rebates_percentage)
             ),
         };
     }, [previousSkuwiseGlobalData]);
@@ -8225,8 +8280,26 @@ export default function DashboardPage() {
                     : loading
             ),
 
-            formatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
-            previousFormatter: (val: number) => formatDisplayAmount(val, "CM2 Profit"),
+            formatter: (val: number) =>
+                formatAmountWithPct(
+                    val,
+                    shouldShowDummyUi
+                        ? dummyStatData.cm2ProfitPct.current
+                        : isStickyGlobal
+                            ? stickyTableTotals.cm2MarginPct
+                            : totalRowCm2Margins,
+                    "CM2 Profit"
+                ),
+            previousFormatter: (val: number) =>
+                formatAmountWithPct(
+                    val,
+                    shouldShowDummyUi
+                        ? dummyStatData.cm2ProfitPct.previous
+                        : isStickyGlobal
+                            ? stickyPreviousTotals.cm2MarginPct
+                            : prev.profitPct,
+                    "CM2 Profit"
+                ),
             bottomLabel: prevLabel,
             className: "bg-white border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
         },
@@ -10177,12 +10250,59 @@ export default function DashboardPage() {
             ? rangeCm2ProfitPctPrevious
             : Number(prev?.profitPct ?? 0);
 
-    const mtdCm2ProfitPctDelta = shouldShowDummyUi
-        ? dummyStatData.cm2ProfitPct.deltaPct
+    const rawMtdPromotionsCurrent = Math.abs(
+        toNumber(
+            derived?.promotional_rebates ??
+            grandTotalRowRaw?.promotional_rebates ??
+            grandTotalRowDisplay?.promotional_rebates ??
+            totals?.promotional_rebates ??
+            0
+        )
+    );
+
+    const rawMtdPromotionsPctCurrent = Math.abs(
+        (
+            toNumber(derived?.net_sales ?? grandTotalRowRaw?.net_sales ?? grandTotalRowDisplay?.net_sales)
+                ? (
+                    toNumber(
+                        derived?.promotional_rebates ??
+                        grandTotalRowRaw?.promotional_rebates ??
+                        grandTotalRowDisplay?.promotional_rebates ??
+                        totals?.promotional_rebates ??
+                        0
+                    ) /
+                    toNumber(derived?.net_sales ?? grandTotalRowRaw?.net_sales ?? grandTotalRowDisplay?.net_sales)
+                ) * 100
+                : toNumber(
+                    derived?.promotional_rebates_percentage ??
+                    grandTotalRowRaw?.promotional_rebates_percentage ??
+                    grandTotalRowDisplay?.promotional_rebates_percentage
+                )
+        )
+    );
+
+    const mtdPromotionsCurrentDisplay = shouldShowDummyUi
+        ? dummyStatData.promotions.current
+        : rawMtdPromotionsCurrent;
+
+    const mtdPromotionsPreviousDisplay = shouldShowDummyUi
+        ? dummyStatData.promotions.previous
+        : convertToDisplayCurrency(prev.promotions ?? 0, amazonDataCurrency);
+
+    const mtdPromotionsDelta = shouldShowDummyUi
+        ? dummyStatData.promotions.deltaPct
         : safeDeltaPct(
-            mtdCm2ProfitPctCurrent,
-            mtdCm2ProfitPctPrevious
+            mtdPromotionsCurrentDisplay,
+            mtdPromotionsPreviousDisplay
         );
+
+    const mtdPromotionsPctCurrent = shouldShowDummyUi
+        ? dummyStatData.promotionsPct.current
+        : rawMtdPromotionsPctCurrent;
+
+    const mtdPromotionsPctPrevious = shouldShowDummyUi
+        ? dummyStatData.promotionsPct.previous
+        : prev.promotionsPct;
 
     const globalCm2ProfitCurrentRaw = globalUseBi
         ? (globalCm2Ready ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) : 0)
@@ -10322,6 +10442,19 @@ export default function DashboardPage() {
                 prevAligned.total_previous_profit_percentage ??
                 prevDerived.cm2_profit_percentage
             ),
+
+            promotions: Math.abs(toNumber(currentGrand.promotional_rebates)),
+            prevPromotions: Math.abs(toNumber(prevDerived.promotional_rebates)),
+            promotionsPct: Math.abs(
+                toNumber(currentGrand.net_sales)
+                    ? (toNumber(currentGrand.promotional_rebates) / toNumber(currentGrand.net_sales)) * 100
+                    : toNumber(currentGrand.promotional_rebates_percentage)
+            ),
+            prevPromotionsPct: Math.abs(
+                toNumber(prevDerived.net_sales)
+                    ? (toNumber(prevDerived.promotional_rebates) / toNumber(prevDerived.net_sales)) * 100
+                    : toNumber(prevDerived.promotional_rebates_percentage)
+            ),
         };
     }, [data, previousSkuwiseGlobalData]);
 
@@ -10411,22 +10544,22 @@ export default function DashboardPage() {
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={safeDeltaPct(c.cm2Profit, c.prevCm2Profit)}
-                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                        formatter={(val) => formatAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
+                        previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
                         bottomLabel={prevLabel}
                         className="border-[#A8BE7A] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
                     />
 
                     <AmazonStatCard
-                        label="CM2 Profit %"
-                        current={c.cm2Pct}
-                        previous={c.prevCm2Pct}
-                        deltaPct={safeDeltaPct(c.cm2Pct, c.prevCm2Pct)}
-                        formatter={fmtPct2}
-                        previousFormatter={fmtPct2}
+                        label="Promotions"
+                        current={c.promotions}
+                        previous={c.prevPromotions}
+                        deltaPct={safeDeltaPct(c.promotions, c.prevPromotions)}
+                        formatter={(val) => formatAmountWithPct(val, c.promotionsPct, "Promotions", true)}
+                        previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}
-                        className="border-[#6D8F61] border-t-4"
+                        className="border-[#8FA7D6] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
                     />
                 </div>
@@ -10520,22 +10653,22 @@ export default function DashboardPage() {
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
                         deltaPct={null}
-                        formatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
-                        previousFormatter={(val) => formatDisplayAmount(val, "CM2 Profit")}
+                        formatter={(val) => formatAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
+                        previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
                         bottomLabel={prevLabel}
                         className="border-[#B8C78C] border-t-4"
                         loading={!shouldShowDummyUi && loading}
                     />
 
                     <AmazonStatCard
-                        label="CM2 Profit %"
-                        current={c.cm2Pct}
-                        previous={c.prevCm2Pct}
+                        label="Promotions"
+                        current={c.promotions}
+                        previous={c.prevPromotions}
                         deltaPct={null}
-                        formatter={fmtPct2}
-                        previousFormatter={fmtPct2}
+                        formatter={(val) => formatAmountWithPct(val, c.promotionsPct, "Promotions", true)}
+                        previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
                         bottomLabel={prevLabel}
-                        className="border-[#7B9A6D] border-t-4"
+                        className="border-[#8FA7D6] border-t-4"
                         loading={!shouldShowDummyUi && loading}
                     />
                 </div>
@@ -10713,7 +10846,6 @@ export default function DashboardPage() {
                         formatDisplayAmount={formatDisplayAmount}
                         prevLabel={prevLabel}
                         fmtPct2={fmtPct2}
-                        deltaPctPoints={deltaPctPoints}
                         renderCountryMtdCards={renderCountryMtdCards}
                         useBiForAmazonCards={useBiForAmazonCards}
                         biCardKpis={biCardKpis}
@@ -10737,7 +10869,11 @@ export default function DashboardPage() {
                         mtdCm2ProfitDelta={mtdCm2ProfitDelta}
                         mtdCm2ProfitPctCurrent={mtdCm2ProfitPctCurrent}
                         mtdCm2ProfitPctPrevious={mtdCm2ProfitPctPrevious}
-                        mtdCm2ProfitPctDelta={mtdCm2ProfitPctDelta}
+                        mtdPromotionsCurrentDisplay={mtdPromotionsCurrentDisplay}
+                        mtdPromotionsPreviousDisplay={mtdPromotionsPreviousDisplay}
+                        mtdPromotionsDelta={mtdPromotionsDelta}
+                        mtdPromotionsPctCurrent={mtdPromotionsPctCurrent}
+                        mtdPromotionsPctPrevious={mtdPromotionsPctPrevious}
                         hasShopifyCard={hasShopifyCard}
                         shopify={shopify}
                         shopifyDeriv={shopifyDeriv}
