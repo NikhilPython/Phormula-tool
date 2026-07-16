@@ -46,18 +46,18 @@ export default function DashboardPageHeader<TTab extends string = string>({
     syncTabToHash,
 }: DashboardPageHeaderProps<TTab>) {
     return (
-        <>
-            <div className="sticky top-0 z-40 bg-[#F7F7F7] ">
-                <div className="flex items-center justify-between gap-2">
+        <div className="sticky top-0 z-40 bg-[#F7F7F7]">
+            <div className="bg-[#F7F7F7]">
+                <div className="flex flex-col items-start gap-2 min-[1200px]:flex-row min-[1200px]:items-center min-[1200px]:justify-between">
 
                     {/* LEFT SIDE */}
-                    <div className="flex flex-col leading-tight min-w-0">
+                    <div className="flex w-full min-w-0 flex-col leading-tight min-[1200px]:w-auto">
                         <p className="text-xs sm:text-sm 2xl:text-lg text-charcoal-500 mb-1 truncate">
                             Let&apos;s get started,{" "}
                             <span className="text-green-500">{brandName}!</span>
                         </p>
 
-                        <div className="flex items-center gap-1 flex-wrap">
+                        <div className="flex w-full items-center gap-1 flex-wrap min-[1200px]:w-auto">
                             <PageBreadcrumb
                                 pageTitle="Sales Dashboard - Amazon"
                                 variant="page"
@@ -74,7 +74,7 @@ export default function DashboardPageHeader<TTab extends string = string>({
                         </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex w-full flex-wrap items-center justify-between gap-2 min-[1200px]:w-auto min-[1200px]:flex-col min-[1200px]:items-end min-[1200px]:justify-start min-[1200px]:gap-1">
                         <AiButton
                             onClick={handleHardRefresh}
                             disabled={pageLoading}
@@ -105,7 +105,7 @@ ${pageLoading
                 </div>
             </div>
 
-            <div className="sticky max-[480px]:top-[44px] max-[640px]:top-[44px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
+            <div className="bg-[#F7F7F7] border-b border-gray-200 
     max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
                 <SegmentedToggle<TTab>
                     value={activeTab}
@@ -121,6 +121,6 @@ ${pageLoading
                     textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                 />
             </div>
-        </>
+        </div>
     );
 }

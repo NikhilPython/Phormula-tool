@@ -1092,111 +1092,111 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     });
 
     const parsePerformanceSummarySections = (summary: string) => {
-  const text = String(summary || "").trim();
+      const text = String(summary || "").trim();
 
-  if (!text) {
-    return {
-      overview: [] as string[],
-      sections: [] as {
+      if (!text) {
+        return {
+          overview: [] as string[],
+          sections: [] as {
+            id: string;
+            title: string;
+            bullets: string[];
+          }[],
+        };
+      }
+
+      const cleanLine = (line: string) =>
+        String(line || "")
+          .trim()
+          .replace(/^[-•]\s*/, "")
+          .replace(/^\d+\.\s*/, "")
+          .replace(/^[-–—]\s*/, "")
+          .trim();
+
+      const lines = text
+        .split(/\r?\n/)
+        .map(cleanLine)
+        .filter(Boolean);
+
+      const overview: string[] = [];
+
+      const sections: {
         id: string;
         title: string;
         bullets: string[];
-      }[],
-    };
-  }
+      }[] = [];
 
- const cleanLine = (line: string) =>
-  String(line || "")
-    .trim()
-    .replace(/^[-•]\s*/, "")
-    .replace(/^\d+\.\s*/, "")
-    .replace(/^[-–—]\s*/, "")
-    .trim();
+      let currentSection: {
+        id: string;
+        title: string;
+        bullets: string[];
+      } | null = null;
 
-  const lines = text
-    .split(/\r?\n/)
-    .map(cleanLine)
-    .filter(Boolean);
+      const getHeadingTitle = (line: string) => {
+        const clean = line.replace(/:$/, "").trim();
+        const lower = clean.toLowerCase();
 
-  const overview: string[] = [];
+        if (
+          lower === "inventory" ||
+          lower === "inventory movement" ||
+          lower === "inventory summary" ||
+          lower.includes("inventory movement")
+        ) {
+          return "Inventory";
+        }
 
-  const sections: {
-    id: string;
-    title: string;
-    bullets: string[];
-  }[] = [];
+        if (
+          lower === "conclusion" ||
+          lower === "overall conclusion" ||
+          lower.includes("conclusion")
+        ) {
+          return "Conclusion";
+        }
 
-  let currentSection: {
-    id: string;
-    title: string;
-    bullets: string[];
-  } | null = null;
+        if (
+          lower === "key concern" ||
+          lower === "key concerns" ||
+          lower.includes("concern")
+        ) {
+          return "Key Concerns";
+        }
 
-  const getHeadingTitle = (line: string) => {
-    const clean = line.replace(/:$/, "").trim();
-    const lower = clean.toLowerCase();
-
-    if (
-      lower === "inventory" ||
-      lower === "inventory movement" ||
-      lower === "inventory summary" ||
-      lower.includes("inventory movement")
-    ) {
-      return "Inventory";
-    }
-
-    if (
-      lower === "conclusion" ||
-      lower === "overall conclusion" ||
-      lower.includes("conclusion")
-    ) {
-      return "Conclusion";
-    }
-
-    if (
-      lower === "key concern" ||
-      lower === "key concerns" ||
-      lower.includes("concern")
-    ) {
-      return "Key Concerns";
-    }
-
-    return "";
-  };
-
-  const makeId = (title: string) =>
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-
-  lines.forEach((line) => {
-    const headingTitle = getHeadingTitle(line);
-
-    if (headingTitle) {
-      currentSection = {
-        id: makeId(headingTitle),
-        title: headingTitle,
-        bullets: [],
+        return "";
       };
 
-      sections.push(currentSection);
-      return;
-    }
+      const makeId = (title: string) =>
+        title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
 
-    if (!currentSection) {
-      overview.push(line);
-      return;
-    }
+      lines.forEach((line) => {
+        const headingTitle = getHeadingTitle(line);
 
-    currentSection.bullets.push(line);
-  });
+        if (headingTitle) {
+          currentSection = {
+            id: makeId(headingTitle),
+            title: headingTitle,
+            bullets: [],
+          };
 
-  return {
-    overview,
-    sections: sections.filter((section) => section.bullets.length > 0),
-  };
-};
+          sections.push(currentSection);
+          return;
+        }
+
+        if (!currentSection) {
+          overview.push(line);
+          return;
+        }
+
+        currentSection.bullets.push(line);
+      });
+
+      return {
+        overview,
+        sections: sections.filter((section) => section.bullets.length > 0),
+      };
+    };
 
     const bestPerformanceCards = [
       {
@@ -1282,9 +1282,9 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
       const parsedSummary = parsePerformanceSummarySections(performanceSummary);
 
-const overviewText = parsedSummary.overview.join(" ");
+      const overviewText = parsedSummary.overview.join(" ");
 
-if (!overviewText && !parsedSummary.sections.length) return null;
+      if (!overviewText && !parsedSummary.sections.length) return null;
 
       return (
         <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1307,35 +1307,35 @@ if (!overviewText && !parsedSummary.sections.length) return null;
           </div>
 
           <div className="p-4">
-  <div className="space-y-4 text-xs leading-6 text-charcoal-500 2xl:text-sm">
-    {overviewText ? (
-      <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
-        <p className="leading-6">
-          {overviewText}
-        </p>
-      </div>
-    ) : null}
+            <div className="space-y-4 text-xs leading-6 text-charcoal-500 2xl:text-sm">
+              {overviewText ? (
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                  <p className="leading-6">
+                    {overviewText}
+                  </p>
+                </div>
+              ) : null}
 
-    {parsedSummary.sections.map((section) => (
-      <div key={section.id} className="space-y-2">
-        <div className="2xl:text-sm text-xs font-semibold text-charcoal-500 ">
-          {section.title}
-        </div>
+              {parsedSummary.sections.map((section) => (
+                <div key={section.id} className="space-y-2">
+                  <div className="2xl:text-sm text-xs font-semibold text-charcoal-500 ">
+                    {section.title}
+                  </div>
 
-        <ul className="space-y-1 pl-4">
-          {section.bullets.map((item, index) => (
-            <li
-              key={`${section.id}-${index}`}
-              className="list-disc marker:font-semibold marker:text-charcoal-400"
-            >
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-    ))}
-  </div>
-</div>
+                  <ul className="space-y-1 pl-4">
+                    {section.bullets.map((item, index) => (
+                      <li
+                        key={`${section.id}-${index}`}
+                        className="list-disc marker:font-semibold marker:text-charcoal-400"
+                      >
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       );
     };
@@ -1496,7 +1496,7 @@ if (!overviewText && !parsedSummary.sections.length) return null;
               Best performance is calculated from overall historical data.
             </p>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
               {bestPerformanceCards.map((card, index) => (
                 <div
                   key={card.label}
