@@ -285,13 +285,17 @@ const MonthYearPickerTable: React.FC<MonthYearPickerTableProps> = ({
   };
 
   const wrapCls =
-    "relative inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs 2xl:text-sm shadow-sm";
+    "relative inline-flex items-center rounded-md sm:rounded-lg border border-gray-300 bg-white " +
+    "px-2 py-1 2xl:px-3 2xl:py-1.5 " +
+    "text-[10px] sm:text-xs lg:text-sm 2xl:text-sm shadow-sm";
 
   const selectCls =
-    "appearance-none bg-transparent px-2 py-1 pr-6 text-center text-xs 2xl:text-sm text-[#414042] focus:outline-none cursor-pointer leading-tight";
+    "appearance-none bg-transparent text-center text-[#414042] focus:outline-none cursor-pointer " +
+    "px-1 py-0.5 pr-5 sm:px-1.5 sm:py-1 sm:pr-7 2xl:px-2 2xl:py-1 2xl:pr-6 " +
+    "text-[10px] sm:text-xs 2xl:text-sm";
 
   return (
-    <div className={`flex items-center gap-2 sm:gap-3 ${className}`}>
+    <div className={`flex items-center gap-1.5 sm:gap-3 ${className}`}>
       <div className={wrapCls}>
         <select
           value={selectMonthValue || ""}
@@ -307,7 +311,7 @@ const MonthYearPickerTable: React.FC<MonthYearPickerTableProps> = ({
           ))}
         </select>
 
-        <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px] text-[#414042]">
+        <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px] text-[#414042]">
           <FaAngleDown />
         </span>
       </div>
@@ -326,7 +330,7 @@ const MonthYearPickerTable: React.FC<MonthYearPickerTableProps> = ({
           ))}
         </select>
 
-        <span className="pointer-events-none absolute inset-y-0 right-5 flex items-center text-[10px] text-[#414042]">
+        <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px] text-[#414042]">
           <FaAngleDown />
         </span>
       </div>

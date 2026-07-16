@@ -824,12 +824,12 @@ export default function DispatchPage({
                 title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 disabled={loading || noData}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
               >
                 {showAllDispatchRows ? (
-                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
                 ) : (
-                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
                 )}
               </button>
             )}
@@ -863,12 +863,12 @@ export default function DispatchPage({
                 title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 disabled={loading || noData}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
               >
                 {showAllDispatchRows ? (
-                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
                 ) : (
-                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
                 )}
               </button>
             </div>

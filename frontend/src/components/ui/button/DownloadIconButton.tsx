@@ -80,8 +80,13 @@ const DownloadIconButton: React.FC<DownloadIconButtonProps> = ({
   type = "button"
 }) => {
   const sizeClasses = {
-    sm: "p-1 text-sm sm:p-1.5",
-    md: "p-2 text-sm sm:p-2.5"
+    sm: "p-1 text-sm lg:p-1.5",
+    md: "p-1.5 text-sm sm:p-2 lg:p-2.5"
+  };
+
+  const iconSizeClasses = {
+    sm: "h-4 w-4 lg:h-[22px] lg:w-[22px]",
+    md: "h-4 w-4 sm:h-5 sm:w-5 lg:h-[22px] lg:w-[22px]"
   };
 
   const outlineClasses =
@@ -101,8 +106,7 @@ const DownloadIconButton: React.FC<DownloadIconButtonProps> = ({
         ${className}`}
     >
       <IoDownload
-        size={22}
-        className={iconClassName}
+        className={`${iconSizeClasses[size]} ${iconClassName}`}
       />
     </button>
   );
