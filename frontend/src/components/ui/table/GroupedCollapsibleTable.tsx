@@ -68,6 +68,7 @@ type Props<RowT> = {
   bodyMaxHeight?: number;
   collapsedState?: Record<string, boolean>;
   onCollapsedChange?: (next: Record<string, boolean>) => void;
+  preserveColumnWidths?: boolean | "responsive";
 
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
 };
@@ -137,7 +138,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary,
@@ -146,6 +147,7 @@ export default function GroupedCollapsibleTable<RowT>({
   defaultSort,
   onSortChange,
   bodyMaxHeight,
+  preserveColumnWidths = false,
 
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
@@ -548,6 +550,23 @@ export default function GroupedCollapsibleTable<RowT>({
     return 110;
   };
 
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 1199px)");
+    const updateViewportMatch = () => setIsNarrowViewport(mediaQuery.matches);
+
+    updateViewportMatch();
+    mediaQuery.addEventListener("change", updateViewportMatch);
+
+    return () => mediaQuery.removeEventListener("change", updateViewportMatch);
+  }, []);
+
+  const shouldPreserveColumnWidths =
+    anyGroupExpanded ||
+    preserveColumnWidths === true ||
+    (preserveColumnWidths === "responsive" && isNarrowViewport);
+
   const requiredTableWidth = useMemo(() => {
     const width = visibleLeafCols.reduce(
       (sum, col) => sum + getMinWidthForCol(col),
@@ -560,7 +579,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const tableStyle: React.CSSProperties = {
     tableLayout: "fixed",
     width: "100%",
-    minWidth: anyGroupExpanded ? `${requiredTableWidth}px` : "100%",
+    minWidth: shouldPreserveColumnWidths ? `${requiredTableWidth}px` : "100%",
   };
 
   useEffect(() => {
@@ -632,7 +651,7 @@ export default function GroupedCollapsibleTable<RowT>({
       {visibleLeafCols.map((c, index) => {
         const fixedWidth = getMinWidthForCol(c);
 
-        const widthStyle: React.CSSProperties = anyGroupExpanded
+        const widthStyle: React.CSSProperties = shouldPreserveColumnWidths
           ? {
             width: `${fixedWidth}px`,
             minWidth: `${fixedWidth}px`,

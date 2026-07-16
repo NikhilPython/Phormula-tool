@@ -2071,9 +2071,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
               "w-full rounded-xl border border-gray-300",
               shouldScrollTable
                 ? "overflow-hidden"
-                : anyGroupExpanded
-                  ? "overflow-x-auto overflow-y-hidden"
-                  : "overflow-hidden",
+                : "overflow-x-auto overflow-y-hidden",
             ].join(" ")}
           >
             <div className="w-full">
@@ -2090,7 +2088,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   );
                 }}
                 tableClassName={[
-                  "border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                  "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
                   anyGroupExpanded ? "table-fixed" : "w-full table-fixed",
                 ].join(" ")}
                 defaultSort={{
@@ -2102,6 +2100,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     ? tableScrollHeight
                     : undefined
                 }
+                preserveColumnWidths="responsive"
                 onSortChange={setTableSort}
                 getSortValue={(row, colKey) => {
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);

@@ -147,17 +147,15 @@ export default function DashboardProductwisePnlSection({
                                         "w-full max-w-full rounded-xl border border-gray-300",
                                         shouldScrollMtdProductwiseTable
                                             ? "overflow-hidden"
-                                            : productwiseHasExpandedGroups
-                                                ? "overflow-x-auto overflow-y-hidden"
-                                                : "overflow-hidden",
+                                            : "overflow-x-auto overflow-y-hidden",
                                     ].join(" ")}
                                 >
-                                    <div className="w-full max-w-full overflow-hidden">
+                                    <div className="w-full max-w-full">
                                         <GroupedCollapsibleTable<any>
                                             rows={finalMonthlySkuwiseRowsForTable}
                                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
                                             tableClassName={[
-                                                "border-collapse bg-white text-[#414042] text-[14px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                                "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
                                                 productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
                                             ].join(" ")}
                                             getRowKey={(row, idx) =>
@@ -189,6 +187,7 @@ export default function DashboardProductwisePnlSection({
                                                     ? mtdProductwiseTableScrollHeight
                                                     : undefined
                                             }
+                                            preserveColumnWidths="responsive"
                                             isTotalRow={(row) => {
                                                 const name = String(row?.product_name || "").trim().toLowerCase();
                                                 const sku = String(row?.sku || "").trim().toUpperCase();
