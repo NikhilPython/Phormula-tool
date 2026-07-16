@@ -414,75 +414,150 @@ MTD_COLUMNS = [
     "account_type", "regulatory_fee", "tax_on_regulatory_fee", "bucket",
 ]
 
-def dedupe_rows_by_order_id(rows: list[dict]) -> list[dict]:
-    """
-    Remove duplicate same financial rows between DEFERRED and DEFERRED_RELEASED.
-
-    Priority:
-      DEFERRED_RELEASED > DEFERRED
-
-    RELEASED is not used in priority.
-    """
+def dedupe_rows_by_order_id(
+    rows: list[dict],
+) -> list[dict]:
     if not rows:
         return rows
 
     status_priority = {
-        "DEFERRED_RELEASED": 2,
+        "DEFERRED_RELEASED": 3,
+        "RELEASED": 2,
         "DEFERRED": 1,
     }
 
-    best_by_key: dict[tuple, dict] = {}
+    def normalize_text(value: Any) -> str:
+        return str(value or "").strip().casefold()
 
-    for row in rows:
-        order_id = str(row.get("order_id") or "").strip()
-        sku = str(row.get("sku") or "").strip()
-        row_type = str(row.get("type") or "").strip().lower()
-        description = str(row.get("description") or "").strip().lower()
-        quantity = str(row.get("quantity") or "").strip()
+    def normalize_number(value: Any) -> float:
+        try:
+            if value is None or value == "":
+                return 0.0
 
-        key = (
-            order_id,
-            sku,
-            row_type,
-            description,
-            quantity,
-            str(row.get("product_sales") or 0),
-            str(row.get("product_sales_tax") or 0),
-            str(row.get("selling_fees") or 0),
-            str(row.get("fba_fees") or 0),
-            str(row.get("other_transaction_fees") or 0),
-            str(row.get("other") or 0),
-            str(row.get("total") or 0),
-        )
+            if isinstance(value, str):
+                value = value.replace(",", "").strip()
 
-        current_status = str(
+            return round(float(value), 6)
+
+        except (TypeError, ValueError):
+            return 0.0
+
+    def get_status(row: dict) -> str:
+        return str(
             row.get("transaction_status")
             or row.get("status")
             or row.get("bucket")
             or ""
         ).strip().upper()
 
-        current_priority = status_priority.get(current_status, 0)
+    def get_posted_date(row: dict) -> pd.Timestamp:
+        """
+        Used only as a final tie-breaker when two rows have the same status.
+        """
+        try:
+            parsed = pd.to_datetime(
+                row.get("date_time"),
+                utc=True,
+                errors="coerce",
+            )
 
-        old_row = best_by_key.get(key)
+            if pd.isna(parsed):
+                return pd.Timestamp.min.tz_localize("UTC")
 
-        if old_row is None:
+            return parsed
+
+        except Exception:
+            return pd.Timestamp.min.tz_localize("UTC")
+
+    best_by_key: dict[tuple, dict] = {}
+    untouched_rows: list[dict] = []
+
+    for row in rows:
+        row_type = normalize_text(
+            row.get("type")
+            or row.get("transaction_type")
+        )
+
+        # Do not dedupe Refund, ServiceFee, Transfer, Adjustment, etc.
+        if row_type not in {"order", "shipment"}:
+            untouched_rows.append(row)
+            continue
+
+        order_id = str(
+            row.get("order_id") or ""
+        ).strip()
+
+        # Order/Shipment rows without an order ID must remain.
+        if not order_id:
+            untouched_rows.append(row)
+            continue
+
+        # This key identifies the same financial Order/Shipment event.
+        # Date and status are intentionally excluded.
+        key = (
+            order_id,
+            str(row.get("sku") or "").strip().upper(),
+            row_type,
+            normalize_text(row.get("description")),
+            normalize_number(row.get("quantity")),
+
+            normalize_number(row.get("product_sales")),
+            normalize_number(row.get("product_sales_tax")),
+
+            normalize_number(
+                row.get("postage_credits")
+                or row.get("shipping_credits")
+            ),
+            normalize_number(row.get("shipping_credits_tax")),
+
+            normalize_number(row.get("gift_wrap_credits")),
+            normalize_number(row.get("giftwrap_credits_tax")),
+
+            normalize_number(row.get("promotional_rebates")),
+            normalize_number(row.get("promotional_rebates_tax")),
+
+            normalize_number(row.get("marketplace_withheld_tax")),
+            normalize_number(row.get("marketplace_facilitator_tax")),
+
+            normalize_number(row.get("selling_fees")),
+            normalize_number(row.get("fba_fees")),
+            normalize_number(row.get("other_transaction_fees")),
+            normalize_number(row.get("other")),
+            normalize_number(row.get("total")),
+        )
+
+        existing_row = best_by_key.get(key)
+
+        if existing_row is None:
             best_by_key[key] = row
             continue
 
-        old_status = str(
-            old_row.get("transaction_status")
-            or old_row.get("status")
-            or old_row.get("bucket")
-            or ""
-        ).strip().upper()
+        current_status = get_status(row)
+        existing_status = get_status(existing_row)
 
-        old_priority = status_priority.get(old_status, 0)
+        current_priority = status_priority.get(
+            current_status,
+            0,
+        )
+        existing_priority = status_priority.get(
+            existing_status,
+            0,
+        )
 
-        if current_priority > old_priority:
+        # Prefer DEFERRED_RELEASED, then RELEASED, then DEFERRED.
+        if current_priority > existing_priority:
+            best_by_key[key] = row
+            continue
+
+        # Same status: keep the latest posted row.
+        if (
+            current_priority == existing_priority
+            and get_posted_date(row)
+            > get_posted_date(existing_row)
+        ):
             best_by_key[key] = row
 
-    return list(best_by_key.values())
+    return list(best_by_key.values()) + untouched_rows
 
 
 def get_next_month_year(month, year):

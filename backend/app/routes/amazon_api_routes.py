@@ -1,5 +1,5 @@
 from __future__ import annotations
-import io, os,time, logging , re, json
+import io, os,time, logging , re, json, math
 from datetime import datetime
 import pandas as pd
 from sqlalchemy import text
@@ -31,9 +31,13 @@ fetch_sku_price_map,
 fetch_conversion_rate,
 add_profit_column_from_uk_profit,
 get_previous_month_mtd_payload,
-_i
+_i,
+dedupe_rows_by_order_id,
 )
-from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
+from app.services.amazon_monthly_sync_service import (
+    sync_monthly_transactions_for_user,
+    _remove_orders_existing_in_previous_month,
+)
 from app.utils.amazon_utils import MTD_COLUMNS, COUNTRY_TO_SELECTED_CURRENCY, DEFAULT_SKU_PRICE_CURRENCY
 from app.utils.amazon_utils import AmazonSPAPIClient, amazon_client
 from flask import jsonify, request, send_file
@@ -2389,13 +2393,7 @@ def get_current_global_data_for_live_bi(user_id: int):
 
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():
-    import io
-    import math
-    import re
-    import numpy as np
-    import pandas as pd
-    from datetime import datetime, timezone
-
+    
     def _json_safe(obj):
         """Recursively convert NaN/Inf to None so jsonify returns valid JSON."""
         if obj is None:
@@ -2423,7 +2421,6 @@ def finances_mtd_transactions():
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
     # ---------------- Params ----------------
-    # ---------------- Params ----------------
     marketplace_id = request.args.get("marketplace_id")
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()
@@ -2435,10 +2432,11 @@ def finances_mtd_transactions():
         payload_out = get_current_global_data_for_live_bi(user_id)
         return jsonify(_json_safe(payload_out)), 200
 
-    if ui_country in ("us", "usa", "united_states"): 
-        transaction_status = "RELEASED"
-    else:
-        transaction_status = request.args.get("transaction_status", "RELEASED")
+    transaction_status = (
+        request.args.get("transaction_status", "all")
+        .strip()
+        .upper()
+    )
 
     # ---------------- Region + marketplace ----------------
     _apply_region_and_marketplace_from_request()
@@ -2497,42 +2495,111 @@ def finances_mtd_transactions():
             method="GET",
             params=params,
         )
+
         if not res or "error" in res:
-            return jsonify({"success": False, "error": res or {"error": "Unknown SP-API error"}}), 502
+            return jsonify({
+                "success": False,
+                "error": res or {
+                    "error": "Unknown SP-API error"
+                },
+            }), 502
 
         payload_res = res.get("payload") or res
         transactions = payload_res.get("transactions") or []
 
         for tx in transactions:
-            tstatus = (tx or {}).get("transactionStatus")
-            ttype = (tx or {}).get("transactionType")
+            tx = tx or {}
 
-            if transaction_status and transaction_status.lower() not in ("all", ""):
-                if tstatus != transaction_status:
+            tstatus = tx.get("transactionStatus")
+            ttype = tx.get("transactionType")
+
+            if transaction_status not in {"ALL", ""}:
+                if (
+                    str(tstatus or "").strip().upper()
+                    != transaction_status
+                ):
                     continue
-            if transaction_type_filter and ttype != transaction_type_filter:
+
+            if (
+                transaction_type_filter
+                and str(ttype or "").strip()
+                != str(transaction_type_filter).strip()
+            ):
                 continue
 
-            row = _flatten_transaction_to_row(tx or {})
+            row = _flatten_transaction_to_row(tx)
 
-            sku = (row.get("sku") or "").strip()
+            sku = str(row.get("sku") or "").strip()
             qty = _i(row.get("quantity")) or 0
             price = sku_price_map.get(sku) if sku else None
+
             row["cogs"] = (
-                float(qty) * float(price) * float(conversion_rate_fx)
-                if (price is not None and qty > 0)
+                float(qty)
+                * float(price)
+                * float(conversion_rate_fx)
+                if (
+                    price is not None
+                    and qty > 0
+                    and conversion_rate_fx is not None
+                )
                 else 0.0
             )
 
             all_rows.append(row)
 
         next_token = payload_res.get("nextToken")
+
         if not next_token:
             break
+
         params = {"nextToken": next_token}
 
-    # ✅ profit per row
-    add_profit_column_from_uk_profit(all_rows, country=ui_country)
+
+    # Outside while loop
+    count_before_status_dedupe = len(all_rows)
+
+    all_rows = dedupe_rows_by_order_id(all_rows)
+
+    count_after_status_dedupe = len(all_rows)
+
+    status_dedupe_rows_removed = (
+        count_before_status_dedupe
+        - count_after_status_dedupe
+    )
+
+
+    # Must also be outside the while loop
+    before_previous_month_filter_count = len(all_rows)
+
+    try:
+        all_rows, previous_month_filter = (
+            _remove_orders_existing_in_previous_month(
+                all_rows,
+                user_id=user_id,
+                country=ui_country,
+                year=now_utc.year,
+                month=now_utc.month,
+                db_url=db_url,
+            )
+        )
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": "Previous-month liveorder comparison failed",
+            "details": str(exc),
+        }), 500
+
+    after_previous_month_filter_count = len(all_rows)
+
+    previous_month_rows_removed = (
+        before_previous_month_filter_count
+        - after_previous_month_filter_count
+    )
+
+    add_profit_column_from_uk_profit(
+        all_rows,
+        country=ui_country,
+    )
 
     # ✅ gross_sales per row
     for r in all_rows:
@@ -2547,20 +2614,28 @@ def finances_mtd_transactions():
             - float(r.get("promotional_rebates_tax", 0.0))
         )
 
-    marketplace_name = "Amazon.com" if ui_country in ("us", "usa", "united_states") else "Amazon.co.uk"
-    # ---------------- Store raw liveorders ----------------
+    marketplace_name = (
+        "Amazon.com"
+        if ui_country in ("us", "usa", "united_states")
+        else "Amazon.co.uk"
+    )
+
     db_result = None
+
     if store_in_db:
         try:
             with AMAZON_ENGINE.begin() as conn:
-                conn.execute(text("""
-                    DELETE FROM public.liveorders
-                    WHERE user_id = :user_id
-                    AND marketplace = :marketplace
-                """), {
-                    "user_id": user_id,
-                    "marketplace": marketplace_name
-                })
+                conn.execute(
+                    text("""
+                        DELETE FROM public.liveorders
+                        WHERE user_id = :user_id
+                        AND marketplace = :marketplace
+                    """),
+                    {
+                        "user_id": user_id,
+                        "marketplace": marketplace_name,
+                    },
+                )
 
             db_result = upsert_liveorders_from_rows(
                 all_rows,
@@ -2569,10 +2644,14 @@ def finances_mtd_transactions():
                 now_utc=now_utc,
             )
 
-        except Exception as e:
+        except Exception as exc:
             db.session.rollback()
-            print("MTD DB STORE ERROR:", str(e))
-            return jsonify({"success": False, "error": f"DB store failed: {str(e)}"}), 500
+            print("MTD DB STORE ERROR:", str(exc))
+
+            return jsonify({
+                "success": False,
+                "error": f"DB store failed: {str(exc)}",
+            }), 500
 
     # ---------------- totals ----------------
     totals = compute_totals(all_rows)
