@@ -3,18 +3,33 @@ from config import Config
 SECRET_KEY = Config.SECRET_KEY
 from sqlalchemy import text
 import json
-import io
 import pandas as pd
 from sqlalchemy import inspect
 from app import db
 from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile, Member, UserObjective
 from sqlalchemy.exc import IntegrityError
 from flask import current_app
-import os,jwt
+import io,jwt, re
 from app.utils.amazon_utils import amazon_client, db_url, db_url1
 from datetime import datetime, timezone
 from app.models.user_models import User
-from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
+from app.utils.us_process_utils import (
+    process_skuwise_us_data,
+    process_us_yearly_skuwise_data,
+    process_us_quarterly_skuwise_data,
+)
+
+from app.utils.uk_process_utils import (
+    process_skuwise_data,
+    process_quarterly_skuwise_data,
+    process_yearly_skuwise_data,
+)
+
+from app.utils.currency_utils import (
+    process_global_monthly_skuwise_data,
+    process_global_quarterly_skuwise_data,
+    process_global_yearly_skuwise_data,
+)
 
 
 superadmin_dashboard_bp = Blueprint('superadmin_dashboard', __name__)
@@ -839,118 +854,93 @@ def update_user_status():
     
 
 
-# =========================================================
-# ROUTE: Run monthly transaction sync for all active users
-# Runs each user's UploadHistory months up to requested year/month.
-# Skips months Amazon Finance API rejects because of 2-year limit.
-# =========================================================
 @superadmin_dashboard_bp.route("/amazon_api/formula_update", methods=["GET"])
 def formula_update():
-    # -------------------------
-    # 1) Superadmin Auth
-    # -------------------------
+
+    # =========================================================
+    # 1. Superadmin authentication
+    # =========================================================
     auth_header = request.headers.get("Authorization")
 
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({
             "success": False,
-            "error": "Authorization token is missing or invalid"
+            "error": "Authorization token is missing or invalid",
         }), 401
 
-    token = auth_header.split(" ")[1]
+    token = auth_header.split(" ", 1)[1]
 
     try:
-        decoded = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        decoded = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=["HS256"],
+        )
 
         if not decoded.get("is_superadmin"):
             return jsonify({
                 "success": False,
-                "error": "Only superadmin can run formula update"
+                "error": "Only superadmin can run formula update",
             }), 403
 
     except jwt.ExpiredSignatureError:
         return jsonify({
             "success": False,
-            "error": "Token has expired"
+            "error": "Token has expired",
         }), 401
 
     except jwt.InvalidTokenError:
         return jsonify({
             "success": False,
-            "error": "Invalid token"
+            "error": "Invalid token",
         }), 401
 
-    # -------------------------
-    # 2) Params
-    # -------------------------
-    now_utc = datetime.now(timezone.utc)
+    # =========================================================
+    # 2. Optional filters
+    # =========================================================
+    requested_user_id = request.args.get("user_id", type=int)
 
-    try:
-        end_year = int(request.args.get("year", now_utc.year))
-        end_month = int(request.args.get("month", now_utc.month))
+    requested_country = (
+        request.args.get("country") or ""
+    ).strip().lower()
 
-        if end_month < 1 or end_month > 12:
-            raise ValueError
+    requested_year = request.args.get("year", type=int)
+    requested_month = request.args.get("month", type=int)
 
-    except ValueError:
+    if requested_month is not None and not 1 <= requested_month <= 12:
         return jsonify({
             "success": False,
-            "error": "Invalid year or month"
+            "error": "month must be between 1 and 12",
         }), 400
 
-    transaction_status = request.args.get("transaction_status")
-    marketplace_id_arg = request.args.get("marketplace_id")
-    transaction_type_filter = request.args.get("transaction_type")
+    month_names = {
+        1: "january",
+        2: "february",
+        3: "march",
+        4: "april",
+        5: "may",
+        6: "june",
+        7: "july",
+        8: "august",
+        9: "september",
+        10: "october",
+        11: "november",
+        12: "december",
+    }
 
-    store_in_db = request.args.get("store_in_db", "true").lower() != "false"
-    run_upload = request.args.get("run_upload_pipeline", "false").lower() == "true"
-
-    requested_country = (request.args.get("country") or "").strip().lower()
-
-    # Optional: run only one user
-    requested_user_id = request.args.get("user_id")
-    try:
-        requested_user_id = int(requested_user_id) if requested_user_id else None
-    except ValueError:
-        return jsonify({
-            "success": False,
-            "error": "user_id must be a valid integer"
-        }), 400
-
-    # Optional: run only requested year/month instead of all UploadHistory months
-    single_month_only = (
-        request.args.get("single_month_only", "false").lower() == "true"
-    )
-
-    # -------------------------
-    # 3) Helpers
-    # -------------------------
-    month_order = {
-        "january": 1,
-        "february": 2,
-        "march": 3,
-        "april": 4,
-        "may": 5,
-        "june": 6,
-        "july": 7,
-        "august": 8,
-        "september": 9,
-        "october": 10,
-        "november": 11,
-        "december": 12,
-
-        "jan": 1,
-        "feb": 2,
-        "mar": 3,
-        "apr": 4,
-        "jun": 6,
-        "jul": 7,
-        "aug": 8,
-        "sep": 9,
-        "sept": 9,
-        "oct": 10,
-        "nov": 11,
-        "dec": 12,
+    quarter_mapping = {
+        "january": "Q1",
+        "february": "Q1",
+        "march": "Q1",
+        "april": "Q2",
+        "may": "Q2",
+        "june": "Q2",
+        "july": "Q3",
+        "august": "Q3",
+        "september": "Q3",
+        "october": "Q4",
+        "november": "Q4",
+        "december": "Q4",
     }
 
     excluded_countries = {
@@ -964,320 +954,519 @@ def formula_update():
     def normalize_country(value):
         value = (value or "").strip().lower()
 
-        if value in ("united kingdom", "gb", "great britain"):
-            return "uk"
-
-        if value in ("united states", "usa", "us"):
-            return "us"
-
-        if value in ("ca", "canada"):
-            return "canada"
-
-        return value
-
-    def marketplace_to_country(marketplace_id_value):
-        marketplace_id_value = (marketplace_id_value or "").strip()
-
-        if marketplace_id_value == "ATVPDKIKX0DER":
-            return "us"
-
-        if marketplace_id_value == "A1F83G8C2ARO7P":
-            return "uk"
-
-        if marketplace_id_value == "A2EUQ1WTGCTBG2":
-            return "canada"
-
-        return "us"
-
-    def get_user_country(user, user_marketplace_id):
-        if requested_country:
-            return normalize_country(requested_country)
-
-        user_country = normalize_country(getattr(user, "country", None))
-
-        if user_country:
-            return user_country
-
-        return marketplace_to_country(user_marketplace_id)
-
-    def get_amazon_finance_cutoff_date():
-        """
-        Amazon Finance Transactions API rejects postedAfter before 2 years from today.
-        Example: if today is 2026-05-15, postedAfter before 2024-05-15 fails.
-        Since monthly sync starts at day 1, May 2024 must be skipped.
-        """
-        try:
-            return now_utc.replace(year=now_utc.year - 2)
-        except ValueError:
-            # Handles Feb 29
-            return now_utc.replace(year=now_utc.year - 2, day=28)
-
-    def is_month_allowed_by_amazon(year_value, month_value):
-        month_start = datetime(
-            int(year_value),
-            int(month_value),
-            1,
-            tzinfo=timezone.utc
-        )
-
-        amazon_cutoff_date = get_amazon_finance_cutoff_date()
-
-        return month_start >= amazon_cutoff_date
-
-    def parse_upload_history_month(row):
-        month_name = (row.month or "").strip().lower()
-        year_value = row.year
-
-        if not year_value:
-            return None
-
-        try:
-            year_value = int(year_value)
-        except Exception:
-            return None
-
-        if month_name.isdigit():
-            month_number = int(month_name)
-        else:
-            month_number = month_order.get(month_name)
-
-        if not month_number or month_number < 1 or month_number > 12:
-            return None
-
-        return {
-            "year": year_value,
-            "month": month_number,
-            "month_name": month_name,
+        aliases = {
+            "united kingdom": "uk",
+            "great britain": "uk",
+            "gb": "uk",
+            "united states": "us",
+            "usa": "us",
         }
 
-    def get_available_months_for_user(user_id, country):
-        rows = UploadHistory.query.filter_by(user_id=user_id).all()
+        return aliases.get(value, value)
 
-        normalized_country = normalize_country(country)
+    requested_country = normalize_country(requested_country)
 
-        country_rows = [
-            row for row in rows
-            if normalize_country(getattr(row, "country", None)) == normalized_country
-        ]
+    # =========================================================
+    # 3. Find active users
+    # =========================================================
+    user_query = User.query.filter_by(status=True)
 
-        # Fallback: use all non-global upload history rows
-        if not country_rows:
-            country_rows = [
-                row for row in rows
-                if normalize_country(getattr(row, "country", None)) not in excluded_countries
-            ]
+    if requested_user_id is not None:
+        user_query = user_query.filter(User.id == requested_user_id)
 
-        unique_months = {}
-        skipped_old_months = []
+    users = user_query.order_by(User.id.asc()).all()
 
-        for row in country_rows:
-            parsed = parse_upload_history_month(row)
-
-            if not parsed:
-                continue
-
-            year_value = parsed["year"]
-            month_number = parsed["month"]
-
-            # Do not run future months beyond requested end month
-            if (year_value, month_number) > (end_year, end_month):
-                continue
-
-            # Skip months Amazon Finance API will reject
-            if not is_month_allowed_by_amazon(year_value, month_number):
-                skipped_old_months.append({
-                    "year": year_value,
-                    "month": month_number,
-                    "reason": "older_than_amazon_finance_api_2_year_limit",
-                })
-                continue
-
-            unique_months[(year_value, month_number)] = parsed
-
-        months_to_run = [
-            unique_months[key]
-            for key in sorted(unique_months.keys())
-        ]
-
-        return months_to_run, skipped_old_months
-
-    # -------------------------
-    # 4) Validate single month if requested
-    # -------------------------
-    if single_month_only and not is_month_allowed_by_amazon(end_year, end_month):
+    if not users:
         return jsonify({
             "success": False,
-            "error": "Requested month is older than Amazon Finance API 2-year limit",
-            "requested_year": end_year,
-            "requested_month": end_month,
-            "amazon_cutoff_date": get_amazon_finance_cutoff_date().date().isoformat(),
-            "hint": "Use a newer month or remove single_month_only so old UploadHistory months are skipped."
-        }), 400
+            "error": "No active users found",
+        }), 404
 
-    # -------------------------
-    # 5) Get active users
-    # -------------------------
-    query = User.query.filter_by(status=True)
+    engine = db.get_engine()
+    inspector = inspect(engine)
+    all_tables = set(inspector.get_table_names())
 
-    if requested_user_id:
-        query = query.filter(User.id == requested_user_id)
+    # =========================================================
+    # 4. Find existing raw monthly tables
+    # =========================================================
+    source_pattern = re.compile(
+        r"^user_(?P<user_id>\d+)_"
+        r"(?P<country>[a-zA-Z]+)_"
+        r"(?P<month>"
+        r"january|february|march|april|may|june|"
+        r"july|august|september|october|november|december"
+        r")"
+        r"(?P<year>\d{4})_data$",
+        re.IGNORECASE,
+    )
 
-    users = query.order_by(User.id.asc()).all()
+    active_user_ids = {user.id for user in users}
+    months_to_process = []
 
-    results = []
-    success_count = 0
-    failed_count = 0
-    total_month_runs = 0
-    total_skipped_old_months = 0
+    for table_name in all_tables:
+        match = source_pattern.match(table_name)
 
-    # -------------------------
-    # 6) Run sync user by user, month by month
-    # -------------------------
-    for user in users:
-        user_id = user.id
+        if not match:
+            continue
 
-        user_marketplace_id = (
-            marketplace_id_arg
-            or getattr(user, "marketplace_id", None)
-            or amazon_client.marketplace_id
-            or ""
-        ).strip()
+        user_id = int(match.group("user_id"))
+        country = normalize_country(match.group("country"))
+        month = match.group("month").lower()
+        year = int(match.group("year"))
 
-        ui_country = get_user_country(user, user_marketplace_id)
+        if user_id not in active_user_ids:
+            continue
 
-        skipped_old_months = []
+        if country in excluded_countries:
+            continue
 
-        if single_month_only:
-            months_to_run = [{
-                "year": end_year,
-                "month": end_month,
-                "month_name": None,
-            }]
-            months_count_from_upload_history = 1
+        # Your formula functions currently support UK and US.
+        if country not in {"uk", "us"}:
+            continue
 
-        else:
-            months_to_run, skipped_old_months = get_available_months_for_user(
-                user_id=user_id,
-                country=ui_country,
-            )
+        if requested_country and country != requested_country:
+            continue
 
-            months_count_from_upload_history = len(months_to_run)
+        if requested_year is not None and year != requested_year:
+            continue
 
-            # If there is no UploadHistory for this user/country,
-            # fall back to requested month only, but only if Amazon allows it.
-            if not months_to_run:
-                if is_month_allowed_by_amazon(end_year, end_month):
-                    months_to_run = [{
-                        "year": end_year,
-                        "month": end_month,
-                        "month_name": None,
-                    }]
-                else:
-                    skipped_old_months.append({
-                        "year": end_year,
-                        "month": end_month,
-                        "reason": "older_than_amazon_finance_api_2_year_limit",
-                    })
+        if requested_month is not None:
+            requested_month_name = month_names[requested_month]
 
-        total_skipped_old_months += len(skipped_old_months)
+            if month != requested_month_name:
+                continue
 
-        user_result = {
+        months_to_process.append({
             "user_id": user_id,
-            "email": getattr(user, "email", None),
-            "country": ui_country,
-            "marketplace_id": user_marketplace_id,
-            "months_found": months_count_from_upload_history,
-            "months_attempted": len(months_to_run),
-            "months_skipped": len(skipped_old_months),
-            "skipped_months": skipped_old_months,
-            "success_count": 0,
-            "failed_count": 0,
-            "months": [],
-        }
+            "country": country,
+            "month": month,
+            "year": year,
+            "source_table": table_name,
+        })
 
-        for month_item in months_to_run:
-            run_year = int(month_item["year"])
-            run_month = int(month_item["month"])
+    months_to_process.sort(
+        key=lambda row: (
+            row["user_id"],
+            row["country"],
+            row["year"],
+            list(month_names.values()).index(row["month"]),
+        )
+    )
 
-            total_month_runs += 1
+    if not months_to_process:
+        return jsonify({
+            "success": False,
+            "error": "No existing source tables found",
+            "expected_table_format": (
+                "user_{user_id}_{country}_{month}{year}_data"
+            ),
+            "filters": {
+                "user_id": requested_user_id,
+                "country": requested_country or None,
+                "year": requested_year,
+                "month": requested_month,
+            },
+        }), 404
 
-            try:
-                result = sync_monthly_transactions_for_user(
-                    user_id=user_id,
-                    year=run_year,
-                    month=run_month,
-                    country=ui_country,
-                    marketplace_id=user_marketplace_id or amazon_client.marketplace_id,
-                    transaction_status=transaction_status,
-                    transaction_type_filter=transaction_type_filter,
-                    store_in_db=store_in_db,
-                    run_upload=run_upload,
-                    db_url=db_url,
-                    db_url_aux=db_url1,
+    # =========================================================
+    # 5. Process monthly tables first
+    # =========================================================
+    monthly_results = []
+    successful_periods = []
+    monthly_success_count = 0
+    monthly_failed_count = 0
+
+    for item in months_to_process:
+        user_id = item["user_id"]
+        country = item["country"]
+        month = item["month"]
+        year = item["year"]
+        source_table = item["source_table"]
+
+        try:
+            if country == "uk":
+                result = process_skuwise_data(
+                    user_id,
+                    country,
+                    month,
+                    year,
                 )
 
-                pipeline_result = result.get("pipeline_result") or {}
+            elif country == "us":
+                result = process_skuwise_us_data(
+                    user_id,
+                    country,
+                    month,
+                    year,
+                )
 
-                # Do not return huge Base64 excel_file in all-user response
-                safe_pipeline_result = {
-                    k: v
-                    for k, v in pipeline_result.items()
-                    if k != "excel_file"
-                }
+            else:
+                raise ValueError(
+                    f"Unsupported country: {country}"
+                )
 
-                month_success = bool(result.get("success"))
+            monthly_success_count += 1
 
-                if month_success:
-                    user_result["success_count"] += 1
-                    success_count += 1
-                else:
-                    user_result["failed_count"] += 1
-                    failed_count += 1
+            successful_periods.append({
+                "user_id": user_id,
+                "country": country,
+                "month": month,
+                "year": year,
+            })
 
-                user_result["months"].append({
-                    "year": run_year,
-                    "month": run_month,
-                    "success": month_success,
-                    "status": result.get("status"),
-                    "error": result.get("error"),
-                    "transactions_count": len(result.get("transactions", [])),
-                    "pipeline_result": safe_pipeline_result,
-                    "has_excel_file": bool(pipeline_result.get("excel_file")),
-                })
+            monthly_results.append({
+                "success": True,
+                "user_id": user_id,
+                "country": country,
+                "month": month,
+                "year": year,
+                "source_table": source_table,
+                "result_returned": result is not None,
+            })
 
-            except Exception as e:
-                user_result["failed_count"] += 1
-                failed_count += 1
+        except Exception as exc:
+            monthly_failed_count += 1
 
-                user_result["months"].append({
-                    "year": run_year,
-                    "month": run_month,
-                    "success": False,
-                    "status": None,
-                    "error": str(e),
-                    "transactions_count": 0,
-                    "pipeline_result": {},
-                    "has_excel_file": False,
-                })
+            monthly_results.append({
+                "success": False,
+                "user_id": user_id,
+                "country": country,
+                "month": month,
+                "year": year,
+                "source_table": source_table,
+                "error": str(exc),
+            })
 
-        user_result["success"] = user_result["failed_count"] == 0
-        results.append(user_result)
+    # =========================================================
+    # 6. Rebuild each affected quarter once
+    # =========================================================
+    affected_quarters = {
+        (
+            item["user_id"],
+            item["country"],
+            item["year"],
+            item["month"],
+            quarter_mapping[item["month"]],
+        )
+        for item in successful_periods
+    }
 
-    # -------------------------
-    # 7) Response
-    # -------------------------
+    # Multiple processed months can belong to the same quarter.
+    unique_quarters = {}
+
+    for (
+        user_id,
+        country,
+        year,
+        month,
+        quarter,
+    ) in affected_quarters:
+        key = (
+            user_id,
+            country,
+            year,
+            quarter,
+        )
+
+        # Any month inside the quarter can be passed because your
+        # quarterly functions determine the quarter from the month.
+        unique_quarters[key] = month
+
+    quarterly_results = []
+    quarterly_success_count = 0
+    quarterly_failed_count = 0
+
+    for (
+        user_id,
+        country,
+        year,
+        quarter,
+    ), month in sorted(unique_quarters.items()):
+
+        try:
+            if country == "uk":
+                result = process_quarterly_skuwise_data(
+                    user_id,
+                    country,
+                    month,
+                    year,
+                    quarter,
+                    db_url,
+                )
+
+            elif country == "us":
+                result = process_us_quarterly_skuwise_data(
+                    user_id,
+                    country,
+                    month,
+                    year,
+                    quarter,
+                    db_url,
+                )
+
+            else:
+                raise ValueError(
+                    f"Unsupported country: {country}"
+                )
+
+            quarterly_success_count += 1
+
+            quarterly_results.append({
+                "success": True,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "quarter": quarter,
+                "month_argument": month,
+                "result_returned": result is not None,
+            })
+
+        except Exception as exc:
+            quarterly_failed_count += 1
+
+            quarterly_results.append({
+                "success": False,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "quarter": quarter,
+                "month_argument": month,
+                "error": str(exc),
+            })
+
+    # =========================================================
+    # 7. Rebuild each affected year once
+    # =========================================================
+    affected_years = {
+        (
+            item["user_id"],
+            item["country"],
+            item["year"],
+        )
+        for item in successful_periods
+    }
+
+    yearly_results = []
+    yearly_success_count = 0
+    yearly_failed_count = 0
+
+    for user_id, country, year in sorted(affected_years):
+        try:
+            if country == "uk":
+                result = process_yearly_skuwise_data(
+                    user_id,
+                    country,
+                    year,
+                )
+
+            elif country == "us":
+                result = process_us_yearly_skuwise_data(
+                    user_id,
+                    country,
+                    year,
+                )
+
+            else:
+                raise ValueError(
+                    f"Unsupported country: {country}"
+                )
+
+            yearly_success_count += 1
+
+            yearly_results.append({
+                "success": True,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "result_returned": result is not None,
+            })
+
+        except Exception as exc:
+            yearly_failed_count += 1
+
+            yearly_results.append({
+                "success": False,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "error": str(exc),
+            })
+
+    # =========================================================
+    # 8. Rebuild global formula tables
+    # =========================================================
+    global_monthly_results = []
+    global_quarterly_results = []
+    global_yearly_results = []
+
+    global_monthly_success = 0
+    global_monthly_failed = 0
+    global_quarterly_success = 0
+    global_quarterly_failed = 0
+    global_yearly_success = 0
+    global_yearly_failed = 0
+
+    for item in successful_periods:
+        try:
+            result = process_global_monthly_skuwise_data(
+                item["user_id"],
+                item["country"],
+                item["year"],
+                item["month"],
+            )
+
+            global_monthly_success += 1
+
+            global_monthly_results.append({
+                "success": True,
+                **item,
+                "result_returned": result is not None,
+            })
+
+        except Exception as exc:
+            global_monthly_failed += 1
+
+            global_monthly_results.append({
+                "success": False,
+                **item,
+                "error": str(exc),
+            })
+
+    for (
+        user_id,
+        country,
+        year,
+        quarter,
+    ), month in sorted(unique_quarters.items()):
+
+        try:
+            result = process_global_quarterly_skuwise_data(
+                user_id,
+                country,
+                month,
+                year,
+                quarter,
+                db_url,
+            )
+
+            global_quarterly_success += 1
+
+            global_quarterly_results.append({
+                "success": True,
+                "user_id": user_id,
+                "country": country,
+                "month": month,
+                "year": year,
+                "quarter": quarter,
+                "result_returned": result is not None,
+            })
+
+        except Exception as exc:
+            global_quarterly_failed += 1
+
+            global_quarterly_results.append({
+                "success": False,
+                "user_id": user_id,
+                "country": country,
+                "month": month,
+                "year": year,
+                "quarter": quarter,
+                "error": str(exc),
+            })
+
+    for user_id, country, year in sorted(affected_years):
+        try:
+            result = process_global_yearly_skuwise_data(
+                user_id,
+                country,
+                year,
+            )
+
+            global_yearly_success += 1
+
+            global_yearly_results.append({
+                "success": True,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "result_returned": result is not None,
+            })
+
+        except Exception as exc:
+            global_yearly_failed += 1
+
+            global_yearly_results.append({
+                "success": False,
+                "user_id": user_id,
+                "country": country,
+                "year": year,
+                "error": str(exc),
+            })
+
+    # =========================================================
+    # 9. Response
+    # =========================================================
+    total_failed = (
+        monthly_failed_count
+        + quarterly_failed_count
+        + yearly_failed_count
+        + global_monthly_failed
+        + global_quarterly_failed
+        + global_yearly_failed
+    )
+
     return jsonify({
-        "success": True,
-        "message": "Formula update completed for all users",
-        "mode": "single_month_only" if single_month_only else "upload_history_months",
-        "end_year": end_year,
-        "end_month": end_month,
-        "amazon_cutoff_date": get_amazon_finance_cutoff_date().date().isoformat(),
-        "total_users": len(users),
-        "total_month_runs": total_month_runs,
-        "total_skipped_old_months": total_skipped_old_months,
-        "success_count": success_count,
-        "failed_count": failed_count,
-        "results": results,
-    }), 200
+        "success": total_failed == 0,
+        "message": (
+            "Formula update completed using existing database tables. "
+            "Amazon SP-API was not called."
+        ),
+        "amazon_fetch_performed": False,
+        "source_table_format": (
+            "user_{user_id}_{country}_{month}{year}_data"
+        ),
+        "filters": {
+            "user_id": requested_user_id,
+            "country": requested_country or None,
+            "year": requested_year,
+            "month": requested_month,
+        },
+        "source_tables_found": len(months_to_process),
+        "monthly": {
+            "attempted": len(months_to_process),
+            "success_count": monthly_success_count,
+            "failed_count": monthly_failed_count,
+            "results": monthly_results,
+        },
+        "quarterly": {
+            "attempted": len(unique_quarters),
+            "success_count": quarterly_success_count,
+            "failed_count": quarterly_failed_count,
+            "results": quarterly_results,
+        },
+        "yearly": {
+            "attempted": len(affected_years),
+            "success_count": yearly_success_count,
+            "failed_count": yearly_failed_count,
+            "results": yearly_results,
+        },
+        "global_monthly": {
+            "attempted": len(successful_periods),
+            "success_count": global_monthly_success,
+            "failed_count": global_monthly_failed,
+            "results": global_monthly_results,
+        },
+        "global_quarterly": {
+            "attempted": len(unique_quarters),
+            "success_count": global_quarterly_success,
+            "failed_count": global_quarterly_failed,
+            "results": global_quarterly_results,
+        },
+        "global_yearly": {
+            "attempted": len(affected_years),
+            "success_count": global_yearly_success,
+            "failed_count": global_yearly_failed,
+            "results": global_yearly_results,
+        },
+    }), 200 if total_failed == 0 else 207
 
