@@ -441,6 +441,7 @@ for (const r of rows || []) {
   // ✅ percent-only summary labels (Dropdowns behavior)
   const PERCENT_SUMMARY_LABELS = new Set([
     "CM2 Margins",
+    "CM2 Profit %",
     "TACoS (Total Advertising Cost of Sale)",
     "Reimbursement vs CM2 Margins",
     "Reimbursement vs Sales",

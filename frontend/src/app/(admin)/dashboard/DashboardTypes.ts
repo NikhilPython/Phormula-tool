@@ -428,6 +428,15 @@ export type PlSummaryTotals = {
     advertising_total: number;
     visible_ads: number;
     dealsvouchar_ads: number;
+    placement_fees?: number;
+    shipping_charges?: number;
+    customs_fees?: number;
+    shipping_charges_total?: number;
+    storage_fees?: number;
+    inventory_charges?: number;
+    inventory_charges_and_reimbursement?: number;
+    platform_management_fees?: number;
+    others?: number;
 
     other_transactions: number;
     platform_fee: number;
