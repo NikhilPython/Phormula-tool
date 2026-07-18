@@ -1069,6 +1069,30 @@ MONTH_MAP = {
     "dec": 12, "december": 12,
 }
 
+PERIOD_NUMBER_WORDS = {
+    "one": 1, "first": 1, "1st": 1,
+    "two": 2, "second": 2, "2nd": 2,
+    "three": 3, "third": 3, "3rd": 3,
+    "four": 4, "fourth": 4, "4th": 4,
+    "five": 5, "fifth": 5, "5th": 5,
+    "six": 6, "sixth": 6, "6th": 6,
+    "seven": 7, "seventh": 7, "7th": 7,
+    "eight": 8, "eighth": 8, "8th": 8,
+    "nine": 9, "ninth": 9, "9th": 9,
+    "ten": 10, "tenth": 10, "10th": 10,
+    "eleven": 11, "eleventh": 11, "11th": 11,
+    "twelve": 12, "twelfth": 12, "12th": 12,
+}
+
+PERIOD_NUMBER_PATTERN = (
+    r"\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|"
+    r"eleventh|twelfth|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th|11th|12th"
+)
+
+QUARTER_VALUE_PATTERN = r"[1-4]|one|two|three|four|first|second|third|fourth|1st|2nd|3rd|4th"
+HALF_VALUE_PATTERN = r"[12]|one|two|first|second|1st|2nd"
+
 
 # -------------------------------
 # HELPERS
@@ -1079,7 +1103,21 @@ def normalize_text(text: str) -> str:
 
 
 def extract_year(text: str) -> Optional[int]:
-    match = re.search(r"\b(20\d{2}|\d{2})\b", text)
+    text = normalize_text(text)
+    patterns = [
+        r"\b(?:fy|fiscal\s+year|financial\s+year|calendar\s+year|cy)\s*['-]?\s*(20\d{2}|\d{2})\b",
+        r"\b(?:year|yr)\s*['-]?\s*(20\d{2}|\d{2})\b",
+        r"(?<![a-z0-9])['’](\d{2})\b",
+        r"\b(20\d{2})\b",
+        r"\b(\d{2})\b",
+    ]
+
+    match = None
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            break
+
     if not match:
         return None
 
@@ -1101,6 +1139,15 @@ def _normalize_year_value(raw: Optional[str]) -> Optional[int]:
     return year
 
 
+def _parse_period_number(raw: Optional[str]) -> Optional[int]:
+    if raw is None:
+        return None
+    value = raw.lower().strip()
+    if value.isdigit():
+        return int(value)
+    return PERIOD_NUMBER_WORDS.get(value)
+
+
 def _period_from_year_months(year: int, start_month: int, end_month: int) -> Dict[str, int]:
     return {
         "start_month": start_month,
@@ -1108,6 +1155,47 @@ def _period_from_year_months(year: int, start_month: int, end_month: int) -> Dic
         "end_month": end_month,
         "end_year": year,
     }
+
+
+def _months_between(start_year: int, start_month: int, end_year: int, end_month: int) -> list[Dict[str, int]]:
+    if (start_year, start_month) > (end_year, end_month):
+        return []
+
+    months = []
+    cur_month = start_month
+    cur_year = start_year
+
+    while (cur_year < end_year) or (cur_year == end_year and cur_month <= end_month):
+        months.append({"month": cur_month, "year": cur_year})
+        cur_month += 1
+        if cur_month > 12:
+            cur_month = 1
+            cur_year += 1
+
+    return months
+
+
+def _split_period_range_text(text: str) -> Optional[Tuple[str, str]]:
+    text = normalize_text(text).replace("half-year", "half year")
+    between_match = re.search(r"\bbetween\s+(.+?)\s+and\s+(.+)$", text)
+    if between_match:
+        return between_match.group(1).strip(), between_match.group(2).strip()
+
+    separators = [
+        r"\bup\s+to\b",
+        r"\bupto\b",
+        r"\bthrough\b",
+        r"\buntil\b",
+        r"\btill\b",
+        r"\bto\b",
+        r"\s*-\s*",
+    ]
+    for separator in separators:
+        parts = re.split(separator, text, maxsplit=1)
+        if len(parts) == 2:
+            return parts[0].strip(), parts[1].strip()
+
+    return None
 
 
 def extract_month(text: str) -> Optional[int]:
@@ -1130,87 +1218,41 @@ def extract_month_year(text: str, default_year: Optional[int] = None) -> Optiona
 # -------------------------------
 
 def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
-    text = text.lower()
+    text = normalize_text(text)
 
-    # -------------------------------
-    # STANDARD Q FORMAT (q1 2026)
-    # -------------------------------
-    match = re.search(r"\bq([1-4])\s*(20\d{2})?\b", text)
-    if match:
-        q = int(match.group(1))
-        year = int(match.group(2)) if match.group(2) else extract_year(text)
-
-        if not year:
+    def _quarter_result(raw_q: str, raw_year: Optional[str]) -> Optional[Tuple[int, int, int]]:
+        q = _parse_period_number(raw_q)
+        year = _normalize_year_value(raw_year) if raw_year else extract_year(text)
+        if not year or q not in {1, 2, 3, 4}:
             return None
 
         start_month = (q - 1) * 3 + 1
         end_month = start_month + 2
         return year, start_month, end_month
 
-    # -------------------------------
-    # SPOKEN QUARTER FORMAT
-    # Handles "quarter 1 of 2026", "qtr one 2026", "2026 quarter 1".
-    # -------------------------------
-    quarter_words = {
-        "1": 1,
-        "one": 1,
-        "2": 2,
-        "two": 2,
-        "3": 3,
-        "three": 3,
-        "4": 4,
-        "four": 4,
-    }
+    # q1, q1 2026, qtr1, qtr 1, q 1
+    match = re.search(r"\bq(?:tr)?\s*([1-4])\s*(?:of|in|for)?\s*(20\d{2}|\d{2})?\b", text)
+    if match:
+        result = _quarter_result(match.group(1), match.group(2))
+        if result:
+            return result
+
     spoken_patterns = [
-        r"\b(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*([1-4]|one|two|three|four)(?:\s+(?:of|in|for))?\s*(20\d{2})?\b",
-        r"\b(20\d{2})\s+(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*([1-4]|one|two|three|four)\b",
+        rf"\b(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*({QUARTER_VALUE_PATTERN})(?:\s+(?:of|in|for))?\s*(20\d{{2}}|\d{{2}})?\b",
+        rf"\b(20\d{{2}}|\d{{2}})\s+(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*({QUARTER_VALUE_PATTERN})\b",
+        rf"\b({QUARTER_VALUE_PATTERN})\s+(?:quarter|qtr)(?:\s+(?:of|in|for))?\s*(20\d{{2}}|\d{{2}})?\b",
     ]
-    for pattern in spoken_patterns:
+    for index, pattern in enumerate(spoken_patterns):
         match = re.search(pattern, text)
         if not match:
             continue
 
-        if match.group(1).startswith("20"):
-            year = int(match.group(1))
-            raw_q = match.group(2)
+        if index == 1:
+            result = _quarter_result(match.group(2), match.group(1))
         else:
-            raw_q = match.group(1)
-            year = int(match.group(2)) if match.group(2) else extract_year(text)
-
-        if not year:
-            return None
-
-        q = quarter_words.get(raw_q)
-        if not q:
-            return None
-
-        start_month = (q - 1) * 3 + 1
-        end_month = start_month + 2
-        return year, start_month, end_month
-
-    # -------------------------------
-    # TEXTUAL QUARTERS
-    # -------------------------------
-    quarter_map = {
-        "first quarter": 1,
-        "1st quarter": 1,
-        "second quarter": 2,
-        "2nd quarter": 2,
-        "third quarter": 3,
-        "3rd quarter": 3,
-        "fourth quarter": 4,
-        "4th quarter": 4,
-    }
-
-    for phrase, q in quarter_map.items():
-        if phrase in text:
-            year = extract_year(text)
-            if not year:
-                return None
-
-            start_month = (q - 1) * 3 + 1
-            end_month = start_month + 2
-            return year, start_month, end_month
+            result = _quarter_result(match.group(1), match.group(2))
+        if result:
+            return result
 
     # -------------------------------
     # RELATIVE QUARTERS
@@ -1238,44 +1280,39 @@ def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
 # -------------------------------
 
 def parse_half_year(text: str) -> Optional[Tuple[int, int, int, int]]:
-    text = normalize_text(text)
+    text = normalize_text(text).replace("half-year", "half year")
 
-    match = re.search(r"\bh([12])\s*(20\d{2}|\d{2})?\b", text)
-    if not match:
-        match = re.search(r"\b(20\d{2}|\d{2})\s*h([12])\b", text)
-        if match:
-            year = _normalize_year_value(match.group(1)) or extract_year(text)
-            half = int(match.group(2))
+    def _half_result(raw_half: str, raw_year: Optional[str]) -> Optional[Tuple[int, int, int, int]]:
+        half = _parse_period_number(raw_half)
+        year = _normalize_year_value(raw_year) if raw_year else extract_year(text)
+        if not year or half not in {1, 2}:
+            return None
+
+        start_month, end_month = (1, 6) if half == 1 else (7, 12)
+        return year, start_month, end_month, half
+
+    patterns = [
+        rf"\bh\s*({HALF_VALUE_PATTERN})\s*(?:of|in|for)?\s*(20\d{{2}}|\d{{2}})?\b",
+        rf"\b({HALF_VALUE_PATTERN})\s*h\s*(?:of|in|for)?\s*(20\d{{2}}|\d{{2}})?\b",
+        rf"\b(20\d{{2}}|\d{{2}})\s+h\s*({HALF_VALUE_PATTERN})\b",
+        rf"\b({HALF_VALUE_PATTERN})\s+half(?:\s+year)?(?:\s+(?:of|in|for))?\s*(20\d{{2}}|\d{{2}})?\b",
+        rf"\bhalf\s+year(?:ly)?\s+({HALF_VALUE_PATTERN})(?:\s+(?:of|in|for))?\s*(20\d{{2}}|\d{{2}})?\b",
+        rf"\b(20\d{{2}}|\d{{2}})\s+({HALF_VALUE_PATTERN})\s+half(?:\s+year)?\b",
+        rf"\b(20\d{{2}}|\d{{2}})\s+half\s+year(?:ly)?\s+({HALF_VALUE_PATTERN})\b",
+    ]
+    for index, pattern in enumerate(patterns):
+        match = re.search(pattern, text)
+        if not match:
+            continue
+
+        if index in {2, 5, 6}:
+            result = _half_result(match.group(2), match.group(1))
         else:
-            year = None
-            half = None
-    else:
-        half = int(match.group(1))
-        year = _normalize_year_value(match.group(2)) if match.group(2) else extract_year(text)
+            result = _half_result(match.group(1), match.group(2))
+        if result:
+            return result
 
-    if half is None:
-        match = re.search(
-            r"\b(first|1st|second|2nd)\s+half(?:\s+of)?\s*(20\d{2}|\d{2})?\b",
-            text,
-        )
-        if match:
-            half = 1 if match.group(1) in {"first", "1st"} else 2
-            year = _normalize_year_value(match.group(2)) if match.group(2) else extract_year(text)
-
-    if half is None:
-        match = re.search(
-            r"\b(20\d{2}|\d{2})\s+(first|1st|second|2nd)\s+half\b",
-            text,
-        )
-        if match:
-            year = _normalize_year_value(match.group(1))
-            half = 1 if match.group(2) in {"first", "1st"} else 2
-
-    if not year or half not in {1, 2}:
-        return None
-
-    start_month, end_month = (1, 6) if half == 1 else (7, 12)
-    return year, start_month, end_month, half
+    return None
 
 
 def _half_year_period(year: int, half: int) -> Dict[str, int]:
@@ -1283,7 +1320,156 @@ def _half_year_period(year: int, half: int) -> Dict[str, int]:
     return _period_from_year_months(int(year), start_month, end_month)
 
 
+def _looks_like_quarter_period(text: str) -> bool:
+    text = normalize_text(text)
+    return bool(
+        re.search(rf"\bq(?:tr)?\s*[1-4]\b", text)
+        or re.search(rf"\b(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*({QUARTER_VALUE_PATTERN})\b", text)
+        or re.search(rf"\b({QUARTER_VALUE_PATTERN})\s+(?:quarter|qtr)\b", text)
+    )
+
+
+def _looks_like_half_year_period(text: str) -> bool:
+    text = normalize_text(text).replace("half-year", "half year")
+    return bool(
+        re.search(rf"\bh\s*({HALF_VALUE_PATTERN})\b", text)
+        or re.search(rf"\b({HALF_VALUE_PATTERN})\s*h\b", text)
+        or re.search(rf"\b({HALF_VALUE_PATTERN})\s+half(?:\s+year)?\b", text)
+        or re.search(rf"\bhalf\s+year(?:ly)?\s+({HALF_VALUE_PATTERN})\b", text)
+    )
+
+
+def parse_quarter_range(text: str) -> Optional[Dict[str, Any]]:
+    parts = _split_period_range_text(text)
+    if not parts:
+        return None
+
+    left_text, right_text = parts
+    if not (_looks_like_quarter_period(left_text) and _looks_like_quarter_period(right_text)):
+        return None
+
+    default_year = extract_year(text) or datetime.today().year
+    left_has_year = extract_year(left_text) is not None
+    right_has_year = extract_year(right_text) is not None
+
+    left_q = parse_quarter(left_text if left_has_year else f"{left_text} {default_year}")
+    right_q = parse_quarter(right_text if right_has_year else f"{right_text} {default_year}")
+    if not left_q or not right_q:
+        return None
+
+    if (left_q[0], left_q[1]) > (right_q[0], right_q[2]):
+        if not left_has_year and right_has_year:
+            left_q = (right_q[0] - 1, left_q[1], left_q[2])
+        elif left_has_year and not right_has_year:
+            right_q = (left_q[0] + 1, right_q[1], right_q[2])
+
+    months = _months_between(left_q[0], left_q[1], right_q[0], right_q[2])
+    if not months:
+        return None
+
+    return {"type": "multi_month", "months": months}
+
+
+def parse_half_year_range(text: str) -> Optional[Dict[str, Any]]:
+    parts = _split_period_range_text(text)
+    if not parts:
+        return None
+
+    left_text, right_text = parts
+    if not (_looks_like_half_year_period(left_text) and _looks_like_half_year_period(right_text)):
+        return None
+
+    default_year = extract_year(text) or datetime.today().year
+    left_has_year = extract_year(left_text) is not None
+    right_has_year = extract_year(right_text) is not None
+
+    left_half = parse_half_year(left_text if left_has_year else f"{left_text} {default_year}")
+    right_half = parse_half_year(right_text if right_has_year else f"{right_text} {default_year}")
+    if not left_half or not right_half:
+        return None
+
+    if (left_half[0], left_half[1]) > (right_half[0], right_half[2]):
+        if not left_has_year and right_has_year:
+            left_half = (right_half[0] - 1, left_half[1], left_half[2], left_half[3])
+        elif left_has_year and not right_has_year:
+            right_half = (left_half[0] + 1, right_half[1], right_half[2], right_half[3])
+
+    months = _months_between(left_half[0], left_half[1], right_half[0], right_half[2])
+    if not months:
+        return None
+
+    return {"type": "multi_month", "months": months}
+
+
+def parse_fixed_month_span(text: str) -> Optional[Dict[str, Any]]:
+    text = normalize_text(text)
+    quality = r"(?:(?:complete|completed|closed|full|calendar)\s+){0,3}"
+    match = re.search(
+        rf"\b(first|1st|second|2nd|third|3rd|fourth|4th|initial|opening|last|final|ending)\s+({PERIOD_NUMBER_PATTERN})\s+{quality}months?(?:\s+(?:of|in|for))?\s*(20\d{{2}}|\d{{2}})?\b",
+        text,
+    )
+    if not match:
+        return None
+
+    qualifier = match.group(1)
+    count = _parse_period_number(match.group(2))
+    year = _normalize_year_value(match.group(3)) if match.group(3) else extract_year(text)
+    if not year or not count or count < 1 or count > 12:
+        return None
+
+    if qualifier in {"last", "final", "ending"}:
+        start_month = 13 - count
+        end_month = 12
+    else:
+        order = {
+            "first": 1, "1st": 1, "initial": 1, "opening": 1,
+            "second": 2, "2nd": 2,
+            "third": 3, "3rd": 3,
+            "fourth": 4, "4th": 4,
+        }.get(qualifier)
+        if not order:
+            return None
+        start_month = ((order - 1) * count) + 1
+        end_month = start_month + count - 1
+
+    if start_month < 1 or end_month > 12:
+        return None
+
+    return {
+        "type": "multi_month",
+        "months": _months_between(year, start_month, year, end_month),
+    }
+
+
 def _split_comparison_text(text: str) -> Optional[Tuple[str, str]]:
+    direct_patterns = [
+        r"\bcompare\s+(.+?)\s+(?:with|against|versus|vs\.?)\s+(.+)$",
+        r"\bcompare\s+(.+?)\s+to\s+(.+)$",
+    ]
+    for pattern in direct_patterns:
+        direct_compare = re.search(pattern, text)
+        if direct_compare:
+            return direct_compare.group(1).strip(), direct_compare.group(2).strip()
+
+    compare_and = re.search(r"\bcompare\s+(.+?)\s+and\s+(.+)$", text)
+    if compare_and:
+        left = compare_and.group(1).strip()
+        right = compare_and.group(2).strip()
+        left_has_period = bool(
+            extract_month(left)
+            or _looks_like_quarter_period(left)
+            or _looks_like_half_year_period(left)
+            or extract_year(left)
+        )
+        right_has_period = bool(
+            extract_month(right)
+            or _looks_like_quarter_period(right)
+            or _looks_like_half_year_period(right)
+            or extract_year(right)
+        )
+        if left_has_period and right_has_period:
+            return left, right
+
     patterns = [
         r"\bvs\.?\b",
         r"\bversus\b",
@@ -1413,41 +1599,78 @@ def _offset_for_completed_months(latest: MonthKey, include_current_incomplete: b
 # -------------------------------
 
 def parse_range(text: str):
-    between_match = re.search(r"\bbetween\s+(.+?)\s+and\s+(.+)$", text)
-    if between_match:
-        parts = [between_match.group(1), between_match.group(2)]
-    else:
-        parts = re.split(r"\bto\b|\bthrough\b|\buntil\b|\s*-\s*", text)
-
-    if len(parts) != 2:
+    parts = _split_period_range_text(text)
+    if not parts:
         return None
 
     default_year = extract_year(text)
-    left = extract_month_year(parts[0], default_year=default_year)
-    right = extract_month_year(parts[1], default_year=default_year)
+    left_text, right_text = parts
+    left_has_year = extract_year(left_text) is not None
+    right_has_year = extract_year(right_text) is not None
+    left = extract_month_year(left_text, default_year=default_year)
+    right = extract_month_year(right_text, default_year=default_year)
 
     if left and right:
         start_year, start_month = left
         end_year, end_month = right
 
-        months = []
-        cur_month = start_month
-        cur_year = start_year
+        if (start_year, start_month) > (end_year, end_month):
+            if not left_has_year and right_has_year:
+                start_year = end_year - 1
+            elif left_has_year and not right_has_year:
+                end_year = start_year + 1
 
-        while (cur_year < end_year) or (cur_year == end_year and cur_month <= end_month):
-            months.append({
-                "month": cur_month,
-                "year": cur_year
-            })
-
-            cur_month += 1
-            if cur_month > 12:
-                cur_month = 1
-                cur_year += 1
+        months = _months_between(start_year, start_month, end_year, end_month)
+        if not months:
+            return None
 
         return {
             "type": "multi_month",
             "months": months
+        }
+
+    return None
+
+
+def _comparison_bounds_from_period(period: Optional[Dict[str, Any]]) -> Optional[Dict[str, int]]:
+    if not period:
+        return None
+
+    if period.get("type") == "multi_month":
+        months = period.get("months") or []
+        if not months:
+            return None
+        first = months[0]
+        last = months[-1]
+        return {
+            "start_month": int(first["month"]),
+            "start_year": int(first["year"]),
+            "end_month": int(last["month"]),
+            "end_year": int(last["year"]),
+        }
+
+    if period.get("type") == "range":
+        return {
+            "start_month": int(period["start_month"]),
+            "start_year": int(period["start_year"]),
+            "end_month": int(period["end_month"]),
+            "end_year": int(period["end_year"]),
+        }
+
+    if period.get("type") == "single":
+        return {
+            "start_month": int(period["month"]),
+            "start_year": int(period["year"]),
+            "end_month": int(period["month"]),
+            "end_year": int(period["year"]),
+        }
+
+    if period.get("type") == "year":
+        return {
+            "start_month": 1,
+            "start_year": int(period["year"]),
+            "end_month": 12,
+            "end_year": int(period["year"]),
         }
 
     return None
@@ -1466,6 +1689,15 @@ def parse_comparison(text: str):
 
     # month vs month
     inferred_year = extract_year(text) or datetime.today().year
+
+    range_left = _comparison_bounds_from_period(parse_range(left))
+    range_right = _comparison_bounds_from_period(parse_range(right))
+    if range_left and range_right:
+        return {
+            "type": "comparison",
+            "left": range_left,
+            "right": range_right,
+        }
 
     # half-year vs half-year, or "first half 2025 with 2026"
     h1 = parse_half_year(left)
@@ -1536,6 +1768,48 @@ def parse_comparison(text: str):
                 "end_year": q2[0],
             },
         }
+
+    if q1:
+        right_year = extract_year(right)
+        if right_year:
+            q = ((q1[1] - 1) // 3) + 1
+            start_month = (q - 1) * 3 + 1
+            return {
+                "type": "comparison",
+                "left": {
+                    "start_month": q1[1],
+                    "start_year": q1[0],
+                    "end_month": q1[2],
+                    "end_year": q1[0],
+                },
+                "right": {
+                    "start_month": start_month,
+                    "start_year": right_year,
+                    "end_month": start_month + 2,
+                    "end_year": right_year,
+                },
+            }
+
+    if q2:
+        left_year = extract_year(left)
+        if left_year:
+            q = ((q2[1] - 1) // 3) + 1
+            start_month = (q - 1) * 3 + 1
+            return {
+                "type": "comparison",
+                "left": {
+                    "start_month": start_month,
+                    "start_year": left_year,
+                    "end_month": start_month + 2,
+                    "end_year": left_year,
+                },
+                "right": {
+                    "start_month": q2[1],
+                    "start_year": q2[0],
+                    "end_month": q2[2],
+                    "end_year": q2[0],
+                },
+            }
 
     # year vs year
     y1 = extract_year(left)
@@ -1682,14 +1956,24 @@ def parse_period(query: str) -> Dict:
     text = normalize_text(query)
 
     # -------- RANGE DETECTION --------
-    rng = parse_range(text)
-    if rng:
-        return rng
-
     # 1️⃣ comparison first (before generic multi-month detection)
     cmp = parse_comparison(text)
     if cmp:
         return cmp
+
+    # -------- RANGE DETECTION --------
+    rng = parse_range(text)
+    if rng:
+        return rng
+
+    # -------- QUARTER / HALF-YEAR RANGE DETECTION --------
+    quarter_range = parse_quarter_range(text)
+    if quarter_range:
+        return quarter_range
+
+    half_year_range = parse_half_year_range(text)
+    if half_year_range:
+        return half_year_range
 
     # -------- QUARTER DETECTION --------
     q = parse_quarter(text)
@@ -1712,6 +1996,10 @@ def parse_period(query: str) -> Dict:
             "end_month": half_year[2],
             "end_year": half_year[0],
         }
+
+    fixed_month_span = parse_fixed_month_span(text)
+    if fixed_month_span:
+        return fixed_month_span
 
     # -------- MONTH DETECTION (FIXED) --------
     month_pattern = (
