@@ -20,6 +20,22 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+const FORMULA_MARKETPLACES = [
+    {
+        label: "UK",
+        country: "uk",
+        marketplaceId: "A1F83G8C2ARO7P",
+    },
+    {
+        label: "US",
+        country: "us",
+        marketplaceId: "ATVPDKIKX0DER",
+    },
+] as const;
+
+type FormulaMarketplace = (typeof FORMULA_MARKETPLACES)[number];
+type FormulaCountry = FormulaMarketplace["country"];
+
 export default function SuperAdminLayoutClient({
     children,
 }: {
@@ -34,7 +50,7 @@ export default function SuperAdminLayoutClient({
     const [formulaUpdating, setFormulaUpdating] = useState(false);
     const [showFormulaCountryModal, setShowFormulaCountryModal] = useState(false);
     const [selectedFormulaCountry, setSelectedFormulaCountry] =
-        useState<"uk" | "us">("uk");
+        useState<FormulaCountry>("uk");
     const [superAdminEmail, setSuperAdminEmail] = useState<string>("");
 
     const publicSuperAdminRoutes = [
@@ -109,7 +125,7 @@ export default function SuperAdminLayoutClient({
         }
     };
 
-    const handleFormulaUpdate = async (country: "uk" | "us") => {
+    const handleFormulaUpdate = async (country: FormulaCountry) => {
         const token = localStorage.getItem("superadmin_token");
 
         if (!token) {
@@ -118,33 +134,26 @@ export default function SuperAdminLayoutClient({
             return;
         }
 
-        const marketplaces = {
-            uk: {
-                country: "uk",
-                marketplace_id: "A1F83G8C2ARO7P",
-            },
-            us: {
-                country: "us",
-                marketplace_id: "ATVPDKIKX0DER",
-            },
-        };
+        const selectedMarketplace = FORMULA_MARKETPLACES.find(
+            (marketplace) => marketplace.country === country
+        );
 
-        const selectedMarketplace = marketplaces[country];
+        if (!selectedMarketplace) {
+            toast.error("Please select a valid marketplace.");
+            return;
+        }
 
         try {
             setFormulaUpdating(true);
             setShowFormulaCountryModal(false);
 
-            const transactionStatus =
-                selectedMarketplace.country === "us" ? "RELEASED,DEFERRED" : "RELEASED";
+            const params = new URLSearchParams({
+                country: selectedMarketplace.country,
+                marketplace_id: selectedMarketplace.marketplaceId,
+            });
 
             const url =
-                `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update` +
-                `?country=${selectedMarketplace.country}` +
-                `&marketplace_id=${selectedMarketplace.marketplace_id}` +
-                `&store_in_db=true` +
-                `&run_upload_pipeline=true` +
-                `&transaction_status=${encodeURIComponent(transactionStatus)}`;
+                `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update?${params.toString()}`;
 
             const response = await fetch(url, {
                 method: "GET",
@@ -160,12 +169,12 @@ export default function SuperAdminLayoutClient({
                 throw new Error(
                     json?.error ||
                     json?.message ||
-                    `Formula update failed for ${selectedMarketplace.country.toUpperCase()}`
+                    `Formula update failed for ${selectedMarketplace.label}`
                 );
             }
 
             toast.success(
-                `Formula update completed for ${selectedMarketplace.country.toUpperCase()}`
+                `Formula update completed for ${selectedMarketplace.label}`
             );
         } catch (error) {
             const msg = error instanceof Error ? error.message : "Formula update failed";
@@ -375,51 +384,35 @@ export default function SuperAdminLayoutClient({
                             </div>
 
                             <div className="space-y-3 px-6 py-5">
-                                <label
-                                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "uk"
-                                        ? "border-[#31d9e5] bg-[#31d9e5]/10"
-                                        : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
-                                        }`}
-                                >
-                                    <div>
-                                        <p className="font-medium text-white">UK</p>
-                                        <p className="text-xs text-white/55">
-                                            Marketplace: A1F83G8C2ARO7P
-                                        </p>
-                                    </div>
+                                {FORMULA_MARKETPLACES.map((marketplace) => (
+                                    <label
+                                        key={marketplace.marketplaceId}
+                                        className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === marketplace.country
+                                            ? "border-[#31d9e5] bg-[#31d9e5]/10"
+                                            : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                                            }`}
+                                    >
+                                        <div>
+                                            <p className="font-medium text-white">
+                                                {marketplace.label}
+                                            </p>
+                                            <p className="text-xs text-white/55">
+                                                Marketplace: {marketplace.marketplaceId}
+                                            </p>
+                                        </div>
 
-                                    <input
-                                        type="radio"
-                                        name="formula_country"
-                                        value="uk"
-                                        checked={selectedFormulaCountry === "uk"}
-                                        onChange={() => setSelectedFormulaCountry("uk")}
-                                        className="h-4 w-4 accent-[#31d9e5]"
-                                    />
-                                </label>
-
-                                <label
-                                    className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === "us"
-                                        ? "border-[#31d9e5] bg-[#31d9e5]/10"
-                                        : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
-                                        }`}
-                                >
-                                    <div>
-                                        <p className="font-medium text-white">US</p>
-                                        <p className="text-xs text-white/55">
-                                            Marketplace: ATVPDKIKX0DER
-                                        </p>
-                                    </div>
-
-                                    <input
-                                        type="radio"
-                                        name="formula_country"
-                                        value="us"
-                                        checked={selectedFormulaCountry === "us"}
-                                        onChange={() => setSelectedFormulaCountry("us")}
-                                        className="h-4 w-4 accent-[#31d9e5]"
-                                    />
-                                </label>
+                                        <input
+                                            type="radio"
+                                            name="formula_country"
+                                            value={marketplace.country}
+                                            checked={selectedFormulaCountry === marketplace.country}
+                                            onChange={() =>
+                                                setSelectedFormulaCountry(marketplace.country)
+                                            }
+                                            className="h-4 w-4 accent-[#31d9e5]"
+                                        />
+                                    </label>
+                                ))}
                             </div>
 
                             <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
