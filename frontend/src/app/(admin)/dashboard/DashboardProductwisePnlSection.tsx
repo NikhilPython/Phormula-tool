@@ -57,6 +57,8 @@ export default function DashboardProductwisePnlSection({
     lost_inventory_total,
     otherPlatformFee,
     countryName,
+    isUsPnlSkuLayout,
+    getProductwiseOtherTransactionsTotal,
     boldSummaryText,
     totalRowCm2Profit,
     totalRowCm2Margins,
@@ -205,7 +207,9 @@ export default function DashboardProductwisePnlSection({
                                                 { type: "group", id: "quantity" },
                                                 { type: "single", key: "asp" },
                                                 { type: "group", id: "net_sales" },
-                                                { type: "group", id: "promotions" },
+                                                ...(isUsPnlSkuLayout
+                                                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                                                    : [{ type: "group" as const, id: "promotions" }]),
                                                 { type: "single", key: "cogs" },
                                                 { type: "group", id: "marketplace_fees" },
                                                 { type: "group", id: "other_transactions" },
@@ -295,6 +299,21 @@ export default function DashboardProductwisePnlSection({
 
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
                                                 if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
+
+                                                if (colKey === "other_transactions") {
+                                                    const v = Number(
+                                                        typeof getProductwiseOtherTransactionsTotal === "function"
+                                                            ? getProductwiseOtherTransactionsTotal(row)
+                                                            : row.other_transactions ?? row.tax_and_credits ?? 0
+                                                    );
+
+                                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString();
+                                                }
+
+                                                if (colKey === "misc_transaction") {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
+                                                }
 
                                                 if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);

@@ -30,7 +30,12 @@ const TERM_DEFINITIONS: Record<string, string> = {
 
 type FormatDisplayAmount = (value: any, label?: string) => React.ReactNode;
 
-export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmount) {
+export function buildSkuwiseTableColumns(
+    formatDisplayAmount: FormatDisplayAmount,
+    options: { isUsSkuLayout?: boolean } = {}
+) {
+    const isUsSkuLayout = Boolean(options.isUsSkuLayout);
+
     const SKUWISE_LEFT_COLS: LeafCol<MonthlySkuwiseTableRow>[] = [
         {
             key: "sno",
@@ -50,12 +55,12 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
     const SKUWISE_GROUPS = [
         {
             id: "marketplace_fees",
-            label: "Marketplace Fees",
+            label: isUsSkuLayout ? "Amazon Fees" : "Marketplace Fees",
             // info: <InfoTip text={TERM_DEFINITIONS.marketplace_fees} />,
             collapsedCols: [
                 {
                     key: "marketplace_total",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Total Fees" : "Total",
                     width: "7%",
                     align: "center" as const,
                 },
@@ -66,7 +71,7 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
                 { key: "fba_fees", label: "FBA Fees", align: "center" as const },
                 {
                     key: "marketplace_total",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Total Fees" : "Total",
                     align: "center" as const,
                 },
             ],
@@ -74,13 +79,13 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
 
         {
             id: "quantity",
-            label: "Net Units Sold",
+            label: isUsSkuLayout ? "Units" : "Net Units Sold",
             info: <InfoTip text={TERM_DEFINITIONS.net_units_sold} />,
 
             collapsedCols: [
                 {
                     key: "total_quantity",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Net Units Sold" : "Total",
                     align: "center" as const,
                     width: "8%",
                     sortable: true,
@@ -110,7 +115,7 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
                 },
                 {
                     key: "total_quantity",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Net Units Sold" : "Total",
                     align: "center" as const,
                     sortable: true,
                     width: "7%",
@@ -119,52 +124,86 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
         },
         {
             id: "net_sales",
-            label: "Net Sales",
+            label: isUsSkuLayout ? "Sales" : "Net Sales",
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
 
             collapsedCols: [
                 {
                     key: "net_sales",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Net Sales" : "Total",
                     sortable: true,
                     align: "center" as const,
                     width: "7%",
                 },
             ],
 
-            expandedCols: [
-                {
-                    key: "gross_sales",
-                    label: "Gross Sales",
-                    sortable: true,
-                    align: "center" as const,
-                    width: "7%",
-                    info: <InfoTip text="Gross Sales" />,
-                },
-                {
-                    key: "refund_sales",
-                    label: "Sales - Refund",
-                    sortable: true,
-                    align: "center" as const,
-                    width: "7%",
-                    info: <InfoTip text="Sales refunded during this period." />,
-                },
-                {
-                    key: "net_sales_tax_and_credits",
-                    label: "Taxes and Credits",
-                    sortable: true,
-                    align: "center" as const,
-                    width: "7%",
-                    info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
-                },
-                {
-                    key: "net_sales",
-                    label: "Total",
-                    sortable: true,
-                    align: "center" as const,
-                    width: "7%",
-                },
-            ],
+            expandedCols: isUsSkuLayout
+                ? [
+                    {
+                        key: "gross_sales",
+                        label: "Gross Sales",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text="Gross Sales" />,
+                    },
+                    {
+                        key: "refund_sales",
+                        label: "Sales - Refund",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text="Sales refunded during this period." />,
+                    },
+                    {
+                        key: "promotional_rebates",
+                        label: "Promotions",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+                    },
+                    {
+                        key: "net_sales",
+                        label: "Net Sales",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                    },
+                ]
+                : [
+                    {
+                        key: "gross_sales",
+                        label: "Gross Sales",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text="Gross Sales" />,
+                    },
+                    {
+                        key: "refund_sales",
+                        label: "Sales - Refund",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text="Sales refunded during this period." />,
+                    },
+                    {
+                        key: "net_sales_tax_and_credits",
+                        label: "Taxes and Credits",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                        info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+                    },
+                    {
+                        key: "net_sales",
+                        label: "Total",
+                        sortable: true,
+                        align: "center" as const,
+                        width: "7%",
+                    },
+                ],
         },
         {
             id: "promotions",
@@ -208,7 +247,7 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
 
             collapsedCols: [
                 {
-                    key: "tax_and_credits",
+                    key: isUsSkuLayout ? "other_transactions" : "tax_and_credits",
                     label: "Total",
                     sortable: true,
                     align: "center" as const,
@@ -233,8 +272,19 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
                 },
+                ...(isUsSkuLayout
+                    ? [
+                        {
+                            key: "misc_transaction",
+                            label: "Misc. Transactions",
+                            sortable: true,
+                            align: "center" as const,
+                            width: "7%",
+                        },
+                    ]
+                    : []),
                 {
-                    key: "tax_and_credits",
+                    key: isUsSkuLayout ? "other_transactions" : "tax_and_credits",
                     label: "Total",
                     sortable: true,
                     align: "center" as const,
@@ -250,22 +300,28 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
             collapsedCols: [
                 {
                     key: "profit",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Margin" : "Total",
                     align: "center" as const,
                     sortable: true,
                     width: "7%",
                 },
             ],
 
-            expandedCols: [
-                { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
-                { key: "cm1_profit_per", label: "%", align: "center" as const },
-                {
-                    key: "profit",
-                    label: "Total",
-                    align: "center" as const,
-                },
-            ],
+            expandedCols: isUsSkuLayout
+                ? [
+                    { key: "profit", label: "Margin", align: "center" as const },
+                    { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
+                    { key: "cm1_profit_per", label: "%", align: "center" as const },
+                ]
+                : [
+                    { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
+                    { key: "cm1_profit_per", label: "%", align: "center" as const },
+                    {
+                        key: "profit",
+                        label: "Total",
+                        align: "center" as const,
+                    },
+                ],
         },
         {
             id: "tax_and_credits",
@@ -350,23 +406,29 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
             collapsedCols: [
                 {
                     key: "cm2_profit",
-                    label: "Total",
+                    label: isUsSkuLayout ? "Margin" : "Total",
                     align: "center" as const,
                     sortable: true,
                     width: "7%",
                 },
             ],
 
-            expandedCols: [
-                { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
-                { key: "cm2_profit_per", label: "%", align: "center" as const },
-                {
-                    key: "cm2_profit",
-                    label: "Total",
-                    align: "center" as const,
-                    sortable: true,
-                },
-            ],
+            expandedCols: isUsSkuLayout
+                ? [
+                    { key: "cm2_profit", label: "Margin", align: "center" as const, sortable: true },
+                    { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
+                    { key: "cm2_profit_per", label: "%", align: "center" as const },
+                ]
+                : [
+                    { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
+                    { key: "cm2_profit_per", label: "%", align: "center" as const },
+                    {
+                        key: "cm2_profit",
+                        label: "Total",
+                        align: "center" as const,
+                        sortable: true,
+                    },
+                ],
         },
     ];
 
@@ -380,6 +442,15 @@ export function buildSkuwiseTableColumns(formatDisplayAmount: FormatDisplayAmoun
             width: "7%",
         },
         { key: "cogs", label: "COGS", align: "center" as const, },
+        {
+            key: "promotional_rebates_percentage",
+            label: "Promotions %",
+            align: "center" as const,
+            width: "10%",
+            noWrap: true,
+            thClassName: "whitespace-nowrap",
+            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+        },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const, },
         { key: "acos", label: "ACoS %", align: "center" as const, },

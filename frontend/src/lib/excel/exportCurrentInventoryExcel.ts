@@ -658,6 +658,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   brandName: string;
 
   homeCurrencyCode?: string;
+  isUsLayout?: boolean;
   dataRows: Record<string, any>[];
 
   // ✅ now supports nested-like rows via indent + bold
@@ -673,6 +674,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     companyName,
     brandName,
     homeCurrencyCode,
+    isUsLayout = false,
     dataRows,
     summaryRows,
   } = params;
@@ -681,21 +683,26 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
 
   const headers = Object.keys(dataRows[0] || {});
   const headerCount = headers.length || 1;
+  const isUsPnlLayout = Boolean(isUsLayout);
 
   const COLUMN_META: Record<
   string,
   { group?: string; subHeader?: string; sign?: "(+)" | "(-)" }
 > = {
 "S.No": { subHeader: "S.No" },
+"Sno.": { subHeader: "Sno." },
 "Product Name": { subHeader: "Product Name" },
+"SKU": isUsPnlLayout
+  ? { group: "Units", subHeader: "SKU" }
+  : { subHeader: "SKU" },
 
 "Units Sold": {
-  group: "Net Units Sold",
+  group: isUsPnlLayout ? "Units" : "Net Units Sold",
   subHeader: "Units Sold",
   sign: "(+)",
 },
 "Return": {
-  group: "Net Units Sold",
+  group: isUsPnlLayout ? "Units" : "Net Units Sold",
   subHeader: "Return",
   sign: "(-)",
 },
@@ -704,16 +711,21 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   subHeader: "Total",
   sign: "(+)",
 },
+"Net Units Sold": {
+  group: "Units",
+  subHeader: "Net Units Sold",
+  sign: "(+)",
+},
 
 "ASP": { subHeader: "ASP" },
 
 "Gross Sales": {
-  group: "Net Sales",
+  group: isUsPnlLayout ? "Sales" : "Net Sales",
   subHeader: "Gross Sales",
   sign: "(+)",
 },
 "Sales - Refund": {
-  group: "Net Sales",
+  group: isUsPnlLayout ? "Sales" : "Net Sales",
   subHeader: "Sales - Refund",
   sign: "(-)",
 },
@@ -723,35 +735,40 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   sign: "(-)",
 },
 "Net Sales": {
-  group: "Net Sales",
-  subHeader: "Total",
+  group: isUsPnlLayout ? "Sales" : "Net Sales",
+  subHeader: isUsPnlLayout ? "Net Sales" : "Total",
   sign: "(+)",
 },
 "Promotions": {
-  group: "Promotions",
+  group: isUsPnlLayout ? "Sales" : "Promotions",
   subHeader: "Promotions",
   sign: "(-)",
 },
 "Promotions %": {
-  group: "Promotions",
+  group: isUsPnlLayout ? undefined : "Promotions",
   subHeader: "Promotions %",
 },
 
 "COGS": { subHeader: "COGS", sign: "(-)" },
 
   "Selling Fees": {
-    group: "Marketplace Fees",
+    group: isUsPnlLayout ? "Amazon Fees" : "Marketplace Fees",
     subHeader: "Selling Fees",
     sign: "(-)",
   },
   "FBA Fees": {
-    group: "Marketplace Fees",
+    group: isUsPnlLayout ? "Amazon Fees" : "Marketplace Fees",
     subHeader: "FBA Fees",
     sign: "(-)",
   },
   "Marketplace Fees": {
     group: "Marketplace Fees",
     subHeader: "Total",
+    sign: "(-)",
+  },
+  "Total Fees": {
+    group: "Amazon Fees",
+    subHeader: "Total Fees",
     sign: "(-)",
   },
 
@@ -770,6 +787,26 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
     subHeader: "Total",
     sign: "(+)",
   },
+  "Net Taxes": {
+    group: "Other Transactions",
+    subHeader: "Net Taxes",
+    sign: "(-)",
+  },
+  "Net Credits": {
+    group: "Other Transactions",
+    subHeader: "Net Credits",
+    sign: "(+)",
+  },
+  "Misc. Transactions": {
+    group: "Other Transactions",
+    subHeader: "Misc. Transactions",
+    sign: "(+)",
+  },
+  "Other Transactions": {
+    group: "Other Transactions",
+    subHeader: "Total",
+    sign: "(+)",
+  },
 
   "CM1 Profit Per Unit": {
     group: "CM1 Profit",
@@ -781,7 +818,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   },
   "CM1 Profit": {
     group: "CM1 Profit",
-    subHeader: "Total",
+    subHeader: isUsPnlLayout ? "Margin" : "Total",
   },
 
 "Sponsored Product": {
@@ -814,7 +851,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   },
   "CM2 Profit": {
     group: "CM2 Profit",
-    subHeader: "Total",
+    subHeader: isUsPnlLayout ? "Margin" : "Total",
   },
 };
 
@@ -1042,9 +1079,11 @@ const unitCols = new Set([
   headers.indexOf("Units Sold"),
   headers.indexOf("Return"),
   headers.indexOf("Total Units"),
+  headers.indexOf("Net Units Sold"),
 ].filter((idx) => idx >= 0));
 
 const serialNoCol = headers.indexOf("S.No");
+const usSerialNoCol = headers.indexOf("Sno.");
 
 for (let r = range.s.r; r <= range.e.r; r++) {
   for (let c = range.s.c; c <= range.e.c; c++) {
@@ -1054,7 +1093,7 @@ for (let r = range.s.r; r <= range.e.r; r++) {
     if (!cell) continue;
     if (!isNumber(cell.v)) continue;
 
-if (unitCols.has(c) || c === serialNoCol) {
+if (unitCols.has(c) || c === serialNoCol || c === usSerialNoCol) {
   cell.v = Math.round(Number(cell.v || 0));
   cell.z = "#,##0";
 } else {
@@ -1066,6 +1105,7 @@ if (unitCols.has(c) || c === serialNoCol) {
 // ✅ Add % symbol for percentage columns in main product table
 const PERCENT_TABLE_HEADERS = new Set([
   "ACOS %",
+  "Promotions %",
   "CM1 Profit %",
   "CM2 Profit %",
 ]);

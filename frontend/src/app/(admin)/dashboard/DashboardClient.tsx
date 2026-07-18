@@ -1561,6 +1561,10 @@ export default function DashboardPage() {
         return globalMtdView === "us" ? "us" : "uk";
     }, [globalMtdView]);
 
+    const isUsPnlSkuLayout = useMemo(() => {
+        return countryName === "us" || (platform === "global" && globalMtdView === "us");
+    }, [countryName, platform, globalMtdView]);
+
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
     const [fxReady, setFxReady] = useState(false);
     const [globalCountryPayloads, setGlobalCountryPayloads] = useState<{
@@ -5483,9 +5487,11 @@ export default function DashboardPage() {
         const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => {
             const tax = Number(r.net_taxes ?? r.tax ?? 0);
             const credits = Number(r.credits ?? r.net_credits ?? 0);
+            const miscTransaction = Number(r.misc_transaction ?? r.misc_transactions ?? 0);
 
             const taxAndCredits = Number(
                 r.other_transactions ??
+                r.other_transaction_fees ??
                 r.tax_and_credits ??
                 tax + credits
             );
@@ -5534,6 +5540,7 @@ export default function DashboardPage() {
                 tax_and_credits: taxAndCredits,
                 net_taxes: tax,
                 other_transactions: taxAndCredits,
+                misc_transaction: miscTransaction,
 
                 cm1_profit_per: Number(r.cm1_profit_per ?? 0),
                 cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
@@ -5617,12 +5624,18 @@ export default function DashboardPage() {
     const normalizeProductwiseRow = (raw: any): MonthlySkuwiseRow => {
         const tax = toNumberSafe(raw?.tax ?? raw?.net_taxes);
         const credits = toNumberSafe(raw?.credits ?? raw?.net_credits);
+        const miscTransaction = toNumberSafe(raw?.misc_transaction ?? raw?.misc_transactions);
 
         const taxAndCredits = toNumberSafe(
             raw?.tax_and_credits ??
             raw?.taxes_and_credits ??
             raw?.tex_and_credits ??
             tax + credits
+        );
+        const otherTransactions = toNumberSafe(
+            raw?.other_transactions ??
+            raw?.other_transaction_fees ??
+            taxAndCredits
         );
 
         // ✅ Add this here, before return
@@ -5682,7 +5695,8 @@ export default function DashboardPage() {
             credits,
             tax_and_credits: taxAndCredits,
             net_taxes: tax,
-            other_transactions: taxAndCredits,
+            other_transactions: otherTransactions,
+            misc_transaction: miscTransaction,
 
             cogs: toNumberSafe(raw?.cogs),
             fba_fees: toNumberSafe(raw?.fba_fees),
@@ -5851,6 +5865,10 @@ export default function DashboardPage() {
         const totalAdsSpend = rows.reduce((s, r) => s + toNumberSafe(r.ads_spend), 0);
         const totalTax = rows.reduce((s, r) => s + toNumberSafe(r.tax), 0);
         const totalCredits = rows.reduce((s, r) => s + toNumberSafe(r.credits), 0);
+        const totalMiscTransaction = rows.reduce(
+            (s, r) => s + toNumberSafe(r.misc_transaction),
+            0
+        );
         const totalTaxAndCredits = rows.reduce(
             (s, r) => s + toNumberSafe(r.tax_and_credits),
             0
@@ -5901,6 +5919,7 @@ export default function DashboardPage() {
             tax_and_credits: totalTaxAndCredits,
             net_taxes: totalTax,
             other_transactions: totalTaxAndCredits,
+            misc_transaction: totalMiscTransaction,
 
             cm1_profit_per:
                 totalNetSales > 0 ? (totalProfit / totalNetSales) * 100 : 0,
@@ -5961,6 +5980,26 @@ export default function DashboardPage() {
         const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
         return Math.abs(fba + selling);
     }, [grandTotalRowDisplay]);
+
+    const getProductwiseOtherTransactionsTotal = useCallback(
+        (row: Partial<MonthlySkuwiseRow>) => {
+            const fallback = toNumber(
+                (row as any).other_transactions ??
+                (row as any).other_transaction_fees ??
+                (row as any).tax_and_credits
+            );
+
+            if (!isUsPnlSkuLayout) return fallback;
+
+            const computed =
+                toNumber((row as any).credits ?? (row as any).net_credits) +
+                toNumber((row as any).misc_transaction ?? (row as any).misc_transactions) -
+                Math.abs(toNumber((row as any).tax ?? (row as any).net_taxes));
+
+            return computed !== 0 || fallback === 0 ? computed : fallback;
+        },
+        [isUsPnlSkuLayout]
+    );
 
     const grandTotalRowRaw = useMemo<GrandTotalSkuwiseRow | null>(() => {
         return (
@@ -6422,6 +6461,7 @@ export default function DashboardPage() {
                 case "tax":
                 case "credits":
                 case "tax_and_credits":
+                case "misc_transaction":
                 case "cm1_profit_per_unit":
                 case "cm1_profit_per":
                 case "profit":
@@ -6431,6 +6471,9 @@ export default function DashboardPage() {
                 case "cm2_profit_per":
                 case "cm2_profit":
                     return toNumber((row as any)[key]);
+
+                case "other_transactions":
+                    return getProductwiseOtherTransactionsTotal(row);
 
                 case "product_name":
                     return getSkuwiseDisplayProductName(row).toLowerCase();
@@ -6543,6 +6586,11 @@ export default function DashboardPage() {
             tax: sum("tax"),
             credits: sum("credits"),
             tax_and_credits: sum("tax_and_credits"),
+            misc_transaction: sum("misc_transaction"),
+            other_transactions: rest.reduce(
+                (acc, r) => acc + getProductwiseOtherTransactionsTotal(r),
+                0
+            ),
 
             cm1_profit_per: 0,
             cm1_profit_per_unit: 0,
@@ -6585,7 +6633,12 @@ export default function DashboardPage() {
         if (totalRow) out.push(totalRow);
 
         return out;
-    }, [monthlySkuwiseRowsDisplay, plSortConfig, showAllMtdProductwiseRows]);
+    }, [
+        monthlySkuwiseRowsDisplay,
+        plSortConfig,
+        showAllMtdProductwiseRows,
+        getProductwiseOtherTransactionsTotal,
+    ]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -6922,22 +6975,22 @@ export default function DashboardPage() {
     ]);
 
     const { SKUWISE_LEFT_COLS, SKUWISE_GROUPS, SKUWISE_SINGLE_COLS } = useMemo(
-        () => buildSkuwiseTableColumns(formatDisplayAmount),
-        [formatDisplayAmount]
+        () => buildSkuwiseTableColumns(formatDisplayAmount, { isUsSkuLayout: isUsPnlSkuLayout }),
+        [formatDisplayAmount, isUsPnlSkuLayout]
     );
 
     const PRODUCTWISE_GROUP_IDS = useMemo(
         () => [
             "quantity",
             "net_sales",
-            "promotions",
+            ...(isUsPnlSkuLayout ? [] : ["promotions"]),
             "marketplace_fees",
             "other_transactions",
             "profit",
             "ads_spend",
             "cm2_profit",
         ],
-        []
+        [isUsPnlSkuLayout]
     );
 
     const productwiseHasExpandedGroups = useMemo(() => {
@@ -7646,7 +7699,16 @@ export default function DashboardPage() {
             : 0;
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
-    const ADS_SIGN_PLUS = new Set(["gross_sales", "net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
+    const ADS_SIGN_PLUS = new Set([
+        "gross_sales",
+        "net_sales",
+        "credits",
+        "tax_and_credits",
+        "misc_transaction",
+        "other_transactions",
+        "quantity",
+        "total_quantity",
+    ]);
 
     const ADS_SIGN_MINUS = new Set([
         "return_quantity",
@@ -7656,6 +7718,7 @@ export default function DashboardPage() {
         "brand_spend",
         "refund_sales",
         "net_sales_tax_and_credits",
+        "promotional_rebates",
         "cogs",
         "fba_fees",
         "selling_fees",
@@ -8717,50 +8780,102 @@ export default function DashboardPage() {
                 rowsToExport.find((r: any) => String(r?.product_name || "").toLowerCase() === "total") ||
                 {};
 
-            const dataRows = rowsToExport.map((r: any) => ({
-                "S.No": r.isTotal ? "" : r.sno ?? "",
-                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
-
-                "Units Sold": n(r.quantity),
-                "Return": n(r.return_quantity),
-                "Total Units": n(
+            const dataRows = rowsToExport.map((r: any) => {
+                const netUnitsSold = n(
                     r.total_quantity ??
                     (toNumber(r.quantity) - toNumber(r.return_quantity))
-                ),
-                "ASP": n(r.asp),
+                );
+                const marketplaceTotal =
+                    Math.abs(n(r.fba_fees)) + Math.abs(n(r.selling_fees));
+                const otherTransactionsTotal = getProductwiseOtherTransactionsTotal(r);
 
-                "Gross Sales": n(r.gross_sales),
-                "Sales - Refund": n(r.refund_sales),
-                "Taxes and Credits": n(r.net_sales_tax_and_credits ?? r.tax_and_credits),
-                "Net Sales": n(r.net_sales),
+                if (isUsPnlSkuLayout) {
+                    return {
+                        "Sno.": r.isTotal ? "" : r.sno ?? "",
+                        "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                        "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
 
-                "Promotions": Math.abs(n(r.promotional_rebates)),
-                "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
+                        "Units Sold": n(r.quantity),
+                        "Return": n(r.return_quantity),
+                        "Net Units Sold": netUnitsSold,
+                        "ASP": n(r.asp),
 
-                "COGS": n(r.cogs),
+                        "Gross Sales": n(r.gross_sales),
+                        "Sales - Refund": n(r.refund_sales),
+                        "Promotions": Math.abs(n(r.promotional_rebates)),
+                        "Net Sales": n(r.net_sales),
 
-                "Selling Fees": n(r.selling_fees),
-                "FBA Fees": n(r.fba_fees),
+                        "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
 
-                "Tax": n(r.tax),
-                "Credits": n(r.credits),
-                "Tax & Credits": n(r.tax_and_credits),
+                        "COGS": n(r.cogs),
 
-                "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
-                "CM1 Profit %": n(r.cm1_profit_per),
-                "CM1 Profit": n(r.profit),
+                        "Selling Fees": n(r.selling_fees),
+                        "FBA Fees": n(r.fba_fees),
+                        "Total Fees": marketplaceTotal,
 
-                "Sponsored Product": n(r.product_spend),
-                "Sponsored Display": n(r.display_spend),
-                "Ads Spend": n(r.ads_spend),
+                        "Net Taxes": n(r.tax ?? r.net_taxes),
+                        "Net Credits": n(r.credits ?? r.net_credits),
+                        "Misc. Transactions": n(r.misc_transaction),
+                        "Other Transactions": otherTransactionsTotal,
 
-                "ACOS %": n(r.acos),
+                        "CM1 Profit": n(r.profit),
+                        "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+                        "CM1 Profit %": n(r.cm1_profit_per),
 
-                "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
-                "CM2 Profit %": n(r.cm2_profit_per),
-                "CM2 Profit": n(r.cm2_profit),
-            }));
+                        "Sponsored Product": n(r.product_spend),
+                        "Sponsored Display": n(r.display_spend),
+                        "Ads Spend": n(r.ads_spend),
+
+                        "ACOS %": n(r.acos),
+
+                        "CM2 Profit": n(r.cm2_profit),
+                        "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+                        "CM2 Profit %": n(r.cm2_profit_per),
+                    };
+                }
+
+                return {
+                    "S.No": r.isTotal ? "" : r.sno ?? "",
+                    "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                    "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+
+                    "Units Sold": n(r.quantity),
+                    "Return": n(r.return_quantity),
+                    "Total Units": netUnitsSold,
+                    "ASP": n(r.asp),
+
+                    "Gross Sales": n(r.gross_sales),
+                    "Sales - Refund": n(r.refund_sales),
+                    "Taxes and Credits": n(r.net_sales_tax_and_credits ?? r.tax_and_credits),
+                    "Net Sales": n(r.net_sales),
+
+                    "Promotions": Math.abs(n(r.promotional_rebates)),
+                    "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
+
+                    "COGS": n(r.cogs),
+
+                    "Selling Fees": n(r.selling_fees),
+                    "FBA Fees": n(r.fba_fees),
+
+                    "Tax": n(r.tax),
+                    "Credits": n(r.credits),
+                    "Tax & Credits": n(r.tax_and_credits),
+
+                    "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+                    "CM1 Profit %": n(r.cm1_profit_per),
+                    "CM1 Profit": n(r.profit),
+
+                    "Sponsored Product": n(r.product_spend),
+                    "Sponsored Display": n(r.display_spend),
+                    "Ads Spend": n(r.ads_spend),
+
+                    "ACOS %": n(r.acos),
+
+                    "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+                    "CM2 Profit %": n(r.cm2_profit_per),
+                    "CM2 Profit": n(r.cm2_profit),
+                };
+            });
 
             const visibilityAds =
                 n(totalRow?.brand_spend); // Visibility - Ads (-)
@@ -8862,6 +8977,7 @@ export default function DashboardPage() {
                 companyName,
                 brandName: String(brandName || ""),
                 homeCurrencyCode: profileHomeCurrency,
+                isUsLayout: isUsPnlSkuLayout,
                 dataRows,
                 summaryRows,
             });
@@ -8872,6 +8988,8 @@ export default function DashboardPage() {
         monthlySkuwiseRowsDisplay,
         formattedMonthYear,
         countryName,
+        isUsPnlSkuLayout,
+        getProductwiseOtherTransactionsTotal,
         plSummaryTotals,
         cm2MarginPctForSummary,
         tacosFromDisplayedCardsForSummary,
@@ -11154,6 +11272,8 @@ export default function DashboardPage() {
                             lost_inventory_total={lost_inventory_total}
                             otherPlatformFee={otherPlatformFee}
                             countryName={countryName}
+                            isUsPnlSkuLayout={isUsPnlSkuLayout}
+                            getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
                             boldSummaryText={boldSummaryText}
                             totalRowCm2Profit={totalRowCm2Profit}
                             totalRowCm2Margins={totalRowCm2Margins}

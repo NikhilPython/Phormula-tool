@@ -7,7 +7,7 @@ import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
 // import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
-import { SkuExportPayload } from "@/lib/utils/exportTypes";
+import type { SkuExportPayload } from "@/lib/utils/exportTypes";
 import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
 import ExcelJS from "exceljs";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
@@ -571,7 +571,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
   };
 
-  const isGlobalPage = (countryName || "").toLowerCase() === "global";
+  const normalizedCountryName = (countryName || "").trim().toLowerCase();
+  const isGlobalPage = normalizedCountryName === "global";
+  const isUsCountry = normalizedCountryName === "us" || normalizedCountryName === "usa";
 
   const tableData = useMemo(() => {
     return normalizeRows(rows || []);
@@ -667,6 +669,22 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return sales !== 0 ? (ads / sales) * 100 : 0;
   };
+
+  const getOtherTransactionsTotal = useCallback(
+    (row: Partial<TableRow>) => {
+      const fallback = toNumber((row as any).other_transactions ?? (row as any).other_transaction_fees);
+
+      if (!isUsCountry) return fallback;
+
+      const computed =
+        toNumber((row as any).net_credits) +
+        toNumber((row as any).misc_transaction) -
+        Math.abs(toNumber((row as any).net_taxes));
+
+      return computed !== 0 || fallback === 0 ? computed : fallback;
+    },
+    [isUsCountry]
+  );
 
   const totals = useMemo(() => {
     return computeTotalsFromTotalRow(tableData);
@@ -774,9 +792,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (key === "net_units_sold") return toNumber(row.net_units_sold);
     if (key === "net_sales") return toNumber(row.net_sales);
     if (key === "profit") return toNumber(row.profit);
+    if (key === "other_transactions") return getOtherTransactionsTotal(row);
 
     return toNumber((row as any)[key]);
-  }, []);
+  }, [getOtherTransactionsTotal]);
 
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -891,7 +910,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
-      label: "Net Units Sold",
+      label: isUsCountry ? "Units" : "Net Units Sold",
       collapsedCols: [
         {
           key: "net_units_sold",
@@ -922,7 +941,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
         {
           key: "net_units_sold",
-          label: "Total",
+          label: isUsCountry ? "Net Units Sold" : "Total",
           align: "center",
           width: "7%",
         },
@@ -931,7 +950,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "sales",
-      label: "Net Sales",
+      label: isUsCountry ? "Sales" : "Net Sales",
       info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
       collapsedCols: [
         {
@@ -943,40 +962,105 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
         },
       ],
-      expandedCols: [
-        {
-          key: "product_sales",
-          label: "Gross Sales",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
-        },
-        {
-          key: "refund_sales",
-          label: "Sales - Refund",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
-        },
-        {
-          key: "tex_and_credits",
-          label: "Taxes and Credits",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
-        },
-        {
-          key: "net_sales",
-          label: "Total",
-          align: "center",
-          width: "8%",
-        },
-      ],
+      expandedCols: isUsCountry
+        ? [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "promotional_rebates",
+            label: "Promotions",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          },
+          {
+            key: "net_sales",
+            label: "Net Sales",
+            align: "center" as const,
+            width: "8%",
+          },
+        ]
+        : [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "tex_and_credits",
+            label: "Taxes and Credits",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+          },
+          {
+            key: "net_sales",
+            label: "Total",
+            align: "center" as const,
+            width: "8%",
+          },
+        ],
     },
+
+    ...(!isUsCountry
+      ? [
+        {
+          id: "promotional_rebates",
+          label: "Promotions",
+          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          collapsedCols: [
+            {
+              key: "promotional_rebates",
+              label: "",
+              align: "center" as const,
+              width: "10%",
+              info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+            },
+          ],
+          expandedCols: [
+            {
+              key: "promotional_rebates",
+              label: "Promotions",
+              align: "center" as const,
+              width: "9%",
+            },
+            {
+              key: "promotional_rebates_percentage",
+              label: "Promotions %",
+              align: "center" as const,
+              noWrap: true,
+              width: "9%",
+              thClassName: "whitespace-nowrap",
+            },
+          ],
+        } as ColGroup<TableRow>,
+      ]
+      : []),
 
     {
       id: "amazon_breakdown",
-      label: "Marketplace Fees",
+      label: isUsCountry ? "Amazon Fees" : "Marketplace Fees",
       collapsedCols: [
         {
           key: "amazon_fee",
@@ -1000,40 +1084,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
         {
           key: "amazon_fee",
-          label: "Total",
+          label: isUsCountry ? "Total Fees" : "Total",
           align: "center",
           width: "6%",
-        },
-      ],
-    },
-
-    {
-      id: "promotional_rebates",
-      label: "Promotions",
-      info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-      collapsedCols: [
-        {
-          key: "promotional_rebates",
-          label: "",
-          align: "center",
-          width: "10%",
-          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-        },
-      ],
-      expandedCols: [
-        {
-          key: "promotional_rebates",
-          label: "Promotions",
-          align: "center",
-          width: "9%",
-        },
-        {
-          key: "promotional_rebates_percentage",
-          label: "Promotions %",
-          align: "center",
-          noWrap: true,
-          width: "9%",
-          thClassName: "whitespace-nowrap",
         },
       ],
     },
@@ -1064,6 +1117,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
           align: "center",
           width: "8%",
         },
+        ...(isUsCountry
+          ? [
+            {
+              key: "misc_transaction",
+              label: "Misc. Transactions",
+              align: "center" as const,
+              width: "8%",
+            },
+          ]
+          : []),
         {
           key: "other_transactions",
           label: "Total",
@@ -1087,26 +1150,47 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.profit} />,
         },
       ],
-      expandedCols: [
-        {
-          key: "unit_wise_profitability",
-          label: "Per Unit",
-          align: "center",
-          width: "8%",
-        },
-        {
-          key: "profit_percentage",
-          label: "%",
-          align: "center",
-          width: "8%",
-        },
-        {
-          key: "profit",
-          label: "Total",
-          align: "center",
-          width: "8%",
-        },
-      ],
+      expandedCols: isUsCountry
+        ? [
+          {
+            key: "profit",
+            label: "Margin",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "unit_wise_profitability",
+            label: "Per Unit",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit_percentage",
+            label: "%",
+            align: "center" as const,
+            width: "8%",
+          },
+        ]
+        : [
+          {
+            key: "unit_wise_profitability",
+            label: "Per Unit",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit_percentage",
+            label: "%",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit",
+            label: "Total",
+            align: "center" as const,
+            width: "8%",
+          },
+        ],
     },
 
     ...(hasCm2Data
@@ -1161,30 +1245,51 @@ const SKUtable: React.FC<SKUtableProps> = ({
               width: "8%",
             },
           ],
-          expandedCols: [
-            {
-              key: "unit_wise_cm2_profitability",
-              label: "Per Unit",
-              align: "center",
-              width: "8%",
-            },
-            {
-              key: "cm2_margins",
-              label: "%",
-              align: "center",
-              width: "8%",
-            },
-            {
-              key: "cm2_profit",
-              label: "Total",
-              align: "center",
-              width: "8%",
-            },
-          ],
+          expandedCols: isUsCountry
+            ? [
+              {
+                key: "cm2_profit",
+                label: "Margin",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "unit_wise_cm2_profitability",
+                label: "Per Unit",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_margins",
+                label: "%",
+                align: "center" as const,
+                width: "8%",
+              },
+            ]
+            : [
+              {
+                key: "unit_wise_cm2_profitability",
+                label: "Per Unit",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_margins",
+                label: "%",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_profit",
+                label: "Total",
+                align: "center" as const,
+                width: "8%",
+              },
+            ],
         } as ColGroup<TableRow>,
       ]
       : []),
-  ], [hasCm2Data]);
+  ], [hasCm2Data, isUsCountry]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -1243,6 +1348,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
         align: "center",
         width: "7%",
       },
+      ...(isUsCountry
+        ? [
+          {
+            key: "promotional_rebates_percentage",
+            label: "Promotions %",
+            align: "center" as const,
+            noWrap: true,
+            width: "9%",
+            thClassName: "whitespace-nowrap",
+          },
+        ]
+        : []),
       {
         key: "cost_of_unit_sold",
         label: "COGS",
@@ -1266,58 +1383,102 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ]
         : []),
     ],
-    [hasCm2Data]
+    [hasCm2Data, isUsCountry]
   );
 
   const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
-    // Exact order you want in Excel
-    const ordered: LeafCol<TableRow>[] = [
-      { key: "sno", label: "S. no", align: "center" as const },
+    const cm2Columns: LeafCol<TableRow>[] = hasCm2Data
+      ? [
+        { key: "product_spend", label: "Sponsored Product", align: "center" as const },
+        { key: "display_spend", label: "Sponsored Display", align: "center" as const },
+        { key: "ads_spend", label: "Ads Spend", align: "center" as const },
+        { key: "acos", label: "ACoS %", align: "center" as const },
+        ...(isUsCountry
+          ? [
+            { key: "cm2_profit", label: "Margin", align: "center" as const },
+            { key: "unit_wise_cm2_profitability", label: "Per Unit", align: "center" as const },
+            { key: "cm2_margins", label: "%", align: "center" as const },
+          ]
+          : [
+            { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
+            { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
+            { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
+          ]),
+      ]
+      : [];
 
-      { key: "product_name", label: "Product Name", align: "left" as const },
-      { key: "sku", label: "SKU", align: "left" as const },
+    const ordered: LeafCol<TableRow>[] = isUsCountry
+      ? [
+        { key: "sno", label: "Sno.", align: "center" as const },
+        { key: "product_name", label: "Product Name", align: "left" as const },
+        { key: "sku", label: "SKU", align: "left" as const },
 
-      { key: "units_sold", label: "Units Sold", align: "center" as const },
-      { key: "return_units", label: "Return", align: "center" as const },
-      { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
 
-      { key: "asp", label: "ASP", align: "center" as const },
+        { key: "asp", label: "ASP", align: "center" as const },
 
-      { key: "product_sales", label: "Gross Sales", align: "center" as const },
-      { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
-      { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
-      { key: "net_sales", label: "Net Sales", align: "center" as const },
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "net_sales", label: "Net Sales", align: "center" as const },
 
-      { key: "promotional_rebates", label: "Promotions", align: "center" as const },
-      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
 
-      { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "amazon_fee", label: "Total Fees", align: "center" as const },
 
-      { key: "selling_fees", label: "Selling Fees", align: "center" as const },
-      { key: "fba_fees", label: "FBA Fees", align: "center" as const },
-      { key: "amazon_fee", label: "Marketplace Fees", align: "center" as const },
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "other_transactions", label: "Total", align: "center" as const },
 
-      { key: "net_taxes", label: "Net Taxes", align: "center" as const },
-      { key: "net_credits", label: "Net Credits", align: "center" as const },
-      { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
-      { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+        { key: "profit", label: "Margin", align: "center" as const },
+        { key: "unit_wise_profitability", label: "Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "%", align: "center" as const },
 
-      { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
-      { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+        ...cm2Columns,
+      ]
+      : [
+        { key: "sno", label: "S. no", align: "center" as const },
 
-      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
-      ...(hasCm2Data
-        ? [
-          { key: "product_spend", label: "Sponsored Product", align: "center" as const },
-          { key: "display_spend", label: "Sponsored Display", align: "center" as const },
-          { key: "ads_spend", label: "Ads Spend", align: "center" as const },
-          { key: "acos", label: "ACoS %", align: "center" as const },
-          { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
-          { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
-          { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
-        ]
-        : []),
-    ];
+        { key: "product_name", label: "Product Name", align: "left" as const },
+        { key: "sku", label: "SKU", align: "left" as const },
+
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+
+        { key: "asp", label: "ASP", align: "center" as const },
+
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
+        { key: "net_sales", label: "Net Sales", align: "center" as const },
+
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+
+        { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "amazon_fee", label: "Marketplace Fees", align: "center" as const },
+
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+
+        { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
+        ...cm2Columns,
+      ];
 
     // optional: remove duplicates if any
     const seen = new Set<string>();
@@ -1327,7 +1488,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       seen.add(c.key);
       return true;
     });
-  }, [hasCm2Data]);
+  }, [hasCm2Data, isUsCountry]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -1477,11 +1638,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const getSignForCol = useCallback(
     (colKey: string) => {
+      if (isUsCountry && (colKey === "net_units_sold" || colKey === "other_transactions")) {
+        return { text: "(+)", className: "text-green-700" };
+      }
+
       if (SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
       if (SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
       return null;
     },
-    [SIGN_PLUS, SIGN_MINUS]
+    [SIGN_PLUS, SIGN_MINUS, isUsCountry]
   );
 
   const buildSkuSheetModel = useCallback(
@@ -1521,7 +1686,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           }
 
           if (key === "other_transactions") {
-            value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+            value = getOtherTransactionsTotal(row);
           }
 
           if (key === "quantity") {
@@ -1744,6 +1909,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       getDisplayProductNameFromRow,
       buildExcelColumnsFromUI,
       getSignForCol,
+      getOtherTransactionsTotal,
     ]
   );
 
@@ -2112,6 +2278,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "product_spend") return toNumber((row as any).product_spend);
                   if (colKey === "display_spend") return toNumber((row as any).display_spend);
                   if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
+                  if (colKey === "other_transactions") return getOtherTransactionsTotal(row);
                   return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
@@ -2125,7 +2292,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "single" as const, key: "asp" },
 
                   { type: "group" as const, id: "sales" },
-                  { type: "group" as const, id: "promotional_rebates" },
+                  ...(isUsCountry
+                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                    : [{ type: "group" as const, id: "promotional_rebates" }]),
 
                   { type: "single" as const, key: "cost_of_unit_sold" },
 
@@ -2245,6 +2414,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   if (colKey === "acos") {
                     return formatValue(getAcosPercentage(row), "acos");
+                  }
+
+                  if (colKey === "other_transactions") {
+                    return formatValue(getOtherTransactionsTotal(row), colKey);
                   }
 
                   // ✅ round Ads Spend expanded columns without decimals
