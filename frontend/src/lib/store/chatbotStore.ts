@@ -17,6 +17,8 @@ export type Message = {
 
 export type SendMessageContext = {
   country?: string | null;
+  source?: "manual" | "suggested";
+  includeSuggestedQuestions?: boolean;
 };
 
 type ChatStore = {
@@ -43,6 +45,7 @@ const DEFAULT_BOT_MESSAGE: Message = {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+const CHAT_REQUEST_TIMEOUT_MS = 120_000;
 
 const getAuthToken = () =>
   typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -168,6 +171,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
   loading: false,
 
   loadFromStorage: async () => {
+    set({ loading: false });
     if (get().messages.length > 0) return;
 
     const dbMsgs = await fetchHistoryFromDB();
@@ -200,6 +204,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
   // 🚀 UPDATED SEND MESSAGE (AGENT)
   sendMessage: async (text, context) => {
     if (!text.trim()) return;
+    if (get().loading) return;
 
     const userMsg: Message = {
       id: uuid(),
@@ -217,11 +222,17 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
       return { messages: updated, loading: true };
     });
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       // 👉 get user country dynamically
       const country = resolveActiveCountry(context?.country);
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), CHAT_REQUEST_TIMEOUT_MS);
+
       const res = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getAuthToken()}`,
@@ -229,26 +240,40 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
         body: JSON.stringify({
           message: text,
           country,
+          request_source: context?.source || "manual",
+          include_suggested_questions:
+            context?.includeSuggestedQuestions ?? context?.source !== "suggested",
           conversation_id: null, // 🔥 can upgrade later
           email_requested: false,
           thresholds: {},
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          data?.details || data?.error || "The chatbot request failed."
+        );
+      }
+
       const suggestedQuestions = Array.isArray(data?.suggested_questions)
         ? data.suggested_questions.filter((q: unknown) => typeof q === "string")
         : [];
+
+      const responseText =
+        data?.output ??
+        data?.response ??
+        data?.result ??
+        data?.message ??
+        "No response";
 
       const botMsg: Message = {
         id: uuid(),
         sender: "bot",
         text:
-          data?.output ||
-          data?.response ||
-          data?.result ||
-          data?.message ||
-          "No response",
+          typeof responseText === "string"
+            ? responseText
+            : JSON.stringify(responseText),
         serverId: typeof data?.history_id === "number" ? data.history_id : undefined,
         promptText: text,
         suggestedQuestions,
@@ -263,6 +288,11 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
         return { messages: updated, loading: false };
       });
     } catch (err) {
+      const isTimeout =
+        typeof err === "object" &&
+        err !== null &&
+        "name" in err &&
+        (err as { name?: string }).name === "AbortError";
       const errorMsg: Message = {
         id: uuid(),
         sender: "bot",
@@ -270,11 +300,19 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
         error: true,
         timestamp: Date.now(),
       };
+      errorMsg.text = isTimeout
+        ? "This analysis took too long to finish. Please try again, or ask a narrower question."
+        : "Something went wrong. Please try again.";
 
-      set((s) => ({
-        messages: [...s.messages, errorMsg],
-        loading: false,
-      }));
+      set((s) => {
+        const updated = [...s.messages, errorMsg];
+        if (typeof window !== "undefined") {
+          localStorage.setItem("chatbot_history", JSON.stringify(updated));
+        }
+        return { messages: updated, loading: false };
+      });
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   },
 
@@ -282,7 +320,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
     if (typeof window !== "undefined") {
       localStorage.removeItem("chatbot_history");
     }
-    set({ messages: [DEFAULT_BOT_MESSAGE] });
+    set({ messages: [DEFAULT_BOT_MESSAGE], loading: false });
   },
 
   reactToMessage: (id, reaction) => {
