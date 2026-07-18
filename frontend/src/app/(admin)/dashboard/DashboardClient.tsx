@@ -6541,6 +6541,11 @@ export default function DashboardPage() {
         const sum = (key: keyof MonthlySkuwiseRow) =>
             rest.reduce((acc, r) => acc + (Number((r as any)[key]) || 0), 0);
 
+        const average = (key: keyof MonthlySkuwiseRow) =>
+            rest.length
+                ? rest.reduce((acc, r) => acc + (Number((r as any)[key]) || 0), 0) / rest.length
+                : 0;
+
         const othersQty = sum("quantity");
         const othersNetSales = sum("net_sales");
 
@@ -6589,6 +6594,8 @@ export default function DashboardPage() {
             gross_sales: sum("gross_sales"),
             refund_sales: sum("refund_sales"),
             net_sales: othersNetSales,
+            promotional_rebates: sum("promotional_rebates"),
+            promotional_rebates_percentage: average("promotional_rebates_percentage"),
 
             cogs: sum("cogs"),
             fba_fees: sum("fba_fees"),

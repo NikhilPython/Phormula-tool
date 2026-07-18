@@ -321,6 +321,8 @@ const isNumericKey = (k: string, v: any) => typeof v === "number" || (!isNaN(Num
 
 function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
   const out: any = { ...base };
+  const averageKeys = new Set(["promotional_rebates_percentage"]);
+  const averageCounts: Record<string, number> = {};
 
   for (const r of rows) {
     Object.keys(r || {}).forEach((k) => {
@@ -335,8 +337,17 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
       if (k === "asp" || k === "ASP") return;
 
       out[k] = toNumber(out[k]) + toNumber(v);
+      if (averageKeys.has(k)) {
+        averageCounts[k] = (averageCounts[k] || 0) + 1;
+      }
     });
   }
+
+  averageKeys.forEach((key) => {
+    if (averageCounts[key]) {
+      out[key] = toNumber(out[key]) / averageCounts[key];
+    }
+  });
 
   return out as TableRow;
 }
