@@ -534,7 +534,7 @@ async function fetchMonthlyTransactionsExcel(params: {
 
     // US needs both RELEASED + DEFERRED; UK needs only RELEASED
     transaction_status:
-      params.country.toLowerCase() === "us" ? "RELEASED" : "RELEASED",
+      params.country.toLowerCase() === "us" ? "all" : "all",
   });
 
   const url = `${API_BASE}/amazon_api/finances/monthly_transactions?${qs.toString()}`;
