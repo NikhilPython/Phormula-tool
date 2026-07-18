@@ -103,14 +103,12 @@ export function buildSkuwiseTableColumns(
                     key: "quantity",
                     label: "Units Sold",
                     align: "center" as const,
-                    sortable: true,
                     width: "7%",
                 },
                 {
                     key: "return_quantity",
                     label: "Return",
                     align: "center" as const,
-                    sortable: true,
                     width: "7%",
                 },
                 {
@@ -142,7 +140,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "gross_sales",
                         label: "Gross Sales",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text="Gross Sales" />,
@@ -150,7 +147,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "refund_sales",
                         label: "Sales - Refund",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text="Sales refunded during this period." />,
@@ -158,7 +154,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "promotional_rebates",
                         label: "Promotions",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
@@ -175,7 +170,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "gross_sales",
                         label: "Gross Sales",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text="Gross Sales" />,
@@ -183,7 +177,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "refund_sales",
                         label: "Sales - Refund",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text="Sales refunded during this period." />,
@@ -191,7 +184,6 @@ export function buildSkuwiseTableColumns(
                     {
                         key: "net_sales_tax_and_credits",
                         label: "Taxes and Credits",
-                        sortable: true,
                         align: "center" as const,
                         width: "7%",
                         info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
@@ -214,7 +206,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: "promotional_rebates",
                     label: "Promotions",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
@@ -225,7 +216,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: "promotional_rebates",
                     label: "Promotions",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
@@ -233,7 +223,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: "promotional_rebates_percentage",
                     label: "Promotions %",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
@@ -249,7 +238,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: isUsSkuLayout ? "other_transactions" : "tax_and_credits",
                     label: "Total",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                 },
@@ -259,7 +247,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: "tax",
                     label: "Net Taxes",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.net_taxes} />,
@@ -267,7 +254,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: "credits",
                     label: "Net Credits",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                     info: <InfoTip text={TERM_DEFINITIONS.net_credits} />,
@@ -277,7 +263,6 @@ export function buildSkuwiseTableColumns(
                         {
                             key: "misc_transaction",
                             label: "Misc. Transactions",
-                            sortable: true,
                             align: "center" as const,
                             width: "7%",
                         },
@@ -286,7 +271,6 @@ export function buildSkuwiseTableColumns(
                 {
                     key: isUsSkuLayout ? "other_transactions" : "tax_and_credits",
                     label: "Total",
-                    sortable: true,
                     align: "center" as const,
                     width: "7%",
                 },
@@ -311,7 +295,7 @@ export function buildSkuwiseTableColumns(
                 ? [
                     { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
                     { key: "cm1_profit_per", label: "%", align: "center" as const },
-                    { key: "profit", label: "Margin", align: "center" as const },
+                    { key: "profit", label: "Margin", align: "center" as const, sortable: true },
                 ]
                 : [
                     { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
@@ -320,6 +304,7 @@ export function buildSkuwiseTableColumns(
                         key: "profit",
                         label: "Total",
                         align: "center" as const,
+                        sortable: true,
                     },
                 ],
         },
@@ -378,14 +363,12 @@ export function buildSkuwiseTableColumns(
                     key: "product_spend",
                     label: "Sponsored Product",
                     align: "center" as const,
-                    sortable: true,
                     width: "8%",
                 },
                 {
                     key: "display_spend",
                     label: "Sponsored Display",
                     align: "center" as const,
-                    sortable: true,
                     width: "8%",
                 },
                 {
