@@ -537,6 +537,26 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
 
+        # FBA fees: use only Shipment and Refund transaction types
+        fba_fees_df = (
+            df.loc[
+                df["type_norm"].isin(["shipment", "refund"])
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.lower() != "none"),
+                ["sku", "fba_fees"]
+            ]
+            .groupby("sku", as_index=False)["fba_fees"]
+            .sum()
+        )
+
+        fba_fees_df["sku"] = fba_fees_df["sku"].astype(str).str.strip()
+        fba_fees_df["fba_fees"] = pd.to_numeric(
+            fba_fees_df["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
+
         quantity_df = (
             df[df["type_norm"].isin(["order", "shipment"])]
             .groupby("sku", as_index=False)["quantity"]
@@ -650,8 +670,11 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         # Logic 1: TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = abs(
-            pd.to_numeric(df.loc[leftout_mask, "total"], errors="coerce")
+        misc_transaction_total = (
+            pd.to_numeric(
+                df.loc[leftout_mask, "total"],
+                errors="coerce"
+            )
             .fillna(0.0)
             .sum()
         )
@@ -676,7 +699,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         misc_transaction_df["misc_transaction"] = pd.to_numeric(
             misc_transaction_df["misc_transaction"],
             errors="coerce"
-        ).fillna(0.0).abs()
+        ).fillna(0.0)
 
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
@@ -746,7 +769,6 @@ def process_skuwise_us_data(user_id, country, month, year):
             "promotional_rebates_tax": "sum",
             "product_sales_tax": "sum",
             "selling_fees": "sum",
-            "fba_fees": "sum",
             "other": "sum",
             "marketplace_facilitator_tax": "sum",
             "shipping_credits_tax": "sum",
@@ -762,6 +784,17 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         sku_grouped = df_valid.groupby("sku").agg(group_cols).reset_index()
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            fba_fees_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["fba_fees"] = pd.to_numeric(
+            sku_grouped["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
 
         sku_grouped = sku_grouped.merge(df_prev, on="sku", how="left").fillna(0)
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
@@ -859,7 +892,13 @@ def process_skuwise_us_data(user_id, country, month, year):
 
             sku_grouped = sku_grouped.merge(tmp, on="sku", how="left")
             for c in [out_col, *component_map.values()]:
-                sku_grouped[c] = pd.to_numeric(sku_grouped.get(c, 0.0), errors="coerce").fillna(0.0)
+                if c not in sku_grouped.columns:
+                    sku_grouped[c] = 0.0
+                else:
+                    sku_grouped[c] = pd.to_numeric(
+                        sku_grouped[c],
+                        errors="coerce"
+                    ).fillna(0.0)
 
         # Formula totals + SKU breakups
         sales_total, sales_by_sku, _ = us_sales(df, country=country)
@@ -881,11 +920,27 @@ def process_skuwise_us_data(user_id, country, month, year):
             {
                 "gross_sales": "gross_sales",
                 "refund_sales": "refund_sales",
-                "taxes_and_credits": "tex_and_credits",
+                "promotional_rebates": "promotional_rebates",
             },
         )
         merge_formula_metric(tax_by_sku, "__metric__", "net_taxes")
         merge_formula_metric(credits_by_sku, "__metric__", "net_credits")
+        sku_grouped["tex_and_credits"] = (
+            pd.to_numeric(
+                sku_grouped["net_taxes"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+            +
+            pd.to_numeric(
+                sku_grouped["net_credits"],
+                errors="coerce"
+            ).fillna(0.0)
+            +
+            pd.to_numeric(
+                sku_grouped["misc_transaction"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+        )
         merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
         merge_formula_metric(cogs_by_sku, "__metric__", "cost_of_unit_sold")
         merge_formula_metric(platform_by_sku, "__metric__", "platform_fee")
@@ -1804,6 +1859,25 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             .rename(columns={"selling_fees": "refund_selling_fees"})
         )
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
+        # FBA fees: only Shipment and Refund
+        fba_fees_df = (
+            df.loc[
+                df["type_norm"].isin(["shipment", "refund"])
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.lower() != "none"),
+                ["sku", "fba_fees"]
+            ]
+            .groupby("sku", as_index=False)["fba_fees"]
+            .sum()
+        )
+
+        fba_fees_df["sku"] = fba_fees_df["sku"].astype(str).str.strip()
+        fba_fees_df["fba_fees"] = pd.to_numeric(
+            fba_fees_df["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
 
         quantity_df = (
             df[df["type_norm"].isin(["order", "shipment"])]
@@ -1921,8 +1995,11 @@ def process_us_yearly_skuwise_data(user_id, country, year):
 
         # Logic 1: TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = abs(
-            pd.to_numeric(df.loc[leftout_mask, "total"], errors="coerce")
+        misc_transaction_total = (
+            pd.to_numeric(
+                df.loc[leftout_mask, "total"],
+                errors="coerce"
+            )
             .fillna(0.0)
             .sum()
         )
@@ -1947,7 +2024,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         misc_transaction_df["misc_transaction"] = pd.to_numeric(
             misc_transaction_df["misc_transaction"],
             errors="coerce"
-        ).fillna(0.0).abs()
+        ).fillna(0.0)
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
 
@@ -2013,7 +2090,6 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "promotional_rebates_tax": "sum",
             "product_sales_tax": "sum",
             "selling_fees": "sum",
-            "fba_fees": "sum",
             "other": "sum",
             "marketplace_facilitator_tax": "sum",
             "shipping_credits_tax": "sum",
@@ -2029,6 +2105,17 @@ def process_us_yearly_skuwise_data(user_id, country, year):
 
         sku_grouped = df_valid.groupby("sku").agg(group_cols).reset_index()
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            fba_fees_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["fba_fees"] = pd.to_numeric(
+            sku_grouped["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
 
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
         sku_grouped = sku_grouped.merge(quantity_df, on="sku", how="left")
@@ -2098,7 +2185,13 @@ def process_us_yearly_skuwise_data(user_id, country, year):
 
             sku_grouped = sku_grouped.merge(tmp, on="sku", how="left")
             for c in [out_col, *component_map.values()]:
-                sku_grouped[c] = pd.to_numeric(sku_grouped.get(c, 0.0), errors="coerce").fillna(0.0)
+                if c not in sku_grouped.columns:
+                    sku_grouped[c] = 0.0
+                else:
+                    sku_grouped[c] = pd.to_numeric(
+                        sku_grouped[c],
+                        errors="coerce"
+                    ).fillna(0.0)
 
         sales_total, sales_by_sku, _ = us_sales(df, country=country)
         gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
@@ -2113,11 +2206,27 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             {
                 "gross_sales": "gross_sales",
                 "refund_sales": "refund_sales",
-                "taxes_and_credits": "tex_and_credits",
+                "promotional_rebates": "promotional_rebates",
             },
         )
         merge_formula_metric(tax_by_sku, "__metric__", "net_taxes")
         merge_formula_metric(credits_by_sku, "__metric__", "net_credits")
+        sku_grouped["tex_and_credits"] = (
+            pd.to_numeric(
+                sku_grouped["net_taxes"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+            +
+            pd.to_numeric(
+                sku_grouped["net_credits"],
+                errors="coerce"
+            ).fillna(0.0)
+            +
+            pd.to_numeric(
+                sku_grouped["misc_transaction"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+        )
         merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
 
         for col in [
@@ -2562,6 +2671,26 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
 
+        # FBA fees: only Shipment and Refund
+        fba_fees_df = (
+            df.loc[
+                df["type_norm"].isin(["shipment", "refund"])
+                & df["sku"].notna()
+                & (df["sku"].astype(str).str.strip() != "")
+                & (df["sku"].astype(str).str.strip() != "0")
+                & (df["sku"].astype(str).str.lower() != "none"),
+                ["sku", "fba_fees"]
+            ]
+            .groupby("sku", as_index=False)["fba_fees"]
+            .sum()
+        )
+
+        fba_fees_df["sku"] = fba_fees_df["sku"].astype(str).str.strip()
+        fba_fees_df["fba_fees"] = pd.to_numeric(
+            fba_fees_df["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
+
         quantity_df = (
             df[df["type_norm"].isin(["order", "shipment"])]
             .groupby("sku", as_index=False)["quantity"]
@@ -2678,8 +2807,11 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
         # Logic 1: TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = abs(
-            pd.to_numeric(df.loc[leftout_mask, "total"], errors="coerce")
+        misc_transaction_total = (
+            pd.to_numeric(
+                df.loc[leftout_mask, "total"],
+                errors="coerce"
+            )
             .fillna(0.0)
             .sum()
         )
@@ -2704,7 +2836,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         misc_transaction_df["misc_transaction"] = pd.to_numeric(
             misc_transaction_df["misc_transaction"],
             errors="coerce"
-        ).fillna(0.0).abs()
+        ).fillna(0.0)
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
         platform_fee_inventory_storage_total = abs(sum_total_where_desc_contains(df, [
@@ -2768,7 +2900,6 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "promotional_rebates_tax": "sum",
             "product_sales_tax": "sum",
             "selling_fees": "sum",
-            "fba_fees": "sum",
             "other": "sum",
             "marketplace_facilitator_tax": "sum",
             "shipping_credits_tax": "sum",
@@ -2784,6 +2915,17 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
         sku_grouped = df_valid.groupby("sku").agg(group_cols).reset_index()
         sku_grouped["sku"] = sku_grouped["sku"].astype(str).str.strip()
+
+        sku_grouped = sku_grouped.merge(
+            fba_fees_df,
+            on="sku",
+            how="left"
+        )
+
+        sku_grouped["fba_fees"] = pd.to_numeric(
+            sku_grouped["fba_fees"],
+            errors="coerce"
+        ).fillna(0.0)
 
         sku_grouped = sku_grouped.merge(refund_fees, on="sku", how="left")
         sku_grouped = sku_grouped.merge(quantity_df, on="sku", how="left")
@@ -2855,7 +2997,13 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
             sku_grouped = sku_grouped.merge(tmp, on="sku", how="left")
             for c in [out_col, *component_map.values()]:
-                sku_grouped[c] = pd.to_numeric(sku_grouped.get(c, 0.0), errors="coerce").fillna(0.0)
+                if c not in sku_grouped.columns:
+                    sku_grouped[c] = 0.0
+                else:
+                    sku_grouped[c] = pd.to_numeric(
+                        sku_grouped[c],
+                        errors="coerce"
+                    ).fillna(0.0)
 
         sales_total, sales_by_sku, _ = us_sales(df, country=country)
         gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
@@ -2870,11 +3018,27 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             {
                 "gross_sales": "gross_sales",
                 "refund_sales": "refund_sales",
-                "taxes_and_credits": "tex_and_credits",
+                "promotional_rebates": "promotional_rebates",
             },
         )
         merge_formula_metric(tax_by_sku, "__metric__", "net_taxes")
         merge_formula_metric(credits_by_sku, "__metric__", "net_credits")
+        sku_grouped["tex_and_credits"] = (
+            pd.to_numeric(
+                sku_grouped["net_taxes"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+            +
+            pd.to_numeric(
+                sku_grouped["net_credits"],
+                errors="coerce"
+            ).fillna(0.0)
+            +
+            pd.to_numeric(
+                sku_grouped["misc_transaction"],
+                errors="coerce"
+            ).fillna(0.0).abs()
+        )
         merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
 
         for col in [
