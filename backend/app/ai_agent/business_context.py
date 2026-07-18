@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
@@ -34,6 +35,7 @@ CORE_BUSINESS_COLUMNS = [
     "marketplace_fees",
     "amazon_fees",
     "platform_fee",
+    "platformfeenew",
     "platform_fee_inventory_storage",
     "tax_and_credits",
     "other",
@@ -77,6 +79,7 @@ ADDITIVE_TOTAL_COLUMNS = {
     "marketplace_fees",
     "amazon_fees",
     "platform_fee",
+    "platformfeenew",
     "platform_fee_inventory_storage",
     "tax_and_credits",
     "other",
@@ -97,6 +100,176 @@ ADDITIVE_TOTAL_COLUMNS = {
     "debt_payment",
     "disbursement",
     "current_net_reimbursement",
+}
+
+COLUMN_ALIASES = {
+    "advertising_total": ("ads_spend", "total_ads"),
+    "amazon_fee": ("amazon_fees",),
+    "refund_quantity": ("return_quantity",),
+}
+
+COMPARISON_DRIVER_METRICS = [
+    "net_sales",
+    "gross_sales",
+    "product_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "profit",
+    "profit_percentage",
+    "cm2_profit",
+    "total_cm2_profit",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "promotional_rebates",
+    "refund_sales",
+    "return_quantity",
+    "return_rate",
+    "cogs",
+    "selling_fees",
+    "fba_fees",
+    "marketplace_fees",
+    "amazon_fees",
+    "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "tax_and_credits",
+    "other",
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "display_spend",
+    "brand_spend",
+    "ads_sale_amount",
+    "ads_sale_units",
+    "ads_roas",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "ads_cpc",
+    "ads_ctr",
+    "ads_conversion_rate",
+    "lost_total",
+    "misc_transaction",
+    "debt_payment",
+    "current_net_reimbursement",
+]
+
+GOOD_WHEN_UP_METRICS = {
+    "net_sales",
+    "gross_sales",
+    "product_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "profit",
+    "profit_percentage",
+    "cm2_profit",
+    "total_cm2_profit",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "ads_sale_amount",
+    "ads_sale_units",
+    "ads_roas",
+    "ads_ctr",
+    "ads_conversion_rate",
+    "current_net_reimbursement",
+}
+
+BAD_WHEN_UP_METRICS = {
+    "promotional_rebates",
+    "refund_sales",
+    "return_quantity",
+    "return_rate",
+    "cogs",
+    "selling_fees",
+    "fba_fees",
+    "marketplace_fees",
+    "amazon_fees",
+    "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "tax_and_credits",
+    "other",
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "display_spend",
+    "brand_spend",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "ads_cpc",
+    "lost_total",
+    "misc_transaction",
+    "debt_payment",
+}
+
+SIGN_AWARE_BURDEN_METRICS = {
+    "promotional_rebates",
+    "promotional_rebates_tax",
+}
+
+PERCENTAGE_DRIVER_METRICS = {
+    "profit_percentage",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "return_rate",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "ads_ctr",
+    "ads_conversion_rate",
+}
+
+UNIT_DRIVER_METRICS = {
+    "total_quantity",
+    "quantity",
+    "return_quantity",
+    "ads_sale_units",
+}
+
+METRIC_LABELS = {
+    "net_sales": "Net sales",
+    "gross_sales": "Gross sales",
+    "product_sales": "Product sales",
+    "total_quantity": "Net sold units",
+    "quantity": "Gross units",
+    "asp": "ASP",
+    "profit": "CM1 profit",
+    "profit_percentage": "CM1 profit margin",
+    "cm2_profit": "Product CM2 profit",
+    "total_cm2_profit": "CM2 profit",
+    "cm2_profit_per": "CM2 margin",
+    "total_cm2_margins": "CM2 margin",
+    "promotional_rebates": "Promo rebates",
+    "refund_sales": "Refund sales",
+    "return_quantity": "Refund quantity",
+    "return_rate": "Return rate",
+    "cogs": "COGS",
+    "selling_fees": "Selling fees",
+    "fba_fees": "FBA fees",
+    "marketplace_fees": "Marketplace fees",
+    "amazon_fees": "Amazon fees",
+    "platform_fee": "Platform fees",
+    "platformfeenew": "Subscription fees",
+    "platform_fee_inventory_storage": "Inventory storage fees",
+    "tax_and_credits": "Tax and credits",
+    "other": "Other charges",
+    "ads_spend": "Ad spend",
+    "total_ads": "Ad spend",
+    "product_spend": "Sponsored product spend",
+    "display_spend": "Sponsored display spend",
+    "brand_spend": "Sponsored brand spend",
+    "ads_sale_amount": "Ad sales",
+    "ads_sale_units": "Ad sales units",
+    "ads_roas": "Ad ROAS",
+    "ads_acos": "Ad ACOS",
+    "tacos_total_advertising_cost_of_sale": "TACOS",
+    "ads_cpc": "Ad CPC",
+    "ads_ctr": "Ad CTR",
+    "ads_conversion_rate": "Ad conversion rate",
+    "lost_total": "Lost total",
+    "misc_transaction": "Misc transactions",
+    "debt_payment": "Debt payment",
+    "current_net_reimbursement": "Current net reimbursement",
 }
 
 
@@ -126,6 +299,30 @@ def _round(value: Any, digits: int = 4) -> Optional[float]:
         return None
 
 
+def _with_business_aliases(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+
+    out = frame.copy()
+    for source, targets in COLUMN_ALIASES.items():
+        if source not in out.columns:
+            continue
+
+        source_values = pd.to_numeric(out[source], errors="coerce").fillna(0.0)
+        for target in targets:
+            if target not in out.columns:
+                out[target] = source_values
+                continue
+
+            target_values = pd.to_numeric(out[target], errors="coerce")
+            if target_values.fillna(0.0).abs().sum() == 0 and source_values.abs().sum() > 0:
+                out[target] = source_values
+            else:
+                out[target] = target_values.fillna(source_values).fillna(0.0)
+
+    return out
+
+
 def _clean_record(record: Dict[str, Any]) -> Dict[str, Any]:
     cleaned: Dict[str, Any] = {}
     for key, value in record.items():
@@ -146,6 +343,22 @@ def _period_label(months: List[MonthKey]) -> str:
     return f"{months[0].label} to {months[-1].label}"
 
 
+def _dedupe_months(months: List[MonthKey]) -> List[MonthKey]:
+    unique = {(month.year, month.month): month for month in months}
+    return [unique[key] for key in sorted(unique)]
+
+
+def _period_part_as_payload(part: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    part = part or {}
+    if part.get("type"):
+        return part
+    if all(part.get(key) for key in ("start_month", "start_year", "end_month", "end_year")):
+        return {"type": "range", **part}
+    if part.get("month") and part.get("year"):
+        return {"type": "single", "month": part["month"], "year": part["year"]}
+    return part
+
+
 def _months_from_payload(
     engine: Engine,
     user_id: int,
@@ -161,6 +374,14 @@ def _months_from_payload(
     if ptype == "single" and payload.get("month") and payload.get("year"):
         return [MonthKey(year=int(payload["year"]), month=int(payload["month"]))]
 
+    if ptype == "comparison":
+        months: List[MonthKey] = []
+        for key in ("p2", "right", "p1", "left"):
+            part = payload.get(key)
+            if part:
+                months.extend(_months_from_payload(engine, user_id, country, _period_part_as_payload(part)))
+        return _dedupe_months(months)
+
     if ptype == "multi_month":
         return [
             MonthKey(year=int(item["year"]), month=int(item["month"]))
@@ -168,8 +389,14 @@ def _months_from_payload(
             if item.get("month") and item.get("year")
         ]
 
-    if ptype == "last_n_months":
-        return get_last_n_month_keys(engine, user_id, country, int(payload.get("n") or 6))
+    if ptype in {"last_n", "last_n_months"}:
+        return get_last_n_month_keys(
+            engine,
+            user_id,
+            country,
+            int(payload.get("n") or 6),
+            include_current_incomplete=bool(payload.get("include_current_incomplete", False)),
+        )
 
     if ptype == "range":
         period_dfs = fetch_period_dfs(
@@ -200,12 +427,14 @@ def _load_period_frames(
             frames.append(
                 (
                     month_key,
-                    fetch_nse_month_df(
-                        engine,
-                        user_id,
-                        country,
-                        month_key.month,
-                        month_key.year,
+                    _with_business_aliases(
+                        fetch_nse_month_df(
+                            engine,
+                            user_id,
+                            country,
+                            month_key.month,
+                            month_key.year,
+                        )
                     ),
                 )
             )
@@ -227,10 +456,14 @@ def _totals_from_frames(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> D
 
         for column in CORE_BUSINESS_COLUMNS:
             if column in ADDITIVE_TOTAL_COLUMNS:
-                source = total_row.get(column, None) if column in total_row else None
-                if source is None and column in sku_rows.columns:
-                    source = pd.to_numeric(sku_rows[column], errors="coerce").fillna(0.0).sum()
-                totals[column] += _safe_float(source)
+                total_value = _safe_float(total_row.get(column, None)) if column in total_row else 0.0
+                sku_sum = (
+                    _safe_float(pd.to_numeric(sku_rows[column], errors="coerce").fillna(0.0).sum())
+                    if column in sku_rows.columns
+                    else 0.0
+                )
+                source_value = sku_sum if abs(total_value) < 0.005 and abs(sku_sum) > 0.005 else total_value
+                totals[column] += source_value
             elif column in total_row:
                 totals[column] = _safe_float(total_row.get(column))
 
@@ -264,6 +497,42 @@ def _totals_from_frames(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> D
         100.0,
     ) or 0.0
     return {key: _round(value) or 0.0 for key, value in totals.items()}
+
+
+def _product_breakdown_availability(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> Dict[str, Any]:
+    total_only: List[str] = []
+    productwise_available: List[str] = []
+
+    for column in ADDITIVE_TOTAL_COLUMNS:
+        total_abs = 0.0
+        sku_abs = 0.0
+        seen = False
+
+        for _, frame in period_frames:
+            try:
+                total_row = fetch_total_row(frame)
+            except Exception:
+                total_row = pd.Series(dtype="object")
+            sku_rows = fetch_non_total_rows(frame)
+
+            if column in total_row:
+                total_abs += abs(_safe_float(total_row.get(column)))
+                seen = True
+            if column in sku_rows.columns:
+                sku_abs += abs(_safe_float(pd.to_numeric(sku_rows[column], errors="coerce").fillna(0.0).sum()))
+                seen = True
+
+        if not seen:
+            continue
+        if total_abs > 0.005 and sku_abs < 0.005:
+            total_only.append(column)
+        elif sku_abs > 0.005:
+            productwise_available.append(column)
+
+    return {
+        "total_only_metrics": sorted(total_only),
+        "productwise_available_metrics": sorted(productwise_available),
+    }
 
 
 def _sku_frame(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> pd.DataFrame:
@@ -370,6 +639,10 @@ def _rankings(sku_rows: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
         "net_sales",
         "profit",
         "cm2_profit",
+        "promotional_rebates",
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
         "profit_margin_pct",
         "cm2_margin_pct",
         "ads_spend",
@@ -411,6 +684,452 @@ def _rankings(sku_rows: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
     }
 
 
+def _metric_comparison(left_totals: Dict[str, float], right_totals: Dict[str, float], metric: str) -> Dict[str, Any]:
+    left_value = _safe_float(left_totals.get(metric))
+    right_value = _safe_float(right_totals.get(metric))
+    delta = left_value - right_value
+    return {
+        "left": _round(left_value),
+        "right": _round(right_value),
+        "delta": _round(delta),
+        "pct_change": _round(_safe_div(delta, right_value, 100.0)),
+    }
+
+
+def _metric_label(metric: str) -> str:
+    metric_key = str(metric or "").strip().lower()
+    return METRIC_LABELS.get(metric_key, metric_key.replace("_", " ").title())
+
+
+def _canonical_driver_metric(metric: str) -> str:
+    aliases = {
+        "total_ads": "ads_spend",
+        "advertising_total": "ads_spend",
+        "amazon_fee": "amazon_fees",
+    }
+    return aliases.get(metric, metric)
+
+
+def _burden_value(metric: str, value: float) -> float:
+    if metric in SIGN_AWARE_BURDEN_METRICS:
+        return -_safe_float(value)
+    if metric in BAD_WHEN_UP_METRICS:
+        return abs(_safe_float(value))
+    return _safe_float(value)
+
+
+def _business_delta(metric: str, left_value: float, right_value: float) -> float:
+    if metric in BAD_WHEN_UP_METRICS:
+        return _burden_value(metric, left_value) - _burden_value(metric, right_value)
+    return left_value - right_value
+
+
+def _driver_business_effect(metric: str, change: float) -> str:
+    if abs(change) < 0.005:
+        return "neutral"
+    if metric in BAD_WHEN_UP_METRICS:
+        return "unfavorable" if change > 0 else "favorable"
+    if metric in GOOD_WHEN_UP_METRICS:
+        return "unfavorable" if change < 0 else "favorable"
+    return "neutral"
+
+
+def _estimated_impact_score(
+    metric: str,
+    change: float,
+    left_totals: Dict[str, float],
+    right_totals: Dict[str, float],
+) -> float:
+    abs_change = abs(change)
+    if metric in UNIT_DRIVER_METRICS:
+        asp = max(
+            abs(_safe_float(left_totals.get("asp"))),
+            abs(_safe_float(right_totals.get("asp"))),
+            abs(_safe_div(_safe_float(left_totals.get("net_sales")), _safe_float(left_totals.get("total_quantity"))) or 0.0),
+            abs(_safe_div(_safe_float(right_totals.get("net_sales")), _safe_float(right_totals.get("total_quantity"))) or 0.0),
+            1.0,
+        )
+        return abs_change * asp
+    if metric == "asp":
+        units = max(
+            abs(_safe_float(left_totals.get("total_quantity"))),
+            abs(_safe_float(right_totals.get("total_quantity"))),
+            1.0,
+        )
+        return abs_change * units
+    if metric in PERCENTAGE_DRIVER_METRICS:
+        sales_base = max(
+            abs(_safe_float(left_totals.get("net_sales"))),
+            abs(_safe_float(right_totals.get("net_sales"))),
+            1.0,
+        )
+        return (abs_change / 100.0) * sales_base
+    if metric == "ads_roas":
+        spend_base = max(
+            abs(_safe_float(left_totals.get("ads_spend"))),
+            abs(_safe_float(left_totals.get("total_ads"))),
+            abs(_safe_float(right_totals.get("ads_spend"))),
+            abs(_safe_float(right_totals.get("total_ads"))),
+            1.0,
+        )
+        return abs_change * spend_base
+    return abs_change
+
+
+def _metric_driver_record(
+    left_totals: Dict[str, float],
+    right_totals: Dict[str, float],
+    metric: str,
+    primary_metric: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    metric = _canonical_driver_metric(metric)
+    if metric == primary_metric:
+        return None
+
+    left_value = _safe_float(left_totals.get(metric))
+    right_value = _safe_float(right_totals.get(metric))
+    if abs(left_value) < 0.005 and abs(right_value) < 0.005:
+        return None
+
+    raw_delta = left_value - right_value
+    change = _business_delta(metric, left_value, right_value)
+    if abs(change) < 0.005 and abs(raw_delta) < 0.005:
+        return None
+
+    effect = _driver_business_effect(metric, change)
+    direction = "increased" if change > 0 else "decreased" if change < 0 else "was flat"
+    score = _estimated_impact_score(metric, change, left_totals, right_totals)
+    pct_base = abs(_burden_value(metric, right_value)) if metric in BAD_WHEN_UP_METRICS else right_value
+
+    return {
+        "metric": metric,
+        "label": _metric_label(metric),
+        "left": _round(left_value),
+        "right": _round(right_value),
+        "delta": _round(raw_delta),
+        "pct_change": _round(_safe_div(raw_delta, right_value, 100.0)),
+        "business_delta": _round(change),
+        "business_pct_change": _round(_safe_div(change, pct_base, 100.0)),
+        "direction": direction,
+        "business_effect": effect,
+        "unfavorable": effect == "unfavorable",
+        "favorable": effect == "favorable",
+        "impact_score": _round(score),
+        "value_basis": "absolute burden" if metric in BAD_WHEN_UP_METRICS else "raw value",
+        "sign_convention": "negative values are discount paid; positive values are rebate received" if metric in SIGN_AWARE_BURDEN_METRICS else None,
+    }
+
+
+def _rank_metric_drivers(
+    left_totals: Dict[str, float],
+    right_totals: Dict[str, float],
+    metrics: List[str],
+    primary_metric: Optional[str],
+) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for metric in metrics:
+        canonical = _canonical_driver_metric(metric)
+        if not canonical or canonical in seen:
+            continue
+        seen.add(canonical)
+        record = _metric_driver_record(left_totals, right_totals, canonical, primary_metric)
+        if record:
+            records.append(record)
+
+    return sorted(records, key=lambda row: _safe_float(row.get("impact_score")), reverse=True)
+
+
+def _sku_delta_records(
+    left_frames: List[tuple[MonthKey, pd.DataFrame]],
+    right_frames: List[tuple[MonthKey, pd.DataFrame]],
+    *,
+    sort_metric: str = "profit",
+    reverse: bool = False,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    left_rows = _sku_frame(left_frames)
+    right_rows = _sku_frame(right_frames)
+    if left_rows.empty and right_rows.empty:
+        return []
+
+    left_index = left_rows.set_index("sku", drop=False) if not left_rows.empty else pd.DataFrame()
+    right_index = right_rows.set_index("sku", drop=False) if not right_rows.empty else pd.DataFrame()
+    sku_values = sorted(set(left_index.index.tolist()) | set(right_index.index.tolist()))
+    metrics = [
+        "profit",
+        "net_sales",
+        "quantity",
+        "total_quantity",
+        "asp",
+        "cm2_profit",
+        "promotional_rebates",
+        "refund_sales",
+        "return_quantity",
+        "cogs",
+        "selling_fees",
+        "fba_fees",
+        "amazon_fees",
+        "platform_fee",
+        "platformfeenew",
+        "ads_spend",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
+        "ads_sale_amount",
+    ]
+    records: List[Dict[str, Any]] = []
+
+    for sku in sku_values:
+        left_row = left_index.loc[sku] if sku in left_index.index else None
+        right_row = right_index.loc[sku] if sku in right_index.index else None
+        product_name = ""
+        if left_row is not None:
+            product_name = str(left_row.get("product_name") or "")
+        if not product_name and right_row is not None:
+            product_name = str(right_row.get("product_name") or "")
+
+        record: Dict[str, Any] = {"sku": str(sku), "product_name": product_name}
+        for metric in metrics:
+            left_value = _safe_float(left_row.get(metric)) if left_row is not None else 0.0
+            right_value = _safe_float(right_row.get(metric)) if right_row is not None else 0.0
+            record[f"{metric}_left"] = _round(left_value)
+            record[f"{metric}_right"] = _round(right_value)
+            record[f"{metric}_delta"] = _round(left_value - right_value)
+        records.append(record)
+
+    return sorted(records, key=lambda row: _safe_float(row.get(f"{sort_metric}_delta")), reverse=reverse)[:limit]
+
+
+def _sku_burden_delta_records(
+    left_frames: List[tuple[MonthKey, pd.DataFrame]],
+    right_frames: List[tuple[MonthKey, pd.DataFrame]],
+    *,
+    metric: str,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    records = _sku_delta_records(
+        left_frames,
+        right_frames,
+        sort_metric=metric,
+        reverse=False,
+        limit=250,
+    )
+
+    def burden_delta(record: Dict[str, Any]) -> float:
+        left_value = _burden_value(metric, _safe_float(record.get(f"{metric}_left")))
+        right_value = _burden_value(metric, _safe_float(record.get(f"{metric}_right")))
+        return left_value - right_value
+
+    burdened_records = [
+        record
+        for record in records
+        if burden_delta(record) > 0.005
+    ]
+    return sorted(burdened_records, key=burden_delta, reverse=True)[:limit]
+
+
+def _candidate_identity(record: Dict[str, Any]) -> tuple[str, str]:
+    return (
+        str(record.get("sku") or "").strip().lower(),
+        str(record.get("product_name") or "").strip().lower(),
+    )
+
+
+def _unique_sku_candidates(*groups: List[Dict[str, Any]], limit: int = 6) -> List[Dict[str, Any]]:
+    seen: set[tuple[str, str]] = set()
+    candidates: List[Dict[str, Any]] = []
+    for group in groups:
+        for record in group or []:
+            identity = _candidate_identity(record)
+            if not any(identity) or identity in seen:
+                continue
+            seen.add(identity)
+            candidates.append({
+                "sku": record.get("sku"),
+                "product_name": record.get("product_name"),
+            })
+            if len(candidates) >= limit:
+                return candidates
+    return candidates
+
+
+def _match_inventory_row(snapshot: Dict[str, Any], candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    rows = snapshot.get("per_sku") or []
+    sku = str(candidate.get("sku") or "").strip().lower()
+    product_name = str(candidate.get("product_name") or "").strip().lower()
+
+    if sku:
+        for row in rows:
+            if str(row.get("sku") or "").strip().lower() == sku:
+                return row
+
+    if product_name:
+        for row in rows:
+            row_name = str(row.get("product_name") or "").strip().lower()
+            if row_name == product_name or product_name in row_name or row_name in product_name:
+                return row
+
+    return None
+
+
+def _diagnosis_inventory_context(
+    user_id: int,
+    country: str,
+    month_key: Optional[MonthKey],
+    candidates: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not month_key or not candidates:
+        return {"requested": False}
+
+    snapshots: Dict[str, Dict[str, Any]] = {}
+    for metric in ["available", "inbound_quantity", "days_of_supply"]:
+        try:
+            snapshots[metric] = get_inventory_snapshot(
+                user_id=user_id,
+                metric_name=metric,
+                month=month_key.month,
+                year=month_key.year,
+                country=country,
+            )
+        except Exception:
+            snapshots[metric] = {"metric": metric, "per_sku": [], "note": "Unavailable"}
+
+    rows: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        metric_values: Dict[str, Any] = {}
+        source_period = None
+        source_table = None
+        for metric, snapshot in snapshots.items():
+            matched = _match_inventory_row(snapshot, candidate)
+            if not matched:
+                continue
+            metric_values[metric] = _round(matched.get("__metric__"))
+            source_period = source_period or snapshot.get("period_label")
+            source_table = source_table or snapshot.get("source_table")
+
+        if metric_values:
+            rows.append({
+                "sku": candidate.get("sku"),
+                "product_name": candidate.get("product_name"),
+                "metrics": metric_values,
+                "period_label": source_period,
+                "source_table": source_table,
+            })
+
+    return {
+        "requested": True,
+        "country": country,
+        "period_label": month_key.label,
+        "rows": rows,
+        "metrics_checked": list(snapshots.keys()),
+        "available": bool(rows),
+        "notes": [
+            snapshot.get("note")
+            for snapshot in snapshots.values()
+            if snapshot.get("note")
+        ],
+    }
+
+
+def _comparison_context(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    payload: Optional[Dict[str, Any]],
+    metric_names: List[str],
+) -> Dict[str, Any]:
+    payload = payload or {}
+    if payload.get("type") != "comparison":
+        return {"requested": False}
+
+    left_payload = _period_part_as_payload(payload.get("p1") or payload.get("left"))
+    right_payload = _period_part_as_payload(payload.get("p2") or payload.get("right"))
+    left_months = _months_from_payload(engine, user_id, country, left_payload)
+    right_months = _months_from_payload(engine, user_id, country, right_payload)
+    left_frames = _load_period_frames(engine, user_id, country, left_months)
+    right_frames = _load_period_frames(engine, user_id, country, right_months)
+    left_loaded = [month_key for month_key, _ in left_frames]
+    right_loaded = [month_key for month_key, _ in right_frames]
+    left_totals = _totals_from_frames(left_frames)
+    right_totals = _totals_from_frames(right_frames)
+    breakdown_availability = _product_breakdown_availability([*left_frames, *right_frames])
+
+    comparison_metrics: List[str] = []
+    for metric in [*metric_names, *COMPARISON_DRIVER_METRICS]:
+        canonical = _canonical_driver_metric(metric)
+        if canonical and canonical not in comparison_metrics:
+            comparison_metrics.append(canonical)
+
+    primary_metric = _canonical_driver_metric(metric_names[0]) if metric_names else None
+    metric_drivers = _rank_metric_drivers(left_totals, right_totals, comparison_metrics, primary_metric)
+    unfavorable_drivers = [driver for driver in metric_drivers if driver.get("unfavorable")]
+    favorable_drivers = [driver for driver in metric_drivers if driver.get("favorable")]
+    top_negative_profit_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="profit", reverse=False)
+    top_positive_profit_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="profit", reverse=True)
+    top_unit_loss_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="total_quantity", reverse=False)
+    top_order_loss_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="quantity", reverse=False)
+    top_cm2_loss_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="cm2_profit", reverse=False)
+    top_sales_loss_drivers = _sku_delta_records(left_frames, right_frames, sort_metric="net_sales", reverse=False)
+    top_rebate_burden_drivers = _sku_burden_delta_records(left_frames, right_frames, metric="promotional_rebates")
+    diagnosis_month = left_loaded[-1] if left_loaded else left_months[-1] if left_months else None
+    diagnosis_inventory = _diagnosis_inventory_context(
+        user_id,
+        country,
+        diagnosis_month,
+        _unique_sku_candidates(
+            top_negative_profit_drivers,
+            top_unit_loss_drivers,
+            top_order_loss_drivers,
+            top_cm2_loss_drivers,
+        ),
+    )
+
+    return {
+        "requested": True,
+        "left": {
+            "label": _period_label(left_loaded or left_months),
+            "months": [{"month": month.month, "year": month.year, "label": month.label} for month in left_loaded],
+            "data_available": bool(left_frames),
+        },
+        "right": {
+            "label": _period_label(right_loaded or right_months),
+            "months": [{"month": month.month, "year": month.year, "label": month.label} for month in right_loaded],
+            "data_available": bool(right_frames),
+        },
+        "metrics": {
+            metric: _metric_comparison(left_totals, right_totals, metric)
+            for metric in comparison_metrics
+        },
+        "metric_drivers": metric_drivers[:12],
+        "unfavorable_metric_drivers": unfavorable_drivers[:8],
+        "favorable_metric_drivers": favorable_drivers[:5],
+        "driver_summary": [
+            {
+                "metric": driver.get("metric"),
+                "label": driver.get("label"),
+                "direction": driver.get("direction"),
+                "business_delta": driver.get("business_delta"),
+                "business_effect": driver.get("business_effect"),
+                "impact_score": driver.get("impact_score"),
+            }
+            for driver in unfavorable_drivers[:5]
+        ],
+        "driver_scan_note": "Drivers are ranked across sales, units, ASP, rebates/discounts, refunds, returns, COGS, Amazon/FBA/selling/platform fees, ad spend/performance, CM2, and margins.",
+        "total_only_metrics": breakdown_availability.get("total_only_metrics", []),
+        "productwise_available_metrics": breakdown_availability.get("productwise_available_metrics", []),
+        "top_negative_profit_drivers": top_negative_profit_drivers,
+        "top_positive_profit_drivers": top_positive_profit_drivers,
+        "top_unit_loss_drivers": top_unit_loss_drivers,
+        "top_order_loss_drivers": top_order_loss_drivers,
+        "top_cm2_loss_drivers": top_cm2_loss_drivers,
+        "top_sales_loss_drivers": top_sales_loss_drivers,
+        "top_rebate_burden_drivers": top_rebate_burden_drivers,
+        "diagnosis_inventory": diagnosis_inventory,
+    }
+
+
 def _history(
     engine: Engine,
     user_id: int,
@@ -420,7 +1139,19 @@ def _history(
 ) -> Dict[str, Any]:
     try:
         latest = selected_months[-1] if selected_months else latest_available_month(engine, user_id, country)
-        all_months = get_last_n_month_keys(engine, user_id, country, periods)
+        today = datetime.today()
+        latest_is_current_request = bool(
+            selected_months
+            and selected_months[-1].year == today.year
+            and selected_months[-1].month == today.month
+        )
+        all_months = get_last_n_month_keys(
+            engine,
+            user_id,
+            country,
+            periods,
+            include_current_incomplete=latest_is_current_request,
+        )
         months = [month_key for month_key in all_months if (month_key.year, month_key.month) <= (latest.year, latest.month)]
         frames = _load_period_frames(engine, user_id, country, months)
     except Exception:
@@ -578,6 +1309,10 @@ def _focus_products(sku_rows: pd.DataFrame, product_query: Optional[str]) -> Lis
             "net_sales",
             "profit",
             "cm2_profit",
+            "promotional_rebates",
+            "platform_fee",
+            "platformfeenew",
+            "platform_fee_inventory_storage",
             "profit_margin_pct",
             "cm2_margin_pct",
             "ads_spend",
@@ -616,10 +1351,12 @@ def build_business_context(
     selected_metric_names = [metric for metric in (metric_names or []) if metric]
     if metric_name and metric_name not in selected_metric_names:
         selected_metric_names.insert(0, metric_name)
+    comparison = _comparison_context(engine, user_id, country, period_payload, selected_metric_names)
 
     latest_month = loaded_months[-1] if loaded_months else latest_available_month(engine, user_id, country)
     inventory_month = requested_months[-1] if requested_months else latest_month
     available_columns = sorted({column for _, frame in period_frames for column in frame.columns})
+    product_breakdown = _product_breakdown_availability(period_frames)
 
     return {
         "scope": {
@@ -664,15 +1401,19 @@ def build_business_context(
             },
         },
         "rankings": _rankings(sku_rows),
+        "comparison": comparison,
         "focus_products": _focus_products(sku_rows, product_query),
         "history": _history(engine, user_id, country, loaded_months),
         "inventory": _inventory_context(user_id, country, inventory_month, metric_name, user_query, product_query),
         "data_quality": {
             "row_count": int(len(sku_rows)),
             "has_sku_rows": bool(not sku_rows.empty),
+            "total_only_metrics": product_breakdown.get("total_only_metrics", []),
+            "productwise_available_metrics": product_breakdown.get("productwise_available_metrics", []),
             "notes": [
                 "Use general ecommerce guidance only when the required metric is absent or has no rows.",
                 "Channel-wise ad spend is available through product_spend, display_spend, and brand_spend. Channel-wise ad sales should not be inferred unless matching sales columns exist.",
+                "If a metric is listed in total_only_metrics, use the monthly total but do not claim a product/SKU breakdown for that metric.",
             ],
         },
     }

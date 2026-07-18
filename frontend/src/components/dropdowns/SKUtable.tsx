@@ -7,7 +7,7 @@ import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
 // import Productinfoinpopup from "./Productinfoinpopup";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import DownloadIconButton from "../ui/button/DownloadIconButton";
-import { SkuExportPayload } from "@/lib/utils/exportTypes";
+import type { SkuExportPayload } from "@/lib/utils/exportTypes";
 import GroupedCollapsibleTable, { LeafCol, ColGroup } from "../ui/table/GroupedCollapsibleTable";
 import ExcelJS from "exceljs";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
@@ -272,6 +272,47 @@ const toNumber = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const getOptionalNumber = (source: unknown, keys: string[]) => {
+  const record =
+    source && typeof source === "object" ? (source as Record<string, unknown>) : null;
+
+  for (const key of keys) {
+    if (!record || !Object.prototype.hasOwnProperty.call(record, key)) continue;
+
+    const value = record[key];
+    if (value === undefined || value === null || value === "") continue;
+
+    const normalized =
+      typeof value === "number"
+        ? value
+        : String(value).replace(/,/g, "").trim();
+
+    if (
+      typeof normalized === "string" &&
+      (normalized === "-" ||
+        (normalized.length === 1 &&
+          (normalized.charCodeAt(0) === 8211 || normalized.charCodeAt(0) === 8212)))
+    ) {
+      continue;
+    }
+
+    const n = typeof normalized === "number" ? normalized : Number(normalized);
+    if (Number.isFinite(n)) return n;
+  }
+
+  return null;
+};
+
+const nonZeroOrNull = (value: unknown) => {
+  const n = toNumber(value);
+  return n !== 0 ? n : null;
+};
+
+const sumKnownNumbers = (...values: Array<number | null>) => {
+  const known = values.filter((value): value is number => value !== null);
+  return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+};
+
 const formatRoundedPlain = (value: unknown) => {
   return Math.round(Math.abs(toNumber(value ?? 0))).toLocaleString();
 };
@@ -280,6 +321,8 @@ const isNumericKey = (k: string, v: any) => typeof v === "number" || (!isNaN(Num
 
 function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
   const out: any = { ...base };
+  const averageKeys = new Set(["promotional_rebates_percentage"]);
+  const averageCounts: Record<string, number> = {};
 
   for (const r of rows) {
     Object.keys(r || {}).forEach((k) => {
@@ -294,8 +337,17 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
       if (k === "asp" || k === "ASP") return;
 
       out[k] = toNumber(out[k]) + toNumber(v);
+      if (averageKeys.has(k)) {
+        averageCounts[k] = (averageCounts[k] || 0) + 1;
+      }
     });
   }
+
+  averageKeys.forEach((key) => {
+    if (averageCounts[key]) {
+      out[key] = toNumber(out[key]) / averageCounts[key];
+    }
+  });
 
   return out as TableRow;
 }
@@ -571,7 +623,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
   };
 
-  const isGlobalPage = (countryName || "").toLowerCase() === "global";
+  const normalizedCountryName = (countryName || "").trim().toLowerCase();
+  const isGlobalPage = normalizedCountryName === "global";
+  const isUsCountry = normalizedCountryName === "us" || normalizedCountryName === "usa";
 
   const tableData = useMemo(() => {
     return normalizeRows(rows || []);
@@ -668,9 +722,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return sales !== 0 ? (ads / sales) * 100 : 0;
   };
 
+  const getOtherTransactionsTotal = useCallback(
+    (row: Partial<TableRow>) => {
+      const fallback = toNumber((row as any).other_transactions ?? (row as any).other_transaction_fees);
+
+      if (!isUsCountry) return fallback;
+
+      const computed =
+        toNumber((row as any).net_credits) +
+        toNumber((row as any).misc_transaction) -
+        Math.abs(toNumber((row as any).net_taxes));
+
+      return computed !== 0 || fallback === 0 ? computed : fallback;
+    },
+    [isUsCountry]
+  );
+
   const totals = useMemo(() => {
     return computeTotalsFromTotalRow(tableData);
   }, [tableData]);
+
+  const rawTotalRow = useMemo(() => {
+    const rawRows = Array.isArray(rows) ? rows : [];
+    return rawRows.find(isTotalLikeRow) || rawRows[rawRows.length - 1] || {};
+  }, [rows]);
 
   const frontendTacos = useMemo(() => {
     const netSales = toNumber(totals.net_sales);
@@ -774,9 +849,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (key === "net_units_sold") return toNumber(row.net_units_sold);
     if (key === "net_sales") return toNumber(row.net_sales);
     if (key === "profit") return toNumber(row.profit);
+    if (key === "other_transactions") return getOtherTransactionsTotal(row);
 
     return toNumber((row as any)[key]);
-  }, []);
+  }, [getOtherTransactionsTotal]);
 
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -891,7 +967,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
-      label: "Net Units Sold",
+      label: isUsCountry ? "Units" : "Net Units Sold",
       collapsedCols: [
         {
           key: "net_units_sold",
@@ -922,7 +998,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
         {
           key: "net_units_sold",
-          label: "Total",
+          label: isUsCountry ? "Net Units Sold" : "Total",
           align: "center",
           width: "7%",
         },
@@ -931,7 +1007,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     {
       id: "sales",
-      label: "Net Sales",
+      label: isUsCountry ? "Sales" : "Net Sales",
       info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
       collapsedCols: [
         {
@@ -943,40 +1019,105 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
         },
       ],
-      expandedCols: [
-        {
-          key: "product_sales",
-          label: "Gross Sales",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
-        },
-        {
-          key: "refund_sales",
-          label: "Sales - Refund",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
-        },
-        {
-          key: "tex_and_credits",
-          label: "Taxes and Credits",
-          align: "center",
-          width: "8%",
-          info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
-        },
-        {
-          key: "net_sales",
-          label: "Total",
-          align: "center",
-          width: "8%",
-        },
-      ],
+      expandedCols: isUsCountry
+        ? [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "promotional_rebates",
+            label: "Promotions",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          },
+          {
+            key: "net_sales",
+            label: "Net Sales",
+            align: "center" as const,
+            width: "8%",
+          },
+        ]
+        : [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "tex_and_credits",
+            label: "Taxes and Credits",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+          },
+          {
+            key: "net_sales",
+            label: "Total",
+            align: "center" as const,
+            width: "8%",
+          },
+        ],
     },
+
+    ...(!isUsCountry
+      ? [
+        {
+          id: "promotional_rebates",
+          label: "Promotions",
+          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          collapsedCols: [
+            {
+              key: "promotional_rebates",
+              label: "",
+              align: "center" as const,
+              width: "10%",
+              info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+            },
+          ],
+          expandedCols: [
+            {
+              key: "promotional_rebates",
+              label: "Promotions",
+              align: "center" as const,
+              width: "9%",
+            },
+            {
+              key: "promotional_rebates_percentage",
+              label: "Promotions %",
+              align: "center" as const,
+              noWrap: true,
+              width: "9%",
+              thClassName: "whitespace-nowrap",
+            },
+          ],
+        } as ColGroup<TableRow>,
+      ]
+      : []),
 
     {
       id: "amazon_breakdown",
-      label: "Marketplace Fees",
+      label: isUsCountry ? "Amazon Fees" : "Marketplace Fees",
       collapsedCols: [
         {
           key: "amazon_fee",
@@ -1000,40 +1141,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
         {
           key: "amazon_fee",
-          label: "Total",
+          label: isUsCountry ? "Total Fees" : "Total",
           align: "center",
           width: "6%",
-        },
-      ],
-    },
-
-    {
-      id: "promotional_rebates",
-      label: "Promotions",
-      info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-      collapsedCols: [
-        {
-          key: "promotional_rebates",
-          label: "",
-          align: "center",
-          width: "10%",
-          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-        },
-      ],
-      expandedCols: [
-        {
-          key: "promotional_rebates",
-          label: "Promotions",
-          align: "center",
-          width: "9%",
-        },
-        {
-          key: "promotional_rebates_percentage",
-          label: "Promotions %",
-          align: "center",
-          noWrap: true,
-          width: "9%",
-          thClassName: "whitespace-nowrap",
         },
       ],
     },
@@ -1064,6 +1174,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
           align: "center",
           width: "8%",
         },
+        ...(isUsCountry
+          ? [
+            {
+              key: "misc_transaction",
+              label: "Misc. Transactions",
+              align: "center" as const,
+              width: "8%",
+            },
+          ]
+          : []),
         {
           key: "other_transactions",
           label: "Total",
@@ -1087,26 +1207,47 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.profit} />,
         },
       ],
-      expandedCols: [
-        {
-          key: "unit_wise_profitability",
-          label: "Per Unit",
-          align: "center",
-          width: "8%",
-        },
-        {
-          key: "profit_percentage",
-          label: "%",
-          align: "center",
-          width: "8%",
-        },
-        {
-          key: "profit",
-          label: "Total",
-          align: "center",
-          width: "8%",
-        },
-      ],
+      expandedCols: isUsCountry
+        ? [
+          {
+            key: "unit_wise_profitability",
+            label: "Per Unit",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit_percentage",
+            label: "%",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit",
+            label: "Margin",
+            align: "center" as const,
+            width: "8%",
+          },
+        ]
+        : [
+          {
+            key: "unit_wise_profitability",
+            label: "Per Unit",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit_percentage",
+            label: "%",
+            align: "center" as const,
+            width: "8%",
+          },
+          {
+            key: "profit",
+            label: "Total",
+            align: "center" as const,
+            width: "8%",
+          },
+        ],
     },
 
     ...(hasCm2Data
@@ -1161,30 +1302,51 @@ const SKUtable: React.FC<SKUtableProps> = ({
               width: "8%",
             },
           ],
-          expandedCols: [
-            {
-              key: "unit_wise_cm2_profitability",
-              label: "Per Unit",
-              align: "center",
-              width: "8%",
-            },
-            {
-              key: "cm2_margins",
-              label: "%",
-              align: "center",
-              width: "8%",
-            },
-            {
-              key: "cm2_profit",
-              label: "Total",
-              align: "center",
-              width: "8%",
-            },
-          ],
+          expandedCols: isUsCountry
+            ? [
+              {
+                key: "unit_wise_cm2_profitability",
+                label: "Per Unit",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_margins",
+                label: "%",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_profit",
+                label: "Margin",
+                align: "center" as const,
+                width: "8%",
+              },
+            ]
+            : [
+              {
+                key: "unit_wise_cm2_profitability",
+                label: "Per Unit",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_margins",
+                label: "%",
+                align: "center" as const,
+                width: "8%",
+              },
+              {
+                key: "cm2_profit",
+                label: "Total",
+                align: "center" as const,
+                width: "8%",
+              },
+            ],
         } as ColGroup<TableRow>,
       ]
       : []),
-  ], [hasCm2Data]);
+  ], [hasCm2Data, isUsCountry]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -1243,6 +1405,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
         align: "center",
         width: "7%",
       },
+      ...(isUsCountry
+        ? [
+          {
+            key: "promotional_rebates_percentage",
+            label: "Promotions %",
+            align: "center" as const,
+            noWrap: true,
+            width: "9%",
+            thClassName: "whitespace-nowrap",
+          },
+        ]
+        : []),
       {
         key: "cost_of_unit_sold",
         label: "COGS",
@@ -1266,58 +1440,102 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ]
         : []),
     ],
-    [hasCm2Data]
+    [hasCm2Data, isUsCountry]
   );
 
   const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
-    // Exact order you want in Excel
-    const ordered: LeafCol<TableRow>[] = [
-      { key: "sno", label: "S. no", align: "center" as const },
+    const cm2Columns: LeafCol<TableRow>[] = hasCm2Data
+      ? [
+        { key: "product_spend", label: "Sponsored Product", align: "center" as const },
+        { key: "display_spend", label: "Sponsored Display", align: "center" as const },
+        { key: "ads_spend", label: "Ads Spend", align: "center" as const },
+        { key: "acos", label: "ACoS %", align: "center" as const },
+        ...(isUsCountry
+          ? [
+            { key: "cm2_profit", label: "Margin", align: "center" as const },
+            { key: "unit_wise_cm2_profitability", label: "Per Unit", align: "center" as const },
+            { key: "cm2_margins", label: "%", align: "center" as const },
+          ]
+          : [
+            { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
+            { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
+            { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
+          ]),
+      ]
+      : [];
 
-      { key: "product_name", label: "Product Name", align: "left" as const },
-      { key: "sku", label: "SKU", align: "left" as const },
+    const ordered: LeafCol<TableRow>[] = isUsCountry
+      ? [
+        { key: "sno", label: "Sno.", align: "center" as const },
+        { key: "product_name", label: "Product Name", align: "left" as const },
+        { key: "sku", label: "SKU", align: "left" as const },
 
-      { key: "units_sold", label: "Units Sold", align: "center" as const },
-      { key: "return_units", label: "Return", align: "center" as const },
-      { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
 
-      { key: "asp", label: "ASP", align: "center" as const },
+        { key: "asp", label: "ASP", align: "center" as const },
 
-      { key: "product_sales", label: "Gross Sales", align: "center" as const },
-      { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
-      { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
-      { key: "net_sales", label: "Net Sales", align: "center" as const },
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "net_sales", label: "Net Sales", align: "center" as const },
 
-      { key: "promotional_rebates", label: "Promotions", align: "center" as const },
-      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+        { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
 
-      { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "amazon_fee", label: "Total Fees", align: "center" as const },
 
-      { key: "selling_fees", label: "Selling Fees", align: "center" as const },
-      { key: "fba_fees", label: "FBA Fees", align: "center" as const },
-      { key: "amazon_fee", label: "Marketplace Fees", align: "center" as const },
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "other_transactions", label: "Total", align: "center" as const },
 
-      { key: "net_taxes", label: "Net Taxes", align: "center" as const },
-      { key: "net_credits", label: "Net Credits", align: "center" as const },
-      { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
-      { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+        { key: "profit", label: "Margin", align: "center" as const },
+        { key: "unit_wise_profitability", label: "Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "%", align: "center" as const },
 
-      { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
-      { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+        ...cm2Columns,
+      ]
+      : [
+        { key: "sno", label: "S. no", align: "center" as const },
 
-      { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
-      ...(hasCm2Data
-        ? [
-          { key: "product_spend", label: "Sponsored Product", align: "center" as const },
-          { key: "display_spend", label: "Sponsored Display", align: "center" as const },
-          { key: "ads_spend", label: "Ads Spend", align: "center" as const },
-          { key: "acos", label: "ACoS %", align: "center" as const },
-          { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" as const },
-          { key: "cm2_margins", label: "CM2 Profit %", align: "center" as const },
-          { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
-        ]
-        : []),
-    ];
+        { key: "product_name", label: "Product Name", align: "left" as const },
+        { key: "sku", label: "SKU", align: "left" as const },
+
+        { key: "units_sold", label: "Units Sold", align: "center" as const },
+        { key: "return_units", label: "Return", align: "center" as const },
+        { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+
+        { key: "asp", label: "ASP", align: "center" as const },
+
+        { key: "product_sales", label: "Gross Sales", align: "center" as const },
+        { key: "refund_sales", label: "Sales - Refund", align: "center" as const },
+        { key: "tex_and_credits", label: "Taxes and Credits", align: "center" as const },
+        { key: "net_sales", label: "Net Sales", align: "center" as const },
+
+        { key: "promotional_rebates", label: "Promotions", align: "center" as const },
+        { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const },
+
+        { key: "cost_of_unit_sold", label: "COGS", align: "center" as const },
+
+        { key: "selling_fees", label: "Selling Fees", align: "center" as const },
+        { key: "fba_fees", label: "FBA Fees", align: "center" as const },
+        { key: "amazon_fee", label: "Marketplace Fees", align: "center" as const },
+
+        { key: "net_taxes", label: "Net Taxes", align: "center" as const },
+        { key: "net_credits", label: "Net Credits", align: "center" as const },
+        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
+        { key: "other_transactions", label: "Other Transactions", align: "center" as const },
+
+        { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
+        { key: "profit_percentage", label: "CM1 Profit %", align: "center" as const },
+
+        { key: "profit", label: "CM1 Profit Margin", align: "center" as const },
+        ...cm2Columns,
+      ];
 
     // optional: remove duplicates if any
     const seen = new Set<string>();
@@ -1327,12 +1545,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
       seen.add(c.key);
       return true;
     });
-  }, [hasCm2Data]);
+  }, [hasCm2Data, isUsCountry]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
 
-  const PRESERVE_SIGN_KEYS = new Set([
+  const PRESERVE_SIGN_KEYS = useMemo(() => new Set([
     // CM1
     "profit",
     "profit_percentage",
@@ -1349,7 +1567,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "reimbursement_vs_sales",
     "rembursment_vs_cm2_margins",
     "other_transactions",
-  ]);
+    "inventory_charges_and_reimbursement",
+    "others",
+  ]), []);
 
   const formatValue = useCallback(
     (value: unknown, key: string) => {
@@ -1398,6 +1618,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "cm2_profit_total",
         "debt_payment",
         "disbursement",
+        "placement_fees",
+        "shipping_charges",
+        "customs_fees",
+        "storage_fees",
+        "inventory_charges",
+        "inventory_charges_and_reimbursement",
+        "reimbursement_lost_inventory_amount",
+        "platform_management_fees",
+        "others",
       ]);
 
       let formatted;
@@ -1425,7 +1654,116 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       return signedFormatted;
     },
-    [INT_KEYS]
+    [INT_KEYS, PRESERVE_SIGN_KEYS]
+  );
+
+  const usSummaryValues = useMemo(() => {
+    const placementFees = getOptionalNumber(rawTotalRow, [
+      "placement_fees",
+      "placement_fee",
+    ]);
+
+    const shippingCharges = getOptionalNumber(rawTotalRow, [
+      "shipping_charges",
+      "shipping_charge",
+      "shipping_fee",
+      "shipping_fees",
+      "shipment_fees",
+    ]) ?? nonZeroOrNull(totals.shipment_charges);
+
+    const customsFees = getOptionalNumber(rawTotalRow, [
+      "customs_fees",
+      "customs_fee",
+      "custom_fee",
+      "custom_fees",
+    ]);
+
+    const shippingChargesTotal =
+      getOptionalNumber(rawTotalRow, [
+        "shipping_charges_total",
+        "shipping_charge_total",
+        "shipment_charges_total",
+        "total_shipping_charges",
+        "shipment_charges",
+      ]) ?? sumKnownNumbers(placementFees, shippingCharges, customsFees);
+
+    const shortTermStorage = getOptionalNumber(rawTotalRow, [
+      "short_term_storage_fee",
+      "short_term_storage",
+    ]) ?? nonZeroOrNull(totals.short_term_storage_fee);
+
+    const longTermStorage = getOptionalNumber(rawTotalRow, [
+      "long_term_storage_fee",
+      "long_term_storage",
+    ]) ?? nonZeroOrNull(totals.long_term_storage_fee);
+
+    const storageFees =
+      getOptionalNumber(rawTotalRow, [
+        "storage_fees",
+        "storage_fee",
+        "storage_fees_total",
+        "inventory_storage_fees",
+        "platform_fee_inventory_storage",
+      ]) ?? sumKnownNumbers(shortTermStorage, longTermStorage);
+
+    const inventoryCharges = getOptionalNumber(rawTotalRow, [
+      "inventory_charges",
+      "inventory_charge",
+      "inventory_fees",
+      "inventory_fee",
+      "fba_disposal",
+    ]) ?? nonZeroOrNull(totals.fba_disposal);
+
+    const reimbursementForLostInventory = getOptionalNumber(rawTotalRow, [
+      "reimbursement_lost_inventory_amount",
+      "lost_inventory_reimbursement",
+      "lost_total",
+    ]) ?? nonZeroOrNull(totals.reimbursement_lost_inventory_amount || totals.lost_total);
+
+    const inventoryChargesAndReimbursement =
+      getOptionalNumber(rawTotalRow, [
+        "inventory_charges_and_reimbursement",
+        "inventory_charges_reimbursement",
+        "inventory_charges_reimbursement_total",
+      ]) ??
+      (
+        inventoryCharges !== null && reimbursementForLostInventory !== null
+          ? inventoryCharges - reimbursementForLostInventory
+          : null
+      );
+
+    const platformManagementFees = getOptionalNumber(rawTotalRow, [
+      "platform_management_fees",
+      "platform_management_fee",
+      "platformfeenew",
+    ]) ?? nonZeroOrNull(totals.platform_fee);
+
+    const others = getOptionalNumber(rawTotalRow, [
+      "others",
+      "other",
+    ]);
+
+    return {
+      placementFees,
+      shippingCharges,
+      customsFees,
+      shippingChargesTotal,
+      shortTermStorage,
+      longTermStorage,
+      storageFees,
+      inventoryCharges,
+      reimbursementForLostInventory,
+      inventoryChargesAndReimbursement,
+      platformManagementFees,
+      others,
+    };
+  }, [rawTotalRow, totals]);
+
+  const formatSummaryValueOrDash = useCallback(
+    (value: number | null, key: string) => {
+      return value === null ? "-" : formatValue(value, key);
+    },
+    [formatValue]
   );
 
 
@@ -1477,11 +1815,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const getSignForCol = useCallback(
     (colKey: string) => {
+      if (isUsCountry && (colKey === "net_units_sold" || colKey === "other_transactions")) {
+        return { text: "(+)", className: "text-green-700" };
+      }
+
       if (SIGN_PLUS.has(colKey)) return { text: "(+)", className: "text-green-700" };
       if (SIGN_MINUS.has(colKey)) return { text: "(-)", className: "text-[#ff5c5c]" };
       return null;
     },
-    [SIGN_PLUS, SIGN_MINUS]
+    [SIGN_PLUS, SIGN_MINUS, isUsCountry]
   );
 
   const buildSkuSheetModel = useCallback(
@@ -1521,7 +1863,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           }
 
           if (key === "other_transactions") {
-            value = row.other_transactions ?? row.other_transaction_fees ?? 0;
+            value = getOtherTransactionsTotal(row);
           }
 
           if (key === "quantity") {
@@ -1605,93 +1947,204 @@ const SKUtable: React.FC<SKUtableProps> = ({
       type SummaryRow = Record<string, string | number> & { __bold?: number };
 
       const summaryValueColumnKey = hasCm2Data ? "cm2_profit" : "profit";
+      const summaryDash = "-";
+      const summaryExportValue = (value: number | null) => value === null ? summaryDash : value;
+      const spacerSummaryRow = (): SummaryRow => ({
+        product_name: "",
+        [summaryValueColumnKey]: "",
+      });
 
-      const summaryRows: SummaryRow[] = [
-        {
-          product_name: "Cost of Advertisement",
-          [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
-          __bold: 1,
-        },
-        {
-          product_name: "Visibility - Ads (-)",
-          [summaryValueColumnKey]: Math.abs(Number(visibilityAdsValue || 0)),
-        },
-        {
-          product_name: "Visibility - Deals, Vouchers and Reviews (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
-        },
+      const summaryRows: SummaryRow[] = isUsCountry
+        ? [
+          {
+            product_name: "Cost of Advertisement (-)",
+            [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
+            __bold: 1,
+          },
+          {
+            product_name: "Visibility - Ads (-)",
+            [summaryValueColumnKey]: Math.abs(Number(visibilityAdsValue || 0)),
+          },
+          {
+            product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+          },
+          spacerSummaryRow(),
 
-        ...((countryName || "").toLowerCase() === "us" ||
-          (countryName || "").toLowerCase() === "global"
-          ? [
-            {
-              product_name: "Shipment Charges (-)",
-              [summaryValueColumnKey]: Math.abs(Number(totals.shipment_charges || 0)),
-            },
-          ]
-          : []),
+          {
+            product_name: "Shipping Charges (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingChargesTotal),
+            __bold: 1,
+          },
+          {
+            product_name: "Placement Fees (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.placementFees),
+          },
+          {
+            product_name: "Shipping Charges (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingCharges),
+          },
+          {
+            product_name: "Customs Fees (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.customsFees),
+          },
+          spacerSummaryRow(),
 
-        {
-          product_name: "Other Transactions",
-          [summaryValueColumnKey]: Number(totals.other_transactions || 0),
-          __bold: 1,
-        },
-        {
-          product_name: "Short Term Storage Fee (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.short_term_storage_fee || 0)),
-        },
-        {
-          product_name: "Long Term Storage Fee (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.long_term_storage_fee || 0)),
-        },
-        {
-          product_name: "FBA Disposal (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.fba_disposal || 0)),
-        },
-        {
-          product_name: "Reimbursement for lost Inventory (+)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.lost_total || 0)),
-        },
-        {
-          product_name: "Misc. Transactions (+)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.misc_transaction || 0)),
-        },
-        {
-          product_name: "Other Platform Fees (-)",
-          [summaryValueColumnKey]: Math.abs(Number(totals.platform_fee || 0)),
-        },
+          {
+            product_name: "Storage Fees (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.storageFees),
+            __bold: 1,
+          },
+          {
+            product_name: "Short Term Storage (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shortTermStorage),
+          },
+          {
+            product_name: "Long Term Storage (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.longTermStorage),
+          },
+          spacerSummaryRow(),
 
-        {
-          product_name: "CM2 Profit/Loss",
-          [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
-          __bold: 1,
-        },
-        {
-          product_name: "CM2 Margins",
-          [summaryValueColumnKey]: Number(totals.cm2_margins || 0),
-          __bold: 1,
-        },
-        {
-          product_name: "TACoS (Total Advertising Cost of Sale)",
-          [summaryValueColumnKey]: frontendTacos,
-          __bold: 1,
-        },
-        {
-          product_name: "Net Reimbursement",
-          [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
-          __bold: 1,
-        },
-        {
-          product_name: "Reimbursement vs CM2 Margins",
-          [summaryValueColumnKey]: Number(totals.rembursment_vs_cm2_margins || 0),
-          __bold: 1,
-        },
-        {
-          product_name: "Reimbursement vs Sales",
-          [summaryValueColumnKey]: Number(totals.reimbursement_vs_sales || 0),
-          __bold: 1,
-        },
-      ];
+          {
+            product_name: "Inventory Charges and Reimbursement",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.inventoryChargesAndReimbursement),
+            __bold: 1,
+          },
+          {
+            product_name: "Inventory Charges (-)",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.inventoryCharges),
+          },
+          {
+            product_name: `Reimbursement for lost Inventory${totals.reimbursement_lost_inventory_units
+              ? ` - ${totals.reimbursement_lost_inventory_units} Units`
+              : ""} (+)`,
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.reimbursementForLostInventory),
+          },
+          spacerSummaryRow(),
+
+          {
+            product_name: "Platform Management Fees",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.platformManagementFees),
+          },
+          {
+            product_name: "Others",
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.others),
+          },
+          spacerSummaryRow(),
+
+          {
+            product_name: "CM2 Profit",
+            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            __bold: 1,
+          },
+          spacerSummaryRow(),
+          {
+            product_name: "CM2 Profit %",
+            [summaryValueColumnKey]: Number(totals.cm2_margins || 0),
+          },
+          {
+            product_name: "TACoS (Total Advertising Cost of Sale)",
+            [summaryValueColumnKey]: frontendTacos,
+          },
+          {
+            product_name: "Net Reimbursement",
+            [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
+            __bold: 1,
+          },
+          {
+            product_name: "Reimbursement vs Sales",
+            [summaryValueColumnKey]: Number(totals.reimbursement_vs_sales || 0),
+          },
+          {
+            product_name: "Reimbursement vs CM2 Margins",
+            [summaryValueColumnKey]: Number(totals.rembursment_vs_cm2_margins || 0),
+          },
+        ]
+        : [
+          {
+            product_name: "Cost of Advertisement",
+            [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
+            __bold: 1,
+          },
+          {
+            product_name: "Visibility - Ads (-)",
+            [summaryValueColumnKey]: Math.abs(Number(visibilityAdsValue || 0)),
+          },
+          {
+            product_name: "Visibility - Deals, Vouchers and Reviews (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.dealsvouchar_ads || 0)),
+          },
+
+          ...((countryName || "").toLowerCase() === "global"
+            ? [
+              {
+                product_name: "Shipment Charges (-)",
+                [summaryValueColumnKey]: Math.abs(Number(totals.shipment_charges || 0)),
+              },
+            ]
+            : []),
+
+          {
+            product_name: "Other Transactions",
+            [summaryValueColumnKey]: Number(totals.other_transactions || 0),
+            __bold: 1,
+          },
+          {
+            product_name: "Short Term Storage Fee (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.short_term_storage_fee || 0)),
+          },
+          {
+            product_name: "Long Term Storage Fee (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.long_term_storage_fee || 0)),
+          },
+          {
+            product_name: "FBA Disposal (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.fba_disposal || 0)),
+          },
+          {
+            product_name: "Reimbursement for lost Inventory (+)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.lost_total || 0)),
+          },
+          {
+            product_name: "Misc. Transactions (+)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.misc_transaction || 0)),
+          },
+          {
+            product_name: "Other Platform Fees (-)",
+            [summaryValueColumnKey]: Math.abs(Number(totals.platform_fee || 0)),
+          },
+
+          {
+            product_name: "CM2 Profit/Loss",
+            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            __bold: 1,
+          },
+          {
+            product_name: "CM2 Margins",
+            [summaryValueColumnKey]: Number(totals.cm2_margins || 0),
+            __bold: 1,
+          },
+          {
+            product_name: "TACoS (Total Advertising Cost of Sale)",
+            [summaryValueColumnKey]: frontendTacos,
+            __bold: 1,
+          },
+          {
+            product_name: "Net Reimbursement",
+            [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
+            __bold: 1,
+          },
+          {
+            product_name: "Reimbursement vs CM2 Margins",
+            [summaryValueColumnKey]: Number(totals.rembursment_vs_cm2_margins || 0),
+            __bold: 1,
+          },
+          {
+            product_name: "Reimbursement vs Sales",
+            [summaryValueColumnKey]: Number(totals.reimbursement_vs_sales || 0),
+            __bold: 1,
+          },
+        ];
 
       const normalizedSummaryRows =
         summaryRows.map((r) => ({ ...r, __bold: r.__bold ? true : undefined })) as Array<
@@ -1739,11 +2192,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       costOfAdvertisementValue,
       countryName,
       hasCm2Data,
+      isUsCountry,
+      usSummaryValues,
       visibilityAdsValue,
       getExtraRows,
       getDisplayProductNameFromRow,
       buildExcelColumnsFromUI,
       getSignForCol,
+      getOtherTransactionsTotal,
     ]
   );
 
@@ -2014,6 +2470,312 @@ const SKUtable: React.FC<SKUtableProps> = ({
     TOTAL_ROW_HEIGHT +
     SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
+  const skuSummaryRows = isUsCountry
+    ? [
+      {
+        type: "section" as const,
+        id: "ads",
+        label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+        endValue: formatValue(costOfAdvertisementValue, "advertising_total"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "ads_1",
+            label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatValue(visibilityAdsValue, "brand_spend"),
+          },
+          {
+            id: "ads_2",
+            label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
+          },
+        ],
+      },
+      {
+        type: "section" as const,
+        id: "shipping_charges",
+        label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+        endValue: formatSummaryValueOrDash(usSummaryValues.shippingChargesTotal, "shipping_charges"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "placement_fees",
+            label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.placementFees, "placement_fees"),
+          },
+          {
+            id: "shipping_charges_child",
+            label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.shippingCharges, "shipping_charges"),
+          },
+          {
+            id: "customs_fees",
+            label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.customsFees, "customs_fees"),
+          },
+        ],
+      },
+      {
+        type: "section" as const,
+        id: "storage_fees",
+        label: <>Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+        endValue: formatSummaryValueOrDash(usSummaryValues.storageFees, "storage_fees"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "short_term_storage_fee",
+            label: <>Short Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.shortTermStorage, "short_term_storage_fee"),
+          },
+          {
+            id: "long_term_storage_fee",
+            label: <>Long Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.longTermStorage, "long_term_storage_fee"),
+          },
+        ],
+      },
+      {
+        type: "section" as const,
+        id: "inventory_charges_reimbursement",
+        label: "Inventory Charges and Reimbursement",
+        endValue: formatSummaryValueOrDash(
+          usSummaryValues.inventoryChargesAndReimbursement,
+          "inventory_charges_and_reimbursement"
+        ),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "inventory_charges",
+            label: <>Inventory Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.inventoryCharges, "inventory_charges"),
+          },
+          {
+            id: "lost_inventory_reimbursement",
+            label: (
+              <>
+                Reimbursement for lost Inventory
+                {totals.reimbursement_lost_inventory_units
+                  ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                  : " "}
+                <strong className="text-green-500">(+)</strong>
+              </>
+            ),
+            midValue: formatSummaryValueOrDash(
+              usSummaryValues.reimbursementForLostInventory,
+              "reimbursement_lost_inventory_amount"
+            ),
+          },
+        ],
+      },
+      {
+        type: "fixed" as const,
+        id: "platform_management_fees",
+        label: "Platform Management Fees",
+        endValue: formatSummaryValueOrDash(
+          usSummaryValues.platformManagementFees,
+          "platform_management_fees"
+        ),
+      },
+      {
+        type: "fixed" as const,
+        id: "others",
+        label: "Others",
+        endValue: formatSummaryValueOrDash(usSummaryValues.others, "others"),
+      },
+      {
+        type: "fixed" as const,
+        id: "cm2_profit",
+        label: boldSummaryText("CM2 Profit"),
+        endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
+      },
+      {
+        type: "fixed" as const,
+        id: "cm2_profit_percentage",
+        label: "CM2 Profit %",
+        endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
+      },
+      {
+        type: "fixed" as const,
+        id: "tacos",
+        label: "TACoS (Total Advertising Cost of Sale)",
+        endValue: `${formatValue(frontendTacos, "acos")}`,
+      },
+      {
+        type: "section" as const,
+        id: "net_reimb",
+        label: "Net Reimbursement",
+        endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "net_reimb_debt_payment",
+            label: (
+              <>
+                Charged <strong className="text-[#ff5c5c]">(-)</strong>
+              </>
+            ),
+            midValue: formatValue(totals.debt_payment, "debt_payment"),
+          },
+          {
+            id: "net_reimb_disbursement",
+            label: (
+              <>
+                Disbursement <strong className="text-green-500">(+)</strong>
+              </>
+            ),
+            midValue: formatValue(totals.disbursement, "disbursement"),
+          },
+        ],
+      },
+      {
+        type: "fixed" as const,
+        id: "rv_sales",
+        label: "Reimbursement vs Sales",
+        endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
+      },
+      {
+        type: "fixed" as const,
+        id: "rv_cm2",
+        label: "Reimbursement vs CM2 Margins",
+        endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
+      },
+    ]
+    : [
+      {
+        type: "section" as const,
+        id: "ads",
+        label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+        endValue: formatValue(costOfAdvertisementValue, "advertising_total"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "ads_1",
+            label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatValue(visibilityAdsValue, "brand_spend"),
+          },
+          {
+            id: "ads_2",
+            label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
+          },
+        ],
+      },
+      {
+        type: "section" as const,
+        id: "other",
+        label: "Other Transactions",
+        endValue: formatValue(totals.other_transactions, "other_transactions"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "short_term_storage_fee",
+            label: <span className="pl-6">Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            midValue: formatValue(totals.short_term_storage_fee, "short_term_storage_fee"),
+          },
+          {
+            id: "long_term_storage_fee",
+            label: <span className="pl-6">Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            midValue: formatValue(totals.long_term_storage_fee, "long_term_storage_fee"),
+          },
+          {
+            id: "fba_disposal",
+            label: <span className="pl-6">FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            midValue: formatValue(totals.fba_disposal, "fba_disposal"),
+          },
+          {
+            id: "other_3",
+            label: (
+              <>
+                Reimbursement for lost Inventory
+                {totals.reimbursement_lost_inventory_units
+                  ? ` - ${totals.reimbursement_lost_inventory_units} Units `
+                  : " "}
+                <strong className="text-green-500">(+)</strong>
+              </>
+            ),
+            midValue: formatValue(totals.lost_total, "lost_total"),
+          },
+          {
+            id: "other_misc",
+            label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+            midValue: formatValue(totals.misc_transaction, "misc_transaction"),
+          },
+          {
+            id: "other_1",
+            label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatValue(totals.platform_fee, "platform_fee"),
+          },
+        ],
+      },
+      ...((countryName || "").toLowerCase() === "global"
+        ? [
+          {
+            type: "fixed" as const,
+            id: "ship",
+            label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+            endValue: formatValue(totals.shipment_charges, "shipment_charges"),
+          },
+        ]
+        : []),
+      {
+        type: "fixed" as const,
+        id: "cm2_profit",
+        label: boldSummaryText("CM2 Profit/Loss"),
+        endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
+      },
+      {
+        type: "fixed" as const,
+        id: "cm2_margins",
+        label: "CM2 Margins",
+        endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
+      },
+      {
+        type: "fixed" as const,
+        id: "tacos",
+        label: "TACoS (Total Advertising Cost of Sale)",
+        endValue: `${formatValue(frontendTacos, "acos")}`,
+      },
+      {
+        type: "section" as const,
+        id: "net_reimb",
+        label: "Net Reimbursement",
+        endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "net_reimb_debt_payment",
+            label: (
+              <>
+                Charged <strong className="text-[#ff5c5c]">(-)</strong>
+              </>
+            ),
+            midValue: formatValue(totals.debt_payment, "debt_payment"),
+          },
+          {
+            id: "net_reimb_disbursement",
+            label: (
+              <>
+                Disbursement <strong className="text-green-500">(+)</strong>
+              </>
+            ),
+            midValue: formatValue(totals.disbursement, "disbursement"),
+          },
+        ],
+      },
+      {
+        type: "fixed" as const,
+        id: "rv_cm2",
+        label: "Reimbursement vs CM2 Margins",
+        endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
+      },
+      {
+        type: "fixed" as const,
+        id: "rv_sales",
+        label: "Reimbursement vs Sales",
+        endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
+      },
+    ];
+
   return (
     <>
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
@@ -2112,6 +2874,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "product_spend") return toNumber((row as any).product_spend);
                   if (colKey === "display_spend") return toNumber((row as any).display_spend);
                   if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
+                  if (colKey === "other_transactions") return getOtherTransactionsTotal(row);
                   return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
@@ -2125,7 +2888,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "single" as const, key: "asp" },
 
                   { type: "group" as const, id: "sales" },
-                  { type: "group" as const, id: "promotional_rebates" },
+                  ...(isUsCountry
+                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                    : [{ type: "group" as const, id: "promotional_rebates" }]),
 
                   { type: "single" as const, key: "cost_of_unit_sold" },
 
@@ -2247,6 +3012,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return formatValue(getAcosPercentage(row), "acos");
                   }
 
+                  if (colKey === "other_transactions") {
+                    return formatValue(getOtherTransactionsTotal(row), colKey);
+                  }
+
                   // ✅ round Ads Spend expanded columns without decimals
                   if (
                     colKey === "product_spend" ||
@@ -2263,155 +3032,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 summary={{
                   enabled: !noDataFound && mainColCount > 0,
 
-                  rows: [
-                    {
-                      type: "section",
-                      id: "ads",
-                      label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
-                      endValue: formatValue(costOfAdvertisementValue, "advertising_total"),
-                      defaultCollapsed: true,
-                      children: [
-                        {
-                          id: "ads_1",
-                          label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(visibilityAdsValue, "brand_spend"),
-                        },
-                        {
-                          id: "ads_2",
-                          label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.dealsvouchar_ads, "dealsvouchar_ads"),
-                        },
-                      ],
-                    },
-
-                    {
-                      type: "section",
-                      id: "other",
-                      label: "Other Transactions",
-                      endValue: formatValue(totals.other_transactions, "other_transactions"),
-                      defaultCollapsed: true,
-                      children: [
-
-                        // {
-                        //   id: "other_2",
-                        //   label: <>Inventory Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        //   midValue: formatValue(totals.inventory_storage_fees, "inventory_storage_fees"),
-                        // },
-                        {
-                          id: "short_term_storage_fee",
-                          label: <span className="pl-6">Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
-                          midValue: formatValue(totals.short_term_storage_fee, "short_term_storage_fee"),
-                        },
-                        {
-                          id: "long_term_storage_fee",
-                          label: <span className="pl-6">Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
-                          midValue: formatValue(totals.long_term_storage_fee, "long_term_storage_fee"),
-                        },
-                        {
-                          id: "fba_disposal",
-                          label: <span className="pl-6">FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></span>,
-                          midValue: formatValue(totals.fba_disposal, "fba_disposal"),
-                        },
-
-                        {
-                          id: "other_3",
-                          label: (
-                            <>
-                              Reimbursement for lost Inventory
-                              {totals.reimbursement_lost_inventory_units
-                                ? ` - ${totals.reimbursement_lost_inventory_units} Units `
-                                : " "}
-                              <strong className="text-green-500">(+)</strong>
-                            </>
-                          ),
-                          midValue: formatValue(totals.lost_total, "lost_total"),
-                        },
-                        {
-                          id: "other_misc",
-                          label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-                          midValue: formatValue(totals.misc_transaction, "misc_transaction"),
-                        },
-                        {
-                          id: "other_1",
-                          label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          midValue: formatValue(totals.platform_fee, "platform_fee"),
-                        },
-                      ],
-                    },
-
-                    ...((countryName || "").toLowerCase() === "us" ||
-                      (countryName || "").toLowerCase() === "global"
-                      ? [
-                        {
-                          type: "fixed" as const,
-                          id: "ship",
-                          label: <>Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                          endValue: formatValue(totals.shipment_charges, "shipment_charges"),
-                        },
-                      ]
-                      : []),
-
-                    {
-                      type: "fixed",
-                      id: "cm2_profit",
-                      label: boldSummaryText("CM2 Profit/Loss"),
-                      endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
-                    },
-                    {
-                      type: "fixed",
-                      id: "cm2_margins",
-                      label: "CM2 Margins",
-                      endValue: `${formatValue(totals.cm2_margins, "cm2_margins")}`,
-                    },
-                    {
-                      type: "fixed",
-                      id: "tacos",
-                      label: "TACoS (Total Advertising Cost of Sale)",
-                      endValue: `${formatValue(frontendTacos, "acos")}`,
-                    },
-
-                    // ✅ Now Net Reimbursement appears below TACoS and remains collapsible
-                    {
-                      type: "section",
-                      id: "net_reimb",
-                      label: "Net Reimbursement",
-                      endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
-                      defaultCollapsed: true,
-                      children: [
-                        {
-                          id: "net_reimb_debt_payment",
-                          label: (
-                            <>
-                              Charged <strong className="text-[#ff5c5c]">(-)</strong>
-                            </>
-                          ),
-                          midValue: formatValue(totals.debt_payment, "debt_payment"),
-                        },
-                        {
-                          id: "net_reimb_disbursement",
-                          label: (
-                            <>
-                              Disbursement <strong className="text-green-500">(+)</strong>
-                            </>
-                          ),
-                          midValue: formatValue(totals.disbursement, "disbursement"),
-                        },
-                      ],
-                    },
-
-                    {
-                      type: "fixed",
-                      id: "rv_cm2",
-                      label: "Reimbursement vs CM2 Margins",
-                      endValue: `${formatValue(totals.rembursment_vs_cm2_margins, "rembursment_vs_cm2_margins")}`,
-                    },
-                    {
-                      type: "fixed",
-                      id: "rv_sales",
-                      label: "Reimbursement vs Sales",
-                      endValue: `${formatValue(totals.reimbursement_vs_sales, "reimbursement_vs_sales")}`,
-                    },
-                  ],
+                  rows: skuSummaryRows,
 
                   valueCols: 2,
                 }}

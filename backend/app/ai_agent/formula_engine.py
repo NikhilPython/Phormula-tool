@@ -373,12 +373,15 @@ def get_metric_last_n_months(
     metric_name: str,
     n: int,
     offset: int = 0,
+    *,
+    include_current_incomplete: bool = False,
 ) -> Dict[str, Any]:
 
     if not isinstance(n, int) or n <= 0:
         raise ValueError("n must be a positive integer")
 
     latest = latest_available_month(engine, user_id, country)
+    offset += _offset_for_completed_months(latest, include_current_incomplete)
 
     months: list[MonthKey] = []
 
@@ -566,11 +569,14 @@ def get_last_n_month_keys(
     country: str,
     n: int,
     offset: int = 0,
+    *,
+    include_current_incomplete: bool = False,
 ) -> list[MonthKey]:
     if not isinstance(n, int) or n <= 0:
         raise ValueError("n must be a positive integer")
 
     latest = latest_available_month(engine, user_id, country)
+    offset += _offset_for_completed_months(latest, include_current_incomplete)
 
     months: list[MonthKey] = []
     y, m = latest.year, latest.month
@@ -1085,6 +1091,25 @@ def extract_year(text: str) -> Optional[int]:
 
     return year
 
+
+def _normalize_year_value(raw: Optional[str]) -> Optional[int]:
+    if raw is None:
+        return None
+    year = int(raw)
+    if year < 100:
+        year += 2000
+    return year
+
+
+def _period_from_year_months(year: int, start_month: int, end_month: int) -> Dict[str, int]:
+    return {
+        "start_month": start_month,
+        "start_year": year,
+        "end_month": end_month,
+        "end_year": year,
+    }
+
+
 def extract_month(text: str) -> Optional[int]:
     for k, v in MONTH_MAP.items():
         if re.search(rf"\b{k}\b", text):
@@ -1168,35 +1193,162 @@ def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
 
     return year, start_month, end_month
 # -------------------------------
+# HALF YEAR
+# -------------------------------
+
+def parse_half_year(text: str) -> Optional[Tuple[int, int, int, int]]:
+    text = normalize_text(text)
+
+    match = re.search(r"\bh([12])\s*(20\d{2}|\d{2})?\b", text)
+    if not match:
+        match = re.search(r"\b(20\d{2}|\d{2})\s*h([12])\b", text)
+        if match:
+            year = _normalize_year_value(match.group(1)) or extract_year(text)
+            half = int(match.group(2))
+        else:
+            year = None
+            half = None
+    else:
+        half = int(match.group(1))
+        year = _normalize_year_value(match.group(2)) if match.group(2) else extract_year(text)
+
+    if half is None:
+        match = re.search(
+            r"\b(first|1st|second|2nd)\s+half(?:\s+of)?\s*(20\d{2}|\d{2})?\b",
+            text,
+        )
+        if match:
+            half = 1 if match.group(1) in {"first", "1st"} else 2
+            year = _normalize_year_value(match.group(2)) if match.group(2) else extract_year(text)
+
+    if half is None:
+        match = re.search(
+            r"\b(20\d{2}|\d{2})\s+(first|1st|second|2nd)\s+half\b",
+            text,
+        )
+        if match:
+            year = _normalize_year_value(match.group(1))
+            half = 1 if match.group(2) in {"first", "1st"} else 2
+
+    if not year or half not in {1, 2}:
+        return None
+
+    start_month, end_month = (1, 6) if half == 1 else (7, 12)
+    return year, start_month, end_month, half
+
+
+def _half_year_period(year: int, half: int) -> Dict[str, int]:
+    start_month, end_month = (1, 6) if int(half) == 1 else (7, 12)
+    return _period_from_year_months(int(year), start_month, end_month)
+
+
+def _split_comparison_text(text: str) -> Optional[Tuple[str, str]]:
+    patterns = [
+        r"\bvs\.?\b",
+        r"\bversus\b",
+        r"\bcompared\s+(?:to|with|against)\b",
+        r"\bwith\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return text[:match.start()].strip(), text[match.end():].strip()
+
+    # Handles "first half 2025 and 2026" without treating ordinary prose as comparison.
+    match = re.search(
+        r"\b((?:first|1st|second|2nd)\s+half(?:\s+of)?\s*(?:20\d{2}|\d{2})|h[12]\s*(?:20\d{2}|\d{2}))\s+and\s+((?:20\d{2}|\d{2})|(?:first|1st|second|2nd)\s+half(?:\s+of)?\s*(?:20\d{2}|\d{2})|h[12]\s*(?:20\d{2}|\d{2}))\b",
+        text,
+    )
+    if match:
+        return match.group(1).strip(), match.group(2).strip()
+
+    return None
+
+
+# -------------------------------
 # LAST N MONTHS
 # -------------------------------
 
 def parse_last_n(text: str):
-    # -------- MONTHS --------
-    match = re.search(r"last\s+(\d+)\s+months?", text)
-    if match:
-        return {"unit": "month", "n": int(match.group(1))}
+    normalized = normalize_text(text)
+    number_words = {
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
+    }
 
-    if "last month" in text:
+    def _parse_count(raw: str) -> Optional[int]:
+        if raw.isdigit():
+            return int(raw)
+        return number_words.get(raw)
+
+    # -------- MONTHS --------
+    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+months?\b", normalized)
+    if match:
+        return {"unit": "month", "n": _parse_count(match.group(2))}
+
+    if any(phrase in normalized for phrase in ["last month", "previous month", "prior month"]):
         return {"unit": "month", "n": 1}
 
     # -------- QUARTERS --------
-    match = re.search(r"last\s+(\d+)\s+quarters?", text)
+    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+quarters?\b", normalized)
     if match:
-        return {"unit": "quarter", "n": int(match.group(1))}
+        return {"unit": "quarter", "n": _parse_count(match.group(2))}
 
-    if "last quarter" in text:
+    if any(phrase in normalized for phrase in ["last quarter", "previous quarter", "prior quarter"]):
         return {"unit": "quarter", "n": 1}
 
     # -------- YEARS --------
-    match = re.search(r"last\s+(\d+)\s+years?", text)
+    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+years?\b", normalized)
     if match:
-        return {"unit": "year", "n": int(match.group(1))}
+        return {"unit": "year", "n": _parse_count(match.group(2))}
 
-    if "last year" in text:
+    if any(phrase in normalized for phrase in ["last year", "previous year", "prior year"]):
         return {"unit": "year", "n": 1}
 
     return None
+
+
+def query_wants_current_incomplete_period(text: str) -> bool:
+    normalized = normalize_text(text)
+    if any(
+        phrase in normalized
+        for phrase in [
+            "latest completed",
+            "last completed",
+            "completed month",
+            "complete month",
+            "closed month",
+        ]
+    ):
+        return False
+
+    return bool(
+        re.search(
+            r"\b(mtd|month\s+to\s+date|this\s+month|current\s+month|current\s+data|current\s+period|latest|today|now|as\s+of|to\s+date|including\s+current|include\s+current|including\s+this\s+month)\b",
+            normalized,
+        )
+    )
+
+
+def _is_current_calendar_month(month_key: MonthKey, today: Optional[datetime] = None) -> bool:
+    today = today or datetime.today()
+    return int(month_key.year) == int(today.year) and int(month_key.month) == int(today.month)
+
+
+def _offset_for_completed_months(latest: MonthKey, include_current_incomplete: bool) -> int:
+    if include_current_incomplete:
+        return 0
+    return 1 if _is_current_calendar_month(latest) else 0
 
 
 # -------------------------------
@@ -1249,13 +1401,43 @@ def parse_range(text: str):
 # -------------------------------
 
 def parse_comparison(text: str):
-    if "vs" not in text:
+    split = _split_comparison_text(text)
+    if not split:
         return None
 
-    left, right = text.split("vs", 1)
+    left, right = split
 
     # month vs month
     inferred_year = extract_year(text) or datetime.today().year
+
+    # half-year vs half-year, or "first half 2025 with 2026"
+    h1 = parse_half_year(left)
+    h2 = parse_half_year(right)
+
+    if h1 and h2:
+        return {
+            "type": "comparison",
+            "left": _period_from_year_months(h1[0], h1[1], h1[2]),
+            "right": _period_from_year_months(h2[0], h2[1], h2[2]),
+        }
+
+    if h1:
+        right_year = extract_year(right)
+        if right_year:
+            return {
+                "type": "comparison",
+                "left": _period_from_year_months(h1[0], h1[1], h1[2]),
+                "right": _half_year_period(right_year, h1[3]),
+            }
+
+    if h2:
+        left_year = extract_year(left)
+        if left_year:
+            return {
+                "type": "comparison",
+                "left": _half_year_period(left_year, h2[3]),
+                "right": _period_from_year_months(h2[0], h2[1], h2[2]),
+            }
 
     m1 = extract_month_year(left, default_year=inferred_year)
     m2 = extract_month_year(right, default_year=inferred_year)
@@ -1463,6 +1645,17 @@ def parse_period(query: str) -> Dict:
             "end_year": q[0],
         }
 
+    # -------- HALF-YEAR DETECTION --------
+    half_year = parse_half_year(text)
+    if half_year:
+        return {
+            "type": "range",
+            "start_month": half_year[1],
+            "start_year": half_year[0],
+            "end_month": half_year[2],
+            "end_year": half_year[0],
+        }
+
     # -------- MONTH DETECTION (FIXED) --------
     month_pattern = (
         r"\b("
@@ -1524,6 +1717,7 @@ def parse_period(query: str) -> Dict:
             "type": "last_n",
             "n": months,
             "unit": unit,
+            "include_current_incomplete": query_wants_current_incomplete_period(text),
         }
 
     # 4️⃣ range (secondary safety)

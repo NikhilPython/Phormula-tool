@@ -3,7 +3,7 @@ from typing import Dict, Optional, Any, List
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable, List
+from typing import Iterable, List, Sequence
 from io import BytesIO
 
 import pandas as pd
@@ -93,9 +93,20 @@ MONEY_METRICS = {
     "platform_fee",
     "amazon_fee",
     "amazon_fees",
+    "cogs",
+    "current_net_reimbursement",
+    "debt_payment",
     "fba_fees",
+    "lost_total",
+    "marketplace_fees",
+    "misc_transaction",
+    "other",
+    "platform_fee_inventory_storage",
+    "promotional_rebates",
+    "promotional_rebates_tax",
     "selling_fees",
     "refund_sales",
+    "tax_and_credits",
     "asp",
 }
 
@@ -123,7 +134,7 @@ def _format_value(value: float, metric_name: str, country: str) -> str:
     if metric_key in {"sales_mix", "profit_mix", "acos"}:
         return f"{value:.2f}%"
 
-    if metric_key == "total_quantity":
+    if metric_key in {"quantity", "total_quantity", "return_quantity", "ads_sale_units"}:
         return f"{value:,.0f}"
 
     if metric_key in MONEY_METRICS:
@@ -248,6 +259,9 @@ def normalize_skuwisemonthly_columns(df: pd.DataFrame) -> pd.DataFrame:
         # Amazon fee compatibility
         "amazon_fee": "amazon_fees",
 
+        # Refund quantity naming compatibility
+        "refund_quantity": "return_quantity",
+
         # Tax / credits compatibility
         "tex_and_credits": "tax_and_credits",
 
@@ -260,6 +274,9 @@ def normalize_skuwisemonthly_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     for expected_col, source_col in alias_map.items():
         copy_if_missing(expected_col, source_col)
+
+    copy_if_missing("return_quantity", "refund_quantity")
+    copy_if_missing("refund_quantity", "return_quantity")
 
     # Ads and CM2 columns changed names across historical uploads.
     # Keep both product-level and month-total metric names queryable for old and new tables.
@@ -686,6 +703,8 @@ ALL_METRICS = {
     **PRECOMPUTED_METRICS,
     **INVENTORY_METRIC_DEFS,
 }
+ALL_METRICS["cm2_profit"] = SKU_ADDITIVE_METRICS["cm2_profit"]
+ALL_METRICS["total_cm2_profit"] = TOTAL_ADDITIVE_METRICS["total_cm2_profit"]
 
 
 def get_metric_def(metric_name: str) -> MetricDef:
@@ -721,6 +740,385 @@ def validate_metric_compatibility(
 
 def available_metrics() -> list[str]:
     return sorted(ALL_METRICS.keys())
+
+
+MISC_TRANSACTION_EXCLUDE_DESCRIPTIONS: frozenset[str] = frozenset({
+    # Advertising / deals
+    "Cost of Advertising",
+    "Coupon Redemption Fee",
+    "Deals",
+    "Lightning Deal",
+    "ProductAdsPayment",
+    "CouponPerformanceEvent",
+    "CouponParticipationEvent",
+    "SellerDealComplete",
+    "VineCharge",
+    "SellerPoweredCoupon",
+    "DealParticipationEvent",
+    "DealPerformanceEvent",
+
+    # Platform / storage / shipment buckets
+    "FBA Return Fee",
+    "FBA Long-Term Storage Fee",
+    "FBA storage fee",
+    "FBADisposal",
+    "FBAStorageBilling",
+    "FBALongTermStorageBilling",
+    "INCORRECT_FEES_NON_ITEMIZED",
+    "StorageReservationBilling",
+    "Subscription",
+
+    # Normal payment / refund / transfer buckets
+    "Order Payment",
+    "Refund",
+    "Disbursement",
+    "DebtPayment",
+
+    # Lost / reimbursement bucket
+    "REVERSAL_REIMBURSEMENT",
+    "WAREHOUSE_LOST",
+    "WAREHOUSE_DAMAGE",
+    "MISSING_FROM_INBOUND",
+    "MISSING_FROM_INBOUND_CLAWBACK",
+    "COMPENSATED_CLAWBACK",
+    "FREE_REPLACEMENT_REFUND_ITEMS",
+})
+
+US_MISC_TRANSACTION_EXTRA_EXCLUDE_DESCRIPTIONS: frozenset[str] = frozenset({
+    "FBAInboundConvenience",
+})
+
+MISC_TRANSACTION_EXCLUDE_TYPES: frozenset[str] = frozenset({
+    "Transfer",
+    "Refund",
+})
+
+
+RAW_LINE_ITEM_COLUMN_CANDIDATES: Dict[str, Sequence[str]] = {
+    "misc_transaction": ("misc_transaction", "total"),
+    "other_transaction_fees": ("other_transaction_fees",),
+    "other": ("other",),
+    "platform_fee": ("platform_fees", "platform_fee"),
+    "platformfeenew": ("platformfeenew", "platform_fees"),
+    "platform_fee_inventory_storage": ("platform_fee_inventory_storage", "other_transaction_fees"),
+    "amazon_fee": ("amazon_fee", "amazon_fees", "selling_fees", "fba_fees", "other_transaction_fees"),
+    "selling_fees": ("selling_fees",),
+    "fba_fees": ("fba_fees",),
+    "ads_spend": ("advertising_cost", "ads_spend"),
+    "total_ads": ("advertising_cost", "total_ads"),
+    "advertising_total": ("advertising_cost", "advertising_total"),
+    "promotional_rebates": ("promotional_rebates",),
+    "refund_sales": ("refund_sales",),
+    "product_sales": ("product_sales",),
+    "gross_sales": ("product_sales", "gross_sales"),
+    "net_sales": ("net_sales", "total"),
+}
+
+
+def resolve_raw_month_table_name(user_id: int, country: str, month: int | str, year: int) -> str:
+    validate_user_id(user_id)
+    country = normalize_country(country)
+    month_num = normalize_month(month)
+    mk = MonthKey(year=year, month=month_num)
+    return f"user_{user_id}_{country}_{mk.table_suffix}_data"
+
+
+def _raw_amount_columns(metric_name: Optional[str], columns: Sequence[str]) -> List[str]:
+    available = {str(col).strip().lower(): str(col) for col in columns}
+    metric_key = (metric_name or "").strip().lower()
+    candidates: List[str] = []
+
+    if metric_key:
+        try:
+            metric_def = get_metric_def(metric_key)
+            candidates.append(metric_def.column)
+        except Exception:
+            pass
+
+    candidates.extend(RAW_LINE_ITEM_COLUMN_CANDIDATES.get(metric_key, ()))
+
+    deduped: List[str] = []
+    for candidate in candidates:
+        key = str(candidate or "").strip().lower()
+        if key in available and available[key] not in deduped:
+            deduped.append(available[key])
+
+    return deduped
+
+
+def _norm_misc_transaction_key(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
+def _misc_transaction_exclude_description_keys(country: str) -> set[str]:
+    descriptions = set(MISC_TRANSACTION_EXCLUDE_DESCRIPTIONS)
+    if normalize_country(country) in {"us", "usa"}:
+        descriptions.update(US_MISC_TRANSACTION_EXTRA_EXCLUDE_DESCRIPTIONS)
+    return {_norm_misc_transaction_key(value) for value in descriptions}
+
+
+def _misc_transaction_raw_rows(df: pd.DataFrame, country: str) -> tuple[pd.DataFrame, List[str]]:
+    """
+    Mirrors the misc_transaction rule used by uk_process_utils.py/us_process_utils.py:
+    use raw ``total`` rows left after excluding ads, deals, storage, subscription,
+    refunds/transfers, and lost/reimbursement buckets.
+    """
+
+    available = {str(col).strip().lower(): str(col) for col in df.columns}
+    total_col = available.get("total")
+    misc_col = available.get("misc_transaction")
+
+    if total_col is None and misc_col is None:
+        return df.iloc[0:0].copy(), []
+
+    work = df.copy()
+    desc_col = available.get("description")
+    type_col = available.get("type")
+
+    desc_norm = (
+        work[desc_col].fillna("").astype(str).str.strip()
+        if desc_col
+        else pd.Series("", index=work.index)
+    )
+    type_norm = (
+        work[type_col].fillna("").astype(str).str.strip().str.lower()
+        if type_col
+        else pd.Series("", index=work.index)
+    )
+
+    exclude_desc_keys = _misc_transaction_exclude_description_keys(country)
+    exclude_type_keys = {_norm_misc_transaction_key(value) for value in MISC_TRANSACTION_EXCLUDE_TYPES}
+
+    leftout_mask = (
+        ~desc_norm.map(_norm_misc_transaction_key).isin(exclude_desc_keys)
+        & ~type_norm.map(_norm_misc_transaction_key).isin(exclude_type_keys)
+    )
+
+    work = work.loc[leftout_mask].copy()
+    amount_col = total_col or misc_col
+    work["__amount__"] = pd.to_numeric(work[amount_col], errors="coerce").fillna(0.0)
+    return work, [amount_col]
+
+
+def _clean_raw_label(value: Any, fallback: str = "Unspecified") -> str:
+    text_value = str(value or "").strip()
+    if not text_value or text_value.lower() in {"nan", "none", "0", "0.0"}:
+        return fallback
+    return text_value
+
+
+def _clean_raw_date(value: Any) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+
+    parsed = pd.to_datetime(value, errors="coerce")
+    if not pd.isna(parsed):
+        return parsed.strftime("%Y-%m-%d")
+
+    text_value = str(value or "").strip()
+    if not text_value or text_value.lower() in {"nan", "none", "0", "0.0"}:
+        return ""
+    return text_value
+
+
+def fetch_raw_line_item_breakdown(
+    engine: Engine,
+    user_id: int,
+    country: str,
+    metric_name: Optional[str],
+    months: Sequence[MonthKey],
+    *,
+    product_query: Optional[str] = None,
+    amount_sign: str = "nonzero",
+    top_n: int = 8,
+    row_limit: int = 8,
+    skip_missing: bool = True,
+) -> Dict[str, Any]:
+    """
+    Reads transaction-level monthly raw tables and returns grouped line-item charges.
+
+    The table names are generated from validated user/country/month inputs:
+    user_{user_id}_{country}_{month}{year}_data
+    """
+
+    if not months:
+        raise ValueError("months are required for raw line-item breakdown")
+
+    country = normalize_country(country)
+    top_n = max(int(top_n or 8), 1)
+    row_limit = max(int(row_limit or 8), 1)
+
+    frames: List[pd.DataFrame] = []
+    missing_tables: List[str] = []
+    amount_columns_used: List[str] = []
+    table_names: List[str] = []
+
+    with engine.connect() as conn:
+        for month_key in months:
+            table_name = resolve_raw_month_table_name(
+                user_id=user_id,
+                country=country,
+                month=month_key.month,
+                year=month_key.year,
+            )
+            if not table_exists(engine, table_name):
+                missing_tables.append(table_name)
+                if skip_missing:
+                    continue
+                raise ValueError(f"table not found: {table_name}")
+
+            df = pd.read_sql_query(text(f'SELECT * FROM "{table_name}"'), conn)
+            if df.empty:
+                continue
+
+            metric_key = (metric_name or "").strip().lower()
+            if metric_key == "misc_transaction":
+                work, amount_columns = _misc_transaction_raw_rows(df, country)
+            else:
+                amount_columns = _raw_amount_columns(metric_name, list(df.columns))
+                if not amount_columns:
+                    continue
+
+                work = df.copy()
+                work["__amount__"] = 0.0
+                for col in amount_columns:
+                    work["__amount__"] += pd.to_numeric(work[col], errors="coerce").fillna(0.0)
+
+            if not amount_columns:
+                continue
+
+            amount_columns_used.extend(col for col in amount_columns if col not in amount_columns_used)
+            table_names.append(table_name)
+
+            if amount_sign == "charges":
+                work = work[work["__amount__"] < 0].copy()
+            elif amount_sign == "credits":
+                work = work[work["__amount__"] > 0].copy()
+            else:
+                work = work[work["__amount__"] != 0].copy()
+
+            if product_query:
+                pq = str(product_query).strip().lower()
+                product_mask = pd.Series(False, index=work.index)
+                for col in ["product_name", "sku", "description", "order_id"]:
+                    if col in work.columns:
+                        product_mask = product_mask | work[col].astype(str).str.lower().str.contains(re.escape(pq), na=False)
+                work = work[product_mask].copy()
+
+            if work.empty:
+                continue
+
+            work["__period_label__"] = month_key.label
+            frames.append(work)
+
+    period_label = months[0].label if len(months) == 1 else f"{months[0].label} to {months[-1].label}"
+
+    if not frames:
+        return {
+            "metric": metric_name,
+            "period_label": period_label,
+            "country": country,
+            "available": False,
+            "reason": "no raw line-item rows found for requested metric/period",
+            "amount_columns": amount_columns_used,
+            "missing_tables": missing_tables,
+            "groups": [],
+            "line_items": [],
+            "total": 0.0,
+            "charges_total": 0.0,
+            "credits_total": 0.0,
+            "row_count": 0,
+        }
+
+    all_rows = pd.concat(frames, ignore_index=True)
+    all_rows["__amount__"] = pd.to_numeric(all_rows["__amount__"], errors="coerce").fillna(0.0)
+
+    charges_total = float(all_rows.loc[all_rows["__amount__"] < 0, "__amount__"].sum())
+    credits_total = float(all_rows.loc[all_rows["__amount__"] > 0, "__amount__"].sum())
+    total = float(all_rows["__amount__"].sum())
+
+    for col in ["type", "description", "sku", "product_name", "order_id", "date_time", "currency"]:
+        if col not in all_rows.columns:
+            all_rows[col] = ""
+
+    all_rows["type"] = all_rows["type"].apply(lambda value: _clean_raw_label(value, "Unspecified type"))
+    all_rows["description"] = all_rows["description"].apply(lambda value: _clean_raw_label(value, "Unspecified description"))
+    all_rows["sku"] = all_rows["sku"].apply(lambda value: _clean_raw_label(value, ""))
+    all_rows["product_name"] = all_rows["product_name"].apply(lambda value: _clean_raw_label(value, ""))
+    all_rows["__date_sort__"] = pd.to_datetime(all_rows["date_time"], errors="coerce")
+    all_rows["__date_label__"] = all_rows["date_time"].apply(_clean_raw_date)
+
+    grouped_df = (
+        all_rows
+        .groupby(["type", "description"], dropna=False)
+        .agg(
+            amount=("__amount__", "sum"),
+            rows=("__amount__", "size"),
+            charges=("__amount__", lambda values: float(values[values < 0].sum())),
+            credits=("__amount__", lambda values: float(values[values > 0].sum())),
+            first_date=("__date_sort__", "min"),
+            last_date=("__date_sort__", "max"),
+        )
+        .reset_index()
+    )
+    grouped_df["abs_amount"] = grouped_df["amount"].abs()
+    grouped_df = grouped_df.sort_values("abs_amount", ascending=False).head(top_n)
+
+    groups = [
+        {
+            "type": row["type"],
+            "description": row["description"],
+            "amount": float(row["amount"]),
+            "charges": float(row["charges"]),
+            "credits": float(row["credits"]),
+            "rows": int(row["rows"]),
+            "first_date": _clean_raw_date(row.get("first_date")),
+            "last_date": _clean_raw_date(row.get("last_date")),
+        }
+        for _, row in grouped_df.iterrows()
+    ]
+
+    detail_df = all_rows.copy()
+    detail_df["abs_amount"] = detail_df["__amount__"].abs()
+    detail_df = detail_df.sort_values("abs_amount", ascending=False).head(row_limit)
+
+    line_items = []
+    for _, row in detail_df.iterrows():
+        line_items.append(
+            {
+                "date_time": row.get("__date_label__") or str(row.get("date_time") or ""),
+                "type": row.get("type") or "Unspecified type",
+                "description": row.get("description") or "Unspecified description",
+                "sku": row.get("sku") or "",
+                "product_name": row.get("product_name") or "",
+                "order_id": str(row.get("order_id") or ""),
+                "amount": float(row.get("__amount__", 0.0) or 0.0),
+                "period_label": row.get("__period_label__") or "",
+            }
+        )
+
+    return {
+        "metric": metric_name,
+        "period_label": period_label,
+        "country": country,
+        "available": True,
+        "amount_sign": amount_sign,
+        "amount_columns": amount_columns_used,
+        "months_found": [month.label for month in months],
+        "table_count": len(table_names),
+        "missing_tables": missing_tables,
+        "groups": groups,
+        "line_items": line_items,
+        "total": total,
+        "charges_total": charges_total,
+        "credits_total": credits_total,
+        "row_count": int(len(all_rows)),
+    }
 
 
 
@@ -1269,6 +1667,24 @@ def _forecast_columns_from_month(
     return out
 
 
+def _forecast_column_for_month(
+    columns: List[str],
+    month: Optional[int],
+    year: Optional[int],
+) -> Optional[str]:
+    if not month or not year:
+        return None
+
+    selected = datetime(int(year), int(month), 1)
+    for col in columns:
+        if str(col).endswith(" Sold"):
+            continue
+        parsed = _parse_forecast_month_label(col)
+        if parsed and parsed.year == selected.year and parsed.month == selected.month:
+            return col
+    return None
+
+
 def _forecast_float(value: Any) -> float:
     try:
         numeric = pd.to_numeric(value, errors="coerce")
@@ -1328,6 +1744,7 @@ def get_inventory_forecast_snapshot(
     df = df.where(pd.notnull(df), None)
     month_cols = _forecast_month_columns(df)
     sold_cols = [col for col in month_cols if str(col).endswith(" Sold")]
+    requested_forecast_col = _forecast_column_for_month(month_cols, month, year)
     forecast_cols = _forecast_columns_from_month(month_cols, month, year)
     forecast_cols_3 = forecast_cols[:3]
 
@@ -1360,15 +1777,18 @@ def get_inventory_forecast_snapshot(
         projected_total = _forecast_float(row.get("Projected Sales Total")) or sum(forecast_values.values())
         inventory_at_month_end = _forecast_float(row.get("Inventory at Month End"))
         dispatch = _forecast_float(row.get("Dispatch"))
+        current_inventory_plus_dispatch = _forecast_float(row.get("Current Inventory + Dispatch"))
 
         rows.append({
             "sku": str(row.get(sku_col) or "").strip() if sku_col else "",
             "product_name": str(row.get(product_col) or "").strip() if product_col in working.columns else "",
             "sold": sold_values,
             "forecast": forecast_values,
+            "requested_forecast_units": forecast_values.get(requested_forecast_col, 0.0) if requested_forecast_col else 0.0,
             "projected_sales_total": projected_total,
             "inventory_at_month_end": inventory_at_month_end,
             "dispatch": dispatch,
+            "current_inventory_plus_dispatch": current_inventory_plus_dispatch,
         })
 
     totals = {
@@ -1379,9 +1799,11 @@ def get_inventory_forecast_snapshot(
         "projected_sales_total": sum(float(r.get("projected_sales_total", 0.0) or 0.0) for r in rows),
         "inventory_at_month_end": sum(float(r.get("inventory_at_month_end", 0.0) or 0.0) for r in rows),
         "dispatch": sum(float(r.get("dispatch", 0.0) or 0.0) for r in rows),
+        "current_inventory_plus_dispatch": sum(float(r.get("current_inventory_plus_dispatch", 0.0) or 0.0) for r in rows),
     }
 
-    rows = sorted(rows, key=lambda r: float(r.get("projected_sales_total", 0.0) or 0.0), reverse=True)
+    sort_key = "requested_forecast_units" if requested_forecast_col else "projected_sales_total"
+    rows = sorted(rows, key=lambda r: float(r.get(sort_key, 0.0) or 0.0), reverse=True)
 
     return {
         "available": True,
@@ -1394,6 +1816,8 @@ def get_inventory_forecast_snapshot(
         "month_columns": month_cols,
         "sold_columns": sold_cols[-3:],
         "forecast_columns": forecast_cols_3,
+        "requested_forecast_column": requested_forecast_col,
+        "requested_forecast_available": bool(requested_forecast_col) if month and year else bool(forecast_cols_3),
         "rows": rows,
         "totals": totals,
         "row_count": len(rows),

@@ -135,28 +135,34 @@ type HeaderMeta = {
   subHeader: string;
 };
 
+const isUsSkuLayout =
+  headerRow?.amazon_fee === "Total Fees" ||
+  headerRow?.profit === "Margin" ||
+  !columns.includes("tex_and_credits");
+
 const HEADER_META: Record<string, HeaderMeta> = {
   sno: {
-    subHeader: "S.No",
+    subHeader: isUsSkuLayout ? "Sno." : "S.No",
   },
   product_name: {
     subHeader: "Product Name",
   },
   sku: {
+    group: isUsSkuLayout ? "Units" : undefined,
     subHeader: "SKU",
   },
 
   units_sold: {
-    group: "Net Units Sold",
+    group: isUsSkuLayout ? "Units" : "Net Units Sold",
     subHeader: "Units Sold",
   },
   return_units: {
-    group: "Net Units Sold",
+    group: isUsSkuLayout ? "Units" : "Net Units Sold",
     subHeader: "Return",
   },
   net_units_sold: {
-    group: "Net Units Sold",
-    subHeader: "Total",
+    group: isUsSkuLayout ? "Units" : "Net Units Sold",
+    subHeader: isUsSkuLayout ? "Net Units Sold" : "Total",
   },
 
   asp: {
@@ -164,11 +170,11 @@ const HEADER_META: Record<string, HeaderMeta> = {
   },
 
   product_sales: {
-    group: "Net Sales",
+    group: isUsSkuLayout ? "Sales" : "Net Sales",
     subHeader: "Gross Sales",
   },
   refund_sales: {
-    group: "Net Sales",
+    group: isUsSkuLayout ? "Sales" : "Net Sales",
     subHeader: "Sales - Refund",
   },
   tex_and_credits: {
@@ -176,16 +182,16 @@ const HEADER_META: Record<string, HeaderMeta> = {
     subHeader: "Taxes and Credits",
   },
   net_sales: {
-    group: "Net Sales",
-    subHeader: "Total",
+    group: isUsSkuLayout ? "Sales" : "Net Sales",
+    subHeader: isUsSkuLayout ? "Net Sales" : "Total",
   },
 
   promotional_rebates: {
-    group: "Promotions",
+    group: isUsSkuLayout ? "Sales" : "Promotions",
     subHeader: "Promotions",
   },
   promotional_rebates_percentage: {
-    group: "Promotions",
+    group: isUsSkuLayout ? undefined : "Promotions",
     subHeader: "Promotions %",
   },
 
@@ -194,16 +200,16 @@ const HEADER_META: Record<string, HeaderMeta> = {
   },
 
   selling_fees: {
-    group: "Marketplace Fees",
+    group: isUsSkuLayout ? "Amazon Fees" : "Marketplace Fees",
     subHeader: "Selling Fees",
   },
   fba_fees: {
-    group: "Marketplace Fees",
+    group: isUsSkuLayout ? "Amazon Fees" : "Marketplace Fees",
     subHeader: "FBA Fees",
   },
   amazon_fee: {
-    group: "Marketplace Fees",
-    subHeader: "Total",
+    group: isUsSkuLayout ? "Amazon Fees" : "Marketplace Fees",
+    subHeader: isUsSkuLayout ? "Total Fees" : "Total",
   },
 
   net_taxes: {
@@ -225,7 +231,7 @@ const HEADER_META: Record<string, HeaderMeta> = {
 
 profit: {
   group: "CM1 Profit",
-  subHeader: "Total",
+  subHeader: isUsSkuLayout ? "Margin" : "Total",
 },
 unit_wise_profitability: {
   group: "CM1 Profit",
@@ -263,7 +269,7 @@ cm2_margins: {
 },
 cm2_profit: {
   group: "CM2 Profit",
-  subHeader: "Total",
+  subHeader: isUsSkuLayout ? "Margin" : "Total",
 },
 };
 
@@ -392,9 +398,9 @@ columns.forEach((key, index) => {
     misc_transaction: 20,
     other_transactions: 14,
 
-   profit: 14,
-unit_wise_profitability: 14,
-profit_percentage: 10,
+    profit: 14,
+    unit_wise_profitability: 14,
+    profit_percentage: 10,
 
 product_spend: 18,
 display_spend: 18,
@@ -435,6 +441,7 @@ for (const r of rows || []) {
   // ✅ percent-only summary labels (Dropdowns behavior)
   const PERCENT_SUMMARY_LABELS = new Set([
     "CM2 Margins",
+    "CM2 Profit %",
     "TACoS (Total Advertising Cost of Sale)",
     "Reimbursement vs CM2 Margins",
     "Reimbursement vs Sales",

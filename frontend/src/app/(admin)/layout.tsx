@@ -7,7 +7,7 @@ import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
 import React from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import ChatbotWidget from "@/components/chatbot/ChatbotWidget";
 // import PreviewModeNotice from "@/components/amazon/PreviewModeNotice";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
@@ -20,6 +20,7 @@ export default function AdminLayout({
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
   const { data: userData } = useGetUserDataQuery();
+  const pathname = usePathname();
 
   const currentParams = useParams() as {
     ranged?: string;
@@ -43,6 +44,7 @@ export default function AdminLayout({
   const isPreviewMode =
     currentParams.month === "NA" ||
     currentParams.year === "NA";
+  const isChatbotPage = pathname === "/chatbot" || pathname?.startsWith("/chatbot/");
 
   return (
     <AuthGuard>
@@ -60,8 +62,16 @@ export default function AdminLayout({
           >
             <AppHeader />
 
-            <div className="flex flex-col h-[calc(100vh-64px)] overflow-y-auto">
-              <div className="p-3 sm:p-4 lg:p-3 xl:p-5 border-l border-t border-gray-200">
+            <div
+              className={`flex flex-col h-[calc(100vh-64px)] ${
+                isChatbotPage ? "overflow-hidden" : "overflow-y-auto"
+              }`}
+            >
+              <div
+                className={`p-3 sm:p-4 lg:p-3 xl:p-5 border-l border-t border-gray-200 ${
+                  isChatbotPage ? "h-full min-h-0 overflow-hidden" : ""
+                }`}
+              >
                 {children}
               </div>
             </div>

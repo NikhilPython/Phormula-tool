@@ -369,6 +369,8 @@ const SIGNED_KEYS = new Set<string>([
     "rembursment_vs_cm2_margins",
     "reimbursement_vs_sales",
     "misc_transaction",
+    "inventory_charges_and_reimbursement",
+    "others",
 ]);
 
 const ROUNDED_SUMMARY_KEYS = new Set<string>([
@@ -381,6 +383,15 @@ const ROUNDED_SUMMARY_KEYS = new Set<string>([
     "short_term_storage_fee",
     "long_term_storage_fee",
     "fba_disposal",
+    "placement_fees",
+    "shipping_charges",
+    "customs_fees",
+    "storage_fees",
+    "inventory_charges",
+    "inventory_charges_and_reimbursement",
+    "reimbursement_lost_inventory_amount",
+    "platform_management_fees",
+    "others",
 ]);
 
 function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
@@ -1560,6 +1571,10 @@ export default function DashboardPage() {
     const globalMtdCountry = useMemo<"uk" | "us">(() => {
         return globalMtdView === "us" ? "us" : "uk";
     }, [globalMtdView]);
+
+    const isUsPnlSkuLayout = useMemo(() => {
+        return countryName === "us" || (platform === "global" && globalMtdView === "us");
+    }, [countryName, platform, globalMtdView]);
 
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
     const [fxReady, setFxReady] = useState(false);
@@ -5483,9 +5498,11 @@ export default function DashboardPage() {
         const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => {
             const tax = Number(r.net_taxes ?? r.tax ?? 0);
             const credits = Number(r.credits ?? r.net_credits ?? 0);
+            const miscTransaction = Number(r.misc_transaction ?? r.misc_transactions ?? 0);
 
             const taxAndCredits = Number(
                 r.other_transactions ??
+                r.other_transaction_fees ??
                 r.tax_and_credits ??
                 tax + credits
             );
@@ -5534,6 +5551,7 @@ export default function DashboardPage() {
                 tax_and_credits: taxAndCredits,
                 net_taxes: tax,
                 other_transactions: taxAndCredits,
+                misc_transaction: miscTransaction,
 
                 cm1_profit_per: Number(r.cm1_profit_per ?? 0),
                 cm1_profit_per_unit: Number(r.cm1_profit_per_unit ?? 0),
@@ -5617,12 +5635,18 @@ export default function DashboardPage() {
     const normalizeProductwiseRow = (raw: any): MonthlySkuwiseRow => {
         const tax = toNumberSafe(raw?.tax ?? raw?.net_taxes);
         const credits = toNumberSafe(raw?.credits ?? raw?.net_credits);
+        const miscTransaction = toNumberSafe(raw?.misc_transaction ?? raw?.misc_transactions);
 
         const taxAndCredits = toNumberSafe(
             raw?.tax_and_credits ??
             raw?.taxes_and_credits ??
             raw?.tex_and_credits ??
             tax + credits
+        );
+        const otherTransactions = toNumberSafe(
+            raw?.other_transactions ??
+            raw?.other_transaction_fees ??
+            taxAndCredits
         );
 
         // ✅ Add this here, before return
@@ -5682,7 +5706,8 @@ export default function DashboardPage() {
             credits,
             tax_and_credits: taxAndCredits,
             net_taxes: tax,
-            other_transactions: taxAndCredits,
+            other_transactions: otherTransactions,
+            misc_transaction: miscTransaction,
 
             cogs: toNumberSafe(raw?.cogs),
             fba_fees: toNumberSafe(raw?.fba_fees),
@@ -5851,6 +5876,10 @@ export default function DashboardPage() {
         const totalAdsSpend = rows.reduce((s, r) => s + toNumberSafe(r.ads_spend), 0);
         const totalTax = rows.reduce((s, r) => s + toNumberSafe(r.tax), 0);
         const totalCredits = rows.reduce((s, r) => s + toNumberSafe(r.credits), 0);
+        const totalMiscTransaction = rows.reduce(
+            (s, r) => s + toNumberSafe(r.misc_transaction),
+            0
+        );
         const totalTaxAndCredits = rows.reduce(
             (s, r) => s + toNumberSafe(r.tax_and_credits),
             0
@@ -5901,6 +5930,7 @@ export default function DashboardPage() {
             tax_and_credits: totalTaxAndCredits,
             net_taxes: totalTax,
             other_transactions: totalTaxAndCredits,
+            misc_transaction: totalMiscTransaction,
 
             cm1_profit_per:
                 totalNetSales > 0 ? (totalProfit / totalNetSales) * 100 : 0,
@@ -5961,6 +5991,26 @@ export default function DashboardPage() {
         const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
         return Math.abs(fba + selling);
     }, [grandTotalRowDisplay]);
+
+    const getProductwiseOtherTransactionsTotal = useCallback(
+        (row: Partial<MonthlySkuwiseRow>) => {
+            const fallback = toNumber(
+                (row as any).other_transactions ??
+                (row as any).other_transaction_fees ??
+                (row as any).tax_and_credits
+            );
+
+            if (!isUsPnlSkuLayout) return fallback;
+
+            const computed =
+                toNumber((row as any).credits ?? (row as any).net_credits) +
+                toNumber((row as any).misc_transaction ?? (row as any).misc_transactions) -
+                Math.abs(toNumber((row as any).tax ?? (row as any).net_taxes));
+
+            return computed !== 0 || fallback === 0 ? computed : fallback;
+        },
+        [isUsPnlSkuLayout]
+    );
 
     const grandTotalRowRaw = useMemo<GrandTotalSkuwiseRow | null>(() => {
         return (
@@ -6422,6 +6472,7 @@ export default function DashboardPage() {
                 case "tax":
                 case "credits":
                 case "tax_and_credits":
+                case "misc_transaction":
                 case "cm1_profit_per_unit":
                 case "cm1_profit_per":
                 case "profit":
@@ -6431,6 +6482,9 @@ export default function DashboardPage() {
                 case "cm2_profit_per":
                 case "cm2_profit":
                     return toNumber((row as any)[key]);
+
+                case "other_transactions":
+                    return getProductwiseOtherTransactionsTotal(row);
 
                 case "product_name":
                     return getSkuwiseDisplayProductName(row).toLowerCase();
@@ -6487,6 +6541,11 @@ export default function DashboardPage() {
         const sum = (key: keyof MonthlySkuwiseRow) =>
             rest.reduce((acc, r) => acc + (Number((r as any)[key]) || 0), 0);
 
+        const average = (key: keyof MonthlySkuwiseRow) =>
+            rest.length
+                ? rest.reduce((acc, r) => acc + (Number((r as any)[key]) || 0), 0) / rest.length
+                : 0;
+
         const othersQty = sum("quantity");
         const othersNetSales = sum("net_sales");
 
@@ -6535,6 +6594,8 @@ export default function DashboardPage() {
             gross_sales: sum("gross_sales"),
             refund_sales: sum("refund_sales"),
             net_sales: othersNetSales,
+            promotional_rebates: sum("promotional_rebates"),
+            promotional_rebates_percentage: average("promotional_rebates_percentage"),
 
             cogs: sum("cogs"),
             fba_fees: sum("fba_fees"),
@@ -6543,6 +6604,11 @@ export default function DashboardPage() {
             tax: sum("tax"),
             credits: sum("credits"),
             tax_and_credits: sum("tax_and_credits"),
+            misc_transaction: sum("misc_transaction"),
+            other_transactions: rest.reduce(
+                (acc, r) => acc + getProductwiseOtherTransactionsTotal(r),
+                0
+            ),
 
             cm1_profit_per: 0,
             cm1_profit_per_unit: 0,
@@ -6585,7 +6651,12 @@ export default function DashboardPage() {
         if (totalRow) out.push(totalRow);
 
         return out;
-    }, [monthlySkuwiseRowsDisplay, plSortConfig, showAllMtdProductwiseRows]);
+    }, [
+        monthlySkuwiseRowsDisplay,
+        plSortConfig,
+        showAllMtdProductwiseRows,
+        getProductwiseOtherTransactionsTotal,
+    ]);
 
     const globalMtdCardData = useMemo(() => {
         const globalRows =
@@ -6922,22 +6993,22 @@ export default function DashboardPage() {
     ]);
 
     const { SKUWISE_LEFT_COLS, SKUWISE_GROUPS, SKUWISE_SINGLE_COLS } = useMemo(
-        () => buildSkuwiseTableColumns(formatDisplayAmount),
-        [formatDisplayAmount]
+        () => buildSkuwiseTableColumns(formatDisplayAmount, { isUsSkuLayout: isUsPnlSkuLayout }),
+        [formatDisplayAmount, isUsPnlSkuLayout]
     );
 
     const PRODUCTWISE_GROUP_IDS = useMemo(
         () => [
             "quantity",
             "net_sales",
-            "promotions",
+            ...(isUsPnlSkuLayout ? [] : ["promotions"]),
             "marketplace_fees",
             "other_transactions",
             "profit",
             "ads_spend",
             "cm2_profit",
         ],
-        []
+        [isUsPnlSkuLayout]
     );
 
     const productwiseHasExpandedGroups = useMemo(() => {
@@ -7646,7 +7717,16 @@ export default function DashboardPage() {
             : 0;
     }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
-    const ADS_SIGN_PLUS = new Set(["gross_sales", "net_sales", "credits", "tax_and_credits", "quantity", "total_quantity"]);
+    const ADS_SIGN_PLUS = new Set([
+        "gross_sales",
+        "net_sales",
+        "credits",
+        "tax_and_credits",
+        "misc_transaction",
+        "other_transactions",
+        "quantity",
+        "total_quantity",
+    ]);
 
     const ADS_SIGN_MINUS = new Set([
         "return_quantity",
@@ -7656,6 +7736,7 @@ export default function DashboardPage() {
         "brand_spend",
         "refund_sales",
         "net_sales_tax_and_credits",
+        "promotional_rebates",
         "cogs",
         "fba_fees",
         "selling_fees",
@@ -8717,50 +8798,102 @@ export default function DashboardPage() {
                 rowsToExport.find((r: any) => String(r?.product_name || "").toLowerCase() === "total") ||
                 {};
 
-            const dataRows = rowsToExport.map((r: any) => ({
-                "S.No": r.isTotal ? "" : r.sno ?? "",
-                "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
-
-                "Units Sold": n(r.quantity),
-                "Return": n(r.return_quantity),
-                "Total Units": n(
+            const dataRows = rowsToExport.map((r: any) => {
+                const netUnitsSold = n(
                     r.total_quantity ??
                     (toNumber(r.quantity) - toNumber(r.return_quantity))
-                ),
-                "ASP": n(r.asp),
+                );
+                const marketplaceTotal =
+                    Math.abs(n(r.fba_fees)) + Math.abs(n(r.selling_fees));
+                const otherTransactionsTotal = getProductwiseOtherTransactionsTotal(r);
 
-                "Gross Sales": n(r.gross_sales),
-                "Sales - Refund": n(r.refund_sales),
-                "Taxes and Credits": n(r.net_sales_tax_and_credits ?? r.tax_and_credits),
-                "Net Sales": n(r.net_sales),
+                if (isUsPnlSkuLayout) {
+                    return {
+                        "Sno.": r.isTotal ? "" : r.sno ?? "",
+                        "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                        "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
 
-                "Promotions": Math.abs(n(r.promotional_rebates)),
-                "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
+                        "Units Sold": n(r.quantity),
+                        "Return": n(r.return_quantity),
+                        "Net Units Sold": netUnitsSold,
+                        "ASP": n(r.asp),
 
-                "COGS": n(r.cogs),
+                        "Gross Sales": n(r.gross_sales),
+                        "Sales - Refund": n(r.refund_sales),
+                        "Promotions": Math.abs(n(r.promotional_rebates)),
+                        "Net Sales": n(r.net_sales),
 
-                "Selling Fees": n(r.selling_fees),
-                "FBA Fees": n(r.fba_fees),
+                        "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
 
-                "Tax": n(r.tax),
-                "Credits": n(r.credits),
-                "Tax & Credits": n(r.tax_and_credits),
+                        "COGS": n(r.cogs),
 
-                "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
-                "CM1 Profit %": n(r.cm1_profit_per),
-                "CM1 Profit": n(r.profit),
+                        "Selling Fees": n(r.selling_fees),
+                        "FBA Fees": n(r.fba_fees),
+                        "Total Fees": marketplaceTotal,
 
-                "Sponsored Product": n(r.product_spend),
-                "Sponsored Display": n(r.display_spend),
-                "Ads Spend": n(r.ads_spend),
+                        "Net Taxes": n(r.tax ?? r.net_taxes),
+                        "Net Credits": n(r.credits ?? r.net_credits),
+                        "Misc. Transactions": n(r.misc_transaction),
+                        "Other Transactions": otherTransactionsTotal,
 
-                "ACOS %": n(r.acos),
+                        "CM1 Profit": n(r.profit),
+                        "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+                        "CM1 Profit %": n(r.cm1_profit_per),
 
-                "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
-                "CM2 Profit %": n(r.cm2_profit_per),
-                "CM2 Profit": n(r.cm2_profit),
-            }));
+                        "Sponsored Product": n(r.product_spend),
+                        "Sponsored Display": n(r.display_spend),
+                        "Ads Spend": n(r.ads_spend),
+
+                        "ACOS %": n(r.acos),
+
+                        "CM2 Profit": n(r.cm2_profit),
+                        "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+                        "CM2 Profit %": n(r.cm2_profit_per),
+                    };
+                }
+
+                return {
+                    "S.No": r.isTotal ? "" : r.sno ?? "",
+                    "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
+                    "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+
+                    "Units Sold": n(r.quantity),
+                    "Return": n(r.return_quantity),
+                    "Total Units": netUnitsSold,
+                    "ASP": n(r.asp),
+
+                    "Gross Sales": n(r.gross_sales),
+                    "Sales - Refund": n(r.refund_sales),
+                    "Taxes and Credits": n(r.net_sales_tax_and_credits ?? r.tax_and_credits),
+                    "Net Sales": n(r.net_sales),
+
+                    "Promotions": Math.abs(n(r.promotional_rebates)),
+                    "Promotions %": Math.abs(n(r.promotional_rebates_percentage)),
+
+                    "COGS": n(r.cogs),
+
+                    "Selling Fees": n(r.selling_fees),
+                    "FBA Fees": n(r.fba_fees),
+
+                    "Tax": n(r.tax),
+                    "Credits": n(r.credits),
+                    "Tax & Credits": n(r.tax_and_credits),
+
+                    "CM1 Profit Per Unit": n(r.cm1_profit_per_unit),
+                    "CM1 Profit %": n(r.cm1_profit_per),
+                    "CM1 Profit": n(r.profit),
+
+                    "Sponsored Product": n(r.product_spend),
+                    "Sponsored Display": n(r.display_spend),
+                    "Ads Spend": n(r.ads_spend),
+
+                    "ACOS %": n(r.acos),
+
+                    "CM2 Profit Per Unit": n(r.cm2_profit_per_unit),
+                    "CM2 Profit %": n(r.cm2_profit_per),
+                    "CM2 Profit": n(r.cm2_profit),
+                };
+            });
 
             const visibilityAds =
                 n(totalRow?.brand_spend); // Visibility - Ads (-)
@@ -8817,7 +8950,145 @@ export default function DashboardPage() {
                 n(grandTotalRowDisplay?.fba_disposal) ||
                 n((plSummaryTotals as any)?.fba_disposal);
 
-            const summaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
+            const exportSources = [
+                totalRow,
+                grandTotalRowRaw,
+                grandTotalRowDisplay,
+                plSummaryTotals,
+            ];
+
+            const getOptionalExportNumber = (keys: string[]) => {
+                for (const source of exportSources) {
+                    const record =
+                        source && typeof source === "object"
+                            ? (source as Record<string, unknown>)
+                            : null;
+
+                    for (const key of keys) {
+                        if (!record || !Object.prototype.hasOwnProperty.call(record, key)) continue;
+
+                        const value = record[key];
+                        if (value === undefined || value === null || value === "") continue;
+
+                        const normalized =
+                            typeof value === "number"
+                                ? value
+                                : String(value).replace(/,/g, "").trim();
+
+                        if (
+                            typeof normalized === "string" &&
+                            (normalized === "-" ||
+                                (normalized.length === 1 &&
+                                    (normalized.charCodeAt(0) === 8211 || normalized.charCodeAt(0) === 8212)))
+                        ) {
+                            continue;
+                        }
+
+                        const parsed =
+                            typeof normalized === "number" ? normalized : Number(normalized);
+
+                        if (Number.isFinite(parsed)) return parsed;
+                    }
+                }
+
+                return null;
+            };
+
+            const exportNonZeroOrNull = (value: unknown) => {
+                const parsed = Number(String(value ?? "").replace(/,/g, "").trim());
+                return Number.isFinite(parsed) && parsed !== 0 ? parsed : null;
+            };
+
+            const exportSumKnownNumbers = (...values: Array<number | null>) => {
+                const known = values.filter((value): value is number => value !== null);
+                return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+            };
+
+            const summaryExportValue = (value: number | null) => value === null ? "-" : value;
+            const spacerSummaryRow = () => ({ label: "", value: "" });
+
+            const exportPlacementFees = getOptionalExportNumber(["placement_fees", "placement_fee"]);
+            const exportShippingCharges =
+                getOptionalExportNumber([
+                    "shipping_charges",
+                    "shipping_charge",
+                    "shipping_fee",
+                    "shipping_fees",
+                    "shipment_fees",
+                    "shipment_charges",
+                ]) ?? exportNonZeroOrNull(shipmentCharges);
+            const exportCustomsFees = getOptionalExportNumber([
+                "customs_fees",
+                "customs_fee",
+                "custom_fee",
+                "custom_fees",
+            ]);
+            const exportShippingChargesTotal =
+                getOptionalExportNumber([
+                    "shipping_charges_total",
+                    "shipping_charge_total",
+                    "shipment_charges_total",
+                    "total_shipping_charges",
+                ]) ?? exportSumKnownNumbers(
+                    exportPlacementFees,
+                    exportShippingCharges,
+                    exportCustomsFees
+                );
+
+            const exportShortTermStorage =
+                getOptionalExportNumber(["short_term_storage_fee", "short_term_storage"]) ??
+                exportNonZeroOrNull(shortTermStorageFee);
+            const exportLongTermStorage =
+                getOptionalExportNumber(["long_term_storage_fee", "long_term_storage"]) ??
+                exportNonZeroOrNull(longTermStorageFee);
+            const exportStorageFees =
+                getOptionalExportNumber([
+                    "storage_fees",
+                    "storage_fee",
+                    "storage_fees_total",
+                    "inventory_storage_fees",
+                    "platform_fee_inventory_storage",
+                ]) ?? exportSumKnownNumbers(exportShortTermStorage, exportLongTermStorage);
+
+            const exportInventoryCharges =
+                getOptionalExportNumber([
+                    "inventory_charges",
+                    "inventory_charge",
+                    "inventory_fees",
+                    "inventory_fee",
+                    "fba_disposal",
+                ]) ?? exportNonZeroOrNull(fbaDisposal);
+            const exportReimbursementForLostInventory =
+                getOptionalExportNumber([
+                    "reimbursement_lost_inventory_amount",
+                    "lost_inventory_reimbursement",
+                    "lost_total",
+                ]) ?? exportNonZeroOrNull(lostInventory);
+            const exportInventoryChargesAndReimbursement =
+                getOptionalExportNumber([
+                    "inventory_charges_and_reimbursement",
+                    "inventory_charges_reimbursement",
+                    "inventory_charges_reimbursement_total",
+                ]) ??
+                (exportInventoryCharges !== null && exportReimbursementForLostInventory !== null
+                    ? exportInventoryCharges - exportReimbursementForLostInventory
+                    : null);
+
+            const exportPlatformManagementFees =
+                getOptionalExportNumber([
+                    "platform_management_fees",
+                    "platform_management_fee",
+                    "platformfeenew",
+                    "platform_fee",
+                ]) ?? exportNonZeroOrNull(otherPlatformFees);
+            const exportOthers = getOptionalExportNumber(["others", "other"]);
+            const reimbursementUnits = getOptionalExportNumber([
+                "reimbursement_lost_inventory_units",
+                "reimbursement_units",
+                "lost_inventory_units",
+            ]);
+
+            const legacySummaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
                 { label: "Cost of Advertisement", value: "", bold: true },
                 { label: "Visibility - Ads (-)", value: visibilityAds, indent: 1 },
                 { label: "Visibility - Deals, Vouchers and Reviews (-)", value: dealsVouchers, indent: 1 },
@@ -8852,6 +9123,56 @@ export default function DashboardPage() {
                 { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0), bold: true },
             ];
 
+            const usSummaryRows: { label: string; value: any; indent?: number; bold?: boolean }[] = [
+                { label: "Cost of Advertisement (-)", value: costOfAds, bold: true },
+                { label: "Visibility - Ads (-)", value: visibilityAds, indent: 1 },
+                { label: "Visibility - Deals, Vouchers and Reviews (-)", value: dealsVouchers, indent: 1 },
+                spacerSummaryRow(),
+
+                { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingChargesTotal), bold: true },
+                { label: "Placement Fees (-)", value: summaryExportValue(exportPlacementFees), indent: 1 },
+                { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingCharges), indent: 1 },
+                { label: "Customs Fees (-)", value: summaryExportValue(exportCustomsFees), indent: 1 },
+                spacerSummaryRow(),
+
+                { label: "Storage Fees (-)", value: summaryExportValue(exportStorageFees), bold: true },
+                { label: "Short Term Storage (-)", value: summaryExportValue(exportShortTermStorage), indent: 1 },
+                { label: "Long Term Storage (-)", value: summaryExportValue(exportLongTermStorage), indent: 1 },
+                spacerSummaryRow(),
+
+                {
+                    label: "Inventory Charges and Reimbursement",
+                    value: summaryExportValue(exportInventoryChargesAndReimbursement),
+                    bold: true,
+                },
+                { label: "Inventory Charges (-)", value: summaryExportValue(exportInventoryCharges), indent: 1 },
+                {
+                    label: `Reimbursement for lost Inventory${reimbursementUnits
+                        ? ` - ${reimbursementUnits} Units`
+                        : ""} (+)`,
+                    value: summaryExportValue(exportReimbursementForLostInventory),
+                    indent: 1,
+                },
+                spacerSummaryRow(),
+
+                {
+                    label: "Platform Management Fees",
+                    value: summaryExportValue(exportPlatformManagementFees),
+                },
+                { label: "Others", value: summaryExportValue(exportOthers) },
+                spacerSummaryRow(),
+
+                { label: "CM2 Profit", value: cm2ProfitLoss, bold: true },
+                spacerSummaryRow(),
+                { label: "CM2 Profit %", value: Number(cm2MarginPctForSummary ?? 0) },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0) },
+                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
+                { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0) },
+                { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0) },
+            ];
+
+            const summaryRows = isUsPnlSkuLayout ? usSummaryRows : legacySummaryRows;
+
             exportPnLProductwiseBreakdownMtdExcel({
                 filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
                 titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
@@ -8862,6 +9183,7 @@ export default function DashboardPage() {
                 companyName,
                 brandName: String(brandName || ""),
                 homeCurrencyCode: profileHomeCurrency,
+                isUsLayout: isUsPnlSkuLayout,
                 dataRows,
                 summaryRows,
             });
@@ -8872,12 +9194,17 @@ export default function DashboardPage() {
         monthlySkuwiseRowsDisplay,
         formattedMonthYear,
         countryName,
+        isUsPnlSkuLayout,
+        getProductwiseOtherTransactionsTotal,
         plSummaryTotals,
         cm2MarginPctForSummary,
         tacosFromDisplayedCardsForSummary,
         reimbursementForSummary,
         reimbursementVsCm2PctForSummary,
         reimbursementVsSalesPctForSummary,
+        costOfAds,
+        grandTotalRowDisplay,
+        grandTotalRowRaw,
         userData,
         brandName,
         profileHomeCurrency,
@@ -10882,9 +11209,11 @@ export default function DashboardPage() {
     const MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT = 48;
 
     const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT =
-        platform === "global" || countryName === "us"
-            ? 9
-            : 8;
+        isUsPnlSkuLayout
+            ? 12
+            : platform === "global"
+                ? 9
+                : 8;
 
     const shouldScrollMtdProductwiseTable =
         mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
@@ -11154,6 +11483,8 @@ export default function DashboardPage() {
                             lost_inventory_total={lost_inventory_total}
                             otherPlatformFee={otherPlatformFee}
                             countryName={countryName}
+                            isUsPnlSkuLayout={isUsPnlSkuLayout}
+                            getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
                             boldSummaryText={boldSummaryText}
                             totalRowCm2Profit={totalRowCm2Profit}
                             totalRowCm2Margins={totalRowCm2Margins}

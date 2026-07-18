@@ -14,6 +14,47 @@ import {
 
 type DashboardProductwisePnlSectionProps = Record<string, any>;
 
+const getOptionalSummaryNumber = (source: unknown, keys: string[]) => {
+    const record =
+        source && typeof source === "object" ? (source as Record<string, unknown>) : null;
+
+    for (const key of keys) {
+        if (!record || !Object.prototype.hasOwnProperty.call(record, key)) continue;
+
+        const value = record[key];
+        if (value === undefined || value === null || value === "") continue;
+
+        const normalized =
+            typeof value === "number"
+                ? value
+                : String(value).replace(/,/g, "").trim();
+
+        if (
+            typeof normalized === "string" &&
+            (normalized === "-" ||
+                (normalized.length === 1 &&
+                    (normalized.charCodeAt(0) === 8211 || normalized.charCodeAt(0) === 8212)))
+        ) {
+            continue;
+        }
+
+        const n = typeof normalized === "number" ? normalized : Number(normalized);
+        if (Number.isFinite(n)) return n;
+    }
+
+    return null;
+};
+
+const nonZeroOrNull = (value: unknown) => {
+    const n = Number(String(value ?? "").replace(/,/g, "").trim());
+    return Number.isFinite(n) && n !== 0 ? n : null;
+};
+
+const sumKnownNumbers = (...values: Array<number | null>) => {
+    const known = values.filter((value): value is number => value !== null);
+    return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+};
+
 export default function DashboardProductwisePnlSection({
     currencySymbol,
     adsLoading,
@@ -57,6 +98,8 @@ export default function DashboardProductwisePnlSection({
     lost_inventory_total,
     otherPlatformFee,
     countryName,
+    isUsPnlSkuLayout,
+    getProductwiseOtherTransactionsTotal,
     boldSummaryText,
     totalRowCm2Profit,
     totalRowCm2Margins,
@@ -65,6 +108,468 @@ export default function DashboardProductwisePnlSection({
     reimbursementVsCm2PctForSummary,
     reimbursementVsSalesPctForSummary,
 }: DashboardProductwisePnlSectionProps) {
+    const summaryTotalRow = React.useMemo(() => {
+        const rows = Array.isArray(finalMonthlySkuwiseRowsForTable) ? finalMonthlySkuwiseRowsForTable : [];
+
+        return (
+            rows.find((row: any) => {
+                const sku = String(row?.sku || "").trim().toUpperCase();
+                const name = String(row?.product_name || "").trim().toLowerCase();
+
+                return (
+                    !!row?.isTotal ||
+                    sku === "GRAND_TOTAL" ||
+                    sku === "TOTAL" ||
+                    name === "grand total" ||
+                    name === "total"
+                );
+            }) ||
+            rows[rows.length - 1] ||
+            {}
+        );
+    }, [finalMonthlySkuwiseRowsForTable]);
+
+    const getSummaryNumber = React.useCallback(
+        (keys: string[]) =>
+            getOptionalSummaryNumber(summaryTotalRow, keys) ??
+            getOptionalSummaryNumber(plSummaryTotals, keys),
+        [plSummaryTotals, summaryTotalRow]
+    );
+
+    const placementFees = getSummaryNumber(["placement_fees", "placement_fee"]);
+    const shippingCharges =
+        getSummaryNumber([
+            "shipping_charges",
+            "shipping_charge",
+            "shipping_fee",
+            "shipping_fees",
+            "shipment_fees",
+            "shipment_charges",
+        ]) ?? nonZeroOrNull(plSummaryTotals?.shipment_charges);
+    const customsFees = getSummaryNumber([
+        "customs_fees",
+        "customs_fee",
+        "custom_fee",
+        "custom_fees",
+    ]);
+    const shippingChargesTotal =
+        getSummaryNumber([
+            "shipping_charges_total",
+            "shipping_charge_total",
+            "shipment_charges_total",
+            "total_shipping_charges",
+        ]) ?? sumKnownNumbers(placementFees, shippingCharges, customsFees);
+
+    const shortTermStorage =
+        getSummaryNumber(["short_term_storage_fee", "short_term_storage"]) ??
+        nonZeroOrNull(plSummaryTotals?.short_term_storage_fee);
+    const longTermStorage =
+        getSummaryNumber(["long_term_storage_fee", "long_term_storage"]) ??
+        nonZeroOrNull(plSummaryTotals?.long_term_storage_fee);
+    const storageFees =
+        getSummaryNumber([
+            "storage_fees",
+            "storage_fee",
+            "storage_fees_total",
+            "inventory_storage_fees",
+            "platform_fee_inventory_storage",
+        ]) ?? sumKnownNumbers(shortTermStorage, longTermStorage);
+
+    const inventoryCharges =
+        getSummaryNumber([
+            "inventory_charges",
+            "inventory_charge",
+            "inventory_fees",
+            "inventory_fee",
+            "fba_disposal",
+        ]) ?? nonZeroOrNull(plSummaryTotals?.fba_disposal);
+    const reimbursementForLostInventory =
+        getSummaryNumber([
+            "reimbursement_lost_inventory_amount",
+            "lost_inventory_reimbursement",
+            "lost_total",
+        ]) ?? nonZeroOrNull(lost_inventory_total);
+    const inventoryChargesAndReimbursement =
+        getSummaryNumber([
+            "inventory_charges_and_reimbursement",
+            "inventory_charges_reimbursement",
+            "inventory_charges_reimbursement_total",
+        ]) ??
+        (inventoryCharges !== null && reimbursementForLostInventory !== null
+            ? inventoryCharges - reimbursementForLostInventory
+            : null);
+
+    const platformManagementFees =
+        getSummaryNumber([
+            "platform_management_fees",
+            "platform_management_fee",
+            "platformfeenew",
+            "platform_fee",
+        ]) ?? nonZeroOrNull(otherPlatformFee);
+    const others = getSummaryNumber(["others", "other"]);
+
+    const formatSummaryValueOrDash = (value: number | null, key: string) => {
+        return value === null ? "-" : formatSummaryValue(value, key);
+    };
+
+    const productwiseSummaryRows = isUsPnlSkuLayout
+        ? [
+            {
+                type: "section" as const,
+                id: "ads",
+                label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+                endValue: formatSummaryRounded(costOfAds),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "ads_1",
+                        label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryRounded(sponsoredBrandSpend),
+                    },
+                    {
+                        id: "ads_3",
+                        label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryRounded(dealVouchers),
+                    },
+                ],
+            },
+            {
+                type: "section" as const,
+                id: "shipping_charges",
+                label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                endValue: formatSummaryValueOrDash(shippingChargesTotal, "shipping_charges"),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "placement_fees",
+                        label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(placementFees, "placement_fees"),
+                    },
+                    {
+                        id: "shipping_charges_child",
+                        label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(shippingCharges, "shipping_charges"),
+                    },
+                    {
+                        id: "customs_fees",
+                        label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(customsFees, "customs_fees"),
+                    },
+                ],
+            },
+            {
+                type: "section" as const,
+                id: "storage_fees",
+                label: <>Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                endValue: formatSummaryValueOrDash(storageFees, "storage_fees"),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "short_term_storage_fee",
+                        label: <>Short Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(shortTermStorage, "short_term_storage_fee"),
+                    },
+                    {
+                        id: "long_term_storage_fee",
+                        label: <>Long Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(longTermStorage, "long_term_storage_fee"),
+                    },
+                ],
+            },
+            {
+                type: "section" as const,
+                id: "inventory_charges_reimbursement",
+                label: "Inventory Charges and Reimbursement",
+                endValue: formatSummaryValueOrDash(
+                    inventoryChargesAndReimbursement,
+                    "inventory_charges_and_reimbursement"
+                ),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "inventory_charges",
+                        label: <>Inventory Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(inventoryCharges, "inventory_charges"),
+                    },
+                    {
+                        id: "lost_inventory_reimbursement",
+                        label: (
+                            <>
+                                Reimbursement for lost Inventory
+                                {plSummaryTotals?.reimbursement_lost_inventory_units
+                                    ? ` - ${plSummaryTotals.reimbursement_lost_inventory_units} Units `
+                                    : " "}
+                                <strong className="text-green-500">(+)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValueOrDash(
+                            reimbursementForLostInventory,
+                            "reimbursement_lost_inventory_amount"
+                        ),
+                    },
+                ],
+            },
+            {
+                type: "fixed" as const,
+                id: "platform_management_fees",
+                label: "Platform Management Fees",
+                endValue: formatSummaryValueOrDash(
+                    platformManagementFees,
+                    "platform_management_fees"
+                ),
+            },
+            {
+                type: "fixed" as const,
+                id: "others",
+                label: "Others",
+                endValue: formatSummaryValueOrDash(others, "others"),
+            },
+            {
+                type: "fixed" as const,
+                id: "cm2_profit",
+                label: boldSummaryText("CM2 Profit"),
+                endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
+            },
+            {
+                type: "fixed" as const,
+                id: "cm2_profit_percentage",
+                label: "CM2 Profit %",
+                endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
+            },
+            {
+                type: "fixed" as const,
+                id: "tacos",
+                label: "TACoS (Total Advertising Cost of Sale)",
+                endValue: `${formatSummaryValue(
+                    tacosFromDisplayedCardsForSummary,
+                    "acos"
+                )}%`,
+            },
+            {
+                type: "section" as const,
+                id: "net_reimbursement",
+                label: "Net Reimbursement",
+                endValue: formatSummaryValue(
+                    reimbursementForSummary,
+                    "net_reimbursement"
+                ),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "net_reimbursement_debt_payment",
+                        label: (
+                            <>
+                                Charged <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.debt_payment,
+                            "debt_payment"
+                        ),
+                    },
+                    {
+                        id: "net_reimbursement_disbursement",
+                        label: (
+                            <>
+                                Disbursement <strong className="text-green-500">(+)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.disbursement,
+                            "disbursement"
+                        ),
+                    },
+                ],
+            },
+            {
+                type: "fixed" as const,
+                id: "rv_sales",
+                label: "Reimbursement vs Sales",
+                endValue: `${formatSummaryValue(
+                    reimbursementVsSalesPctForSummary,
+                    "reimbursement_vs_sales"
+                )}%`,
+            },
+            {
+                type: "fixed" as const,
+                id: "rv_cm2",
+                label: "Reimbursement vs CM2 Margins",
+                endValue: `${formatSummaryValue(
+                    reimbursementVsCm2PctForSummary,
+                    "rembursment_vs_cm2_margins"
+                )}%`,
+            },
+        ]
+        : [
+            {
+                type: "section" as const,
+                id: "ads",
+                label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+                endValue: formatSummaryRounded(costOfAds),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "ads_1",
+                        label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryRounded(sponsoredBrandSpend),
+                    },
+                    {
+                        id: "ads_3",
+                        label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryRounded(dealVouchers),
+                    },
+                ],
+            },
+            {
+                type: "section" as const,
+                id: "other",
+                label: "Other Transactions",
+                endValue: formatSummaryRounded(platformFee),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "short_term_storage_fee",
+                        label: <>Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.short_term_storage_fee,
+                            "short_term_storage_fee"
+                        ),
+                    },
+                    {
+                        id: "long_term_storage_fee",
+                        label: <>Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.long_term_storage_fee,
+                            "long_term_storage_fee"
+                        ),
+                    },
+                    {
+                        id: "fba_disposal",
+                        label: <>FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.fba_disposal,
+                            "fba_disposal"
+                        ),
+                    },
+                    {
+                        id: "other_3",
+                        label: (
+                            <>
+                                Reimbursement for lost Inventory{" "}
+                                <strong className="text-green-500">(+)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValue(lost_inventory_total, "lost_total"),
+                    },
+                    {
+                        id: "other_misc",
+                        label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.misc_transaction,
+                            "misc_transaction"
+                        ),
+                    },
+                    {
+                        id: "other_1",
+                        label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
+                    },
+                ],
+            },
+            ...(countryName === "us" || countryName === "global"
+                ? [
+                    {
+                        type: "fixed" as const,
+                        id: "ship",
+                        label: (
+                            <>
+                                Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                        ),
+                        endValue: formatSummaryValue(
+                            plSummaryTotals.shipment_charges,
+                            "shipment_charges"
+                        ),
+                    },
+                ]
+                : []),
+            {
+                type: "fixed" as const,
+                id: "cm2_profit",
+                label: boldSummaryText("CM2 Profit/Loss"),
+                endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
+            },
+            {
+                type: "fixed" as const,
+                id: "cm2_margins",
+                label: "CM2 Margins",
+                endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
+            },
+            {
+                type: "fixed" as const,
+                id: "tacos",
+                label: "TACoS (Total Advertising Cost of Sale)",
+                endValue: `${formatSummaryValue(
+                    tacosFromDisplayedCardsForSummary,
+                    "acos"
+                )}%`,
+            },
+            {
+                type: "section" as const,
+                id: "net_reimbursement",
+                label: "Net Reimbursement",
+                endValue: formatSummaryValue(
+                    reimbursementForSummary,
+                    "net_reimbursement"
+                ),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "net_reimbursement_debt_payment",
+                        label: (
+                            <>
+                                Charged <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.debt_payment,
+                            "debt_payment"
+                        ),
+                    },
+                    {
+                        id: "net_reimbursement_disbursement",
+                        label: (
+                            <>
+                                Disbursement <strong className="text-green-500">(+)</strong>
+                            </>
+                        ),
+                        midValue: formatSummaryValue(
+                            plSummaryTotals.disbursement,
+                            "disbursement"
+                        ),
+                    },
+                ],
+            },
+            {
+                type: "fixed" as const,
+                id: "rv_cm2",
+                label: "Reimbursement vs CM2 Margins",
+                endValue: `${formatSummaryValue(
+                    reimbursementVsCm2PctForSummary,
+                    "rembursment_vs_cm2_margins"
+                )}%`,
+            },
+            {
+                type: "fixed" as const,
+                id: "rv_sales",
+                label: "Reimbursement vs Sales",
+                endValue: `${formatSummaryValue(
+                    reimbursementVsSalesPctForSummary,
+                    "reimbursement_vs_sales"
+                )}%`,
+            },
+        ];
+
     return (
                         <div id="pnl-mtd" className="scroll-mt-[10px] mt-2 md:mt-4 w-full rounded-xl border bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
                             <div className="mb-3 relative flex items-center justify-between gap-3">
@@ -205,7 +710,9 @@ export default function DashboardProductwisePnlSection({
                                                 { type: "group", id: "quantity" },
                                                 { type: "single", key: "asp" },
                                                 { type: "group", id: "net_sales" },
-                                                { type: "group", id: "promotions" },
+                                                ...(isUsPnlSkuLayout
+                                                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                                                    : [{ type: "group" as const, id: "promotions" }]),
                                                 { type: "single", key: "cogs" },
                                                 { type: "group", id: "marketplace_fees" },
                                                 { type: "group", id: "other_transactions" },
@@ -295,6 +802,21 @@ export default function DashboardProductwisePnlSection({
 
                                                 if (colKey === "asp") return formatAdsNumber(row.asp);
                                                 if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
+
+                                                if (colKey === "other_transactions") {
+                                                    const v = Number(
+                                                        typeof getProductwiseOtherTransactionsTotal === "function"
+                                                            ? getProductwiseOtherTransactionsTotal(row)
+                                                            : row.other_transactions ?? row.tax_and_credits ?? 0
+                                                    );
+
+                                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString();
+                                                }
+
+                                                if (colKey === "misc_transaction") {
+                                                    const v = Number((row as any)[colKey] ?? 0);
+                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
+                                                }
 
                                                 if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);
@@ -404,182 +926,7 @@ export default function DashboardProductwisePnlSection({
                                             }}
                                             summary={{
                                                 enabled: finalMonthlySkuwiseRowsForTable.length > 0,
-
-                                                rows: [
-                                                    {
-                                                        type: "section",
-                                                        id: "ads",
-                                                        label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                        endValue: formatSummaryRounded(costOfAds),
-                                                        defaultCollapsed: true,
-                                                        children: [
-                                                            {
-                                                                id: "ads_1",
-                                                                label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryRounded(sponsoredBrandSpend),
-                                                            },
-                                                            {
-                                                                id: "ads_3",
-                                                                label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryRounded(dealVouchers),
-                                                            },
-                                                        ],
-                                                    },
-
-                                                    {
-                                                        type: "section",
-                                                        id: "other",
-                                                        label: "Other Transactions",
-                                                        endValue: formatSummaryRounded(platformFee),
-                                                        defaultCollapsed: true,
-                                                        children: [
-                                                            {
-                                                                id: "short_term_storage_fee",
-                                                                label: <>Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.short_term_storage_fee,
-                                                                    "short_term_storage_fee"
-                                                                ),
-                                                            },
-                                                            {
-                                                                id: "long_term_storage_fee",
-                                                                label: <>Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.long_term_storage_fee,
-                                                                    "long_term_storage_fee"
-                                                                ),
-                                                            },
-                                                            {
-                                                                id: "fba_disposal",
-                                                                label: <>FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.fba_disposal,
-                                                                    "fba_disposal"
-                                                                ),
-                                                            },
-                                                            {
-                                                                id: "other_3",
-                                                                label: (
-                                                                    <>
-                                                                        Reimbursement for lost Inventory{" "}
-                                                                        <strong className="text-green-500">(+)</strong>
-                                                                    </>
-                                                                ),
-                                                                midValue: formatSummaryValue(lost_inventory_total, "lost_total"),
-                                                            },
-                                                            {
-                                                                id: "other_misc",
-                                                                label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.misc_transaction,
-                                                                    "misc_transaction"
-                                                                ),
-                                                            },
-                                                            {
-                                                                id: "other_1",
-                                                                label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                                                                midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
-                                                            },
-                                                        ],
-                                                    },
-
-                                                    ...(countryName === "us" || countryName === "global"
-                                                        ? [
-                                                            {
-                                                                type: "fixed" as const,
-                                                                id: "ship",
-                                                                label: (
-                                                                    <>
-                                                                        Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong>
-                                                                    </>
-                                                                ),
-                                                                endValue: formatSummaryValue(
-                                                                    plSummaryTotals.shipment_charges,
-                                                                    "shipment_charges"
-                                                                ),
-                                                            },
-                                                        ]
-                                                        : []),
-
-                                                    {
-                                                        type: "fixed",
-                                                        id: "cm2_profit",
-                                                        label: boldSummaryText("CM2 Profit/Loss"),
-                                                        endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
-                                                    },
-                                                    {
-                                                        type: "fixed",
-                                                        id: "cm2_margins",
-                                                        label: "CM2 Margins",
-                                                        endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
-                                                    },
-                                                    {
-                                                        type: "fixed",
-                                                        id: "tacos",
-                                                        label: "TACoS (Total Advertising Cost of Sale)",
-                                                        endValue: `${formatSummaryValue(
-                                                            tacosFromDisplayedCardsForSummary,
-                                                            "acos"
-                                                        )}%`,
-                                                    },
-
-                                                    // Net Reimbursement below TACoS and still collapsible
-                                                    {
-                                                        type: "section",
-                                                        id: "net_reimbursement",
-                                                        label: "Net Reimbursement",
-                                                        endValue: formatSummaryValue(
-                                                            reimbursementForSummary,
-                                                            "net_reimbursement"
-                                                        ),
-                                                        defaultCollapsed: true,
-                                                        children: [
-                                                            {
-                                                                id: "net_reimbursement_debt_payment",
-                                                                label: (
-                                                                    <>
-                                                                        Charged <strong className="text-[#ff5c5c]">(-)</strong>
-                                                                    </>
-                                                                ),
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.debt_payment,
-                                                                    "debt_payment"
-                                                                ),
-                                                            },
-                                                            {
-                                                                id: "net_reimbursement_disbursement",
-                                                                label: (
-                                                                    <>
-                                                                        Disbursement <strong className="text-green-500">(+)</strong>
-                                                                    </>
-                                                                ),
-                                                                midValue: formatSummaryValue(
-                                                                    plSummaryTotals.disbursement,
-                                                                    "disbursement"
-                                                                ),
-                                                            },
-                                                        ],
-                                                    },
-
-                                                    {
-                                                        type: "fixed",
-                                                        id: "rv_cm2",
-                                                        label: "Reimbursement vs CM2 Margins",
-                                                        endValue: `${formatSummaryValue(
-                                                            reimbursementVsCm2PctForSummary,
-                                                            "rembursment_vs_cm2_margins"
-                                                        )}%`,
-                                                    },
-                                                    {
-                                                        type: "fixed",
-                                                        id: "rv_sales",
-                                                        label: "Reimbursement vs Sales",
-                                                        endValue: `${formatSummaryValue(
-                                                            reimbursementVsSalesPctForSummary,
-                                                            "reimbursement_vs_sales"
-                                                        )}%`,
-                                                    },
-                                                ],
+                                                rows: productwiseSummaryRows,
 
                                                 valueCols: 2,
                                             }}

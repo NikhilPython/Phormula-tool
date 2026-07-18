@@ -15,12 +15,16 @@ export type Message = {
   suggestedQuestions?: string[];
 };
 
+export type SendMessageContext = {
+  country?: string | null;
+};
+
 type ChatStore = {
   messages: Message[];
   loading: boolean;
 
   loadFromStorage: () => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, context?: SendMessageContext) => Promise<void>;
   clearChat: () => void;
   reactToMessage: (id: string, reaction: Message["liked"]) => void;
   sendFeedback: (
@@ -42,6 +46,85 @@ const API_BASE_URL =
 
 const getAuthToken = () =>
   typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+const normalizeCountry = (value: unknown): string | null => {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.toLowerCase() === "undefined" || raw.toLowerCase() === "null") {
+    return null;
+  }
+
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {}
+
+  const cleaned = decoded
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  const aliases: Record<string, string> = {
+    uk: "uk",
+    gb: "uk",
+    gbr: "uk",
+    "amazon uk": "uk",
+    "united kingdom": "uk",
+    us: "us",
+    usa: "us",
+    "amazon us": "us",
+    "united states": "us",
+    "united states of america": "us",
+    global: "global",
+    all: "global",
+    "all countries": "global",
+  };
+
+  return aliases[cleaned] || cleaned.replace(/\s+/g, "");
+};
+
+const getCountryFromCurrentPath = (): string | null => {
+  if (typeof window === "undefined") return null;
+
+  const segments = window.location.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const chatbotIndex = segments.findIndex(
+    (segment) => segment.toLowerCase() === "chatbot"
+  );
+
+  if (chatbotIndex >= 0) {
+    return normalizeCountry(segments[chatbotIndex + 2]);
+  }
+
+  return null;
+};
+
+const getCountryFromStorage = (): string | null => {
+  if (typeof window === "undefined") return null;
+
+  for (const key of ["countryName", "selectedCountryCode", "selectedCountry", "country"]) {
+    const country = normalizeCountry(localStorage.getItem(key));
+    if (country) return country;
+  }
+
+  try {
+    const userData = JSON.parse(localStorage.getItem("userdata") || "{}");
+    return normalizeCountry(userData?.country);
+  } catch {
+    return null;
+  }
+};
+
+const resolveActiveCountry = (contextCountry?: string | null): string => {
+  return (
+    normalizeCountry(contextCountry) ||
+    getCountryFromCurrentPath() ||
+    getCountryFromStorage() ||
+    "uk"
+  );
+};
 
 // ✅ Fetch history (unchanged)
 const fetchHistoryFromDB = async (): Promise<Message[] | null> => {
@@ -115,7 +198,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
   },
 
   // 🚀 UPDATED SEND MESSAGE (AGENT)
-  sendMessage: async (text) => {
+  sendMessage: async (text, context) => {
     if (!text.trim()) return;
 
     const userMsg: Message = {
@@ -136,15 +219,7 @@ export const useChatbotStore = create<ChatStore>((set, get) => ({
 
     try {
       // 👉 get user country dynamically
-      let country = "uk";
-      if (typeof window !== "undefined") {
-        try {
-          const userData = JSON.parse(
-            localStorage.getItem("userdata") || "{}"
-          );
-          country = userData?.country || "uk";
-        } catch {}
-      }
+      const country = resolveActiveCountry(context?.country);
       const res = await fetch(`${API_BASE_URL}/api/agent/chat`, {
         method: "POST",
         headers: {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -41,6 +42,30 @@ DEFAULT_THRESHOLDS = {
 }
 
 
+def _strip_nul_text(value: Any) -> str:
+    return str(value or "").replace("\x00", "")
+
+
+def _enforce_cm1_profit_terms(value: Any) -> str:
+    text = _strip_nul_text(value)
+    replacements = [
+        (r"(?<!CM1 )(?<!CM2 )\bprofit margins\b", "CM1 profit margins"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit margin\b", "CM1 profit margin"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit shares\b", "CM1 profit shares"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit share\b", "CM1 profit share"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit mixes\b", "CM1 profit mixes"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit mix\b", "CM1 profit mix"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit percentages\b", "CM1 profit percentages"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit percentage\b", "CM1 profit percentage"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit %(?=\W|$)", "CM1 profit %"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofits\b", "CM1 profits"),
+        (r"(?<!CM1 )(?<!CM2 )\bprofit\b", "CM1 profit"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
+
 class SuggestedQuestionModel(BaseModel):
     questions: List[str] = Field(default_factory=list, max_length=3)
 
@@ -60,15 +85,21 @@ def _humanize_metric(metric: Optional[str]) -> str:
     replacements = {
         "net_sales": "net sales",
         "gross_sales": "gross sales",
-        "total_quantity": "units sold",
-        "profit": "profit",
-        "cm2_profit": "CM2 profit",
-        "total_cm2_profit": "CM2 profit",
-        "profit_percentage": "profit margin",
+        "quantity": "gross units",
+        "total_quantity": "net sold units",
+        "return_quantity": "refund quantity",
+        "profit": "CM1 profit",
+        "cm2_profit": "SKU CM2 profit",
+        "total_cm2_profit": "account CM2 profit",
+        "profit_percentage": "CM1 profit margin",
+        "profit_mix": "CM1 profit mix",
         "acos": "ACOS",
         "asp": "ASP",
         "ads_spend": "ad spend",
         "total_ads": "ad spend",
+        "promotional_rebates": "promo rebates",
+        "platformfeenew": "subscription fees",
+        "refund_sales": "refund sales",
         "product_spend": "Sponsored Product spend",
         "brand_spend": "Sponsored Brand spend",
         "display_spend": "Sponsored Display spend",
@@ -199,7 +230,7 @@ def _fallback_suggested_questions(result: Dict[str, Any], user_query: str) -> Li
         add(f"What should I do to improve profit for these products?")
     else:
         add(f"Show {metric_label}{product} trend for the last 6 months in {country}.")
-        add(f"Compare {metric_label}{product} with profit in {country}{period}.")
+        add(f"Compare {metric_label}{product} with CM1 profit in {country}{period}.")
         add(f"What should I do next to improve {metric_label}{product}?")
 
     return suggestions[:3]
@@ -210,7 +241,7 @@ def _clean_suggested_questions(questions: List[Any], user_query: str) -> List[st
     original = (user_query or "").strip().lower()
 
     for item in questions or []:
-        question = " ".join(str(item or "").replace("\n", " ").split()).strip()
+        question = _enforce_cm1_profit_terms(" ".join(str(item or "").replace("\n", " ").split()).strip())
         if not question:
             continue
         if question.lower() == original:
@@ -237,8 +268,134 @@ def _compact_json(value: Any, max_chars: int = 4000) -> str:
     return text
 
 
+def _compact_business_context_for_verification(context: Dict[str, Any]) -> Dict[str, Any]:
+    context = context or {}
+    comparison = context.get("comparison") or {}
+    totals = context.get("totals") or {}
+    left = comparison.get("left") or {}
+    right = comparison.get("right") or {}
+    important_total_keys = [
+        "profit",
+        "net_sales",
+        "quantity",
+        "total_quantity",
+        "asp",
+        "gross_sales",
+        "product_sales",
+        "promotional_rebates",
+        "refund_sales",
+        "return_quantity",
+        "cogs",
+        "selling_fees",
+        "fba_fees",
+        "amazon_fees",
+        "platform_fee",
+        "platformfeenew",
+        "platform_fee_inventory_storage",
+        "ads_spend",
+        "total_ads",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
+        "total_cm2_profit",
+        "cm2_profit",
+    ]
+
+    return {
+        "scope": context.get("scope"),
+        "period": context.get("period"),
+        "totals": {key: totals.get(key) for key in important_total_keys if key in totals},
+        "derived": context.get("derived"),
+        "comparison": {
+            "requested": comparison.get("requested"),
+            "left": {
+                "label": left.get("label"),
+                "months": left.get("months"),
+                "data_available": left.get("data_available"),
+            },
+            "right": {
+                "label": right.get("label"),
+                "months": right.get("months"),
+                "data_available": right.get("data_available"),
+            },
+            "metrics": comparison.get("metrics"),
+            "metric_drivers": (comparison.get("metric_drivers") or [])[:8],
+            "unfavorable_metric_drivers": (comparison.get("unfavorable_metric_drivers") or [])[:8],
+            "favorable_metric_drivers": (comparison.get("favorable_metric_drivers") or [])[:5],
+            "driver_summary": comparison.get("driver_summary"),
+            "total_only_metrics": comparison.get("total_only_metrics"),
+            "productwise_available_metrics": comparison.get("productwise_available_metrics"),
+            "top_negative_profit_drivers": (comparison.get("top_negative_profit_drivers") or [])[:5],
+            "top_positive_profit_drivers": (comparison.get("top_positive_profit_drivers") or [])[:3],
+            "top_unit_loss_drivers": (comparison.get("top_unit_loss_drivers") or [])[:5],
+            "top_order_loss_drivers": (comparison.get("top_order_loss_drivers") or [])[:5],
+            "top_cm2_loss_drivers": (comparison.get("top_cm2_loss_drivers") or [])[:5],
+            "top_sales_loss_drivers": (comparison.get("top_sales_loss_drivers") or [])[:5],
+            "top_rebate_burden_drivers": (comparison.get("top_rebate_burden_drivers") or [])[:5],
+            "diagnosis_inventory": comparison.get("diagnosis_inventory"),
+            "driver_scan_note": comparison.get("driver_scan_note"),
+        },
+        "inventory": context.get("inventory"),
+        "data_quality": context.get("data_quality"),
+    }
+
+
+def _compact_analysis_for_verification(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    analysis = analysis or {}
+
+    if analysis.get("type") == "forecast":
+        compact_results = []
+        for result in analysis.get("results") or []:
+            inventory = result.get("inventory") or {}
+            pnl = result.get("pnl") or {}
+            compact_results.append({
+                "country": result.get("country"),
+                "country_label": result.get("country_label"),
+                "period_label": result.get("period_label"),
+                "inventory": {
+                    "available": inventory.get("available"),
+                    "stored_month": inventory.get("stored_month"),
+                    "stored_year": inventory.get("stored_year"),
+                    "exact_period_match": inventory.get("exact_period_match"),
+                    "requested_forecast_column": inventory.get("requested_forecast_column"),
+                    "requested_forecast_available": inventory.get("requested_forecast_available"),
+                    "forecast_columns": inventory.get("forecast_columns"),
+                    "totals": inventory.get("totals"),
+                    "row_count": inventory.get("row_count"),
+                },
+                "inventory_alignment": result.get("inventory_alignment"),
+                "top_inventory": (result.get("top_inventory") or [])[:3],
+                "pnl": {
+                    "available": pnl.get("available"),
+                    "stored_month": pnl.get("stored_month"),
+                    "stored_year": pnl.get("stored_year"),
+                    "exact_period_match": pnl.get("exact_period_match"),
+                    "totals": pnl.get("totals"),
+                    "row_count": pnl.get("row_count"),
+                },
+            })
+        return {
+            "type": "forecast",
+            "period_label": analysis.get("period_label"),
+            "requested_month": analysis.get("requested_month"),
+            "requested_year": analysis.get("requested_year"),
+            "product": analysis.get("product"),
+            "results": compact_results,
+        }
+
+    compact = {
+        key: value
+        for key, value in analysis.items()
+        if key != "context"
+    }
+    if isinstance(analysis.get("context"), dict):
+        compact["context"] = _compact_business_context_for_verification(analysis.get("context") or {})
+    return compact
+
+
 def _answer_verification_context(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
     analysis = result.get("analysis_result") or {}
+    business_context = result.get("business_context") or {}
 
     return {
         "user_query": user_query,
@@ -250,6 +407,7 @@ def _answer_verification_context(result: Dict[str, Any], user_query: str) -> Dic
         "target_countries": result.get("target_countries"),
         "metric_name": result.get("metric_name"),
         "metric_names": result.get("metric_names"),
+        "semantic_resolution": result.get("semantic_resolution"),
         "product_query": result.get("product_query"),
         "product_queries": result.get("product_queries"),
         "period_parsed": result.get("period_parsed"),
@@ -257,8 +415,8 @@ def _answer_verification_context(result: Dict[str, Any], user_query: str) -> Dic
         "current_metrics": result.get("current_metrics"),
         "comparison": result.get("comparison"),
         "analysis_result_type": analysis.get("type"),
-        "analysis_result": analysis,
-        "business_context": result.get("business_context"),
+        "analysis_result": _compact_analysis_for_verification(analysis),
+        "business_context": _compact_business_context_for_verification(business_context),
         "advice": result.get("advice"),
         "event_plan_result": result.get("event_plan_result"),
         "sku_intelligence_result": result.get("sku_intelligence_result"),
@@ -319,6 +477,7 @@ Your job is to check whether the chatbot's final answer is factually supported b
 
 Check for:
 - Wrong metric, product/SKU, marketplace/country, or time period.
+- Wrong interpretation of the user's business question compared with semantic_resolution.
 - Incorrect arithmetic, totals, deltas, percentages, rankings, or comparisons.
 - Numbers or claims that are not present in or supported by the computed data.
 - Business advice that contradicts the available metrics.
@@ -329,6 +488,12 @@ Rules:
 - If the answer is wrong, set is_valid=false and provide a corrected_answer.
 - Correct only factual or business-logic problems. Do not rewrite style just to make it prettier.
 - Do not invent numbers, products, countries, time periods, or causes that are not supported by the context.
+- If business_context.comparison.metric_drivers or unfavorable_metric_drivers contains rows, the comparison has driver evidence. Do not say the data lacks month-over-month breakdowns; use those drivers if correction is needed.
+- If semantic_resolution.is_broad_business_analysis=true, the answer must not focus on only one narrow metric unless the data shows that metric is the dominant issue.
+- Accounting definitions: always call profit "CM1 profit" in user-facing text. CM1 profit does not subtract ads or platform fees; CM2 profit subtracts ads and platform fees. Do not rename CM2 profit as CM1 profit. total_quantity is net sold units after refund quantity. promotional_rebates are sign-aware: negative means discount/rebate paid out, positive means amount received back.
+- If business_context.data_quality.total_only_metrics contains a metric, monthly totals are usable but SKU-level attribution for that metric is unavailable.
+- For inventory forecasts, `stored_month`/`stored_year` identify when the forecast file was stored/generated, not every target month inside the workbook. If `requested_forecast_available=true` or `requested_forecast_column` is present, do not say the requested forecast month is unavailable only because `exact_period_match=false`.
+- Preserve useful headings, bullets, and numbered actions when correcting. Do not collapse a structured business diagnosis into one paragraph.
 - If the data is insufficient, the corrected answer must clearly say what is unavailable and avoid unsupported numbers.
 - Keep corrected_answer concise and user-facing.
 
@@ -353,6 +518,12 @@ Context JSON:
             "issues": issues,
             "corrected": corrected,
         }
+        logger.info(
+            "[ANSWER_VALIDATION] status=%s corrected=%s issues=%s",
+            result["answer_validation"]["status"],
+            corrected,
+            issues[:2],
+        )
     except Exception:
         logger.exception("Answer verification failed")
         result["answer_validation"] = {
@@ -378,6 +549,7 @@ def _suggestion_context(result: Dict[str, Any], user_query: str) -> Dict[str, An
         "target_countries": result.get("target_countries"),
         "metric_name": result.get("metric_name"),
         "metric_names": result.get("metric_names"),
+        "semantic_resolution": result.get("semantic_resolution"),
         "product_query": result.get("product_query"),
         "product_queries": result.get("product_queries"),
         "period_parsed": result.get("period_parsed"),
@@ -424,8 +596,8 @@ Context JSON:
 def build_suggested_questions(result: Dict[str, Any], user_query: str) -> List[str]:
     llm_questions = _llm_suggested_questions(result, user_query)
     if llm_questions:
-        return llm_questions
-    return _fallback_suggested_questions(result, user_query)
+        return [_enforce_cm1_profit_terms(question) for question in llm_questions]
+    return [_enforce_cm1_profit_terms(question) for question in _fallback_suggested_questions(result, user_query)]
 
 
 def run_agent(
@@ -450,6 +622,7 @@ def run_agent(
     }
     result = _graph.invoke(state)
     result = verify_and_correct_answer(result, user_query)
+    result["final_response"] = _enforce_cm1_profit_terms(result.get("final_response"))
     suggested_questions = build_suggested_questions(result, user_query)
     history_id = None
     try:
@@ -463,6 +636,7 @@ def run_agent(
                 "target_countries": result.get("target_countries"),
                 "metric_name": result.get("metric_name"),
                 "metric_names": result.get("metric_names"),
+                "semantic_resolution": result.get("semantic_resolution"),
                 "analysis_type": result.get("analysis_type"),
                 "period_parsed": result.get("period_parsed"),
                 "analysis_result": result.get("analysis_result"),
@@ -487,6 +661,7 @@ def run_agent(
         "target_countries": result.get("target_countries"),
         "metric_name": result.get("metric_name"),
         "metric_names": result.get("metric_names"),
+        "semantic_resolution": result.get("semantic_resolution"),
         "current_metrics": result.get("current_metrics"),
         "comparison": result.get("comparison"),
         "analysis_result": result.get("analysis_result"),
