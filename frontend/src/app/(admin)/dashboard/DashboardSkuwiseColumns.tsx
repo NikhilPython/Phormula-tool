@@ -309,9 +309,9 @@ export function buildSkuwiseTableColumns(
 
             expandedCols: isUsSkuLayout
                 ? [
-                    { key: "profit", label: "Margin", align: "center" as const },
                     { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
                     { key: "cm1_profit_per", label: "%", align: "center" as const },
+                    { key: "profit", label: "Margin", align: "center" as const },
                 ]
                 : [
                     { key: "cm1_profit_per_unit", label: "Per Unit", align: "center" as const },
@@ -415,9 +415,9 @@ export function buildSkuwiseTableColumns(
 
             expandedCols: isUsSkuLayout
                 ? [
-                    { key: "cm2_profit", label: "Margin", align: "center" as const, sortable: true },
                     { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
                     { key: "cm2_profit_per", label: "%", align: "center" as const },
+                    { key: "cm2_profit", label: "Margin", align: "center" as const, sortable: true },
                 ]
                 : [
                     { key: "cm2_profit_per_unit", label: "Per Unit", align: "center" as const },
