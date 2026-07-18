@@ -65,7 +65,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "promotional_rebates", "promotional_rebates_percentage",
         "cost_of_unit_sold", "selling_fees", "fba_fees", "amazon_fee",
         "net_taxes", "net_credits", "misc_transaction",
-        "other_transaction_fees", "profit", "unit_wise_profitability",
+        "other_transaction_fees", "other_adjustment", "profit", "unit_wise_profitability",
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
@@ -84,7 +84,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "asp", "gross_sales", "refund_sales", "tex_and_credits", "net_sales",
         "promotional_rebates", "cost_of_unit_sold", "selling_fees", "fba_fees",
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
-        "other_transaction_fees", "profit", "visible_ads", "dealsvouchar_ads",
+        "other_transaction_fees", "other_adjustment", "profit", "visible_ads", "dealsvouchar_ads",
         "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
@@ -134,6 +134,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 "shipping_charge": "shipping_charges",
                 "placement_fees": "placement_fee",
                 "custom_fee": "customs_fee",
+                "other_adjustments": "other_adjustment",
             }, inplace=True)
 
             # Normalize duplicate names safely. Duplicate columns can appear after
@@ -326,6 +327,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             net_credits DOUBLE PRECISION,
             misc_transaction DOUBLE PRECISION,
             other_transaction_fees DOUBLE PRECISION,
+            other_adjustment DOUBLE PRECISION,
             profit DOUBLE PRECISION,
             unit_wise_profitability DOUBLE PRECISION,
             profit_percentage DOUBLE PRECISION,
