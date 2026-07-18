@@ -528,7 +528,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         shipment_charges = abs(safe_series(df.loc[shipment_mask], "total").sum())
         shipment_fees = abs(sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
         ))
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
 
@@ -791,7 +791,7 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         shipment_fees_df = sku_sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
             "shipment_fees",
         )
         if not shipment_fees_df.empty:
@@ -1937,7 +1937,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         shipment_charges = abs(safe_series(df.loc[shipment_mask], "total").sum())
         shipment_fees = abs(sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
         ))
 
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
@@ -2195,7 +2195,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
 
         shipment_fees_df = sku_sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
             "shipment_fees",
         )
         if not shipment_fees_df.empty:
@@ -2815,7 +2815,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         shipment_charges = abs(safe_series(df.loc[shipment_mask], "total").sum())
         shipment_fees = abs(sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
         ))
 
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
@@ -3073,7 +3073,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
         shipment_fees_df = sku_sum_total_where_desc_contains(
             df,
-            ["AWDTransportationFee", "AGSGlobalInboundTransportation"],
+            ["AWDTransportationFee"],
             "shipment_fees",
         )
         if not shipment_fees_df.empty:
