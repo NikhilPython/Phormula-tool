@@ -2,7 +2,11 @@
 
 import Image from 'next/image';
 import styles from './style.module.scss';
-import { useTransform, motion } from 'framer-motion';
+import {
+  useTransform,
+  motion,
+  type MotionStyle,
+} from 'framer-motion';
 
 interface CardProps {
   i: number;
@@ -18,6 +22,10 @@ interface CardProps {
   targetScale: number;
 }
 
+type CardMotionStyle = MotionStyle & {
+  '--card-index': number;
+};
+
 const Card: React.FC<CardProps> = ({
   i,
   title,
@@ -32,12 +40,14 @@ const Card: React.FC<CardProps> = ({
   return (
     <div className={styles.cardContainer}>
       <motion.div
-        style={{
-          scale,
-         top: `calc(86px + ${i * 18}px)`
-        }}
-        className={styles.card}
-      >
+  style={
+    {
+      scale,
+      '--card-index': i,
+    } as CardMotionStyle
+  }
+  className={styles.card}
+>
         <Image
           src={highlighterImage}
           alt="highlighter"

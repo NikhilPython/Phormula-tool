@@ -1705,6 +1705,11 @@ def get_current_global_data_for_live_bi(user_id: int):
         gt_money_total(uk_gt, "misc_transaction", uk_to_usd_rate)
         + gt_money_total(us_gt, "misc_transaction", 1)
     )
+
+    global_other_adjustment = (
+        gt_money_total(uk_gt, "other_adjustment", uk_to_usd_rate)
+        + gt_money_total(us_gt, "other_adjustment", 1)
+    )
     global_debt_payment = (
         gt_money_total(uk_gt, "debt_payment", uk_to_usd_rate)
         + gt_money_total(us_gt, "debt_payment", 1)
@@ -1730,7 +1735,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "cm2_profit", "total_ads", "total_cm2_profit",
         "current_net_reimbursement", "amazon_fees", "advertising_fees",
         "tax", "credits", "tax_and_credits", "lost_total",
-        "ads_sale_amount", "misc_transaction","debt_payment",
+        "ads_sale_amount", "misc_transaction", "other_adjustment", "debt_payment",
         "disbursement",
     ]
 
@@ -2219,6 +2224,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["platformfeenew"] = round(global_platformfeenew, 2)
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
     total_row["misc_transaction"] = round(global_misc_transaction, 2)
+    total_row["other_adjustment"] = round(global_other_adjustment, 2)
 
     other_transactions_total = (
         abs(float(total_row.get("misc_transaction", 0.0) or 0.0))
@@ -2339,6 +2345,7 @@ def get_current_global_data_for_live_bi(user_id: int):
         "advertising_fees": round(total_ads, 2),
         "ads_spend": round(float(total_row.get("ads_spend", 0.0) or 0.0), 2),
         "misc_transaction": round(float(total_row.get("misc_transaction", 0.0) or 0.0), 2),
+        "other_adjustment": round(float(total_row.get("other_adjustment", 0.0) or 0.0), 2),
         "product_spend": round(float(total_row.get("product_spend", 0.0) or 0.0), 2),
         "display_spend": round(float(total_row.get("display_spend", 0.0) or 0.0), 2),
         "brand_spend": round(float(total_row.get("brand_spend", 0.0) or 0.0), 2),
@@ -2834,6 +2841,8 @@ def finances_mtd_transactions():
     lost_total_df = pd.DataFrame(columns=["sku", "lost_total"])
     misc_transaction_df = pd.DataFrame(columns=["sku", "misc_transaction"])
     misc_transaction_total = 0.0
+    other_adjustment_df = pd.DataFrame(columns=["sku", "other_adjustment"])
+    other_adjustment_total = 0.0
 
     if not df_all.empty:
         for col, default in [
@@ -2945,6 +2954,13 @@ def finances_mtd_transactions():
             "FBADisposal"
         ]))
 
+        # FBA storage fee adjustments are tracked separately and must not
+        # be included in misc_transaction. Preserve the report amount as
+        # a positive dashboard metric.
+        other_adjustment_total = abs(sum_total_where_desc_contains([
+            "FBAStorageFeeAdjustment"
+        ]))
+
         short_term_storage_fee_df = sku_sum_total_where_desc_contains(
             ["FBAStorageBilling"],
             "short_term_storage_fee"
@@ -2975,6 +2991,11 @@ def finances_mtd_transactions():
         fba_disposal_df = sku_sum_total_where_desc_contains(
             ["FBADisposal"],
             "fba_disposal"
+        )
+
+        other_adjustment_df = sku_sum_total_where_desc_contains(
+            ["FBAStorageFeeAdjustment"],
+            "other_adjustment"
         )
 
         dealsvouchar_ads_total = sum_total_where_desc_contains(
@@ -3069,6 +3090,7 @@ def finances_mtd_transactions():
             "FBALongTermStorageBilling",
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
+            "FBAStorageFeeAdjustment",
             "Subscription",
             "PaidServicesCharge",
             "FBAInboundConvenience",
@@ -3189,6 +3211,7 @@ def finances_mtd_transactions():
         "customs_fee": round(float(customs_fee_total or 0.0), 2),
         "shipping_charges": round(float(shipping_charges_total or 0.0), 2),
         "fba_disposal": round(float(fba_disposal_total or 0.0), 2),
+        "other_adjustment": round(float(other_adjustment_total or 0.0), 2),
         "advertising_fees": round(advertising_fee_total, 2),
         "shipment_fees": round(float(shipment_fees or 0.0), 2),
         "net_sales": round(net_sales, 2),
@@ -3358,13 +3381,14 @@ def finances_mtd_transactions():
             customs_fee_df,
             shipment_fees_df,
             fba_disposal_df,
+            other_adjustment_df,
         ]:
             if fee_df is not None and not fee_df.empty:
                 df_sku = df_sku.merge(fee_df, on="sku", how="left")
 
         for col in [
             "short_term_storage_fee", "long_term_storage_fee",
-            "platform_management_fees", "fba_disposal",
+            "platform_management_fees", "fba_disposal", "other_adjustment",
         ]:
             if col not in df_sku.columns:
                 df_sku[col] = 0.0
@@ -3646,7 +3670,7 @@ def finances_mtd_transactions():
 
         for col in [
             "short_term_storage_fee", "long_term_storage_fee",
-            "platform_management_fees", "fba_disposal",
+            "platform_management_fees", "fba_disposal", "other_adjustment",
         ]:
             if col not in df_sku.columns:
                 df_sku[col] = 0.0
@@ -3758,6 +3782,7 @@ def finances_mtd_transactions():
             if "lost_total" in df_sku.columns else 0.0
         )
         total_row["misc_transaction"] = round(float(misc_transaction_total or 0.0), 2)
+        total_row["other_adjustment"] = round(float(other_adjustment_total or 0.0), 2)
 
         total_row["gross_sales"] = round(
             float(pd.to_numeric(df_sku["gross_sales"], errors="coerce").fillna(0.0).sum())
@@ -3889,6 +3914,7 @@ def finances_mtd_transactions():
         total_row["customs_fee"] = round(float(customs_fee_total or 0.0), 2)
         total_row["shipping_charges"] = round(float(shipping_charges_total or 0.0), 2)
         total_row["fba_disposal"] = round(float(fba_disposal_total or 0.0), 2)
+        total_row["other_adjustment"] = round(float(other_adjustment_total or 0.0), 2)
         total_row["shipment_fees"] = round(float(shipment_fees or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
         total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
@@ -4023,6 +4049,7 @@ def finances_mtd_transactions():
             "shipment_fees",
             "net_sales",
             "gross_sales",
+            "other_adjustment",
             "refund_sales",
             "promotional_rebates",
             "promotional_rebates_percentage",
@@ -4102,6 +4129,7 @@ def finances_mtd_transactions():
             "other",
             "gross_sales",
             "refund_sales",
+            "other_adjustment",
             "profit",
             "ads_spend",
             "acos",
