@@ -79,6 +79,7 @@ export type SummaryRow<RowT> = {
   midValue?: React.ReactNode;
   endValue?: React.ReactNode;
   labelAlign?: Align;
+  bold?: boolean;
 };
 
 export type SummarySection<RowT> = {
@@ -87,6 +88,7 @@ export type SummarySection<RowT> = {
   endValue: React.ReactNode;
   children: SummaryRow<RowT>[];
   defaultCollapsed?: boolean;
+  bold?: boolean;
 };
 
 export type SummaryFixedItem<RowT> = SummaryRow<RowT> & {
@@ -112,6 +114,7 @@ export type SummaryBlock<RowT> = {
   rows?: SummaryOrderedItem<RowT>[];
 
   valueCols?: 2;
+  boldSectionsByDefault?: boolean;
 };
 
 /* ---------------- Utils ---------------- */
@@ -874,19 +877,25 @@ export default function GroupedCollapsibleTable<RowT>({
       return null;
     }
 
+    const boldSectionsByDefault = summary?.boldSectionsByDefault ?? true;
+
     return (
       <tfoot>
         {summaryRows.map((item) => {
           if (item.type === "section") {
             const sec = item;
             const isCollapsed = summaryCollapsed[sec.id] ?? true;
+            const isBold = sec.bold ?? boldSectionsByDefault;
 
             return (
               <React.Fragment key={sec.id}>
                 <tr
                   onClick={() => toggleSummary(sec.id)}
                   role="button"
-                  className="cursor-pointer font-semibold bg-gray-50"
+                  className={[
+                    "cursor-pointer bg-gray-50",
+                    isBold ? "font-semibold" : "",
+                  ].join(" ")}
                   title="Click to expand/collapse"
                 >
                   <td
@@ -942,9 +951,10 @@ export default function GroupedCollapsibleTable<RowT>({
           }
 
           const r = item;
+          const isBold = r.bold === true;
 
           return (
-            <tr key={r.id}>
+            <tr key={r.id} className={isBold ? "font-semibold" : undefined}>
               <td
                 colSpan={labelColSpan}
                 className="border border-gray-300 px-2 sm:px-3 py-3 text-left"

@@ -144,6 +144,7 @@ export type TableRow = {
   other_transaction_fees?: number;
   platform_fee?: number; // backend sometimes sends this
   other_transactions?: number; // derived mapping
+  other_adjustment?: number;
 
   profit?: number;
   profit_percentage?: number;
@@ -1569,6 +1570,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "other_transactions",
     "inventory_charges_and_reimbursement",
     "others",
+    "other_adjustment",
   ]), []);
 
   const formatValue = useCallback(
@@ -1625,11 +1627,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "customs_fees",
         "customs_fee",
         "storage_fees",
+        "storage_fee",
         "inventory_charges",
         "inventory_charges_and_reimbursement",
         "reimbursement_lost_inventory_amount",
         "platform_management_fees",
         "others",
+        "other_adjustment",
       ]);
 
       let formatted;
@@ -1681,8 +1685,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const storageFees =
       getOptionalNumber(rawTotalRow, [
-        "storage_fees",
         "storage_fee",
+        "storage_fees",
         "storage_fees_total",
         "inventory_storage_fees",
         "platform_fee_inventory_storage",
@@ -1720,9 +1724,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       "platformfeenew",
     ]) ?? nonZeroOrNull(totals.platform_fee);
 
-    const others = getOptionalNumber(rawTotalRow, [
-      "others",
-      "other",
+    const otherAdjustment = getOptionalNumber(rawTotalRow, [
+      "other_adjustment",
     ]);
 
     return {
@@ -1737,7 +1740,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       reimbursementForLostInventory,
       inventoryChargesAndReimbursement,
       platformManagementFees,
-      others,
+      otherAdjustment,
     };
   }, [rawTotalRow, totals]);
 
@@ -1941,7 +1944,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Cost of Advertisement (-)",
             [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
-            __bold: 1,
           },
           {
             product_name: "Visibility - Ads (-)",
@@ -1956,7 +1958,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Shipping Charges (-)",
             [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingChargesTotal),
-            __bold: 1,
           },
           {
             product_name: "Placement Fees (-)",
@@ -1975,7 +1976,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Storage Fees (-)",
             [summaryValueColumnKey]: summaryExportValue(usSummaryValues.storageFees),
-            __bold: 1,
           },
           {
             product_name: "Short Term Storage (-)",
@@ -1990,7 +1990,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Inventory Charges and Reimbursement",
             [summaryValueColumnKey]: summaryExportValue(usSummaryValues.inventoryChargesAndReimbursement),
-            __bold: 1,
           },
           {
             product_name: "Inventory Charges (-)",
@@ -2010,14 +2009,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           {
             product_name: "Others",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.others),
+            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.otherAdjustment),
           },
           spacerSummaryRow(),
 
           {
             product_name: "CM2 Profit",
             [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
-            __bold: 1,
           },
           spacerSummaryRow(),
           {
@@ -2031,7 +2029,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Net Reimbursement",
             [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
-            __bold: 1,
           },
           {
             product_name: "Reimbursement vs Sales",
@@ -2046,7 +2043,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Cost of Advertisement",
             [summaryValueColumnKey]: Math.abs(Number(costOfAdvertisementValue || 0)),
-            __bold: 1,
           },
           {
             product_name: "Visibility - Ads (-)",
@@ -2069,7 +2065,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Other Transactions",
             [summaryValueColumnKey]: Number(totals.other_transactions || 0),
-            __bold: 1,
           },
           {
             product_name: "Short Term Storage Fee (-)",
@@ -2099,32 +2094,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "CM2 Profit/Loss",
             [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
-            __bold: 1,
           },
           {
             product_name: "CM2 Margins",
             [summaryValueColumnKey]: Number(totals.cm2_margins || 0),
-            __bold: 1,
           },
           {
             product_name: "TACoS (Total Advertising Cost of Sale)",
             [summaryValueColumnKey]: frontendTacos,
-            __bold: 1,
           },
           {
             product_name: "Net Reimbursement",
             [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
-            __bold: 1,
           },
           {
             product_name: "Reimbursement vs CM2 Margins",
             [summaryValueColumnKey]: Number(totals.rembursment_vs_cm2_margins || 0),
-            __bold: 1,
           },
           {
             product_name: "Reimbursement vs Sales",
             [summaryValueColumnKey]: Number(totals.reimbursement_vs_sales || 0),
-            __bold: 1,
           },
         ];
 
@@ -2406,10 +2395,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     );
   };
 
-  const boldSummaryText = (value: React.ReactNode) => (
-    <span className="font-semibold">{value}</span>
-  );
-
   // const VISIBLE_PRODUCT_ROWS = 13.61;
 
   // const SIGN_ROW_HEIGHT = 30;
@@ -2499,9 +2484,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       },
       {
         type: "section" as const,
-        id: "storage_fees",
+        id: "storage_fee",
         label: <>Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-        endValue: formatSummaryValueOrDash(usSummaryValues.storageFees, "storage_fees"),
+        endValue: formatSummaryValueOrDash(usSummaryValues.storageFees, "storage_fee"),
         defaultCollapsed: true,
         children: [
           {
@@ -2562,13 +2547,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
         type: "fixed" as const,
         id: "others",
         label: "Others",
-        endValue: formatSummaryValueOrDash(usSummaryValues.others, "others"),
+        endValue: formatSummaryValueOrDash(usSummaryValues.otherAdjustment, "other_adjustment"),
       },
       {
         type: "fixed" as const,
         id: "cm2_profit",
-        label: boldSummaryText("CM2 Profit"),
-        endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
+        label: "CM2 Profit",
+        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
       },
       {
         type: "fixed" as const,
@@ -2702,8 +2687,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       {
         type: "fixed" as const,
         id: "cm2_profit",
-        label: boldSummaryText("CM2 Profit/Loss"),
-        endValue: boldSummaryText(formatValue(totals.cm2_profit_total, "cm2_profit")),
+        label: "CM2 Profit/Loss",
+        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
       },
       {
         type: "fixed" as const,
@@ -2998,6 +2983,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return formatValue(getOtherTransactionsTotal(row), colKey);
                   }
 
+                  if (colKey === "promotional_rebates_percentage") {
+                    const value = formatValue((row as any)[colKey], colKey);
+                    return value === "-" ? value : `${value}%`;
+                  }
+
                   // ✅ round Ads Spend expanded columns without decimals
                   if (
                     colKey === "product_spend" ||
@@ -3017,6 +3007,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   rows: skuSummaryRows,
 
                   valueCols: 2,
+                  boldSectionsByDefault: false,
                 }}
               />
               {noDataFound && (

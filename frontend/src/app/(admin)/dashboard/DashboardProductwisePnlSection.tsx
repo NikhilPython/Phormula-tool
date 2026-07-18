@@ -100,7 +100,6 @@ export default function DashboardProductwisePnlSection({
     countryName,
     isUsPnlSkuLayout,
     getProductwiseOtherTransactionsTotal,
-    boldSummaryText,
     totalRowCm2Profit,
     totalRowCm2Margins,
     tacosFromDisplayedCardsForSummary,
@@ -136,29 +135,10 @@ export default function DashboardProductwisePnlSection({
         [plSummaryTotals, summaryTotalRow]
     );
 
-    const placementFees = getSummaryNumber(["placement_fees", "placement_fee"]);
-    const shippingCharges =
-        getSummaryNumber([
-            "shipping_charges",
-            "shipping_charge",
-            "shipping_fee",
-            "shipping_fees",
-            "shipment_fees",
-            "shipment_charges",
-        ]) ?? nonZeroOrNull(plSummaryTotals?.shipment_charges);
-    const customsFees = getSummaryNumber([
-        "customs_fees",
-        "customs_fee",
-        "custom_fee",
-        "custom_fees",
-    ]);
-    const shippingChargesTotal =
-        getSummaryNumber([
-            "shipping_charges_total",
-            "shipping_charge_total",
-            "shipment_charges_total",
-            "total_shipping_charges",
-        ]) ?? sumKnownNumbers(placementFees, shippingCharges, customsFees);
+    const placementFees = getSummaryNumber(["placement_fee"]);
+    const shippingCharges = getSummaryNumber(["shipment_fees"]);
+    const customsFees = getSummaryNumber(["customs_fee"]);
+    const shippingChargesTotal = getSummaryNumber(["shipping_charges"]);
 
     const shortTermStorage =
         getSummaryNumber(["short_term_storage_fee", "short_term_storage"]) ??
@@ -166,14 +146,7 @@ export default function DashboardProductwisePnlSection({
     const longTermStorage =
         getSummaryNumber(["long_term_storage_fee", "long_term_storage"]) ??
         nonZeroOrNull(plSummaryTotals?.long_term_storage_fee);
-    const storageFees =
-        getSummaryNumber([
-            "storage_fees",
-            "storage_fee",
-            "storage_fees_total",
-            "inventory_storage_fees",
-            "platform_fee_inventory_storage",
-        ]) ?? sumKnownNumbers(shortTermStorage, longTermStorage);
+    const storageFees = getSummaryNumber(["storage_fee"]);
 
     const inventoryCharges =
         getSummaryNumber([
@@ -199,14 +172,8 @@ export default function DashboardProductwisePnlSection({
             ? inventoryCharges - reimbursementForLostInventory
             : null);
 
-    const platformManagementFees =
-        getSummaryNumber([
-            "platform_management_fees",
-            "platform_management_fee",
-            "platformfeenew",
-            "platform_fee",
-        ]) ?? nonZeroOrNull(otherPlatformFee);
-    const others = getSummaryNumber(["others", "other"]);
+    const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
+    const others = getSummaryNumber(["other_adjustment"]);
 
     const formatSummaryValueOrDash = (value: number | null, key: string) => {
         return value === null ? "-" : formatSummaryValue(value, key);
@@ -243,25 +210,25 @@ export default function DashboardProductwisePnlSection({
                     {
                         id: "placement_fees",
                         label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(placementFees, "placement_fees"),
+                        midValue: formatSummaryValueOrDash(placementFees, "placement_fee"),
                     },
                     {
                         id: "shipping_charges_child",
                         label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(shippingCharges, "shipping_charges"),
+                        midValue: formatSummaryValueOrDash(shippingCharges, "shipment_fees"),
                     },
                     {
                         id: "customs_fees",
                         label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(customsFees, "customs_fees"),
+                        midValue: formatSummaryValueOrDash(customsFees, "customs_fee"),
                     },
                 ],
             },
             {
                 type: "section" as const,
-                id: "storage_fees",
+                id: "storage_fee",
                 label: <>Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                endValue: formatSummaryValueOrDash(storageFees, "storage_fees"),
+                endValue: formatSummaryValueOrDash(storageFees, "storage_fee"),
                 defaultCollapsed: true,
                 children: [
                     {
@@ -322,13 +289,13 @@ export default function DashboardProductwisePnlSection({
                 type: "fixed" as const,
                 id: "others",
                 label: "Others",
-                endValue: formatSummaryValueOrDash(others, "others"),
+                endValue: formatSummaryValueOrDash(others, "other_adjustment"),
             },
             {
                 type: "fixed" as const,
                 id: "cm2_profit",
-                label: boldSummaryText("CM2 Profit"),
-                endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
+                label: "CM2 Profit",
+                endValue: Math.round(totalRowCm2Profit).toLocaleString(),
             },
             {
                 type: "fixed" as const,
@@ -496,8 +463,8 @@ export default function DashboardProductwisePnlSection({
             {
                 type: "fixed" as const,
                 id: "cm2_profit",
-                label: boldSummaryText("CM2 Profit/Loss"),
-                endValue: boldSummaryText(Math.round(totalRowCm2Profit).toLocaleString()),
+                label: "CM2 Profit/Loss",
+                endValue: Math.round(totalRowCm2Profit).toLocaleString(),
             },
             {
                 type: "fixed" as const,
@@ -903,10 +870,12 @@ export default function DashboardProductwisePnlSection({
                                                 if (colKey === "promotional_rebates_percentage") {
                                                     const v = Number((row as any)[colKey] ?? 0);
 
-                                                    return Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+                                                    const value = Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
                                                         minimumFractionDigits: 2,
                                                         maximumFractionDigits: 2,
                                                     });
+
+                                                    return `${value}%`;
                                                 }
                                                 if (
                                                     colKey === "gross_sales" ||
@@ -929,6 +898,7 @@ export default function DashboardProductwisePnlSection({
                                                 rows: productwiseSummaryRows,
 
                                                 valueCols: 2,
+                                                boldSectionsByDefault: false,
                                             }}
                                         />
                                     </div>

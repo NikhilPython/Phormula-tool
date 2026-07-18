@@ -74,6 +74,7 @@ export type MonthlySkuwiseRow = {
     platform_fee_inventory_storage?: number;
     lost_total?: number;
     other?: number;
+    other_adjustment?: number;
     product_spend?: number;
     display_spend?: number;
     brand_spend?: number;
@@ -429,14 +430,19 @@ export type PlSummaryTotals = {
     visible_ads: number;
     dealsvouchar_ads: number;
     placement_fees?: number;
+    placement_fee?: number;
     shipping_charges?: number;
+    shipment_fees?: number;
     customs_fees?: number;
+    customs_fee?: number;
     shipping_charges_total?: number;
     storage_fees?: number;
+    storage_fee?: number;
     inventory_charges?: number;
     inventory_charges_and_reimbursement?: number;
     platform_management_fees?: number;
     others?: number;
+    other_adjustment?: number;
 
     other_transactions: number;
     platform_fee: number;
