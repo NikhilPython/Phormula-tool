@@ -108,6 +108,11 @@ def ensure_storage_fee_columns(conn, table_name: str):
         ADD COLUMN IF NOT EXISTS shipping_charges DOUBLE PRECISION DEFAULT 0
     '''))
 
+    conn.execute(text(f'''
+        ALTER TABLE "{table_name}"
+        ADD COLUMN IF NOT EXISTS platform_management_fees DOUBLE PRECISION DEFAULT 0
+    '''))
+
     _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
 
 
@@ -209,6 +214,7 @@ def process_skuwise_us_data(user_id, country, month, year):
                 advertising_total REAL,
                 lost_total REAL,
                 platformfeenew REAL,
+                platform_management_fees REAL,
                 platform_fee REAL,
                 platform_fee_inventory_storage REAL,
                 short_term_storage_fee REAL,
@@ -290,6 +296,7 @@ def process_skuwise_us_data(user_id, country, month, year):
                 advertising_total REAL,
 
                 platformfeenew REAL,
+                platform_management_fees REAL,
                 platform_fee REAL,
                 platform_fee_inventory_storage REAL,
                 short_term_storage_fee REAL,
@@ -660,6 +667,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
             "Subscription",
+            "PaidServicesCharge",
             "FBAInboundConvenience",
             "AWDProcessingFee",
             "AWDTransportationFee",
@@ -729,6 +737,26 @@ def process_skuwise_us_data(user_id, country, month, year):
 
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
+
+        # Platform management fees include paid services and subscription charges.
+        PLATFORM_MANAGEMENT_FEE_KEYWORDS = [
+            "PaidServicesCharge",
+            "Subscription",
+        ]
+        platform_management_fees_total = abs(sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+        ))
+        platform_management_fees_df = sku_sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+            "platform_management_fees",
+        )
+        if not platform_management_fees_df.empty:
+            platform_management_fees_df["platform_management_fees"] = pd.to_numeric(
+                platform_management_fees_df["platform_management_fees"],
+                errors="coerce",
+            ).fillna(0.0).abs()
 
         platform_fee_inventory_storage_total = abs(sum_total_where_desc_contains(df, [
             "FBA Return Fee",
@@ -881,6 +909,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sku_grouped = sku_grouped.merge(placement_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(customs_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(shipment_fees_df, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(platform_management_fees_df, on="sku", how="left")
         for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
             sku_grouped[col] = pd.to_numeric(
                 sku_grouped.get(col, 0),
@@ -902,6 +931,9 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         sku_grouped["shipment_fees"] = safe_series(
             sku_grouped, "shipment_fees"
+        ).abs()
+        sku_grouped["platform_management_fees"] = safe_series(
+            sku_grouped, "platform_management_fees"
         ).abs()
         sku_grouped["refund_selling_fees"] = pd.to_numeric(sku_grouped.get("refund_selling_fees", 0), errors="coerce").fillna(0)
         sku_grouped["quantity"] = pd.to_numeric(
@@ -1093,7 +1125,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
 
         for col in [
-            "visible_ads", "dealsvouchar_ads", "platformfeenew",
+            "visible_ads", "dealsvouchar_ads", "platformfeenew", "platform_management_fees",
             "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
             "shipping_charges", "shipment_fees",
             "platform_fee", "advertising_total", "rembursement_fee",
@@ -1439,6 +1471,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
+        sum_row["platform_management_fees"] = platform_management_fees_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
         sum_row["short_term_storage_fee"] = short_term_storage_fee_total
         sum_row["long_term_storage_fee"] = long_term_storage_fee_total
@@ -1665,7 +1698,7 @@ def process_skuwise_us_data(user_id, country, month, year):
 
             "lost_total", "visible_ads", "dealsvouchar_ads", "advertising_total",
 
-            "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
+            "platformfeenew", "platform_management_fees", "platform_fee", "platform_fee_inventory_storage",
             "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
 
             "shipping_charges", "shipment_fees",
@@ -1713,7 +1746,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "net_taxes", "net_credits", "misc_transaction", "other_transaction_fees",
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
-            "platformfeenew", "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee", "shipping_charges", "shipment_fees",
+            "platformfeenew", "platform_management_fees", "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee", "shipping_charges", "shipment_fees",
             "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos", "debt_payment", "disbursement","rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix","month", "year", "country", "user_id"
@@ -1763,7 +1796,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             "net_taxes", "net_credits", "misc_transaction", "other_transaction_fees",
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
-            "platformfeenew", "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee", "shipping_charges", "shipment_fees",
+            "platformfeenew", "platform_management_fees", "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee", "shipping_charges", "shipment_fees",
             "cm2_profit", "cm2_profit_percentage","cm2_margins", "acos","debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix"
@@ -2066,6 +2099,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
             "Subscription",
+            "PaidServicesCharge",
             "FBAInboundConvenience",
             "AWDProcessingFee",
             "AWDTransportationFee",
@@ -2134,6 +2168,26 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         ).fillna(0.0)
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
+
+        # Platform management fees include paid services and subscription charges.
+        PLATFORM_MANAGEMENT_FEE_KEYWORDS = [
+            "PaidServicesCharge",
+            "Subscription",
+        ]
+        platform_management_fees_total = abs(sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+        ))
+        platform_management_fees_df = sku_sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+            "platform_management_fees",
+        )
+        if not platform_management_fees_df.empty:
+            platform_management_fees_df["platform_management_fees"] = pd.to_numeric(
+                platform_management_fees_df["platform_management_fees"],
+                errors="coerce",
+            ).fillna(0.0).abs()
 
         platform_fee_inventory_storage_total = abs(sum_total_where_desc_contains(df, [
             "FBA Return Fee",
@@ -2282,6 +2336,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped = sku_grouped.merge(placement_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(customs_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(shipment_fees_df, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(platform_management_fees_df, on="sku", how="left")
 
         sku_grouped["refund_selling_fees"] = safe_series(sku_grouped, "refund_selling_fees")
         sku_grouped["quantity"] = safe_series(sku_grouped, "quantity").abs()
@@ -2444,6 +2499,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
 
         sku_grouped["shipment_fees"] = safe_series(sku_grouped, "shipment_fees").abs()
+        sku_grouped["platform_management_fees"] = safe_series(sku_grouped, "platform_management_fees").abs()
         sku_grouped["advertising_total"] = 0
 
         sku_grouped["platformfeenew"] = safe_series(sku_grouped, "platformfeenew")
@@ -2551,6 +2607,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
+        sum_row["platform_management_fees"] = platform_management_fees_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
         sum_row["short_term_storage_fee"] = short_term_storage_fee_total
         sum_row["long_term_storage_fee"] = long_term_storage_fee_total
@@ -2592,7 +2649,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "net_taxes", "net_credits", "misc_transaction", "other_transaction_fees",
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
-            "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
+            "platformfeenew", "platform_management_fees", "platform_fee", "platform_fee_inventory_storage",
             "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
             "shipping_charges", "shipment_fees", "cm2_profit", "cm2_profit_percentage",
             "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
@@ -2643,6 +2700,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "advertising_total": Float,
             "lost_total": Float,
             "platformfeenew": Float,
+            "platform_management_fees": Float,
             "platform_fee": Float,
             "platform_fee_inventory_storage": Float,
             "short_term_storage_fee": Float,
@@ -2945,6 +3003,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "INCORRECT_FEES_NON_ITEMIZED",
             "StorageReservationBilling",
             "Subscription",
+            "PaidServicesCharge",
             "FBAInboundConvenience",
             "AWDProcessingFee",
             "AWDTransportationFee",
@@ -3013,6 +3072,26 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         ).fillna(0.0)
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
+
+        # Platform management fees include paid services and subscription charges.
+        PLATFORM_MANAGEMENT_FEE_KEYWORDS = [
+            "PaidServicesCharge",
+            "Subscription",
+        ]
+        platform_management_fees_total = abs(sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+        ))
+        platform_management_fees_df = sku_sum_total_where_desc_contains(
+            df,
+            PLATFORM_MANAGEMENT_FEE_KEYWORDS,
+            "platform_management_fees",
+        )
+        if not platform_management_fees_df.empty:
+            platform_management_fees_df["platform_management_fees"] = pd.to_numeric(
+                platform_management_fees_df["platform_management_fees"],
+                errors="coerce",
+            ).fillna(0.0).abs()
         platform_fee_inventory_storage_total = abs(sum_total_where_desc_contains(df, [
             "FBA Return Fee",
             "FBA Long-Term Storage Fee",
@@ -3158,7 +3237,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped = sku_grouped.merge(fba_disposal_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(placement_fee_df, on="sku", how="left")
         sku_grouped = sku_grouped.merge(customs_fee_df, on="sku", how="left")
-        sku_grouped = sku_grouped.merge(shipment_fees_df, on="sku", how="left")  
+        sku_grouped = sku_grouped.merge(shipment_fees_df, on="sku", how="left")
+        sku_grouped = sku_grouped.merge(platform_management_fees_df, on="sku", how="left")  
 
         sku_grouped["refund_selling_fees"] = safe_series(sku_grouped, "refund_selling_fees")
         sku_grouped["quantity"] = safe_series(sku_grouped, "quantity").abs()
@@ -3323,6 +3403,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
 
         sku_grouped["shipment_fees"] = safe_series(sku_grouped, "shipment_fees").abs()
+        sku_grouped["platform_management_fees"] = safe_series(sku_grouped, "platform_management_fees").abs()
         sku_grouped["advertising_total"] = 0
 
         sku_grouped["platformfeenew"] = safe_series(sku_grouped, "platformfeenew")
@@ -3427,6 +3508,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
+        sum_row["platform_management_fees"] = platform_management_fees_total
         sum_row["platform_fee_inventory_storage"] = platform_fee_inventory_storage_total
         sum_row["short_term_storage_fee"] = short_term_storage_fee_total
         sum_row["long_term_storage_fee"] = long_term_storage_fee_total
@@ -3468,7 +3550,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "net_taxes", "net_credits", "misc_transaction", "other_transaction_fees",
             "profit", "unit_wise_profitability", "profit_percentage",
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
-            "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
+            "platformfeenew", "platform_management_fees", "platform_fee", "platform_fee_inventory_storage",
             "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
             "shipping_charges", "shipment_fees", "cm2_profit", "cm2_profit_percentage",
             "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
@@ -3526,6 +3608,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "advertising_total": Float,
             "lost_total": Float,
             "platformfeenew": Float,
+            "platform_management_fees": Float,
             "platform_fee": Float,
             "platform_fee_inventory_storage": Float,
             "short_term_storage_fee": Float,
