@@ -67,9 +67,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "profit", "unit_wise_profitability",
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
-        "advertising_total", "lost_total", "platformfeenew", "platform_fee",
-        "platform_fee_inventory_storage", "shipment_fees", "cm2_profit",
-        "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
+        "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
+        "platform_fee", "platform_fee_inventory_storage",
+        "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
+        "fba_disposal", "placement_fee", "customs_fee",
+        "shipping_charges", "shipment_fees", "cm2_profit",
         "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
@@ -83,9 +85,12 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "promotional_rebates", "cost_of_unit_sold", "selling_fees", "fba_fees",
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "profit", "visible_ads", "dealsvouchar_ads",
-        "advertising_total", "lost_total", "platformfeenew", "platform_fee",
-        "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal",
-        "cm2_profit", "debt_payment", "disbursement","rembursement_fee"
+        "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
+        "platform_fee", "platform_fee_inventory_storage",
+        "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
+        "fba_disposal", "placement_fee", "customs_fee",
+        "shipping_charges", "cm2_profit", "debt_payment", "disbursement",
+        "rembursement_fee"
     ]
 
     # US-only column, do NOT currency convert
@@ -124,12 +129,30 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 "platform_fee_new": "platformfeenew",
                 "platform_fee_new_total": "platformfeenew",
                 "platform_storage_fee": "platform_fee_inventory_storage",
-                "short_term_storage_fee": "short_term_storage_fee",
-                "long_term_storage_fee": "long_term_storage_fee",
-                "fba_disposal": "fba_disposal",
-                "storage_fee": "platform_fee_inventory_storage",
+                "platform_management_fee": "platform_management_fees",
                 "shipment_fee": "shipment_fees",
+                "shipping_charge": "shipping_charges",
+                "placement_fees": "placement_fee",
+                "custom_fee": "customs_fee",
             }, inplace=True)
+
+            # Normalize duplicate names safely. Duplicate columns can appear after
+            # legacy aliases are renamed to the same canonical column name.
+            if not df.columns.is_unique:
+                deduped = pd.DataFrame(index=df.index)
+                for column_name in dict.fromkeys(df.columns):
+                    block = df.loc[:, df.columns == column_name]
+                    if isinstance(block, pd.Series):
+                        deduped[column_name] = block
+                    elif block.shape[1] == 1:
+                        deduped[column_name] = block.iloc[:, 0]
+                    else:
+                        deduped[column_name] = (
+                            block.replace("", np.nan)
+                            .bfill(axis=1)
+                            .iloc[:, 0]
+                        )
+                df = deduped
 
             if df.empty:
                 continue
@@ -141,7 +164,10 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             df = df[final_columns].copy()
 
             for col in quantity_cols + money_cols + non_convert_money_cols + percentage_cols:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                column_data = df[col]
+                if isinstance(column_data, pd.DataFrame):
+                    column_data = column_data.bfill(axis=1).iloc[:, 0]
+                df[col] = pd.to_numeric(column_data, errors="coerce").fillna(0)
 
             if f"skuwisemonthly_{user_id}_uk_" in table_name:
                 table_month, table_year = _extract_month_year_from_table(table_name)
@@ -308,11 +334,16 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             advertising_total DOUBLE PRECISION,
             lost_total DOUBLE PRECISION,
             platformfeenew DOUBLE PRECISION,
+            platform_management_fees DOUBLE PRECISION,
             platform_fee DOUBLE PRECISION,
             platform_fee_inventory_storage DOUBLE PRECISION,
             short_term_storage_fee DOUBLE PRECISION,
             long_term_storage_fee DOUBLE PRECISION,
+            storage_fee DOUBLE PRECISION,
             fba_disposal DOUBLE PRECISION,
+            placement_fee DOUBLE PRECISION,
+            customs_fee DOUBLE PRECISION,
+            shipping_charges DOUBLE PRECISION,
             shipment_fees DOUBLE PRECISION,
             cm2_profit DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,
