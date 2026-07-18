@@ -1413,36 +1413,69 @@ def us_profit(
     debug: bool = True,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
+
     sales_total, sales_by, _ = us_sales(df, country=country)
     cogs_total, cogs_by, _ = us_cogs(df, country=country)
     fee_total, fee_by, _ = us_amazon_fee(df, country=country)
-    tax_total, tax_by, _ = us_tax(df, country=country)
-    credit_total, credit_by, _ = us_credits(df, country=country)
+
+    tax_credit_total, tax_credit_by, _ = us_tax_and_credits(
+        df,
+        country=country
+    )
 
     per = (
         sales_by[["sku", "__metric__"]]
         .rename(columns={"__metric__": "sales"})
-        .merge(cogs_by[["sku", "__metric__"]].rename(columns={"__metric__": "cogs"}), on="sku", how="outer")
-        .merge(fee_by[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}), on="sku", how="outer")
-        .merge(tax_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}), on="sku", how="outer")
-        .merge(credit_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}), on="sku", how="outer")
+        .merge(
+            cogs_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "cogs"}),
+            on="sku",
+            how="outer"
+        )
+        .merge(
+            fee_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "amazon_fee"}),
+            on="sku",
+            how="outer"
+        )
+        .merge(
+            tax_credit_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "tex_and_credits"}),
+            on="sku",
+            how="outer"
+        )
         .fillna(0.0)
     )
 
-    for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
-        per[c] = safe_num(per[c])
+    for col in (
+        "sales",
+        "cogs",
+        "amazon_fee",
+        "tex_and_credits",
+    ):
+        per[col] = safe_num(per[col])
 
     per["__metric__"] = (
         per["sales"]
         - per["cogs"].abs()
         - per["amazon_fee"].abs()
-        - per["net_taxes"].abs()
-        + per["net_credits"]
+        + per["tex_and_credits"].abs()
     )
 
-    comps = ["sales", "cogs", "amazon_fee", "net_taxes", "net_credits"]
+    comps = [
+        "sales",
+        "cogs",
+        "amazon_fee",
+        "tex_and_credits",
+    ]
+
     total = float(per["__metric__"].sum())
-    return total, per[["sku", "__metric__", *comps]], comps
+
+    return (
+        total,
+        per[["sku", "__metric__", *comps]],
+        comps,
+    )
 
 
 def us_all(df: pd.DataFrame) -> dict:
