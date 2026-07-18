@@ -4,6 +4,8 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -13,9 +15,102 @@ from pydantic import BaseModel, Field
 from app.ai_agent.graph import build_graph
 from app.ai_agent.memory import recent_chat_history, save_chat_turn
 
+try:
+    from flask import current_app, has_app_context
+except Exception:  # pragma: no cover - keeps this service importable outside Flask
+    current_app = None
+    has_app_context = None
+
 logger = logging.getLogger(__name__)
 
 _graph = build_graph()
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+_agent_executor = ThreadPoolExecutor(
+    max_workers=max(1, _env_int("AI_AGENT_WORKERS", 4)),
+    thread_name_prefix="ai-agent-run",
+)
+_postprocess_executor = ThreadPoolExecutor(
+    max_workers=max(1, _env_int("AI_AGENT_POSTPROCESS_WORKERS", 4)),
+    thread_name_prefix="ai-agent-postprocess",
+)
+_agent_timeout_seconds = _env_float("AI_AGENT_RUN_TIMEOUT_SECONDS", 90.0)
+_verification_timeout_seconds = _env_float("AI_AGENT_VERIFICATION_TIMEOUT_SECONDS", 0.0)
+_suggestion_timeout_seconds = _env_float("AI_AGENT_SUGGESTION_TIMEOUT_SECONDS", 8.0)
+
+
+def _run_with_timeout(
+    *,
+    label: str,
+    executor: ThreadPoolExecutor,
+    timeout_seconds: float,
+    func,
+    default: Any,
+) -> Any:
+    if timeout_seconds <= 0:
+        return func()
+
+    future = executor.submit(func)
+    try:
+        return future.result(timeout=timeout_seconds)
+    except FutureTimeout:
+        logger.warning("[%s_TIMEOUT] exceeded %.1fs; returning fallback", label, timeout_seconds)
+        return default
+    except Exception:
+        logger.exception("[%s_FAILED] returning fallback", label)
+        return default
+
+
+def _current_flask_app():
+    try:
+        if has_app_context and has_app_context():
+            return current_app._get_current_object()
+    except Exception:
+        logger.debug("No Flask app context available for AI agent worker", exc_info=True)
+    return None
+
+
+def _invoke_graph_with_optional_app_context(
+    state: Dict[str, Any],
+    app: Any = None,
+) -> Dict[str, Any]:
+    graph_state = deepcopy(state)
+    if app is not None:
+        with app.app_context():
+            return _graph.invoke(graph_state)
+    return _graph.invoke(graph_state)
+
+
+def _strip_runtime_state(result: Dict[str, Any]) -> Dict[str, Any]:
+    clean_result = dict(result or {})
+    for key in ("engine",):
+        clean_result.pop(key, None)
+    return clean_result
+
+
+def _safe_result_copy(result: Dict[str, Any]) -> Dict[str, Any]:
+    clean_result = _strip_runtime_state(result)
+    try:
+        return deepcopy(clean_result)
+    except Exception:
+        logger.exception("Failed to deep-copy agent result; using shallow runtime-stripped copy")
+        return dict(clean_result)
+
+
 _suggestion_llm = (
     ChatOpenAI(
         model=os.getenv("AI_AGENT_SUGGESTION_MODEL", "gpt-4.1-mini"),
@@ -343,6 +438,27 @@ def _compact_business_context_for_verification(context: Dict[str, Any]) -> Dict[
 def _compact_analysis_for_verification(analysis: Dict[str, Any]) -> Dict[str, Any]:
     analysis = analysis or {}
 
+    if analysis.get("type") == "anomaly_scan":
+        compact_blocks = []
+        for block in analysis.get("metric_blocks") or []:
+            compact_blocks.append({
+                "metric": block.get("metric"),
+                "months": (block.get("months") or [])[:6],
+            })
+            if len(compact_blocks) >= 8:
+                break
+        return {
+            "type": "anomaly_scan",
+            "country": analysis.get("country"),
+            "period_label": analysis.get("period_label"),
+            "metrics": analysis.get("metrics"),
+            "focus_scope": analysis.get("focus_scope"),
+            "product_scope": analysis.get("product_scope"),
+            "product_unavailable_metrics": analysis.get("product_unavailable_metrics"),
+            "anomalies": (analysis.get("anomalies") or [])[:8],
+            "metric_blocks": compact_blocks,
+        }
+
     if analysis.get("type") == "forecast":
         compact_results = []
         for result in analysis.get("results") or []:
@@ -381,6 +497,33 @@ def _compact_analysis_for_verification(analysis: Dict[str, Any]) -> Dict[str, An
             "requested_year": analysis.get("requested_year"),
             "product": analysis.get("product"),
             "results": compact_results,
+        }
+
+    if analysis.get("type") == "multi_metric_comparison":
+        compact_results = []
+        for row in analysis.get("results") or []:
+            left = row.get("left") or {}
+            right = row.get("right") or {}
+            compact_results.append({
+                "metric": row.get("metric"),
+                "left": {
+                    "label": left.get("label"),
+                    "total": left.get("total"),
+                },
+                "right": {
+                    "label": right.get("label"),
+                    "total": right.get("total"),
+                },
+                "display_delta": row.get("display_delta"),
+                "display_pct_change": row.get("display_pct_change"),
+                "display_delta_basis": row.get("display_delta_basis"),
+            })
+        return {
+            "type": "multi_metric_comparison",
+            "country": analysis.get("country"),
+            "metrics": analysis.get("metrics"),
+            "results": compact_results,
+            "skipped": analysis.get("skipped"),
         }
 
     compact = {
@@ -436,6 +579,57 @@ def _clean_verification_issues(issues: List[Any]) -> List[str]:
     return cleaned
 
 
+def _validate_deterministic_comparison(result: Dict[str, Any]) -> bool:
+    analysis = result.get("analysis_result") or {}
+    if analysis.get("type") != "multi_metric_comparison":
+        return False
+
+    rows = analysis.get("results") or []
+    if not rows:
+        return False
+
+    issues: List[str] = []
+    for row in rows:
+        left = row.get("left") or {}
+        right = row.get("right") or {}
+        try:
+            left_total = float(left.get("total") or 0.0)
+            right_total = float(right.get("total") or 0.0)
+        except (TypeError, ValueError):
+            issues.append(f"{row.get('metric') or 'metric'} has non-numeric comparison totals")
+            continue
+
+        actual_delta = row.get("display_delta")
+        if actual_delta is None:
+            issues.append(f"{row.get('metric') or 'metric'} is missing display_delta")
+            continue
+
+        try:
+            actual_delta = float(actual_delta)
+        except (TypeError, ValueError):
+            issues.append(f"{row.get('metric') or 'metric'} has non-numeric display_delta")
+            continue
+
+        expected_delta = right_total - left_total
+        if abs(expected_delta - actual_delta) > 0.01:
+            issues.append(f"{row.get('metric') or 'metric'} display_delta does not match right minus left")
+
+    result["answer_validation"] = {
+        "status": "passed" if not issues else "flagged",
+        "reason": "deterministic_multi_metric_comparison",
+        "is_valid": not issues,
+        "confidence": 1.0 if not issues else 0.0,
+        "issues": issues[:5],
+        "corrected": False,
+    }
+    logger.info(
+        "[ANSWER_VALIDATION] status=%s corrected=False reason=deterministic_multi_metric_comparison issues=%s",
+        result["answer_validation"]["status"],
+        issues[:2],
+    )
+    return True
+
+
 def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
     answer = (result.get("final_response") or "").strip()
     if not answer:
@@ -460,6 +654,9 @@ def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[s
             "reason": "non_business_data_answer",
             "corrected": False,
         }
+        return result
+
+    if _validate_deterministic_comparison(result):
         return result
 
     if not _verifier_llm:
@@ -608,6 +805,7 @@ def run_agent(
     email_requested: bool = False,
     thresholds: Optional[Dict[str, float]] = None,
     conversation_id: Optional[str] = None,
+    include_suggested_questions: bool = True,
 ) -> Dict[str, Any]:
     conversation_id = conversation_id or str(uuid4())
     history = recent_chat_history(user_id, limit=6)
@@ -620,10 +818,68 @@ def run_agent(
         "thresholds": {**DEFAULT_THRESHOLDS, **(thresholds or {})},
         "chat_history": history,
     }
-    result = _graph.invoke(state)
-    result = verify_and_correct_answer(result, user_query)
+
+    flask_app = _current_flask_app()
+    result = _run_with_timeout(
+        label="AGENT_GRAPH",
+        executor=_agent_executor,
+        timeout_seconds=_agent_timeout_seconds,
+        func=lambda: _invoke_graph_with_optional_app_context(state, flask_app),
+        default=None,
+    )
+    if not isinstance(result, dict):
+        result = {
+            "conversation_id": conversation_id,
+            "intent": "error",
+            "country": state["country"],
+            "user_query": state["user_query"],
+            "final_response": (
+                "This analysis took too long to finish. Please try again, or ask for a narrower "
+                "product, metric, country, or time period."
+            ),
+            "error": "agent_timeout",
+            "answer_validation": {
+                "status": "skipped",
+                "reason": "agent_timeout",
+                "corrected": False,
+            },
+        }
+    else:
+        result = _strip_runtime_state(result)
+
+    validation_default = _safe_result_copy(result)
+    validation_default["answer_validation"] = {
+        "status": "skipped",
+        "reason": "verifier_timeout",
+        "corrected": False,
+    }
+    result = _run_with_timeout(
+        label="ANSWER_VALIDATION",
+        executor=_postprocess_executor,
+        timeout_seconds=_verification_timeout_seconds,
+        func=lambda: verify_and_correct_answer(_safe_result_copy(result), user_query),
+        default=validation_default,
+    )
+    result = _strip_runtime_state(result)
     result["final_response"] = _enforce_cm1_profit_terms(result.get("final_response"))
-    suggested_questions = build_suggested_questions(result, user_query)
+
+    if include_suggested_questions:
+        suggestion_default = [
+            _enforce_cm1_profit_terms(question)
+            for question in _fallback_suggested_questions(result, user_query)
+        ]
+        suggested_questions = _run_with_timeout(
+            label="SUGGESTED_QUESTIONS",
+            executor=_postprocess_executor,
+            timeout_seconds=_suggestion_timeout_seconds,
+            func=lambda: build_suggested_questions(_safe_result_copy(result), user_query),
+            default=suggestion_default,
+        )
+        if not isinstance(suggested_questions, list):
+            suggested_questions = suggestion_default
+    else:
+        suggested_questions = []
+
     history_id = None
     try:
         history_id = save_chat_turn(

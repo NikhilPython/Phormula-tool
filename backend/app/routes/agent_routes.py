@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
@@ -12,6 +13,7 @@ from app.models.user_models import AgentEmailSchedule
 from app.utils.token_utils import get_effective_user_id_from_token
 
 agent_bp = Blueprint("agent_bp", __name__)
+logger = logging.getLogger(__name__)
 
 
 def _normalize_country(value):
@@ -43,6 +45,16 @@ def _request_country(data, token_payload):
     return _normalize_country(token_payload.get("country")) or "uk"
 
 
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
 def _get_auth_user_id():
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -50,6 +62,41 @@ def _get_auth_user_id():
     token = auth_header.split(" ", 1)[1]
     payload, effective_user_id, member_id = get_effective_user_id_from_token(token)
     return payload, effective_user_id, member_id
+
+
+def _chat_response_payload(result, include_debug=False):
+    payload = {
+        "status": "success",
+        "conversation_id": result.get("conversation_id"),
+        "response": result.get("response"),
+        "intent": result.get("intent"),
+        "country": result.get("country"),
+        "target_countries": result.get("target_countries"),
+        "metric_name": result.get("metric_name"),
+        "metric_names": result.get("metric_names"),
+        "analysis_type": result.get("analysis_type"),
+        "answer_validation": result.get("answer_validation"),
+        "suggested_questions": result.get("suggested_questions") or [],
+        "history_id": result.get("history_id"),
+        "error": result.get("error"),
+    }
+
+    if include_debug:
+        payload.update(
+            {
+                "semantic_resolution": result.get("semantic_resolution"),
+                "current_metrics": result.get("current_metrics"),
+                "comparison": result.get("comparison"),
+                "analysis_result": result.get("analysis_result"),
+                "advice": result.get("advice", []),
+                "email_result": result.get("email_result"),
+                "event_plan_result": result.get("event_plan_result"),
+                "sku_intelligence_result": result.get("sku_intelligence_result"),
+                "memory": result.get("memory"),
+            }
+        )
+
+    return payload
 
 
 @agent_bp.route("/api/agent/chat", methods=["POST"])
@@ -68,11 +115,13 @@ def agent_chat():
             email_requested=bool(data.get("email_requested", False)),
             thresholds=data.get("thresholds") or {},
             conversation_id=data.get("conversation_id"),
+            include_suggested_questions=_as_bool(data.get("include_suggested_questions"), True),
         )
-        return jsonify({"status": "success", **result}), 200
+        return jsonify(_chat_response_payload(result, _as_bool(data.get("include_debug"), False))), 200
     except PermissionError as e:
         return jsonify({"error": str(e)}), 401
     except Exception as e:
+        logger.exception("Failed to process AI agent request")
         return jsonify({"error": "Failed to process AI agent request", "details": str(e)}), 500
 
 
@@ -94,6 +143,7 @@ def agent_email_summary():
     except PermissionError as e:
         return jsonify({"error": str(e)}), 401
     except Exception as e:
+        logger.exception("Failed to send AI summary email")
         return jsonify({"error": "Failed to send AI summary email", "details": str(e)}), 500
 
 

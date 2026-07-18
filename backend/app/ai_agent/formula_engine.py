@@ -1148,6 +1148,47 @@ def parse_quarter(text: str) -> Optional[Tuple[int, int, int]]:
         return year, start_month, end_month
 
     # -------------------------------
+    # SPOKEN QUARTER FORMAT
+    # Handles "quarter 1 of 2026", "qtr one 2026", "2026 quarter 1".
+    # -------------------------------
+    quarter_words = {
+        "1": 1,
+        "one": 1,
+        "2": 2,
+        "two": 2,
+        "3": 3,
+        "three": 3,
+        "4": 4,
+        "four": 4,
+    }
+    spoken_patterns = [
+        r"\b(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*([1-4]|one|two|three|four)(?:\s+(?:of|in|for))?\s*(20\d{2})?\b",
+        r"\b(20\d{2})\s+(?:quarter|qtr)\s*(?:number|no\.?|#)?\s*([1-4]|one|two|three|four)\b",
+    ]
+    for pattern in spoken_patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+
+        if match.group(1).startswith("20"):
+            year = int(match.group(1))
+            raw_q = match.group(2)
+        else:
+            raw_q = match.group(1)
+            year = int(match.group(2)) if match.group(2) else extract_year(text)
+
+        if not year:
+            return None
+
+        q = quarter_words.get(raw_q)
+        if not q:
+            return None
+
+        start_month = (q - 1) * 3 + 1
+        end_month = start_month + 2
+        return year, start_month, end_month
+
+    # -------------------------------
     # TEXTUAL QUARTERS
     # -------------------------------
     quarter_map = {
@@ -1291,8 +1332,16 @@ def parse_last_n(text: str):
             return int(raw)
         return number_words.get(raw)
 
+    count_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    # Users often qualify relative periods in natural language, e.g.
+    # "last 6 complete months" or "past three full quarters".
+    period_quality = r"(?:(?:complete|completed|closed|full|calendar)\s+){0,3}"
+
     # -------- MONTHS --------
-    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+months?\b", normalized)
+    match = re.search(
+        rf"\b(last|past|previous|prior|recent|trailing|latest)\s+{count_pattern}\s+{period_quality}months?\b",
+        normalized,
+    )
     if match:
         return {"unit": "month", "n": _parse_count(match.group(2))}
 
@@ -1300,7 +1349,10 @@ def parse_last_n(text: str):
         return {"unit": "month", "n": 1}
 
     # -------- QUARTERS --------
-    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+quarters?\b", normalized)
+    match = re.search(
+        rf"\b(last|past|previous|prior|recent|trailing|latest)\s+{count_pattern}\s+{period_quality}quarters?\b",
+        normalized,
+    )
     if match:
         return {"unit": "quarter", "n": _parse_count(match.group(2))}
 
@@ -1308,7 +1360,10 @@ def parse_last_n(text: str):
         return {"unit": "quarter", "n": 1}
 
     # -------- YEARS --------
-    match = re.search(r"\b(last|past|previous|prior|recent|trailing|latest)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+years?\b", normalized)
+    match = re.search(
+        rf"\b(last|past|previous|prior|recent|trailing|latest)\s+{count_pattern}\s+{period_quality}years?\b",
+        normalized,
+    )
     if match:
         return {"unit": "year", "n": _parse_count(match.group(2))}
 
@@ -1328,6 +1383,8 @@ def query_wants_current_incomplete_period(text: str) -> bool:
             "completed month",
             "complete month",
             "closed month",
+            "full month",
+            "full calendar month",
         ]
     ):
         return False
