@@ -1619,8 +1619,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "debt_payment",
         "disbursement",
         "placement_fees",
+        "placement_fee",
         "shipping_charges",
+        "shipment_fees",
         "customs_fees",
+        "customs_fee",
         "storage_fees",
         "inventory_charges",
         "inventory_charges_and_reimbursement",
@@ -1658,34 +1661,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
   );
 
   const usSummaryValues = useMemo(() => {
-    const placementFees = getOptionalNumber(rawTotalRow, [
-      "placement_fees",
-      "placement_fee",
-    ]);
+    const placementFees = getOptionalNumber(rawTotalRow, ["placement_fee"]);
 
-    const shippingCharges = getOptionalNumber(rawTotalRow, [
-      "shipping_charges",
-      "shipping_charge",
-      "shipping_fee",
-      "shipping_fees",
-      "shipment_fees",
-    ]) ?? nonZeroOrNull(totals.shipment_charges);
+    const shipmentFees = getOptionalNumber(rawTotalRow, ["shipment_fees"]);
 
-    const customsFees = getOptionalNumber(rawTotalRow, [
-      "customs_fees",
-      "customs_fee",
-      "custom_fee",
-      "custom_fees",
-    ]);
+    const customsFees = getOptionalNumber(rawTotalRow, ["customs_fee"]);
 
-    const shippingChargesTotal =
-      getOptionalNumber(rawTotalRow, [
-        "shipping_charges_total",
-        "shipping_charge_total",
-        "shipment_charges_total",
-        "total_shipping_charges",
-        "shipment_charges",
-      ]) ?? sumKnownNumbers(placementFees, shippingCharges, customsFees);
+    const shippingChargesTotal = getOptionalNumber(rawTotalRow, ["shipping_charges"]);
 
     const shortTermStorage = getOptionalNumber(rawTotalRow, [
       "short_term_storage_fee",
@@ -1745,7 +1727,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return {
       placementFees,
-      shippingCharges,
+      shippingCharges: shipmentFees,
       customsFees,
       shippingChargesTotal,
       shortTermStorage,
@@ -2501,17 +2483,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             id: "placement_fees",
             label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.placementFees, "placement_fees"),
+            midValue: formatSummaryValueOrDash(usSummaryValues.placementFees, "placement_fee"),
           },
           {
             id: "shipping_charges_child",
             label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.shippingCharges, "shipping_charges"),
+            midValue: formatSummaryValueOrDash(usSummaryValues.shippingCharges, "shipment_fees"),
           },
           {
             id: "customs_fees",
             label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.customsFees, "customs_fees"),
+            midValue: formatSummaryValueOrDash(usSummaryValues.customsFees, "customs_fee"),
           },
         ],
       },
