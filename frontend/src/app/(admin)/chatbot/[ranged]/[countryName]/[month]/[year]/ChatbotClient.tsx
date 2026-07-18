@@ -47,6 +47,19 @@ type AssistantBlock =
   | { type: 'list'; ordered: boolean; items: string[] }
   | { type: 'table'; headers: string[]; rows: string[][] }
 
+type ChargeGroupRow = {
+  group: string
+  amount: string
+  rows: string
+  dates: string
+}
+
+type DatedRawRow = {
+  date: string
+  description: string
+  amount: string
+}
+
 // ---------- Helpers ----------
 
 
@@ -303,9 +316,26 @@ function renderInlineText(text: string): React.ReactNode {
 function renderParagraphText(text: string): React.ReactNode {
   const labelValue = text.match(/^(\*\*)?([A-Za-z][A-Za-z0-9 /&().,+-]{2,64}):(\*\*)?\s+(.+)$/)
   if (labelValue) {
+    const label = stripOuterMarkdown(labelValue[2])
+    if (/^Direct answer$/i.test(label)) {
+      return (
+        <span className="assistant-direct-answer">
+          {renderInlineText(labelValue[4])}
+        </span>
+      )
+    }
+
+    if (/^Business impact$/i.test(label)) {
+      return (
+        <span className="assistant-impact-note">
+          <strong>{label}:</strong> {renderInlineText(labelValue[4])}
+        </span>
+      )
+    }
+
     return (
       <>
-        <strong>{stripOuterMarkdown(labelValue[2])}:</strong> {renderInlineText(labelValue[4])}
+        <strong>{label}:</strong> {renderInlineText(labelValue[4])}
       </>
     )
   }
@@ -313,19 +343,140 @@ function renderParagraphText(text: string): React.ReactNode {
   return renderInlineText(text)
 }
 
+const stripInlineMarkdown = (value: string) =>
+  value
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/`(.*?)`/g, '$1')
+    .trim()
+
+const amountPattern = String.raw`([+-]?(?:[$£€])?\d[\d,]*(?:\.\d+)?|[+-]?\d[\d,]*(?:\.\d+)?\s*(?:GBP|USD|EUR))`
+const chargeGroupRegex = new RegExp(`^(.+?):\\s+${amountPattern}\\s+\\((\\d+)\\s+rows?,\\s+(.+)\\)$`, 'i')
+const datedRawRowRegex = new RegExp(`^(\\d{4}-\\d{2}-\\d{2}):\\s+(.+?)\\s+${amountPattern}$`, 'i')
+
+const parseChargeGroupRow = (item: string): ChargeGroupRow | null => {
+  const cleaned = stripInlineMarkdown(item)
+  const match = cleaned.match(chargeGroupRegex)
+  if (!match) return null
+
+  return {
+    group: match[1].trim(),
+    amount: match[2].trim(),
+    rows: match[3].trim(),
+    dates: match[4].trim(),
+  }
+}
+
+const parseDatedRawRow = (item: string): DatedRawRow | null => {
+  const cleaned = stripInlineMarkdown(item)
+  const match = cleaned.match(datedRawRowRegex)
+  if (!match) return null
+
+  return {
+    date: match[1].trim(),
+    description: match[2].trim(),
+    amount: match[3].trim(),
+  }
+}
+
+const amountToneClass = (amount: string) =>
+  amount.trim().startsWith('-') ? 'assistant-amount-negative' : 'assistant-amount-positive'
+
+function renderSpecializedList(items: string[], key: React.Key): React.ReactNode | null {
+  const chargeRows = items.map(parseChargeGroupRow)
+  if (chargeRows.length > 0 && chargeRows.every(Boolean)) {
+    return (
+      <div key={key} className="assistant-table-wrap assistant-breakdown-wrap" role="region" aria-label="Charge group breakdown">
+        <table className="assistant-table assistant-breakdown-table">
+          <thead>
+            <tr>
+              <th>Charge group</th>
+              <th>Amount</th>
+              <th>Rows</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chargeRows.map((row, rowIdx) => {
+              const safeRow = row as ChargeGroupRow
+              return (
+                <tr key={rowIdx}>
+                  <td className="assistant-description-cell">{renderInlineText(safeRow.group)}</td>
+                  <td className={`assistant-number-cell ${amountToneClass(safeRow.amount)}`}>{safeRow.amount}</td>
+                  <td className="assistant-rows-cell">{safeRow.rows}</td>
+                  <td className="assistant-date-cell">{safeRow.dates}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  const datedRows = items.map(parseDatedRawRow)
+  if (datedRows.length > 0 && datedRows.every(Boolean)) {
+    return (
+      <div key={key} className="assistant-table-wrap assistant-breakdown-wrap" role="region" aria-label="Largest dated rows">
+        <table className="assistant-table assistant-breakdown-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {datedRows.map((row, rowIdx) => {
+              const safeRow = row as DatedRawRow
+              return (
+                <tr key={rowIdx}>
+                  <td className="assistant-date-cell">{safeRow.date}</td>
+                  <td className="assistant-description-cell">{renderInlineText(safeRow.description)}</td>
+                  <td className={`assistant-number-cell ${amountToneClass(safeRow.amount)}`}>{safeRow.amount}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  return null
+}
+
 function renderAssistantResponse(text: string) {
   const blocks = parseAssistantBlocks(text)
   if (!blocks.length) return <span>{text}</span>
 
+  const visibleBlocks = blocks.filter((block, idx) => {
+    const previous = blocks[idx - 1]
+    if (block.type === 'heading' && /^Largest dated rows$/i.test(block.text)) {
+      return false
+    }
+    if (
+      previous?.type === 'heading' &&
+      /^Largest dated rows$/i.test(previous.text) &&
+      block.type === 'list'
+    ) {
+      return false
+    }
+    return true
+  })
+
   return (
     <div className="assistant-output">
-      {blocks.map((block, idx) => {
+      {visibleBlocks.map((block, idx) => {
         if (block.type === 'heading') {
           const Tag: 'h2' | 'h3' = block.level === 2 ? 'h2' : 'h3'
           return <Tag key={idx}>{renderInlineText(block.text)}</Tag>
         }
 
         if (block.type === 'list') {
+          const specializedList = renderSpecializedList(block.items, idx)
+          if (specializedList) return specializedList
+
           const ListTag: 'ol' | 'ul' = block.ordered ? 'ol' : 'ul'
           return (
             <ListTag key={idx}>
@@ -396,6 +547,7 @@ export default function ChatbotPage() {
   const [dislikeInProgress, setDislikeInProgress] = useState<number | null>(null)
   const [actionMessage, setActionMessage] =
     useState<{ id: string; text: string } | null>(null)
+  const activeCountry = String(params?.countryName || '').trim().toLowerCase()
 
   useEffect(() => {
     loadFromStorage();
@@ -477,7 +629,7 @@ export default function ChatbotPage() {
     const cleaned = question.trim()
     if (!cleaned || isLoading) return
     setInputValue('')
-    sendMessage(cleaned)
+    sendMessage(cleaned, { country: activeCountry })
   }
 
   // Create message objects
@@ -791,7 +943,7 @@ export default function ChatbotPage() {
 
 
   return (
-    <div className="flex flex-col bg-white font-[Lato] chatbot-container h-screen overflow-hidden">
+    <div className="flex flex-col bg-white font-[Lato] chatbot-container chatbot-page-shell overflow-hidden">
       <div className="text-white bg-gradient-to-r from-[#5ea68e] to-[#37455f] rounded-t-xl message-header py-[2vw] px-[2vw] md:py-[2vw] md:px-[3.5vw] lg:py-[1vw] lg:px-[1.25vw]">
         <h1 className="2xl:text-2xl text-[18px] font-bold">
           Hi <i>{userData?.name || 'User'}!</i>
@@ -822,9 +974,13 @@ export default function ChatbotPage() {
                       key={msg.id}
                       className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className="flex flex-col mx-4">
+                      <div className={`flex flex-col mx-4 ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                         <div
-                          className={`px-4 2xl:py-2 py-1 rounded-2xl text-xs sm:text-sm md:text-[0.75] lg:text-[0.875rem] break-words max-w-full sm:max-w-[50vw] md:max-w-[50vw] lg:max-w-full ${msg.sender === 'user' ? 'bg-[#5EA68E] text-[#F8EDCE] mb-2' : 'bg-[#D9D9D9] text-gray-800 mb-1'}`}
+                          className={`px-4 2xl:py-2 py-1 rounded-2xl text-xs sm:text-sm md:text-[0.75] lg:text-[0.875rem] break-words ${
+                            msg.sender === 'user'
+                              ? 'bg-[#5EA68E] text-[#F8EDCE] mb-2 max-w-full sm:max-w-[50vw] md:max-w-[50vw]'
+                              : 'assistant-bot-bubble bg-[#D9D9D9] text-gray-800 mb-1'
+                          }`}
                         >
                           {msg.sender !== 'user' && msg.text ? (
                             (() => {
@@ -966,7 +1122,7 @@ export default function ChatbotPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    sendMessage(inputValue)
+                    sendMessage(inputValue, { country: activeCountry })
                     setInputValue('')
                   }
                 }}
@@ -976,7 +1132,7 @@ export default function ChatbotPage() {
               />
               <RightArrow
                 onClick={() => {
-                  sendMessage(inputValue)
+                  sendMessage(inputValue, { country: activeCountry })
                   setInputValue('')
                 }}
                 disabled={isLoading || !inputValue.trim()}

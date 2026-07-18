@@ -14,6 +14,35 @@ from app.utils.token_utils import get_effective_user_id_from_token
 agent_bp = Blueprint("agent_bp", __name__)
 
 
+def _normalize_country(value):
+    raw = str(value or "").strip().lower().replace("_", " ").replace("-", " ")
+    raw = " ".join(raw.split())
+    aliases = {
+        "uk": "uk",
+        "gb": "uk",
+        "gbr": "uk",
+        "amazon uk": "uk",
+        "united kingdom": "uk",
+        "us": "us",
+        "usa": "us",
+        "amazon us": "us",
+        "united states": "us",
+        "united states of america": "us",
+        "global": "global",
+        "all": "global",
+        "all countries": "global",
+    }
+    return aliases.get(raw, raw.replace(" ", "")) or None
+
+
+def _request_country(data, token_payload):
+    for key in ("country", "selected_country", "selectedCountry", "countryName"):
+        country = _normalize_country(data.get(key))
+        if country:
+            return country
+    return _normalize_country(token_payload.get("country")) or "uk"
+
+
 def _get_auth_user_id():
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -34,7 +63,7 @@ def agent_chat():
 
         result = run_agent(
             user_id=effective_user_id,
-            country=(data.get("country") or payload.get("country") or "uk").strip().lower(),
+            country=_request_country(data, payload),
             user_query=message,
             email_requested=bool(data.get("email_requested", False)),
             thresholds=data.get("thresholds") or {},
@@ -55,7 +84,7 @@ def agent_email_summary():
         message = (data.get("message") or "Send me the latest completed month profit summary").strip()
         result = run_agent(
             user_id=effective_user_id,
-            country=(data.get("country") or payload.get("country") or "uk").strip().lower(),
+            country=_request_country(data, payload),
             user_query=message,
             email_requested=True,
             thresholds=data.get("thresholds") or {},
@@ -115,7 +144,7 @@ def upsert_agent_schedule():
     try:
         payload, effective_user_id, member_id = _get_auth_user_id()
         data = request.get_json(silent=True) or {}
-        country = (data.get("country") or payload.get("country") or "uk").strip().lower()
+        country = _request_country(data, payload)
         frequency = (data.get("frequency") or "daily").strip().lower()
         if frequency not in {"daily", "weekly", "monthly"}:
             return jsonify({"error": "frequency must be daily, weekly, or monthly"}), 400

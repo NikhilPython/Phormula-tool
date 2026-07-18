@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -8,17 +7,31 @@ from app import db
 from app.models.user_models import ChatHistory
 
 
+def _strip_nul(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [_strip_nul(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key).replace("\x00", ""): _strip_nul(item) for key, item in value.items()}
+    return value
+
+
 def save_chat_turn(
     user_id: int,
     message: str,
     response: str,
     meta: Optional[Dict[str, Any]] = None,
 ) -> int:
+    clean_message = _strip_nul(message or "")
+    clean_response = _strip_nul(response or "")
+    clean_meta = _strip_nul(meta or {})
+
     row = ChatHistory(
         user_id=user_id,
-        message=(message or "")[:1000],   # keep this (safe)
-        response=response or "",          # ✅ no slicing needed now
-        meta=json.dumps(meta or {}, default=str),
+        message=str(clean_message)[:1000],
+        response=str(clean_response),
+        meta=json.dumps(clean_meta, default=str),
     )
 
     db.session.add(row)

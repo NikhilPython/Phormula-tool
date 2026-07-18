@@ -20,6 +20,8 @@ AnalysisType = Literal[
     "trend",
     "breakdown",
     "summary",
+    "diagnosis",
+    "anomaly_scan",
     "event_plan",
     "sku_intelligence",
     "sku_trend",
@@ -35,6 +37,24 @@ AnswerShape = Literal[
     "multi_month",
     "multi_dimensional",
     "multi_country",
+    "raw_line_items",
+]
+
+ExpectedResultShape = Literal[
+    "none",
+    "single_value",
+    "monthly_series",
+    "comparison",
+    "ranking",
+    "extreme",
+    "diagnosis",
+    "recommendation",
+    "summary",
+    "multi_country",
+    "forecast",
+    "anomaly_scan",
+    "pricing_advisor",
+    "raw_line_items",
 ]
 
 SubjectScope = Literal["business", "product", "products", "metric"]
@@ -56,6 +76,7 @@ class AgentState(TypedDict, total=False):
     analysis_type: AnalysisType
     metric_name: Optional[str]
     metric_names: Optional[List[str]]
+    semantic_resolution: Dict[str, Any]
 
     product_match: Optional[str]
     product_query: Optional[str]
@@ -69,6 +90,7 @@ class AgentState(TypedDict, total=False):
     clarification_question: Optional[str]
 
     answer_shape: AnswerShape
+    expected_result_shape: Optional[ExpectedResultShape]
     subject_scope: SubjectScope
     ranking_direction: Optional[RankingDirection]
     extreme_type: Optional[ExtremeType]
@@ -96,6 +118,8 @@ class AgentState(TypedDict, total=False):
     advice: List[str]
     final_response: str
     answer_validation: Dict[str, Any]
+    execution_validation: Dict[str, Any]
+    contract_replan_attempted: bool
     email_result: Dict[str, Any]
     error: Optional[str]
 
