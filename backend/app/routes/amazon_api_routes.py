@@ -3019,8 +3019,11 @@ def finances_mtd_transactions():
 
         # Logic 1: GRAND_TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU
-        misc_transaction_total = abs(
-            pd.to_numeric(df_all.loc[leftout_mask, "total"], errors="coerce")
+        misc_transaction_total = (
+            pd.to_numeric(
+                df.loc[leftout_mask, "total"],
+                errors="coerce"
+            )
             .fillna(0.0)
             .sum()
         )

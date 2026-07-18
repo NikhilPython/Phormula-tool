@@ -877,8 +877,129 @@ def us_sales(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
-    # Net sales formula stays aligned with the shared sales engine.
-    return uk_sales(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+    w = df.copy()
+
+    for col in ["product_sales", "promotional_rebates"]:
+        if col not in w.columns:
+            w[col] = 0.0
+        w[col] = safe_num(w[col])
+
+    # Refund rows
+    if "type" in w.columns:
+        refund_mask = (
+            w["type"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .str.contains("refund", na=False)
+        )
+    else:
+        refund_mask = w["product_sales"] < 0
+
+    non_refund_df = w.loc[~refund_mask].copy()
+    refund_df = w.loc[refund_mask].copy()
+
+    # ---------------- TOTAL ----------------
+    gross_sales_total = float(
+        non_refund_df["product_sales"].sum()
+    )
+
+    refund_sales_total = float(
+        refund_df["product_sales"].abs().sum()
+    )
+
+    promotional_rebates_total = float(
+        w["promotional_rebates"].sum()
+    )
+
+    total = (
+        gross_sales_total
+        - refund_sales_total
+        + promotional_rebates_total
+    )
+
+    # ---------------- SKU-WISE ----------------
+    if "sku" not in w.columns:
+        return (
+            total,
+            pd.DataFrame(columns=[
+                "sku",
+                "__metric__",
+                "gross_sales",
+                "refund_sales",
+                "promotional_rebates",
+            ]),
+            [
+                "gross_sales",
+                "refund_sales",
+                "promotional_rebates",
+            ],
+        )
+
+    non_refund_df = non_refund_df.loc[sku_mask(non_refund_df)].copy()
+    refund_df = refund_df.loc[sku_mask(refund_df)].copy()
+    promo_df = w.loc[sku_mask(w)].copy()
+
+    gross_by = (
+        non_refund_df
+        .groupby("sku", as_index=False)["product_sales"]
+        .sum()
+        .rename(columns={"product_sales": "gross_sales"})
+    )
+
+    refund_by = (
+        refund_df
+        .groupby("sku", as_index=False)["product_sales"]
+        .sum()
+        .rename(columns={"product_sales": "refund_sales"})
+    )
+
+    refund_by["refund_sales"] = safe_num(
+        refund_by["refund_sales"]
+    ).abs()
+
+    promo_by = (
+        promo_df
+        .groupby("sku", as_index=False)["promotional_rebates"]
+        .sum()
+    )
+
+    by = (
+        gross_by
+        .merge(refund_by, on="sku", how="outer")
+        .merge(promo_by, on="sku", how="outer")
+        .fillna(0.0)
+    )
+
+    for col in [
+        "gross_sales",
+        "refund_sales",
+        "promotional_rebates",
+    ]:
+        by[col] = safe_num(by[col])
+
+    by["__metric__"] = (
+        by["gross_sales"]
+        - by["refund_sales"]
+        + by["promotional_rebates"]
+    )
+
+    return (
+        total,
+        by[[
+            "sku",
+            "__metric__",
+            "gross_sales",
+            "refund_sales",
+            "promotional_rebates",
+        ]],
+        [
+            "gross_sales",
+            "refund_sales",
+            "promotional_rebates",
+        ],
+    )
 
 
 def us_tax(
@@ -889,12 +1010,83 @@ def us_tax(
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
     """
-    Amazon US Net Taxes using the SAME formula engine as UK.
+    US Net Taxes: Shipment transactions only.
 
-    This intentionally calls uk_tax() so US and UK calculate the
-    Other Transactions -> Net Taxes column from the same reusable helper.
+    Formula:
+        net_taxes =
+            product_sales_tax
+            + shipping_credits_tax
+            + giftwrap_credits_tax
+            + promotional_rebates_tax
+            + marketplace_facilitator_tax
+
+    Original signs are preserved.
     """
-    return uk_tax(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+    parts = [
+        "product_sales_tax",
+        "shipping_credits_tax",
+        "giftwrap_credits_tax",
+        "promotional_rebates_tax",
+        "marketplace_facilitator_tax",
+    ]
+
+    w = df.copy()
+
+    # Ensure all tax columns exist and are numeric
+    for col in parts:
+        if col not in w.columns:
+            w[col] = 0.0
+        w[col] = safe_num(w[col])
+
+    # Only Shipment transaction rows
+    if "type" in w.columns:
+        type_norm = (
+            w["type"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+
+        w = w.loc[type_norm.eq("shipment")].copy()
+    else:
+        w = w.iloc[0:0].copy()
+
+    # Total includes all Shipment rows
+    total = float(w[parts].sum().sum())
+
+    # No SKU column
+    if "sku" not in w.columns:
+        return (
+            total,
+            pd.DataFrame(columns=["sku", "__metric__", *parts]),
+            parts,
+        )
+
+    # SKU-wise only valid SKUs
+    w["sku"] = w["sku"].astype(str).str.strip()
+    w = w.loc[sku_mask(w)].copy()
+
+    if w.empty:
+        return (
+            total,
+            pd.DataFrame(columns=["sku", "__metric__", *parts]),
+            parts,
+        )
+
+    by = (
+        w.groupby("sku", as_index=False)[parts]
+        .sum()
+    )
+
+    by["__metric__"] = by[parts].sum(axis=1)
+
+    return (
+        total,
+        by[["sku", "__metric__", *parts]],
+        parts,
+    )
 
 def us_credits(
     df: pd.DataFrame,
@@ -918,7 +1110,42 @@ def us_gross_sales(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
-    return uk_gross_sales(df, country=country, want_breakdown=want_breakdown, **kwargs)
+
+    parts = ["product_sales"]
+
+    # Total gross sales
+    total = float(
+        safe_num(df.get("product_sales", 0.0)).sum()
+    )
+
+    # SKU-wise gross sales
+    sku_df = df.copy()
+
+    if "sku" in sku_df.columns:
+        sku_df = sku_df.loc[sku_mask(sku_df)]
+
+    by = agg_by(
+        sku_df,
+        "sku",
+        parts
+    )
+
+    if by.empty:
+        return (
+            0.0,
+            pd.DataFrame(
+                columns=["sku", "__metric__", "product_sales"]
+            ),
+            parts,
+        )
+
+    by["__metric__"] = safe_num(by["product_sales"])
+
+    return (
+        total,
+        by[["sku", "__metric__", "product_sales"]],
+        parts,
+    )
 
 
 def us_tax_and_credits(
@@ -928,9 +1155,95 @@ def us_tax_and_credits(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
-    # This is the sales-side Taxes and Credits column, not the Other Transactions
-    # net_taxes/net_credits pair. Keep it aligned with the shared net sales engine.
-    return uk_tax_and_credits(df, country=country, want_breakdown=want_breakdown, **kwargs)
+    """
+    US Taxes and Credits:
+
+        tex_and_credits = net_taxes + net_credits
+
+    net_taxes comes from us_tax()
+    net_credits comes from us_credits()
+    """
+
+    tax_total, tax_by, _ = us_tax(
+        df,
+        country=country,
+        want_breakdown=want_breakdown,
+        **kwargs
+    )
+
+    credit_total, credit_by, _ = us_credits(
+        df,
+        country=country,
+        want_breakdown=want_breakdown,
+        **kwargs
+    )
+
+    total = float(tax_total + credit_total)
+
+    tax_part = (
+        tax_by[["sku", "__metric__"]]
+        .rename(columns={"__metric__": "net_taxes"})
+        if tax_by is not None
+        and not tax_by.empty
+        and "sku" in tax_by.columns
+        and "__metric__" in tax_by.columns
+        else pd.DataFrame(columns=["sku", "net_taxes"])
+    )
+
+    credit_part = (
+        credit_by[["sku", "__metric__"]]
+        .rename(columns={"__metric__": "net_credits"})
+        if credit_by is not None
+        and not credit_by.empty
+        and "sku" in credit_by.columns
+        and "__metric__" in credit_by.columns
+        else pd.DataFrame(columns=["sku", "net_credits"])
+    )
+
+    by = (
+        tax_part
+        .merge(
+            credit_part,
+            on="sku",
+            how="outer"
+        )
+        .fillna(0.0)
+    )
+
+    if by.empty:
+        return (
+            total,
+            pd.DataFrame(
+                columns=[
+                    "sku",
+                    "__metric__",
+                    "net_taxes",
+                    "net_credits",
+                ]
+            ),
+            ["net_taxes", "net_credits"],
+        )
+
+    by["net_taxes"] = safe_num(by["net_taxes"])
+    by["net_credits"] = safe_num(by["net_credits"])
+
+    by["__metric__"] = (
+        by["net_taxes"]
+        + by["net_credits"]
+    )
+
+    return (
+        total,
+        by[
+            [
+                "sku",
+                "__metric__",
+                "net_taxes",
+                "net_credits",
+            ]
+        ],
+        ["net_taxes", "net_credits"],
+    )
 
 
 def us_cogs(
@@ -950,7 +1263,126 @@ def us_amazon_fee(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
-    return uk_amazon_fee(df, country=country, want_breakdown=want_breakdown, **kwargs)
+    """
+    US Amazon Fee:
+
+        Amazon Fee
+        = abs(adjusted selling fees)
+        + abs(FBA fees from Shipment and Refund only)
+
+    FBA fees from other transaction types are excluded.
+    """
+
+    w = df.copy()
+
+    # Ensure required numeric columns exist
+    for col in ["fba_fees", "selling_fees"]:
+        if col not in w.columns:
+            w[col] = 0.0
+
+        w[col] = safe_num(w[col])
+
+    if "sku" not in w.columns:
+        components = [
+            "fba_abs",
+            "selling_adj_abs",
+            "selling_raw_abs",
+            "refund_selling_fees",
+        ]
+
+        return (
+            0.0,
+            pd.DataFrame(
+                columns=["sku", "__metric__", *components]
+            ),
+            ["fba_abs", "selling_adj_abs"],
+        )
+
+    w["sku"] = w["sku"].astype(str).str.strip()
+    w = w.loc[sku_mask(w)].copy()
+
+    # Normalize transaction type
+    type_norm = text_series(w, "type").str.strip().str.casefold()
+
+    # -------------------------------------------------
+    # FBA fees: only Shipment and Refund transactions
+    # -------------------------------------------------
+    fba_mask = type_norm.isin(["shipment", "refund"])
+
+    fba_by = (
+        w.loc[fba_mask]
+        .groupby("sku", as_index=False)["fba_fees"]
+        .sum()
+    )
+
+    # -------------------------------------------------
+    # Selling fees from all valid SKU rows
+    # -------------------------------------------------
+    selling_by = (
+        w.groupby("sku", as_index=False)["selling_fees"]
+        .sum()
+    )
+
+    # Refund selling fees
+    refund_selling_by = (
+        w.loc[type_norm.eq("refund")]
+        .groupby("sku", as_index=False)["selling_fees"]
+        .sum()
+        .rename(
+            columns={
+                "selling_fees": "refund_selling_fees"
+            }
+        )
+    )
+
+    # Merge components
+    by = (
+        selling_by
+        .merge(fba_by, on="sku", how="outer")
+        .merge(refund_selling_by, on="sku", how="left")
+        .fillna(0.0)
+    )
+
+    for col in [
+        "selling_fees",
+        "fba_fees",
+        "refund_selling_fees",
+    ]:
+        by[col] = safe_num(by[col])
+
+    # Same selling-fee adjustment used by your processing code
+    by["selling_fees_adj"] = (
+        by["selling_fees"]
+        - (2.0 * by["refund_selling_fees"])
+    )
+
+    by["fba_abs"] = by["fba_fees"].abs()
+    by["selling_raw_abs"] = by["selling_fees"].abs()
+    by["selling_adj_abs"] = by["selling_fees_adj"].abs()
+
+    by["__metric__"] = (
+        by["fba_abs"]
+        + by["selling_adj_abs"]
+    )
+
+    per_sku = by[
+        [
+            "sku",
+            "__metric__",
+            "fba_abs",
+            "selling_adj_abs",
+            "selling_raw_abs",
+            "refund_selling_fees",
+        ]
+    ].copy()
+
+    total = float(per_sku["__metric__"].sum())
+
+    return (
+        total,
+        per_sku,
+        ["fba_abs", "selling_adj_abs"],
+    )
 
 
 def us_platform_fee(

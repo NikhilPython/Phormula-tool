@@ -685,8 +685,11 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Logic 1: TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = abs(
-            pd.to_numeric(misc_df.loc[leftout_mask, "total"], errors="coerce")
+        misc_transaction_total = (
+            pd.to_numeric(
+                df.loc[leftout_mask, "total"],
+                errors="coerce"
+            )
             .fillna(0.0)
             .sum()
         )
@@ -711,7 +714,7 @@ def process_skuwise_data(user_id, country, month, year):
         misc_transaction_df["misc_transaction"] = pd.to_numeric(
             misc_transaction_df["misc_transaction"],
             errors="coerce"
-        ).fillna(0.0).abs()
+        ).fillna(0.0)
 
         # ---------------------------------------------------------------------
         # Centralized platform fee & advertising using helpers
@@ -1560,7 +1563,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         sku_grouped["other_transaction_fees"] = (
             pd.to_numeric(sku_grouped["net_credits"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0.0)
+            - pd.to_numeric(sku_grouped["misc_transaction"], errors="coerce").fillna(0.0)
             - pd.to_numeric(sku_grouped["net_taxes"], errors="coerce").fillna(0.0)
         )
 
