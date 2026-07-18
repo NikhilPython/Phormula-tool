@@ -2594,7 +2594,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
             "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
-            "shipment_fees", "cm2_profit", "cm2_profit_percentage",
+            "shipping_charges", "shipment_fees", "cm2_profit", "cm2_profit_percentage",
             "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix", "year", "country", "user_id"
@@ -3470,7 +3470,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "visible_ads", "dealsvouchar_ads", "advertising_total", "lost_total",
             "platformfeenew", "platform_fee", "platform_fee_inventory_storage",
             "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "placement_fee", "customs_fee",
-            "shipment_fees", "cm2_profit", "cm2_profit_percentage",
+            "shipping_charges", "shipment_fees", "cm2_profit", "cm2_profit_percentage",
             "cm2_margins", "acos", "debt_payment", "disbursement", "rembursement_fee",
             "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
             "sales_mix", "profit_mix", "year", "country", "user_id"
