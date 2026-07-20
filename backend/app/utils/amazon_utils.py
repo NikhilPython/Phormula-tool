@@ -478,8 +478,12 @@ def dedupe_rows_by_order_id(
             or row.get("transaction_type")
         )
 
-        # Do not dedupe Refund, ServiceFee, Transfer, Adjustment, etc.
-        if row_type not in {"order", "shipment"}:
+        # Dedupe Order, Shipment and Refund financial rows.
+        # Amazon can return the same Refund in RELEASED and
+        # DEFERRED_RELEASED buckets; keeping both inflates return quantity.
+        # ServiceFee, Transfer, Adjustment and other non-order transactions
+        # remain untouched.
+        if row_type not in {"order", "shipment", "refund"}:
             untouched_rows.append(row)
             continue
 
@@ -487,12 +491,12 @@ def dedupe_rows_by_order_id(
             row.get("order_id") or ""
         ).strip()
 
-        # Order/Shipment rows without an order ID must remain.
+        # Order/Shipment/Refund rows without an order ID must remain.
         if not order_id:
             untouched_rows.append(row)
             continue
 
-        # This key identifies the same financial Order/Shipment event.
+        # This key identifies the same financial Order/Shipment/Refund event.
         # Date and status are intentionally excluded.
         key = (
             order_id,

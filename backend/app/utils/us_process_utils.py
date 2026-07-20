@@ -614,8 +614,33 @@ def process_skuwise_us_data(user_id, country, month, year):
             .sum()
         )
 
+        # Amazon may return the same refund financial event in both
+        # RELEASED and DEFERRED_RELEASED buckets. Remove only exact refund
+        # duplicates before summing quantity, otherwise June becomes 180
+        # instead of the correct 138.
+        refund_rows = df[df["type_norm"] == "refund"].copy()
+
+        refund_dedupe_cols = [
+            col for col in [
+                "order_id", "sku", "description", "quantity",
+                "product_sales", "product_sales_tax",
+                "postage_credits", "shipping_credits",
+                "shipping_credits_tax", "gift_wrap_credits",
+                "giftwrap_credits_tax", "promotional_rebates",
+                "promotional_rebates_tax", "selling_fees",
+                "fba_fees", "other_transaction_fees", "other", "total",
+            ]
+            if col in refund_rows.columns
+        ]
+
+        if refund_dedupe_cols:
+            refund_rows = refund_rows.drop_duplicates(
+                subset=refund_dedupe_cols,
+                keep="last",
+            )
+
         return_qty_df = (
-            df[df["type_norm"] == "refund"]
+            refund_rows
             .groupby("sku", as_index=False)["quantity"]
             .sum()
             .rename(columns={"quantity": "return_quantity"})
