@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+from openai import RateLimitError
 
 from app.ai_agent.graph import build_graph
 from app.ai_agent.memory import recent_chat_history, save_chat_turn
@@ -135,6 +136,25 @@ DEFAULT_THRESHOLDS = {
     "high_amazon_fee_ratio": 25.0,
     "high_advertising_ratio": 15.0,
 }
+
+
+INSUFFICIENT_BALANCE_MESSAGE = (
+    "Insufficient balance. Your AI credits have been exhausted. "
+    "Please recharge your OpenAI account to continue using the chatbot."
+)
+
+
+def _is_insufficient_quota_error(exc: Exception) -> bool:
+    error_text = str(exc or "").lower()
+
+    return (
+        isinstance(exc, RateLimitError)
+        and (
+            "insufficient_quota" in error_text
+            or "exceeded your current quota" in error_text
+            or "billing details" in error_text
+        )
+    )
 
 
 def _strip_nul_text(value: Any) -> str:
@@ -765,8 +785,22 @@ Context JSON:
             corrected,
             issues[:2],
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Answer verification failed")
+
+        if _is_insufficient_quota_error(exc):
+            result["final_response"] = INSUFFICIENT_BALANCE_MESSAGE
+            result["error"] = "insufficient_quota"
+            result["insufficient_balance"] = True
+
+            result["answer_validation"] = {
+                "status": "failed",
+                "reason": "insufficient_quota",
+                "corrected": False,
+            }
+
+            return result
+
         result["answer_validation"] = {
             "status": "failed",
             "reason": "verifier_error",
@@ -800,7 +834,16 @@ def _suggestion_context(result: Dict[str, Any], user_query: str) -> Dict[str, An
     }
 
 
-def _llm_suggested_questions(result: Dict[str, Any], user_query: str) -> List[str]:
+def _llm_suggested_questions(
+    result: Dict[str, Any],
+    user_query: str
+) -> List[str]:
+    if (
+        result.get("insufficient_balance")
+        or result.get("error") == "insufficient_quota"
+    ):
+        return []
+
     if not _suggestion_llm:
         return []
 
@@ -907,20 +950,32 @@ def run_agent(
     result = _strip_runtime_state(result)
     result["final_response"] = _enforce_cm1_profit_terms(result.get("final_response"))
 
-    if include_suggested_questions:
+    if (
+        result.get("insufficient_balance")
+        or result.get("error") == "insufficient_quota"
+    ):
+        suggested_questions = []
+
+    elif include_suggested_questions:
         suggestion_default = [
             _enforce_cm1_profit_terms(question)
             for question in _fallback_suggested_questions(result, user_query)
         ]
+
         suggested_questions = _run_with_timeout(
             label="SUGGESTED_QUESTIONS",
             executor=_postprocess_executor,
             timeout_seconds=_suggestion_timeout_seconds,
-            func=lambda: build_suggested_questions(_safe_result_copy(result), user_query),
+            func=lambda: build_suggested_questions(
+                _safe_result_copy(result),
+                user_query,
+            ),
             default=suggestion_default,
         )
+
         if not isinstance(suggested_questions, list):
             suggested_questions = suggestion_default
+
     else:
         suggested_questions = []
 
@@ -974,4 +1029,6 @@ def run_agent(
         "history_id": history_id,
         "memory": history,
         "error": result.get("error"),
+        "insufficient_balance": bool(result.get("insufficient_balance")),
     }
+    

@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 from types import SimpleNamespace 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+from openai import RateLimitError
 from sqlalchemy import text
 from app.utils.live_bi_utils import generate_sku_inventory_flags
 from app.ai_agent.db import _format_value, fetch_period_dfs, fetch_raw_line_item_breakdown, get_engine, latest_available_month, get_metric_def, validate_metric_compatibility, MonthKey, INVENTORY_METRICS, get_inventory_snapshot, FINANCE_METRICS, get_amazon_engine, get_inventory_forecast_snapshot, get_pnl_forecast_snapshot, iter_months
@@ -43,6 +44,26 @@ from app.ai_agent.semantic_layer import (
 from app.ai_agent.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+
+INSUFFICIENT_BALANCE_MESSAGE = (
+    "Insufficient balance. Your AI credits have been exhausted. "
+    "Please recharge your OpenAI account to continue using the chatbot."
+)
+
+
+def _is_insufficient_quota_error(exc: Exception) -> bool:
+    error_text = str(exc or "").lower()
+
+    return (
+        isinstance(exc, RateLimitError)
+        and (
+            "insufficient_quota" in error_text
+            or "exceeded your current quota" in error_text
+            or "billing details" in error_text
+        )
+    )
+
 
 try:
     from app.utils.agent_utils import amazon_engine, build_plan_langgraph, phormula_engine
@@ -437,10 +458,20 @@ class SimpleGraph:
     def invoke(self, state: AgentState) -> AgentState:
         try:
             return _invoke_agent(state)
+
         except Exception as exc:
             logger.exception("Agent invocation failed")
+
+            if _is_insufficient_quota_error(exc):
+                state["error"] = "insufficient_quota"
+                state["insufficient_balance"] = True
+                state["final_response"] = INSUFFICIENT_BALANCE_MESSAGE
+                return state
+
             state["error"] = str(exc)
-            state["final_response"] = f"I couldn't process that request reliably: {exc}"
+            state["final_response"] = (
+                f"I couldn't process that request reliably: {exc}"
+            )
             return state
 
 
@@ -1211,8 +1242,13 @@ def _plan_request(query: str, email_requested: bool = False) -> RequestPlan:
             future_event_month=result.future_event_month,
             target_sales=result.target_sales,
         )
-    except Exception:
-        logger.exception("Planner failed; using heuristic fallback")
+    except Exception as exc:
+        logger.exception("Planner failed")
+
+        if _is_insufficient_quota_error(exc):
+            raise
+
+        logger.warning("Planner failed; using heuristic fallback")
         return fallback
 
 
@@ -11884,10 +11920,17 @@ def _invoke_agent(state: AgentState) -> AgentState:
         logger.info("[END] Response generated successfully")
         return state
 
-    except Exception as e:
+    except Exception as exc:
         logger.exception("[FATAL ERROR] Agent execution failed")
-        state["error"] = str(e)
-        state["final_response"] = f"Agent failed: {str(e)}"
+
+        if _is_insufficient_quota_error(exc):
+            state["error"] = "insufficient_quota"
+            state["insufficient_balance"] = True
+            state["final_response"] = INSUFFICIENT_BALANCE_MESSAGE
+            return state
+
+        state["error"] = str(exc)
+        state["final_response"] = f"Agent failed: {str(exc)}"
         return state
 
 
