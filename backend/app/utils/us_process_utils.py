@@ -1202,11 +1202,19 @@ def process_skuwise_us_data(user_id, country, month, year):
             (sku_grouped["rembursement_fee"] / sku_grouped["Net Sales"]) * 100,
             0,
         )
+        # CM2 follows the report layout:
+        # Profit - Advertising - Shipping - Storage - Platform Management
+        # + Other Adjustment - Inventory Charges and Reimbursement.
+        # inventory_charges_and_reimbursement can be negative, so subtracting it
+        # correctly adds the net reimbursement benefit back to CM2.
         sku_grouped["cm2_profit"] = (
-            sku_grouped["profit"]
-            - sku_grouped["advertising_total"]
-            - sku_grouped["platform_fee"]
-            - sku_grouped["shipping_charges"]
+            safe_series(sku_grouped, "profit")
+            - safe_series(sku_grouped, "advertising_total").abs()
+            - safe_series(sku_grouped, "shipping_charges").abs()
+            - safe_series(sku_grouped, "storage_fee").abs()
+            - safe_series(sku_grouped, "inventory_charges_and_reimbursement")
+            - safe_series(sku_grouped, "platform_management_fees").abs()
+            + safe_series(sku_grouped, "other_adjustment")
         )
         sku_grouped["cm2_margins"] = np.where(
             sku_grouped["Net Sales"] != 0,
@@ -1470,10 +1478,24 @@ def process_skuwise_us_data(user_id, country, month, year):
         total_credits = abs(sku_grouped["Net Credits"].sum())
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
-        cm2_profit = total_profit - (
-            abs(advertising_total)
-            + abs(platform_fee)
-            + abs(sku_grouped["shipping_charges"].sum())
+        inventory_charges_and_reimbursement_total = (
+            abs(fba_disposal_total) - abs(lost_total_amount)
+        )
+        # Use the report-level shipping total. Some shipping transactions have blank SKU,
+        # so summing SKU rows can be zero/incomplete and overstate CM2.
+        shipping_charges_total = (
+            abs(placement_fee_total)
+            + abs(customs_fee_total)
+            + abs(shipment_fees)
+        )
+        cm2_profit = (
+            total_profit
+            - abs(advertising_total)
+            - shipping_charges_total
+            - abs(short_term_storage_fee_total + long_term_storage_fee_total)
+            - inventory_charges_and_reimbursement_total
+            - abs(platform_management_fees_total)
+            + other_adjustment_total
         )
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
@@ -2618,11 +2640,19 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
 
         sku_grouped["reimbursement_vs_sales"] = 0
+        # CM2 follows the report layout:
+        # Profit - Advertising - Shipping - Storage - Platform Management
+        # + Other Adjustment - Inventory Charges and Reimbursement.
+        # inventory_charges_and_reimbursement can be negative, so subtracting it
+        # correctly adds the net reimbursement benefit back to CM2.
         sku_grouped["cm2_profit"] = (
-            sku_grouped["profit"]
-            - sku_grouped["advertising_total"]
-            - sku_grouped["platform_fee"]
-            - sku_grouped["shipping_charges"]
+            safe_series(sku_grouped, "profit")
+            - safe_series(sku_grouped, "advertising_total").abs()
+            - safe_series(sku_grouped, "shipping_charges").abs()
+            - safe_series(sku_grouped, "storage_fee").abs()
+            - safe_series(sku_grouped, "inventory_charges_and_reimbursement")
+            - safe_series(sku_grouped, "platform_management_fees").abs()
+            + safe_series(sku_grouped, "other_adjustment")
         )
         sku_grouped["cm2_margins"] = np.where(
             sku_grouped["Net Sales"] != 0,
@@ -2657,10 +2687,24 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales else 0
-        cm2_profit = total_profit - (
-            abs(advertising_total)
-            + abs(platform_fee)
-            + abs(sku_grouped["shipping_charges"].sum())
+        inventory_charges_and_reimbursement_total = (
+            abs(fba_disposal_total) - abs(lost_total_amount)
+        )
+        # Use the report-level shipping total. Some shipping transactions have blank SKU,
+        # so summing SKU rows can be zero/incomplete and overstate CM2.
+        shipping_charges_total = (
+            abs(placement_fee_total)
+            + abs(customs_fee_total)
+            + abs(shipment_fees)
+        )
+        cm2_profit = (
+            total_profit
+            - abs(advertising_total)
+            - shipping_charges_total
+            - abs(short_term_storage_fee_total + long_term_storage_fee_total)
+            - inventory_charges_and_reimbursement_total
+            - abs(platform_management_fees_total)
+            + other_adjustment_total
         )
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales else 0
         acos = (advertising_total / total_sales) * 100 if total_sales else 0
@@ -3561,11 +3605,19 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
 
         sku_grouped["reimbursement_vs_sales"] = 0
+        # CM2 follows the report layout:
+        # Profit - Advertising - Shipping - Storage - Platform Management
+        # + Other Adjustment - Inventory Charges and Reimbursement.
+        # inventory_charges_and_reimbursement can be negative, so subtracting it
+        # correctly adds the net reimbursement benefit back to CM2.
         sku_grouped["cm2_profit"] = (
-            sku_grouped["profit"]
-            - sku_grouped["advertising_total"]
-            - sku_grouped["platform_fee"]
-            - sku_grouped["shipping_charges"]
+            safe_series(sku_grouped, "profit")
+            - safe_series(sku_grouped, "advertising_total").abs()
+            - safe_series(sku_grouped, "shipping_charges").abs()
+            - safe_series(sku_grouped, "storage_fee").abs()
+            - safe_series(sku_grouped, "inventory_charges_and_reimbursement")
+            - safe_series(sku_grouped, "platform_management_fees").abs()
+            + safe_series(sku_grouped, "other_adjustment")
         )
         sku_grouped["cm2_margins"] = np.where(
             sku_grouped["Net Sales"] != 0,
@@ -3597,10 +3649,24 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales else 0
-        cm2_profit = total_profit - (
-            abs(advertising_total)
-            + abs(platform_fee)
-            + abs(sku_grouped["shipping_charges"].sum())
+        inventory_charges_and_reimbursement_total = (
+            abs(fba_disposal_total) - abs(lost_total_amount)
+        )
+        # Use the report-level shipping total. Some shipping transactions have blank SKU,
+        # so summing SKU rows can be zero/incomplete and overstate CM2.
+        shipping_charges_total = (
+            abs(placement_fee_total)
+            + abs(customs_fee_total)
+            + abs(shipment_fees)
+        )
+        cm2_profit = (
+            total_profit
+            - abs(advertising_total)
+            - shipping_charges_total
+            - abs(short_term_storage_fee_total + long_term_storage_fee_total)
+            - inventory_charges_and_reimbursement_total
+            - abs(platform_management_fees_total)
+            + other_adjustment_total
         )
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales else 0
         acos = (advertising_total / total_sales) * 100 if total_sales else 0
