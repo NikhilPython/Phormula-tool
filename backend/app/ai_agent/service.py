@@ -630,6 +630,47 @@ def _validate_deterministic_comparison(result: Dict[str, Any]) -> bool:
     return True
 
 
+def _validate_deterministic_table_answer(result: Dict[str, Any]) -> bool:
+    analysis = result.get("analysis_result") or {}
+    answer = result.get("final_response") or ""
+    result_type = analysis.get("type")
+    structured_types = {
+        "anomaly_scan",
+        "business_advisor",
+        "comparison",
+        "inventory_comparison",
+        "multi_metric_comparison",
+    }
+    has_markdown_table = "| Metric |" in answer and "|---" in answer
+    if result_type not in structured_types or not has_markdown_table:
+        return False
+
+    primary_metric = (
+        ((result.get("semantic_resolution") or {}).get("primary_metric_name"))
+        or result.get("metric_name")
+        or ""
+    )
+    answer_lower = answer.lower()
+    issues: List[str] = []
+    if str(primary_metric).strip().lower() == "profit" and "cm2 profit analysis" in answer_lower:
+        issues.append("CM1 profit request was labelled as CM2 profit analysis")
+
+    result["answer_validation"] = {
+        "status": "passed" if not issues else "flagged",
+        "reason": "deterministic_table_response",
+        "is_valid": not issues,
+        "confidence": 1.0 if not issues else 0.0,
+        "issues": issues,
+        "corrected": False,
+    }
+    logger.info(
+        "[ANSWER_VALIDATION] status=%s corrected=False reason=deterministic_table_response issues=%s",
+        result["answer_validation"]["status"],
+        issues[:2],
+    )
+    return not issues
+
+
 def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
     answer = (result.get("final_response") or "").strip()
     if not answer:
@@ -657,6 +698,9 @@ def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[s
         return result
 
     if _validate_deterministic_comparison(result):
+        return result
+
+    if _validate_deterministic_table_answer(result):
         return result
 
     if not _verifier_llm:

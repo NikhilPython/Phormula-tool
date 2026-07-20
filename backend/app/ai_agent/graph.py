@@ -5,7 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 from types import SimpleNamespace 
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
@@ -4513,7 +4513,6 @@ LOWER_IS_BETTER_METRICS = {
     "selling_fees",
     "refund_sales",
     "return_quantity",
-    "lost_total",
     "misc_transaction",
 }
 
@@ -4545,11 +4544,15 @@ ANOMALY_SCAN_METRICS = [
     "cm2_profit",
     "cm2_profit_per",
     "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "lost_total",
     "selling_fees",
     "fba_fees",
     "amazon_fees",
     "cogs",
     "ads_spend",
+    "total_ads",
     "tacos_total_advertising_cost_of_sale",
     "ads_acos",
     "available",
@@ -6725,6 +6728,7 @@ def humanize_metric(metric: str) -> str:
 
         # -------- FEES --------
         "platform_fee_inventory_storage": "Platform Fee Inventory Storage",
+        "lost_total": "Lost Inventory Reimbursement",
         "other_transaction_fees": "Other Transaction Fees",
         
         "shipment_fees": "Shipment Fees",
@@ -7098,7 +7102,6 @@ BURDEN_DISPLAY_METRICS = {
     "ads_acos",
     "tacos_total_advertising_cost_of_sale",
     "ads_cpc",
-    "lost_total",
     "misc_transaction",
     "debt_payment",
 }
@@ -7371,6 +7374,809 @@ def _render_change_group_lines(state: AgentState, comparison_context: Dict[str, 
     return lines
 
 
+COMPARISON_TABLE_DEFAULT_ORDER = [
+    "profit",
+    "net_sales",
+    "gross_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "profit_percentage",
+    "total_cm2_profit",
+    "cm2_profit",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "promotional_rebates",
+    "refund_sales",
+    "return_quantity",
+    "return_rate",
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "display_spend",
+    "brand_spend",
+    "ads_sale_amount",
+    "ads_roas",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "lost_total",
+    "selling_fees",
+    "fba_fees",
+    "amazon_fees",
+    "cogs",
+    "misc_transaction",
+    "other",
+    "available",
+    "inbound_quantity",
+    "days_of_supply",
+]
+
+COMPARISON_TABLE_GOOD_WHEN_UP = {
+    "net_sales",
+    "gross_sales",
+    "product_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "profit",
+    "profit_percentage",
+    "cm2_profit",
+    "total_cm2_profit",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "ads_sale_amount",
+    "ads_sale_units",
+    "ads_roas",
+    "lost_total",
+    "ads_ctr",
+    "ads_conversion_rate",
+    "available",
+    "inbound_quantity",
+    "days_of_supply",
+}
+
+CM1_SECONDARY_ONLY_METRICS = {
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "display_spend",
+    "brand_spend",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "ads_cpc",
+    "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "cm2_profit",
+    "total_cm2_profit",
+    "cm2_profit_per",
+    "total_cm2_margins",
+    "lost_total",
+}
+
+COMPARISON_TABLE_ALIASES = {
+    "advertising_total": "ads_spend",
+    "ad_spend": "ads_spend",
+    "total_ads": "ads_spend",
+    "amazon_fee": "amazon_fees",
+    "refund_quantity": "return_quantity",
+}
+
+COMPARISON_TABLE_MAX_ROWS = 9
+
+NET_REPLACEMENT_METRICS = {
+    "gross_sales": "net_sales",
+    "quantity": "total_quantity",
+}
+
+REFUND_IMPACT_METRICS = {"refund_sales", "return_quantity", "return_rate"}
+
+SALES_DEPENDENT_FEE_METRICS = {"selling_fees", "fba_fees"}
+
+INVENTORY_CONTEXT_METRICS = {"available", "inbound_quantity", "days_of_supply"}
+
+SALES_DEPENDENT_FEE_PCT_BUFFER = 10.0
+SALES_DEPENDENT_FEE_RATIO_BUFFER = 1.5
+REFUND_IMPACT_MIN_PRIMARY_RATIO = 0.10
+FEE_IMPACT_MIN_PRIMARY_RATIO = 0.05
+LOW_DAYS_OF_SUPPLY_THRESHOLD = 21.0
+
+
+def _canonical_comparison_metric(metric: Any) -> str:
+    key = str(metric or "").strip().lower()
+    return COMPARISON_TABLE_ALIASES.get(key, key)
+
+
+def _resolve_available_comparison_metric(metric: Any, available: Dict[str, Any]) -> str:
+    raw = str(metric or "").strip().lower()
+    canonical = _canonical_comparison_metric(raw)
+    if canonical in available:
+        return canonical
+    if raw in available:
+        return raw
+    return canonical
+
+
+def _period_label_sort_key(label: Any) -> Optional[Tuple[int, int]]:
+    text = str(label or "")
+    month_pattern = (
+        r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+        r"jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+        r"[\s'/-]*(20\d{2}|\d{2})\b"
+    )
+    month_lookup = {
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
+    match = re.search(month_pattern, text, re.IGNORECASE)
+    if match:
+        month = month_lookup[match.group(1)[:3].lower()]
+        year = int(match.group(2))
+        if year < 100:
+            year += 2000
+        return year, month
+
+    quarter = re.search(r"\bq(?:uarter)?\s*([1-4])[\s'/-]*(20\d{2}|\d{2})\b", text, re.IGNORECASE)
+    if quarter:
+        year = int(quarter.group(2))
+        if year < 100:
+            year += 2000
+        return year, ((int(quarter.group(1)) - 1) * 3) + 1
+
+    year_match = re.search(r"\b(20\d{2})\b", text)
+    if year_match:
+        return int(year_match.group(1)), 1
+
+    return None
+
+
+def _ordered_period_labels(
+    left_label: Any,
+    right_label: Any,
+) -> Tuple[str, str, str, str]:
+    left = _clean_period_label(left_label) or "Period 1"
+    right = _clean_period_label(right_label) or "Period 2"
+    left_key = _period_label_sort_key(left)
+    right_key = _period_label_sort_key(right)
+    if left_key and right_key and left_key > right_key:
+        return "right", right, "left", left
+    return "left", left, "right", right
+
+
+def _period_metric_value(comp: Dict[str, Any], side: str) -> float:
+    return _safe_float(comp.get(side))
+
+
+def _format_period_metric_value(value: Any, metric_name: str, country: Optional[str]) -> str:
+    if metric_name == "lost_total":
+        return _format_metric_for_display(abs(_safe_float(value)), metric_name, country)
+    return _format_signed_metric_value(value, metric_name, country)
+
+
+def _metric_burden_value(metric_name: str, value: float) -> float:
+    if metric_name in SIGN_AWARE_BURDEN_DISPLAY_METRICS:
+        return -value
+    if metric_name in BURDEN_DISPLAY_METRICS:
+        return abs(value)
+    return value
+
+
+def _comparison_business_delta(metric_name: str, first_value: float, second_value: float) -> float:
+    if metric_name == "lost_total":
+        return abs(second_value) - abs(first_value)
+    if metric_name in BURDEN_DISPLAY_METRICS:
+        return _metric_burden_value(metric_name, second_value) - _metric_burden_value(metric_name, first_value)
+    return second_value - first_value
+
+
+def _format_comparison_change_amount(metric_name: str, delta: float, country: Optional[str]) -> str:
+    if metric_name in PERCENTAGE_DISPLAY_METRICS:
+        return f"{abs(delta):.2f} pts"
+    return _format_metric_for_display(abs(delta), metric_name, country)
+
+
+def _comparison_effect(metric_name: str, business_delta: float) -> str:
+    if abs(business_delta) < 0.005:
+        return "neutral"
+    if metric_name == "lost_total":
+        return "favorable" if business_delta > 0 else "unfavorable"
+    if metric_name in BURDEN_DISPLAY_METRICS:
+        return "unfavorable" if business_delta > 0 else "favorable"
+    if metric_name in COMPARISON_TABLE_GOOD_WHEN_UP:
+        return "favorable" if business_delta > 0 else "unfavorable"
+    return "neutral"
+
+
+def _format_comparison_change_text(
+    metric_name: str,
+    first_value: float,
+    second_value: float,
+    country: Optional[str],
+) -> Tuple[str, float, Optional[float], str]:
+    business_delta = _comparison_business_delta(metric_name, first_value, second_value)
+    if abs(business_delta) < 0.005:
+        return "Flat", business_delta, 0.0, "neutral"
+
+    if metric_name == "lost_total":
+        base = abs(first_value)
+        direction = f"Recovery {'up' if business_delta > 0 else 'down'}"
+    elif metric_name in BURDEN_DISPLAY_METRICS:
+        base = abs(_metric_burden_value(metric_name, first_value))
+        direction = "Discount burden" if metric_name in SIGN_AWARE_BURDEN_DISPLAY_METRICS else "Burden"
+        direction = f"{direction} {'up' if business_delta > 0 else 'down'}"
+    else:
+        base = abs(first_value)
+        direction = "Up" if business_delta > 0 else "Down"
+
+    pct_change = None if base < 0.005 else (business_delta / base) * 100.0
+    amount = _format_comparison_change_amount(metric_name, business_delta, country)
+    pct_suffix = "" if pct_change is None else f" ({pct_change:+.1f}%)"
+    return f"{direction} {amount}{pct_suffix}", business_delta, pct_change, _comparison_effect(metric_name, business_delta)
+
+
+def _comparison_requested_metric_set(
+    available: Dict[str, Any],
+    metrics: Iterable[Any],
+) -> set:
+    return {
+        key for key in (_resolve_available_comparison_metric(metric, available) for metric in metrics)
+        if key
+    }
+
+
+def _comparison_user_requested_metric_candidates(
+    state: AgentState,
+    primary_metric: Optional[str] = None,
+    extra_metrics: Iterable[Any] = (),
+) -> List[Any]:
+    semantic = state.get("semantic_resolution") or {}
+    broad_evidence_mode = bool(
+        semantic.get("is_broad_business_analysis")
+        or semantic.get("needs_anomaly_scan")
+    )
+    scope = (state.get("business_context") or {}).get("scope") or {}
+    candidates: List[Any] = [
+        primary_metric,
+        state.get("metric_name"),
+        semantic.get("primary_metric_name"),
+        scope.get("metric_name"),
+        *extra_metrics,
+    ]
+    if not broad_evidence_mode:
+        candidates.extend(state.get("metric_names") or [])
+        candidates.extend(scope.get("metric_names") or [])
+    return candidates
+
+
+def _comparison_row_lookup(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(row.get("metric") or ""): row
+        for row in rows
+        if row.get("metric")
+    }
+
+
+def _comparison_row_is_material(
+    row: Dict[str, Any],
+    primary_row: Optional[Dict[str, Any]],
+    *,
+    min_primary_ratio: float,
+) -> bool:
+    delta = abs(_safe_float(row.get("business_delta")))
+    if delta < 0.005:
+        return False
+
+    if not primary_row:
+        return True
+
+    primary_delta = abs(_safe_float(primary_row.get("business_delta")))
+    if primary_delta < 0.005:
+        return True
+    return delta >= primary_delta * min_primary_ratio
+
+
+def _sales_dependent_fee_is_anomalous(
+    row: Dict[str, Any],
+    row_lookup: Dict[str, Dict[str, Any]],
+) -> bool:
+    fee_delta = _safe_float(row.get("business_delta"))
+    if abs(fee_delta) < 0.005:
+        return False
+
+    net_sales = row_lookup.get("net_sales")
+    if not net_sales:
+        return fee_delta > 0
+
+    sales_delta = _safe_float(net_sales.get("business_delta"))
+    fee_pct = abs(_safe_float(row.get("pct_change")))
+    sales_pct = abs(_safe_float(net_sales.get("pct_change")))
+
+    if sales_delta < -0.005:
+        return fee_delta > 0.005
+
+    if sales_delta > 0.005:
+        return fee_delta > 0.005 and fee_pct > max(
+            sales_pct * SALES_DEPENDENT_FEE_RATIO_BUFFER,
+            sales_pct + SALES_DEPENDENT_FEE_PCT_BUFFER,
+        )
+
+    return fee_delta > 0.005
+
+
+def _inventory_context_is_actionable(
+    row: Dict[str, Any],
+    row_lookup: Dict[str, Dict[str, Any]],
+) -> bool:
+    metric_name = str(row.get("metric") or "")
+    second_value = _safe_float(row.get("second_value"))
+    if metric_name == "days_of_supply":
+        return 0 < second_value < LOW_DAYS_OF_SUPPLY_THRESHOLD
+    if metric_name == "available":
+        days_row = row_lookup.get("days_of_supply")
+        days_value = _safe_float(days_row.get("second_value")) if days_row else 0.0
+        return second_value <= 0 or (0 < days_value < LOW_DAYS_OF_SUPPLY_THRESHOLD)
+    if metric_name == "inbound_quantity":
+        available_row = row_lookup.get("available")
+        days_row = row_lookup.get("days_of_supply")
+        available_value = _safe_float(available_row.get("second_value")) if available_row else 0.0
+        days_value = _safe_float(days_row.get("second_value")) if days_row else 0.0
+        return available_value <= 0 or (0 < days_value < LOW_DAYS_OF_SUPPLY_THRESHOLD)
+    return False
+
+
+def _comparison_row_is_relevant(
+    row: Dict[str, Any],
+    row_lookup: Dict[str, Dict[str, Any]],
+    requested: set,
+    primary_metric: Optional[str],
+) -> bool:
+    metric_name = str(row.get("metric") or "")
+    if not metric_name:
+        return False
+
+    if primary_metric == "profit" and metric_name in CM1_SECONDARY_ONLY_METRICS:
+        return False
+
+    if metric_name == primary_metric or metric_name in requested:
+        return True
+
+    replacement = NET_REPLACEMENT_METRICS.get(metric_name)
+    if replacement and replacement in row_lookup:
+        return False
+
+    primary_row = row_lookup.get(str(primary_metric or ""))
+
+    if metric_name in INVENTORY_CONTEXT_METRICS:
+        return _inventory_context_is_actionable(row, row_lookup)
+
+    if metric_name in REFUND_IMPACT_METRICS:
+        return (
+            row.get("effect") == "unfavorable"
+            and _comparison_row_is_material(
+                row,
+                primary_row,
+                min_primary_ratio=REFUND_IMPACT_MIN_PRIMARY_RATIO,
+            )
+        )
+
+    if metric_name in SALES_DEPENDENT_FEE_METRICS:
+        return (
+            _sales_dependent_fee_is_anomalous(row, row_lookup)
+            and _comparison_row_is_material(
+                row,
+                primary_row,
+                min_primary_ratio=FEE_IMPACT_MIN_PRIMARY_RATIO,
+            )
+        )
+
+    return True
+
+
+def _filter_comparison_table_rows(
+    rows: List[Dict[str, Any]],
+    requested: set,
+    primary_metric: Optional[str],
+    *,
+    limit: int,
+) -> List[Dict[str, Any]]:
+    row_lookup = _comparison_row_lookup(rows)
+    filtered = [
+        row for row in rows
+        if _comparison_row_is_relevant(row, row_lookup, requested, primary_metric)
+    ]
+    if filtered:
+        return filtered[:limit]
+    return rows[:limit]
+
+
+def _comparison_row_plain_change(row: Dict[str, Any]) -> str:
+    metric_name = str(row.get("metric") or "")
+    label = str(row.get("label") or humanize_metric(metric_name))
+    delta = _safe_float(row.get("business_delta"))
+    amount = str(row.get("change_amount") or "").strip()
+    if not amount:
+        amount = str(row.get("change_text") or "").strip()
+    if abs(delta) < 0.005:
+        return f"**{label}** stayed flat"
+    if metric_name == "lost_total":
+        verb = "increased" if delta > 0 else "decreased"
+        return f"**{label}** recovery {verb} by **{amount}**"
+    if metric_name in BURDEN_DISPLAY_METRICS:
+        verb = "increased" if delta > 0 else "decreased"
+        return f"**{label}** burden {verb} by **{amount}**"
+    verb = "rose" if delta > 0 else "fell"
+    return f"**{label}** {verb} by **{amount}**"
+
+
+def _comparison_row_by_metric(rows: List[Dict[str, Any]], *metric_names: str) -> Optional[Dict[str, Any]]:
+    wanted = {str(metric or "") for metric in metric_names if metric}
+    return next((row for row in rows if str(row.get("metric") or "") in wanted), None)
+
+
+def _comparison_change_amount(row: Optional[Dict[str, Any]]) -> str:
+    if not row:
+        return ""
+    amount = str(row.get("change_amount") or "").strip()
+    return amount or str(row.get("change_text") or "").strip()
+
+
+def _cm1_profit_comparison_summary(
+    rows: List[Dict[str, Any]],
+    primary: Dict[str, Any],
+    first_label: str,
+    second_label: str,
+) -> Optional[str]:
+    if primary.get("metric") != "profit":
+        return None
+
+    profit_delta = _safe_float(primary.get("business_delta"))
+    profit_amount = _comparison_change_amount(primary)
+    if not profit_amount:
+        return None
+
+    net_sales = _comparison_row_by_metric(rows, "net_sales")
+    net_units = _comparison_row_by_metric(rows, "total_quantity")
+    asp = _comparison_row_by_metric(rows, "asp")
+    promo = _comparison_row_by_metric(rows, "promotional_rebates")
+
+    if profit_delta < -0.005:
+        reason_parts: List[str] = []
+        if net_units and _safe_float(net_units.get("business_delta")) < -0.005:
+            reason_parts.append(f"**Net Sold Units** fell by **{_comparison_change_amount(net_units)}**")
+        if net_sales and _safe_float(net_sales.get("business_delta")) < -0.005:
+            reason_parts.append(f"**Net Sales** fell by **{_comparison_change_amount(net_sales)}**")
+
+        if reason_parts:
+            summary = (
+                f"CM1 Profit **fell by {profit_amount}** from **{first_label}** to **{second_label}** "
+                f"because " + " and ".join(reason_parts) + "."
+            )
+        else:
+            summary = f"CM1 Profit **fell by {profit_amount}** from **{first_label}** to **{second_label}**."
+
+        offsets: List[str] = []
+        if asp and _safe_float(asp.get("business_delta")) > 0.005:
+            offsets.append(f"ASP improved by **{_comparison_change_amount(asp)}**, but not enough to offset lower sales")
+        if promo and promo.get("effect") == "unfavorable" and abs(_safe_float(promo.get("business_delta"))) > 0.005:
+            offsets.append(f"promo rebate burden also increased by **{_comparison_change_amount(promo)}**")
+        if offsets:
+            summary += " " + "; ".join(offsets) + "."
+        return summary
+
+    if profit_delta > 0.005:
+        driver_parts: List[str] = []
+        if net_sales and _safe_float(net_sales.get("business_delta")) > 0.005:
+            driver_parts.append(f"**Net Sales** rose by **{_comparison_change_amount(net_sales)}**")
+        if net_units and _safe_float(net_units.get("business_delta")) > 0.005:
+            driver_parts.append(f"**Net Sold Units** rose by **{_comparison_change_amount(net_units)}**")
+        if asp and _safe_float(asp.get("business_delta")) > 0.005:
+            driver_parts.append(f"**ASP** improved by **{_comparison_change_amount(asp)}**")
+
+        summary = f"CM1 Profit **improved by {profit_amount}** from **{first_label}** to **{second_label}**."
+        if driver_parts:
+            summary += " Main reason: " + " and ".join(driver_parts[:2]) + "."
+        return summary
+
+    return None
+
+
+CM1_PROFIT_SUMMARY_DRIVER_PRIORITY = {
+    "net_sales": 0,
+    "total_quantity": 1,
+    "asp": 2,
+    "profit_percentage": 3,
+    "promotional_rebates": 4,
+    "refund_sales": 5,
+    "return_quantity": 6,
+    "amazon_fees": 7,
+    "cogs": 8,
+    "misc_transaction": 9,
+    "other": 10,
+}
+
+
+def _comparison_summary_driver_sort_key(
+    row: Dict[str, Any],
+    primary_metric: Optional[str],
+) -> Tuple[float, float, float]:
+    metric_name = str(row.get("metric") or "")
+    delta_weight = -abs(_safe_float(row.get("business_delta")))
+    pct_weight = -abs(_safe_float(row.get("pct_change")))
+    if primary_metric == "profit":
+        return (
+            float(CM1_PROFIT_SUMMARY_DRIVER_PRIORITY.get(metric_name, 50)),
+            delta_weight,
+            pct_weight,
+        )
+    return (0.0, delta_weight, pct_weight)
+
+
+def _comparison_metric_order(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+    primary_metric: Optional[str],
+) -> List[str]:
+    metrics = comparison_context.get("metrics") or {}
+    ordered: List[str] = []
+
+    def add(metric: Any) -> None:
+        key = _resolve_available_comparison_metric(metric, metrics)
+        if key and key in metrics and key not in ordered:
+            ordered.append(key)
+
+    add(primary_metric)
+    add(state.get("metric_name"))
+    for metric in state.get("metric_names") or []:
+        add(metric)
+    scope = (state.get("business_context") or {}).get("scope") or {}
+    add(scope.get("metric_name"))
+    for metric in scope.get("metric_names") or []:
+        add(metric)
+
+    for group in ["unfavorable_metric_drivers", "favorable_metric_drivers", "metric_drivers"]:
+        for driver in comparison_context.get(group) or []:
+            if isinstance(driver, dict):
+                add(driver.get("metric"))
+
+    for metric in COMPARISON_TABLE_DEFAULT_ORDER:
+        add(metric)
+    for metric in metrics:
+        add(metric)
+
+    return ordered
+
+
+def _select_primary_comparison_metric(
+    state: AgentState,
+    analysis: Dict[str, Any],
+    comparison_context: Dict[str, Any],
+) -> Optional[str]:
+    metrics = comparison_context.get("metrics") or {}
+    candidates = [
+        ((comparison_context.get("scope") or {}).get("metric_name")),
+        ((analysis.get("context") or {}).get("scope") or {}).get("metric_name"),
+        analysis.get("metric_name"),
+        state.get("metric_name"),
+        *((analysis.get("metric_names") or [])),
+        *((state.get("metric_names") or [])),
+        "total_cm2_profit",
+        "profit",
+        "net_sales",
+    ]
+    for candidate in candidates:
+        key = _resolve_available_comparison_metric(candidate, metrics)
+        if key in metrics:
+            return key
+    return next(iter(metrics.keys()), None) if metrics else None
+
+
+def _build_comparison_table_rows(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+    primary_metric: Optional[str],
+    *,
+    limit: int = COMPARISON_TABLE_MAX_ROWS,
+) -> Tuple[List[Dict[str, Any]], str, str]:
+    metrics = comparison_context.get("metrics") or {}
+    left = comparison_context.get("left") or {}
+    right = comparison_context.get("right") or {}
+    first_side, first_label, second_side, second_label = _ordered_period_labels(left.get("label"), right.get("label"))
+    rows: List[Dict[str, Any]] = []
+    requested = _comparison_requested_metric_set(
+        metrics,
+        _comparison_user_requested_metric_candidates(state, primary_metric),
+    )
+
+    for metric_name in _comparison_metric_order(state, comparison_context, primary_metric):
+        comp = metrics.get(metric_name)
+        if not isinstance(comp, dict):
+            continue
+        first_value = _period_metric_value(comp, first_side)
+        second_value = _period_metric_value(comp, second_side)
+        if metric_name not in requested and abs(first_value) < 0.005 and abs(second_value) < 0.005:
+            continue
+
+        change_text, business_delta, pct_change, effect = _format_comparison_change_text(
+            metric_name,
+            first_value,
+            second_value,
+            state.get("country"),
+        )
+        rows.append(
+            {
+                "metric": metric_name,
+                "label": humanize_metric(metric_name),
+                "first_value": first_value,
+                "second_value": second_value,
+                "first_formatted": _format_period_metric_value(first_value, metric_name, state.get("country")),
+                "second_formatted": _format_period_metric_value(second_value, metric_name, state.get("country")),
+                "change_text": change_text,
+                "change_amount": _format_comparison_change_amount(metric_name, business_delta, state.get("country")),
+                "business_delta": business_delta,
+                "pct_change": pct_change,
+                "effect": effect,
+            }
+        )
+    return _filter_comparison_table_rows(rows, requested, primary_metric, limit=limit), first_label, second_label
+
+
+def _comparison_table_summary(
+    rows: List[Dict[str, Any]],
+    primary_metric: Optional[str],
+    first_label: str,
+    second_label: str,
+) -> str:
+    if not rows:
+        return "The selected periods were compared, but no material metric movement was found."
+
+    primary = next((row for row in rows if row.get("metric") == primary_metric), None) or rows[0]
+    primary_delta = _safe_float(primary.get("business_delta"))
+    if abs(primary_delta) < 0.005:
+        return f"From **{first_label}** to **{second_label}**, **{primary.get('label')}** was broadly flat."
+
+    cm1_summary = _cm1_profit_comparison_summary(rows, primary, first_label, second_label)
+    if cm1_summary:
+        return cm1_summary
+
+    summary = f"From **{first_label}** to **{second_label}**, {_comparison_row_plain_change(primary)}."
+    if primary.get("effect") in {"unfavorable", "favorable"}:
+        driver_effect = str(primary.get("effect"))
+    else:
+        driver_effect = "unfavorable" if primary_delta < 0 else "favorable"
+    drivers = []
+    for row in rows:
+        if row is primary:
+            continue
+        if row.get("effect") != driver_effect:
+            continue
+        if abs(_safe_float(row.get("business_delta"))) < 0.005:
+            continue
+        if primary.get("metric") == "profit" and row.get("metric") in CM1_SECONDARY_ONLY_METRICS:
+            continue
+        drivers.append(row)
+    drivers = sorted(drivers, key=lambda row: _comparison_summary_driver_sort_key(row, primary.get("metric")))
+    if drivers:
+        summary += " Main signal: " + " and ".join(_comparison_row_plain_change(row) for row in drivers[:2]) + "."
+    return summary
+
+
+def _render_comparison_table_markdown(
+    title: str,
+    rows: List[Dict[str, Any]],
+    first_label: str,
+    second_label: str,
+    *,
+    summary: Optional[str] = None,
+    next_check: Optional[str] = None,
+) -> str:
+    lines = [
+        f"**{title}**",
+        "",
+        "| Metric | " + _markdown_table_cell(first_label) + " | " + _markdown_table_cell(second_label) + " | Change |",
+        "|---|---:|---:|---|",
+    ]
+    for row in rows:
+        lines.append(
+            f"| {_markdown_table_cell(row.get('label'))} | "
+            f"{_markdown_table_cell(row.get('first_formatted'))} | "
+            f"{_markdown_table_cell(row.get('second_formatted'))} | "
+            f"{_markdown_table_cell(row.get('change_text'))} |"
+        )
+
+    if summary:
+        lines.extend(["", f"**Summary:** {summary}"])
+    if next_check:
+        lines.append(f"**Next check:** {next_check}")
+    return "\n".join(lines)
+
+
+def _build_single_metric_comparison_row(
+    state: AgentState,
+    metric_name: str,
+    first_value: Any,
+    second_value: Any,
+) -> Dict[str, Any]:
+    first = _safe_float(first_value)
+    second = _safe_float(second_value)
+    change_text, business_delta, pct_change, effect = _format_comparison_change_text(
+        metric_name,
+        first,
+        second,
+        state.get("country"),
+    )
+    return {
+        "metric": metric_name,
+        "label": humanize_metric(metric_name),
+        "first_value": first,
+        "second_value": second,
+        "first_formatted": _format_period_metric_value(first, metric_name, state.get("country")),
+        "second_formatted": _format_period_metric_value(second, metric_name, state.get("country")),
+        "change_text": change_text,
+        "change_amount": _format_comparison_change_amount(metric_name, business_delta, state.get("country")),
+        "business_delta": business_delta,
+        "pct_change": pct_change,
+        "effect": effect,
+    }
+
+
+def _render_single_metric_comparison_table_response(
+    state: AgentState,
+    *,
+    metric_name: str,
+    left_label: Any,
+    left_value: Any,
+    right_label: Any,
+    right_value: Any,
+    title: str,
+    summary_metric: Optional[str] = None,
+) -> str:
+    first_side, first_label, second_side, second_label = _ordered_period_labels(left_label, right_label)
+    value_map = {"left": left_value, "right": right_value}
+    row = _build_single_metric_comparison_row(
+        state,
+        metric_name,
+        value_map[first_side],
+        value_map[second_side],
+    )
+    summary = _comparison_table_summary([row], summary_metric or metric_name, first_label, second_label)
+    return _render_comparison_table_markdown(title, [row], first_label, second_label, summary=summary)
+
+
+def _render_business_comparison_table_response(state: AgentState, analysis: Dict[str, Any]) -> Optional[str]:
+    context = analysis.get("context") or {}
+    comparison_context = context.get("comparison") or {}
+    if not comparison_context.get("metrics"):
+        return None
+
+    primary_metric = _select_primary_comparison_metric(state, analysis, comparison_context)
+    rows, first_label, second_label = _build_comparison_table_rows(state, comparison_context, primary_metric)
+    if not rows:
+        return None
+
+    country_label = _country_display_name(analysis.get("country") or state.get("country"))
+    title_metric = humanize_metric(primary_metric or rows[0].get("metric") or "business")
+    title = f"{country_label}: {title_metric} change ({first_label} to {second_label})"
+
+    summary = _comparison_table_summary(rows, primary_metric, first_label, second_label)
+    ranked = comparison_context.get("unfavorable_metric_drivers") or comparison_context.get("metric_drivers") or []
+    actions = _render_diagnosis_actions(state, comparison_context, [driver for driver in ranked if isinstance(driver, dict)][:6])
+    next_check = actions[0] if actions else None
+    return _render_comparison_table_markdown(title, rows, first_label, second_label, summary=summary, next_check=next_check)
+
+
 def _product_label_from_record(record: Dict[str, Any]) -> str:
     product = str(record.get("product_name") or "").strip()
     sku = str(record.get("sku") or "").strip()
@@ -7598,6 +8404,10 @@ def _render_interpretation_lines(state: AgentState, comparison_context: Dict[str
 
 
 def _render_business_comparison_diagnosis(state: AgentState, analysis: Dict[str, Any]) -> str:
+    table_response = _render_business_comparison_table_response(state, analysis)
+    if table_response:
+        return table_response
+
     context = analysis.get("context") or {}
     comparison_context = context.get("comparison") or {}
     scope = context.get("scope") or {}
@@ -7895,7 +8705,464 @@ def _anomaly_action_for_metric(metric_name: str) -> str:
     return f"Drill into {humanize_metric(metric_name).lower()} by SKU and month."
 
 
+CM2_DRIVER_REQUEST_METRICS = {"total_cm2_profit", "cm2_profit", "cm2_profit_per"}
+
+CM2_DRIVER_TABLE_GROUPS = [
+    ("total_cm2_profit", ("total_cm2_profit", "cm2_profit")),
+    ("cm2_profit_per", ("cm2_profit_per",)),
+    ("profit", ("profit",)),
+    ("ad_spend", ("total_ads", "ads_spend")),
+    ("platform_fee", ("platform_fee",)),
+    ("platformfeenew", ("platformfeenew",)),
+    ("platform_fee_inventory_storage", ("platform_fee_inventory_storage",)),
+    ("lost_total", ("lost_total",)),
+]
+
+CM2_DRIVER_ALWAYS_SHOW = {
+    "total_cm2_profit",
+    "cm2_profit",
+    "cm2_profit_per",
+    "profit",
+    "total_ads",
+    "ads_spend",
+    "platform_fee",
+    "platformfeenew",
+    "platform_fee_inventory_storage",
+    "lost_total",
+}
+
+
+def _anomaly_scan_targets_cm2(state: AgentState, analysis: Dict[str, Any]) -> bool:
+    query = (state.get("user_query") or "").lower()
+    if "cm2" in query or "contribution margin 2" in query:
+        return True
+
+    primary = str(state.get("metric_name") or analysis.get("metric_name") or "").strip().lower()
+    if primary in CM2_DRIVER_REQUEST_METRICS:
+        return True
+
+    explicit_metrics = [
+        str(metric or "").strip().lower()
+        for metric in (state.get("metric_names") or [])
+        if metric
+    ]
+    return len(explicit_metrics) == 1 and explicit_metrics[0] in CM2_DRIVER_REQUEST_METRICS
+
+
+def _anomaly_metric_block_lookup(analysis: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    return {
+        str(block.get("metric") or ""): block
+        for block in analysis.get("metric_blocks") or []
+        if isinstance(block, dict)
+    }
+
+
+def _metric_block_edge_points(block: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    months = [
+        row for row in block.get("months") or []
+        if isinstance(row, dict) and row.get("period_label") is not None
+    ]
+    if len(months) < 2:
+        return None
+    return months[0], months[-1]
+
+
+def _select_cm2_driver_block(
+    blocks: Dict[str, Dict[str, Any]],
+    metric_candidates: Tuple[str, ...],
+) -> Optional[Tuple[str, Dict[str, Any], Dict[str, Any]]]:
+    fallback: Optional[Tuple[str, Dict[str, Any], Dict[str, Any]]] = None
+    for metric in metric_candidates:
+        block = blocks.get(metric)
+        if not block:
+            continue
+        points = _metric_block_edge_points(block)
+        if not points:
+            continue
+        left, right = points
+        selected = (metric, left, right)
+        if fallback is None:
+            fallback = selected
+        if abs(_safe_float(left.get("value"))) > 0.005 or abs(_safe_float(right.get("value"))) > 0.005:
+            return selected
+    return fallback
+
+
+def _format_cm2_driver_change(
+    metric_name: str,
+    left_value: float,
+    right_value: float,
+    country: Optional[str],
+) -> Tuple[str, float, Optional[float], str]:
+    if metric_name == "lost_total":
+        business_delta = abs(right_value) - abs(left_value)
+        if abs(business_delta) < 0.005:
+            return "Flat", business_delta, 0.0, "neutral"
+        pct_change = None if abs(left_value) < 0.005 else (business_delta / abs(left_value)) * 100.0
+        amount = _format_metric_for_display(abs(business_delta), metric_name, country)
+        pct_suffix = "" if pct_change is None else f" ({pct_change:+.1f}%)"
+        effect = "favorable" if business_delta > 0 else "unfavorable"
+        direction = "Recovery up" if business_delta > 0 else "Recovery down"
+        return f"{direction} {amount}{pct_suffix}", business_delta, pct_change, effect
+
+    business_delta = _anomaly_business_delta(metric_name, right_value, left_value)
+    if abs(business_delta) < 0.005:
+        return "Flat", business_delta, 0.0, "neutral"
+
+    pct_change = None
+    if abs(left_value) >= 0.005:
+        pct_change = (business_delta / abs(left_value)) * 100.0
+
+    is_cost = _anomaly_metric_is_bad_when_up(metric_name)
+    if is_cost:
+        direction = "Burden up" if business_delta > 0 else "Burden down"
+        effect = "unfavorable" if business_delta > 0 else "favorable"
+    else:
+        direction = "Down" if business_delta < 0 else "Up"
+        effect = "unfavorable" if business_delta < 0 else "favorable"
+
+    amount = _format_anomaly_delta(business_delta, metric_name, country)
+    pct_suffix = "" if pct_change is None else f" ({pct_change:+.1f}%)"
+    return f"{direction} {amount}{pct_suffix}", business_delta, pct_change, effect
+
+
+def _format_cm2_driver_value(value: Any, metric_name: str, country: Optional[str]) -> str:
+    if metric_name == "lost_total":
+        return _format_metric_for_display(abs(_safe_float(value)), metric_name, country)
+    return _format_metric_for_display(value, metric_name, country)
+
+
+def _build_cm2_driver_table_rows(state: AgentState, analysis: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], str, str]:
+    blocks = _anomaly_metric_block_lookup(analysis)
+    rows: List[Dict[str, Any]] = []
+    left_label = "Period 1"
+    right_label = "Period 2"
+
+    for _, candidates in CM2_DRIVER_TABLE_GROUPS:
+        selected = _select_cm2_driver_block(blocks, candidates)
+        if not selected:
+            continue
+
+        metric_name, left, right = selected
+        left_value = _safe_float(left.get("value"))
+        right_value = _safe_float(right.get("value"))
+        if metric_name not in CM2_DRIVER_ALWAYS_SHOW and abs(left_value) < 0.005 and abs(right_value) < 0.005:
+            continue
+
+        left_label = _clean_period_label(left.get("period_label")) or left_label
+        right_label = _clean_period_label(right.get("period_label")) or right_label
+        change_text, business_delta, pct_change, effect = _format_cm2_driver_change(
+            metric_name,
+            left_value,
+            right_value,
+            state.get("country"),
+        )
+        rows.append(
+            {
+                "metric": metric_name,
+                "label": humanize_metric(metric_name),
+                "left_value": left_value,
+                "right_value": right_value,
+                "left_formatted": _format_cm2_driver_value(left_value, metric_name, state.get("country")),
+                "right_formatted": _format_cm2_driver_value(right_value, metric_name, state.get("country")),
+                "change_text": change_text,
+                "business_delta": business_delta,
+                "pct_change": pct_change,
+                "effect": effect,
+            }
+        )
+
+    return rows, left_label, right_label
+
+
+def _cm2_driver_plain_change(row: Dict[str, Any]) -> str:
+    return f"**{row.get('label')}** {str(row.get('change_text') or '').lower()}"
+
+
+def _cm2_driver_change_amount(row: Dict[str, Any], country: Optional[str]) -> str:
+    metric_name = str(row.get("metric") or "")
+    delta = abs(_safe_float(row.get("business_delta")))
+    return _format_metric_for_display(delta, metric_name, country)
+
+
+def _cm2_driver_summary_phrase(row: Dict[str, Any], country: Optional[str]) -> str:
+    metric_name = str(row.get("metric") or "")
+    amount = _cm2_driver_change_amount(row, country)
+    delta = _safe_float(row.get("business_delta"))
+
+    if metric_name == "profit":
+        verb = "improved" if delta > 0 else "fell"
+        return f"CM1 Profit {verb} by **{amount}**"
+    if metric_name in {"total_ads", "ads_spend"}:
+        verb = "added" if delta > 0 else "removed"
+        return f"Ad Spend {verb} **{amount}** of cost"
+    if metric_name == "platform_fee":
+        verb = "added" if delta > 0 else "removed"
+        return f"Platform Fee {verb} **{amount}** of cost"
+    if metric_name == "platformfeenew":
+        verb = "added" if delta > 0 else "removed"
+        return f"Subscription Fees {verb} **{amount}** of cost"
+    if metric_name == "platform_fee_inventory_storage":
+        verb = "added" if delta > 0 else "removed"
+        return f"Storage Fees {verb} **{amount}** of cost"
+    if metric_name == "lost_total":
+        verb = "increased" if delta > 0 else "decreased"
+        return f"Lost Inventory Reimbursement {verb} by **{amount}**"
+
+    return _cm2_driver_plain_change(row)
+
+
+CM2_SUMMARY_DRIVER_PRIORITY = {
+    "profit": 0,
+    "total_ads": 1,
+    "ads_spend": 1,
+    "platform_fee": 2,
+    "platformfeenew": 3,
+    "platform_fee_inventory_storage": 4,
+    "lost_total": 5,
+}
+
+
+def _cm2_driver_sort_key(row: Dict[str, Any]) -> Tuple[float, float, float]:
+    metric_name = str(row.get("metric") or "")
+    return (
+        float(CM2_SUMMARY_DRIVER_PRIORITY.get(metric_name, 50)),
+        -abs(_safe_float(row.get("business_delta"))),
+        -abs(float(row.get("pct_change") or 0.0)),
+    )
+
+
+def _cm2_driver_summary(
+    rows: List[Dict[str, Any]],
+    left_label: str,
+    right_label: str,
+    country: Optional[str],
+) -> str:
+    outcome = next((row for row in rows if row.get("metric") in {"total_cm2_profit", "cm2_profit"}), None)
+    if not outcome:
+        return "This table compares the main CM2 drivers for the selected periods."
+
+    outcome_delta = _safe_float(outcome.get("business_delta"))
+    if abs(outcome_delta) < 0.005:
+        return f"CM2 profit was broadly flat from **{left_label}** to **{right_label}**."
+
+    outcome_amount = _format_anomaly_delta(outcome_delta, str(outcome.get("metric")), country)
+    target_effect = "unfavorable" if outcome_delta < 0 else "favorable"
+    pressure_rows = [
+        row for row in rows
+        if row.get("metric") not in {"total_cm2_profit", "cm2_profit", "cm2_profit_per"}
+        and row.get("effect") == target_effect
+    ]
+    offset_rows = [
+        row for row in rows
+        if row.get("metric") not in {"total_cm2_profit", "cm2_profit", "cm2_profit_per"}
+        and row.get("effect") not in {"neutral", target_effect}
+    ]
+    pressure_rows = sorted(pressure_rows, key=_cm2_driver_sort_key)
+    offset_rows = sorted(offset_rows, key=_cm2_driver_sort_key)
+
+    pressure_text = ""
+    if pressure_rows:
+        pressure_text = " Main pressure: " + " and ".join(
+            _cm2_driver_summary_phrase(row, country) for row in pressure_rows[:2]
+        ) + "."
+
+    offset_text = ""
+    if offset_rows:
+        if outcome_delta < 0:
+            offset_text = " Helpful offsets: " + " and ".join(
+                _cm2_driver_summary_phrase(row, country) for row in offset_rows[:2]
+            ) + ", but they were not enough."
+        else:
+            offset_text = " Remaining pressure: " + " and ".join(
+                _cm2_driver_summary_phrase(row, country) for row in offset_rows[:2]
+            ) + "."
+
+    if outcome_delta < 0:
+        return (
+            f"CM2 profit **fell by {outcome_amount}** from **{left_label}** to **{right_label}**."
+            f"{pressure_text}{offset_text}"
+        )
+
+    return (
+        f"CM2 profit **improved by {outcome_amount}** from **{left_label}** to **{right_label}**."
+        f"{pressure_text}{offset_text}"
+    )
+
+
+def _render_cm2_driver_table_response(state: AgentState, analysis: Dict[str, Any]) -> Optional[str]:
+    rows, left_label, right_label = _build_cm2_driver_table_rows(state, analysis)
+    if len(rows) < 2:
+        return None
+
+    country_label = _country_display_name(analysis.get("country") or state.get("country"))
+    lines = [
+        f"**{country_label}: CM2 profit bridge ({left_label} to {right_label})**",
+        "",
+        "| Metric | " + _markdown_table_cell(left_label) + " | " + _markdown_table_cell(right_label) + " | Change |",
+        "|---|---:|---:|---|",
+    ]
+    for row in rows[:12]:
+        lines.append(
+            f"| {_markdown_table_cell(row.get('label'))} | "
+            f"{_markdown_table_cell(row.get('left_formatted'))} | "
+            f"{_markdown_table_cell(row.get('right_formatted'))} | "
+            f"{_markdown_table_cell(row.get('change_text'))} |"
+        )
+
+    lines.extend(["", f"**Summary:** {_cm2_driver_summary(rows, left_label, right_label, state.get('country'))}"])
+    return "\n".join(lines)
+
+
+def _anomaly_scan_has_two_period_table_context(state: AgentState, analysis: Dict[str, Any]) -> bool:
+    query = (state.get("user_query") or "").lower()
+    if any(word in query for word in [" vs ", " versus ", "compare", "compared", "change", "changed", "down", "up", "decrease", "decreased", "increase", "increased", "fluctuation", "from "]):
+        return True
+    for block in analysis.get("metric_blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        months = [
+            row for row in block.get("months") or []
+            if isinstance(row, dict) and row.get("period_label") is not None
+        ]
+        if len(months) == 2:
+            return True
+    return False
+
+
+def _anomaly_metric_order(state: AgentState, analysis: Dict[str, Any]) -> List[str]:
+    blocks = _anomaly_metric_block_lookup(analysis)
+    ordered: List[str] = []
+
+    def add(metric: Any) -> None:
+        key = _resolve_available_comparison_metric(metric, blocks)
+        if key and key in blocks and key not in ordered:
+            ordered.append(key)
+
+    add(state.get("metric_name"))
+    for metric in state.get("metric_names") or []:
+        add(metric)
+    for metric in analysis.get("metrics") or []:
+        add(metric)
+    for anomaly in analysis.get("anomalies") or []:
+        if isinstance(anomaly, dict):
+            add(anomaly.get("metric"))
+    for metric in COMPARISON_TABLE_DEFAULT_ORDER:
+        add(metric)
+    for metric in blocks:
+        add(metric)
+
+    return ordered
+
+
+def _build_anomaly_change_table_rows(
+    state: AgentState,
+    analysis: Dict[str, Any],
+    *,
+    limit: int = COMPARISON_TABLE_MAX_ROWS,
+) -> Tuple[List[Dict[str, Any]], str, str, Optional[str]]:
+    blocks = _anomaly_metric_block_lookup(analysis)
+    rows: List[Dict[str, Any]] = []
+    first_label = "Period 1"
+    second_label = "Period 2"
+    primary_metric: Optional[str] = None
+
+    requested_metrics = _comparison_user_requested_metric_candidates(
+        state,
+        extra_metrics=[analysis.get("metric_name"), analysis.get("metric")],
+    )
+    requested = _comparison_requested_metric_set(blocks, requested_metrics)
+    for metric in requested_metrics:
+        key = _resolve_available_comparison_metric(metric, blocks)
+        if key in blocks:
+            primary_metric = key
+            break
+
+    for metric_name in _anomaly_metric_order(state, analysis):
+        block = blocks.get(metric_name)
+        if not block:
+            continue
+        points = _metric_block_edge_points(block)
+        if not points:
+            continue
+
+        raw_first, raw_second = points
+        first_side, first_label_candidate, second_side, second_label_candidate = _ordered_period_labels(
+            raw_first.get("period_label"),
+            raw_second.get("period_label"),
+        )
+        point_map = {"left": raw_first, "right": raw_second}
+        first = point_map[first_side]
+        second = point_map[second_side]
+        first_label = first_label_candidate or first_label
+        second_label = second_label_candidate or second_label
+
+        first_value = _safe_float(first.get("value"))
+        second_value = _safe_float(second.get("value"))
+        if metric_name != primary_metric and abs(first_value) < 0.005 and abs(second_value) < 0.005:
+            continue
+
+        change_text, business_delta, pct_change, effect = _format_comparison_change_text(
+            metric_name,
+            first_value,
+            second_value,
+            state.get("country"),
+        )
+        rows.append(
+            {
+                "metric": metric_name,
+                "label": humanize_metric(metric_name),
+                "first_value": first_value,
+                "second_value": second_value,
+                "first_formatted": _format_period_metric_value(first_value, metric_name, state.get("country")),
+                "second_formatted": _format_period_metric_value(second_value, metric_name, state.get("country")),
+                "change_text": change_text,
+                "change_amount": _format_comparison_change_amount(metric_name, business_delta, state.get("country")),
+                "business_delta": business_delta,
+                "pct_change": pct_change,
+                "effect": effect,
+            }
+        )
+        if primary_metric is None:
+            primary_metric = metric_name
+
+    return _filter_comparison_table_rows(rows, requested, primary_metric, limit=limit), first_label, second_label, primary_metric
+
+
+def _render_anomaly_change_table_response(state: AgentState, analysis: Dict[str, Any]) -> Optional[str]:
+    if not _anomaly_scan_has_two_period_table_context(state, analysis):
+        return None
+
+    rows, first_label, second_label, primary_metric = _build_anomaly_change_table_rows(state, analysis)
+    if not rows:
+        return None
+
+    country_label = _country_display_name(analysis.get("country") or state.get("country"))
+    product_scope = analysis.get("product_scope") or {}
+    product_label = None
+    if product_scope:
+        product_label = _format_product_with_sku(
+            product_scope.get("display_name"),
+            product_scope.get("sku"),
+            product_scope.get("query"),
+        )
+    scope_label = f"{product_label} in {country_label}" if product_label else country_label
+    title_metric = humanize_metric(primary_metric or rows[0].get("metric") or "business")
+    title = f"{scope_label}: {title_metric} change ({first_label} to {second_label})"
+    summary = _comparison_table_summary(rows, primary_metric, first_label, second_label)
+    return _render_comparison_table_markdown(title, rows, first_label, second_label, summary=summary)
+
+
 def _render_anomaly_scan_response(state: AgentState, analysis: Dict[str, Any]) -> str:
+    if _anomaly_scan_targets_cm2(state, analysis):
+        cm2_table_response = _render_cm2_driver_table_response(state, analysis)
+        if cm2_table_response:
+            return cm2_table_response
+
+    anomaly_table_response = _render_anomaly_change_table_response(state, analysis)
+    if anomaly_table_response:
+        return anomaly_table_response
+
     country_label = _country_display_name(analysis.get("country") or state.get("country"))
     period_label = analysis.get("period_label") or (state.get("current_metrics") or {}).get("period_label") or "selected period"
     product_scope = analysis.get("product_scope") or {}
@@ -8535,18 +9802,16 @@ def _render_response(state: AgentState) -> AgentState:
             )
             return state
 
-        delta = float(analysis.get("delta") or 0.0)
-        pct_change = analysis.get("pct_change")
-        direction = "increased" if delta > 0 else "decreased" if delta < 0 else "stayed the same"
-        change_text = _format_inventory_value(abs(delta), metric_key)
-        pct_text = "" if pct_change is None else f" ({abs(float(pct_change)):.2f}%)"
-        lines = [
-            f"**{product_display}** inventory in **{country_label}**:",
-            f"- **{left.get('label')}**: **{_format_inventory_value(left_value, metric_key)}**",
-            f"- **{right.get('label')}**: **{_format_inventory_value(right_value, metric_key)}**",
-            f"- Change: **{direction} by {change_text}{pct_text}**",
-        ]
-        state["final_response"] = "\n".join(lines)
+        state["final_response"] = _render_single_metric_comparison_table_response(
+            state,
+            metric_name=metric_key,
+            left_label=left.get("label"),
+            left_value=left_value,
+            right_label=right.get("label"),
+            right_value=right_value,
+            title=f"{product_display} inventory in {country_label}",
+            summary_metric=metric_key,
+        )
         return state
 
     if analysis.get("type") == "inventory_diagnosis":
@@ -8784,27 +10049,25 @@ def _render_response(state: AgentState) -> AgentState:
         return state
 
     if comp:
-        pct = comp.get("pct_change")
         left = comp.get("left", {}) or {}
         right = comp.get("right", {}) or {}
-        curr = float(left.get("total", 0.0))
-        prev = float(right.get("total", 0.0))
-        curr_label = _clean_period_label(left.get("label"))
-        prev_label = _clean_period_label(right.get("label"))
         metric_label = humanize_metric(metric_name)
-        period_text = ""
-        if curr_label and prev_label:
-            period_text = f" in **{curr_label}** vs **{prev_label}**"
-        if pct is None:
-            msg = f"**{metric_label}**{period_text} was **{_format_value(curr, metric_name, state.get('country'))}** vs **{_format_value(prev, metric_name, state.get('country'))}**."
-        else:
-            direction = "higher" if pct > 0 else "lower"
-            msg = f"**{metric_label}**{period_text} was **{_format_value(curr, metric_name, state.get('country'))}** vs **{_format_value(prev, metric_name, state.get('country'))}**, which is **{abs(pct):.2f}% {direction}**."
+        country_label = _country_display_name(analysis.get("country") or state.get("country"))
+        msg = _render_single_metric_comparison_table_response(
+            state,
+            metric_name=metric_name,
+            left_label=left.get("label"),
+            left_value=left.get("total", 0.0),
+            right_label=right.get("label"),
+            right_value=right.get("total", 0.0),
+            title=f"{country_label}: {metric_label} comparison",
+            summary_metric=metric_name,
+        )
         if analysis.get("growth_driver"):
             gp = analysis["growth_driver"]
             primary = gp.get("primary_driver")
             if primary:
-                msg += f" Primary driver: {primary}."
+                msg += f"\n**Primary driver:** {primary}."
         if state.get("advice"):
             msg += "\n" + "\n".join(f"- {a}" for a in state["advice"])
         state["final_response"] = msg
