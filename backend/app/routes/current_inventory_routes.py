@@ -235,6 +235,159 @@ def load_aged_inventory(amazon_engine, user_id: int, country_key: str, marketpla
         )
         return pd.DataFrame()
 
+
+
+def load_awd_inventory(
+    primary_db_engine,
+    amazon_db_engine,
+    user_id: int,
+    marketplace_id: str,
+    country_key: str,
+) -> pd.DataFrame:
+    """Load AWD quantities by SKU from whichever database contains inventory_awd."""
+    empty_result = pd.DataFrame(columns=[
+        "sku", "total_onhand_quantity", "total_inbound_quantity"
+    ])
+
+    for engine_name, engine in [
+        ("primary", primary_db_engine),
+        ("amazon", amazon_db_engine),
+    ]:
+        if engine is None:
+            continue
+
+        try:
+            inspector = inspect(engine)
+            has_public = inspector.has_table("inventory_awd", schema="public")
+            has_default = inspector.has_table("inventory_awd")
+            if not has_public and not has_default:
+                logger.info("inventory_awd not found in %s database", engine_name)
+                continue
+
+            schema_name = "public" if has_public else None
+            columns = {
+                col["name"]
+                for col in inspector.get_columns("inventory_awd", schema=schema_name)
+            }
+
+            sku_col = next(
+                (c for c in ["sku", "seller_sku", "merchant_sku"] if c in columns),
+                None,
+            )
+            onhand_col = next(
+                (
+                    c for c in [
+                        "total_onhand_quantity",
+                        "total_on_hand_quantity",
+                        "onhand_quantity",
+                        "on_hand_quantity",
+                    ] if c in columns
+                ),
+                None,
+            )
+            inbound_col = next(
+                (c for c in ["total_inbound_quantity", "inbound_quantity"] if c in columns),
+                None,
+            )
+
+            if not sku_col or not onhand_col or not inbound_col:
+                logger.warning(
+                    "inventory_awd in %s database is missing required columns. columns=%s",
+                    engine_name,
+                    sorted(columns),
+                )
+                continue
+
+            filters = []
+            params = {}
+            if "user_id" in columns:
+                filters.append("user_id = :uid")
+                params["uid"] = user_id
+            if "marketplace_id" in columns:
+                filters.append("marketplace_id = :mkt_id")
+                params["mkt_id"] = marketplace_id
+            elif "marketplace" in columns:
+                filters.append("marketplace = :mkt_id")
+                params["mkt_id"] = marketplace_id
+            if "country" in columns:
+                filters.append("LOWER(country) = :country")
+                params["country"] = country_key.lower()
+
+            table_ref = "public.inventory_awd" if schema_name == "public" else "inventory_awd"
+            where_sql = " AND ".join(filters) if filters else "1=1"
+            query = text(
+                f'SELECT "{sku_col}" AS sku, '
+                f'"{onhand_col}" AS total_onhand_quantity, '
+                f'"{inbound_col}" AS total_inbound_quantity '
+                f'FROM {table_ref} WHERE {where_sql}'
+            )
+            awd_df = pd.read_sql_query(query, engine, params=params)
+
+            # Retry without marketplace filtering when old data stores a name or blank value.
+            if awd_df.empty and ("marketplace_id" in columns or "marketplace" in columns):
+                fallback_filters = []
+                fallback_params = {}
+                if "user_id" in columns:
+                    fallback_filters.append("user_id = :uid")
+                    fallback_params["uid"] = user_id
+                if "country" in columns:
+                    fallback_filters.append("LOWER(country) = :country")
+                    fallback_params["country"] = country_key.lower()
+                fallback_where = " AND ".join(fallback_filters) if fallback_filters else "1=1"
+                fallback_query = text(
+                    f'SELECT "{sku_col}" AS sku, '
+                    f'"{onhand_col}" AS total_onhand_quantity, '
+                    f'"{inbound_col}" AS total_inbound_quantity '
+                    f'FROM {table_ref} WHERE {fallback_where}'
+                )
+                awd_df = pd.read_sql_query(
+                    fallback_query,
+                    engine,
+                    params=fallback_params,
+                )
+
+            if awd_df.empty:
+                logger.warning(
+                    "No AWD rows in %s database for user=%s marketplace=%s country=%s",
+                    engine_name,
+                    user_id,
+                    marketplace_id,
+                    country_key,
+                )
+                continue
+
+            awd_df["sku"] = awd_df["sku"].apply(norm_sku)
+            awd_df = awd_df[awd_df["sku"] != ""].copy()
+            awd_df["total_onhand_quantity"] = safe_numeric(
+                awd_df["total_onhand_quantity"], 0
+            )
+            awd_df["total_inbound_quantity"] = safe_numeric(
+                awd_df["total_inbound_quantity"], 0
+            )
+            awd_df = awd_df.groupby("sku", as_index=False)[
+                ["total_onhand_quantity", "total_inbound_quantity"]
+            ].sum()
+
+            logger.info(
+                "Loaded %s AWD SKU rows from %s database; onhand=%s inbound=%s",
+                len(awd_df),
+                engine_name,
+                float(awd_df["total_onhand_quantity"].sum()),
+                float(awd_df["total_inbound_quantity"].sum()),
+            )
+            return awd_df
+
+        except Exception:
+            logger.exception(
+                "Failed loading inventory_awd from %s database for user=%s marketplace=%s",
+                engine_name,
+                user_id,
+                marketplace_id,
+            )
+
+    return empty_result
+
+
 CURRENCY_BY_COUNTRY = {
     "us": "USD",
     "uk": "GBP",
@@ -433,6 +586,15 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         aged_df = load_aged_inventory(amazon_engine, user_id, country_key, marketplace_id)
 
+        # AWD inventory is stored in public.inventory_awd on the primary database.
+        awd_df = load_awd_inventory(
+            primary_db_engine=primary_engine,
+            amazon_db_engine=amazon_engine,
+            user_id=user_id,
+            marketplace_id=marketplace_id,
+            country_key=country_key,
+        )
+
         if aged_df.empty:
             warnings.append(
                 f"Aged inventory data is not available for {country_key.upper()}."
@@ -525,6 +687,15 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             on="sku",
             how="left"
         )
+
+        # Merge AWD inventory columns into the generated current-inventory table.
+        if not awd_df.empty:
+            final_df = final_df.merge(awd_df, on="sku", how="left")
+
+        for awd_col in ["total_onhand_quantity", "total_inbound_quantity"]:
+            if awd_col not in final_df.columns:
+                final_df[awd_col] = 0
+            final_df[awd_col] = safe_numeric(final_df[awd_col], 0)
 
         today_utc = datetime.now(timezone.utc).date()
 
@@ -853,6 +1024,8 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             "inbound-shipped",
             "inbound-received",
             "available",
+            "total_onhand_quantity",
+            "total_inbound_quantity",
             "unfulfillable-quantity",
             "inv-age-0-to-90-days",
             "inv-age-91-to-180-days",
@@ -949,6 +1122,7 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
                 "table_name": current_inventory_table_name,
                 "aged_inventory_rows": 0 if aged_df.empty else int(len(aged_df)),
                 "inventory_rows": 0 if inv_df.empty else int(len(inv_df)),
+                "awd_inventory_rows": 0 if awd_df.empty else int(len(awd_df)),
                 "sales_rows": 0 if current_month_sales_df.empty else int(len(current_month_sales_df)),
             }
         }
@@ -970,7 +1144,7 @@ def current_inventory():
 
     try:
         payload, effective_user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = payload["user_id"]
+        user_id = effective_user_id
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
