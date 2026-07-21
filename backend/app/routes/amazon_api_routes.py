@@ -2644,18 +2644,9 @@ def finances_mtd_transactions():
         country=ui_country,
     )
 
-    # ✅ gross_sales per row
+    # Gross Sales business rule: product_sales only.
     for r in all_rows:
-        r["gross_sales"] = (
-            float(r.get("product_sales", 0.0))
-            + float(r.get("product_sales_tax", 0.0))
-            + float(r.get("postage_credits", 0.0))
-            + float(r.get("gift_wrap_credits", 0.0))
-            + float(r.get("shipping_credits_tax", 0.0))
-            + float(r.get("giftwrap_credits_tax", 0.0))
-            - float(r.get("promotional_rebates", 0.0))
-            - float(r.get("promotional_rebates_tax", 0.0))
-        )
+        r["gross_sales"] = round(float(r.get("product_sales", 0.0) or 0.0), 2)
 
     marketplace_name = (
         "Amazon.com"
@@ -2804,13 +2795,15 @@ def finances_mtd_transactions():
 
         refund_sales_total = float(refund_sales_df["refund_sales"].sum()) if not refund_sales_df.empty else 0.0
 
-        # ---------------- NET SALES FIX ----------------
-        net_sales = (
+        # Net Sales business rule:
+        # gross_sales - refund_sales - absolute promotional_rebates.
+        promotional_rebates_total = float(totals.get("promotional_rebates", 0.0) or 0.0)
+        net_sales = round(
             float(gross_sales_total or 0.0)
-            - float(refund_sales_total or 0.0)
-            - float(tax_and_credits_total or 0.0)
+            - abs(float(refund_sales_total or 0.0))
+            - abs(promotional_rebates_total),
+            2,
         )
-        net_sales = round(net_sales, 2)
 
         # Recalculate ASP using final net_sales
         asp = (net_sales / net_qty_total) if net_qty_total else 0.0
@@ -3446,16 +3439,20 @@ def finances_mtd_transactions():
             df_sku["credits"] + df_sku["tax"]
         ).round(2)
 
-        # ---------------- SKU-WISE NET SALES FIX ----------------
-        for col in ["gross_sales", "refund_sales", "tax_and_credits"]:
+        # Gross Sales business rule: product_sales only.
+        df_sku["gross_sales"] = _col(df_sku, "product_sales").round(2)
+
+        # Net Sales business rule:
+        # gross_sales - refund_sales - absolute promotional_rebates.
+        for col in ["gross_sales", "refund_sales", "promotional_rebates"]:
             if col not in df_sku.columns:
                 df_sku[col] = 0.0
             df_sku[col] = pd.to_numeric(df_sku[col], errors="coerce").fillna(0.0)
 
         df_sku["net_sales"] = (
             df_sku["gross_sales"]
-            - df_sku["refund_sales"]
-            - df_sku["tax_and_credits"]
+            - df_sku["refund_sales"].abs()
+            - df_sku["promotional_rebates"].abs()
         ).round(2)
 
         # ---------------- PROMOTIONAL REBATES % FIX ----------------
@@ -3802,11 +3799,11 @@ def finances_mtd_transactions():
             2
         )
 
+        # The grand total must exactly equal the sum of displayed SKU net_sales.
         total_row["net_sales"] = round(
-            float(total_row.get("gross_sales", 0.0) or 0.0)
-            - float(total_row.get("refund_sales", 0.0) or 0.0)
-            - float(total_row.get("tax_and_credits", 0.0) or 0.0),
-            2
+            float(pd.to_numeric(df_sku["net_sales"], errors="coerce").fillna(0.0).sum())
+            if "net_sales" in df_sku.columns else 0.0,
+            2,
         )
         total_row["promotional_rebates_percentage"] = round(
             (

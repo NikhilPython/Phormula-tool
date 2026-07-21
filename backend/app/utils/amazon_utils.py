@@ -345,6 +345,9 @@ amazon_client = AmazonSPAPIClient()
 
 COLUMN_MAPPING = {
     'date/time': 'date_time',
+    'transaction release date': 'transaction_release_date',
+    'transaction-release-date': 'transaction_release_date',
+    'transaction_release_date': 'transaction_release_date',
     'settlement id': 'settlement_id',
     'type': 'type',
     'order id': 'order_id',
@@ -403,7 +406,7 @@ MONTH_NAME = {i: calendar.month_name[i].lower() for i in range(1, 13)}
 # OUTPUT COLUMNS (MATCH YOUR MTD FILE)
 # =========================================================
 MTD_COLUMNS = [
-    "date_time", "settlement_id", "type", "order_id", "sku", "description", "quantity",
+    "date_time", "transaction_release_date", "settlement_id", "type", "order_id", "sku", "description", "quantity",
     "marketplace", "fulfilment", "order_city", "order_state", "order_postal",
     "tax_collection_model",
     "product_sales", "product_sales_tax", "postage_credits", "shipping_credits",
@@ -608,6 +611,11 @@ def _parse_settlement_tsv(tsv_bytes: bytes) -> list[dict]:
         row = {headers[i]: cols[i] if i < len(cols) else "" for i in range(len(headers))}
         mapped = {
             "date/time": row.get("transaction-date") or row.get("posted-date") or row.get("settlement-start-date"),
+            "transaction release date": (
+                row.get("transaction-release-date")
+                or row.get("release-date")
+                or row.get("released-date")
+            ),
             "settlement id": row.get("settlement-id"),
             "type": row.get("transaction-type") or row.get("type"),
             "order id": row.get("order-id"),
@@ -774,6 +782,7 @@ def run_upload_pipeline_from_df(
         table_name, meta,
         Column("id", Integer, primary_key=True),
         Column("date_time", String),
+        Column("transaction_release_date", String),
         Column("settlement_id", String),
         Column("type", String),
         Column("order_id", String),
@@ -824,6 +833,7 @@ def run_upload_pipeline_from_df(
         consolidated_table_name, meta,
         Column("id", Integer, primary_key=True),
         Column("date_time", String),
+        Column("transaction_release_date", String),
         Column("settlement_id", String),
         Column("type", String),
         Column("order_id", String),
@@ -887,6 +897,7 @@ def run_upload_pipeline_from_df(
         global_table_name, meta,
         Column("id", Integer, primary_key=True),
         Column("date_time", String),
+        Column("transaction_release_date", String),
         Column("settlement_id", String),
         Column("type", String),
         Column("order_id", String),
@@ -930,6 +941,22 @@ def run_upload_pipeline_from_df(
 
     meta.create_all(engine)
 
+    # Existing consolidated/global tables may have been created before
+    # transaction_release_date was added to the SQLAlchemy definitions.
+    # create_all() does not alter existing tables, so migrate them explicitly
+    # before DELETE/INSERT operations. The monthly table is recreated above,
+    # but including it here keeps the migration safe and idempotent.
+    with engine.begin() as connection:
+        for existing_table_name in (
+            table_name,
+            consolidated_table_name,
+            global_table_name,
+        ):
+            connection.execute(text(
+                f'ALTER TABLE "{existing_table_name}" '
+                'ADD COLUMN IF NOT EXISTS "transaction_release_date" TEXT'
+            ))
+
     # ---------------------------
     # ✅ FIXED DELETES (Table object -> table name)
     # ---------------------------
@@ -958,6 +985,18 @@ def run_upload_pipeline_from_df(
     ]
 
     df.rename(columns=COLUMN_MAPPING, inplace=True)
+
+    # Transaction release date is a text timestamp. Never coerce a missing
+    # value to numeric 0; preserve empty text until Amazon supplies it.
+    if "transaction_release_date" not in df.columns:
+        df["transaction_release_date"] = ""
+    else:
+        df["transaction_release_date"] = (
+            df["transaction_release_date"]
+            .where(df["transaction_release_date"].notna(), "")
+            .astype(str)
+            .replace({"0": "", "0.0": "", "nan": "", "None": ""})
+        )
 
     # Convert any remaining spaced names to snake_case for DB columns
     df.columns = [
@@ -1312,7 +1351,7 @@ def run_upload_pipeline_from_df(
 
     for col in df_usd.columns:
         if df_usd[col].dtype == "object" and col not in [
-            "date_time","settlement_id","type","order_id","sku","description",
+            "date_time","transaction_release_date","settlement_id","type","order_id","sku","description",
             "marketplace","fulfilment","order_city","order_state","order_postal",
             "tax_collection_model","month","year","country","product_name"
         ]:
@@ -1874,7 +1913,7 @@ def _sum_where(
 # =========================================================
 # FLATTEN TRANSACTION (FULL MTD SCHEMA)
 # =========================================================
-def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
+def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
     posted_date = tx.get("postedDate")
     ttype = tx.get("transactionType")
     tstatus = tx.get("transactionStatus")
@@ -2354,6 +2393,93 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+
+def _format_release_datetime(value: Any, marketplace_id: Optional[str] = None) -> Optional[str]:
+    """Format an Amazon release timestamp with the marketplace timezone."""
+    if value is None or not str(value).strip():
+        return None
+
+    raw = str(value).strip()
+    try:
+        parsed = pd.to_datetime(raw, utc=True, errors="coerce")
+        if pd.isna(parsed):
+            return raw
+
+        marketplace_id = str(marketplace_id or amazon_client.marketplace_id or "").strip()
+        timezone_name = {
+            "ATVPDKIKX0DER": "America/Los_Angeles",
+            "A2EUQ1WTGCTBG2": "America/Toronto",
+            "A1F83G8C2ARO7P": "Europe/London",
+        }.get(marketplace_id, "UTC")
+
+        return parsed.tz_convert(ZoneInfo(timezone_name)).strftime("%Y-%m-%d %H:%M:%S %Z")
+    except Exception:
+        return raw
+
+
+def _find_release_date_recursively(value: Any) -> Optional[Any]:
+    """Find release-date values even when Amazon nests them in another object."""
+    if isinstance(value, dict):
+        preferred_keys = (
+            "transactionReleaseDate",
+            "transactionReleasedDate",
+            "releaseDate",
+            "releasedDate",
+            "deferredReleaseDate",
+            "transaction_release_date",
+            "transaction-release-date",
+        )
+        for key in preferred_keys:
+            candidate = value.get(key)
+            if candidate is not None and str(candidate).strip():
+                return candidate
+
+        for key, candidate in value.items():
+            normalized_key = re.sub(r"[^a-z0-9]", "", str(key).lower())
+            if "release" in normalized_key and "date" in normalized_key:
+                if candidate is not None and str(candidate).strip():
+                    return candidate
+
+        for candidate in value.values():
+            found = _find_release_date_recursively(candidate)
+            if found is not None:
+                return found
+
+    elif isinstance(value, list):
+        for candidate in value:
+            found = _find_release_date_recursively(candidate)
+            if found is not None:
+                return found
+
+    return None
+
+
+def _extract_transaction_release_date(tx: Dict[str, Any]) -> Optional[str]:
+    """
+    Return Amazon's transaction release timestamp when it is included in the
+    Finances API payload. The search is recursive because Amazon may place the
+    field inside status/deferred details.
+    """
+    if not isinstance(tx, dict):
+        return None
+
+    value = _find_release_date_recursively(tx)
+    if value is None:
+        return None
+
+    marketplace_id = (
+        tx.get("marketplaceId")
+        or (tx.get("marketplaceDetails") or {}).get("marketplaceId")
+        if isinstance(tx.get("marketplaceDetails") or {}, dict)
+        else None
+    )
+    return _format_release_datetime(value, marketplace_id)
+
+def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
+    row = _flatten_transaction_to_row_core(tx)
+    row["transaction_release_date"] = _extract_transaction_release_date(tx)
+    return row
+
 def _month_to_num(mname: str) -> int:
     m = mname.strip().lower()
     for i in range(1, 13):
@@ -2695,12 +2821,6 @@ def upsert_liveorders_from_rows(rows, user_id: int, country: str, now_utc: datet
         # ✅ NEW: gross_sales
         obj.gross_sales = (
             obj.product_sales
-            + obj.product_sales_tax
-            + obj.postage_credits
-            + obj.gift_wrap_credits
-            + obj.shipping_credits_tax
-            - obj.promotional_rebates
-            - obj.promotional_rebates_tax
         )
         obj.marketplace_facilitator_tax = _f(r.get("marketplace_facilitator_tax"))
         obj.selling_fees = _f(r.get("selling_fees"))
@@ -2853,12 +2973,26 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
     mft  = safe_num(df.get("marketplace_facilitator_tax", 0.0))  # ✅ for tax_and_credits
 
-    # ✅ gross_sales same as live MTD
-    gross_sales_total = float((ps + pst + pc + gwc + sct + gwt - pr - prt).sum())
+    # Gross Sales business rule: product_sales only.
+    gross_sales_total = float(ps.sum())
 
-    # ✅ net_sales stays as you had it (product_sales + promotional_rebates)
-    net_sales_total = float((ps + pr).sum())
+    # Refund sales are identified from refund/return transaction rows.
+    for col in ["type", "transaction_type", "description"]:
+        if col not in df.columns:
+            df[col] = ""
+    refund_mask = (
+        df["type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+        | df["transaction_type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+        | df["description"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+    )
+    refund_sales_total = float(ps.loc[refund_mask].abs().sum())
+
     promotional_rebates_total = float(pr.sum())
+    net_sales_total = (
+        gross_sales_total
+        - refund_sales_total
+        - abs(promotional_rebates_total)
+    )
     promotional_rebates_percentage = (
         promotional_rebates_total / net_sales_total * 100.0
     ) if net_sales_total else 0.0
@@ -2962,7 +3096,21 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         tmp["quantity"] = safe_num(tmp.get("quantity", 0.0))
         tmp["product_sales"] = safe_num(tmp.get("product_sales", 0.0))
         tmp["promotional_rebates"] = safe_num(tmp.get("promotional_rebates", 0.0))
-        tmp["net_sales"] = tmp["product_sales"] + tmp["promotional_rebates"]
+        for col in ["type", "transaction_type", "description"]:
+            if col not in tmp.columns:
+                tmp[col] = ""
+        tmp_refund_mask = (
+            tmp["type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+            | tmp["transaction_type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+            | tmp["description"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+        )
+        tmp["refund_sales"] = tmp["product_sales"].where(tmp_refund_mask, 0.0).abs()
+        tmp["gross_sales"] = tmp["product_sales"]
+        tmp["net_sales"] = (
+            tmp["gross_sales"]
+            - tmp["refund_sales"]
+            - tmp["promotional_rebates"].abs()
+        )
 
         g = tmp.groupby("date_only", as_index=False).agg(
             quantity=("quantity", "sum"),

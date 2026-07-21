@@ -53,6 +53,78 @@ int_cols = ["quantity","previous_quantity","user_id","return_quantity","total_qu
 
 _TABLE_COL_CACHE = {}
 
+REPORT_COMPAT_COLUMNS = [
+    "product_sales", "product_sales_tax", "postage_credits", "gift_wrap_credits",
+    "shipping_credits_tax", "giftwrap_credits_tax", "promotional_rebates_tax",
+    "marketplace_facilitator_tax", "cogs", "marketplace_fees", "credits", "tax",
+    "tax_and_credits", "other", "ads_spend", "ads_impressions", "ads_clicks",
+    "ads_spend_raw", "ads_sale_units", "ads_sale_amount", "sp_ads_sales",
+    "sd_ads_sales", "sb_ads_sales", "product_spend", "display_spend",
+    "brand_spend", "ad_type", "cm1_profit_per_unit", "cm1_profit_per",
+    "cm2_profit_per_unit", "cm2_profit_per", "generated_at_utc", "amazon_fees",
+    "advertising_fees", "current_net_reimbursement", "total_ads",
+    "total_cm2_profit", "total_cm2_margins",
+    "tacos_total_advertising_cost_of_sale", "reimbursement_vs_cm2_margins",
+    "ads_conversion_rate", "ads_roas", "ads_acos"
+]
+
+def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    alias_map = {
+        "cogs": "cost_of_unit_sold",
+        "marketplace_fees": "amazon_fee",
+        "amazon_fees": "amazon_fee",
+        "credits": "net_credits",
+        "tax": "net_taxes",
+        "tax_and_credits": "tex_and_credits",
+        "ads_spend": "advertising_total",
+        "advertising_fees": "advertising_total",
+        "current_net_reimbursement": "rembursement_fee",
+        "total_ads": "advertising_total",
+        "total_cm2_profit": "cm2_profit",
+        "total_cm2_margins": "cm2_margins",
+        "reimbursement_vs_cm2_margins": "rembursment_vs_cm2_margins",
+        "ads_acos": "acos",
+    }
+    for target, source in alias_map.items():
+        if target not in df.columns:
+            df[target] = pd.to_numeric(df.get(source, 0), errors="coerce").fillna(0.0)
+
+    qty = pd.to_numeric(df.get("total_quantity", df.get("quantity", 0)), errors="coerce").fillna(0.0)
+    net_sales = pd.to_numeric(df.get("net_sales", 0), errors="coerce").fillna(0.0)
+    profit = pd.to_numeric(df.get("profit", 0), errors="coerce").fillna(0.0)
+    cm2 = pd.to_numeric(df.get("cm2_profit", 0), errors="coerce").fillna(0.0)
+    ads = pd.to_numeric(df.get("advertising_total", 0), errors="coerce").fillna(0.0)
+    clicks = pd.to_numeric(df.get("ads_clicks", 0), errors="coerce").fillna(0.0)
+    ad_units = pd.to_numeric(df.get("ads_sale_units", 0), errors="coerce").fillna(0.0)
+    ad_sales = pd.to_numeric(df.get("ads_sale_amount", 0), errors="coerce").fillna(0.0)
+
+    df["cm1_profit_per_unit"] = np.where(qty != 0, profit / qty, 0.0)
+    df["cm1_profit_per"] = np.where(net_sales != 0, (profit / net_sales) * 100, 0.0)
+    df["cm2_profit_per_unit"] = np.where(qty != 0, cm2 / qty, 0.0)
+    df["cm2_profit_per"] = np.where(net_sales != 0, (cm2 / net_sales) * 100, 0.0)
+    df["ads_conversion_rate"] = np.where(clicks != 0, (ad_units / clicks) * 100, 0.0)
+    df["ads_roas"] = np.where(ads != 0, ad_sales / ads, 0.0)
+    df["tacos_total_advertising_cost_of_sale"] = np.where(net_sales != 0, (ads / net_sales) * 100, 0.0)
+
+    if "generated_at_utc" not in df.columns:
+        df["generated_at_utc"] = datetime.utcnow().isoformat()
+    if "ad_type" not in df.columns:
+        df["ad_type"] = ""
+    for col in REPORT_COMPAT_COLUMNS:
+        if col not in df.columns:
+            df[col] = "" if col in ("ad_type", "generated_at_utc") else 0.0
+    return df
+
+def ensure_report_compat_db_columns(conn, table_name: str):
+    if not table_exists_conn(conn, table_name):
+        return
+    text_cols_local = {"ad_type", "generated_at_utc"}
+    for col in REPORT_COMPAT_COLUMNS:
+        sql_type = "TEXT" if col in text_cols_local else "DOUBLE PRECISION"
+        conn.execute(text(f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS "{col}" {sql_type}'))
+    _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
+
 def get_table_columns(conn, table_name: str, schema: str = "public"):
     """
     Returns list of column names present in DB table (order by ordinal_position).
@@ -143,6 +215,131 @@ def table_exists_conn(conn, table_name: str, schema: str = "public") -> bool:
         {"schema": schema, "table_name": table_name}
     ).scalar())
 
+
+
+def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, month, year):
+    """Override SKU advertising metrics from adsmonthly table when it exists."""
+    ads_table = f"adsmonthly_{user_id}_{str(country).lower()}_{str(month).lower()}_{year}"
+    if not table_exists_conn(conn, ads_table):
+        return sku_grouped, False
+
+    ads_df = pd.read_sql(text(f'SELECT * FROM "{ads_table}"'), conn)
+    if ads_df.empty or "products" not in ads_df.columns:
+        return sku_grouped, False
+
+    ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
+    ads_df = ads_df.loc[
+        ads_df["products"].ne("")
+        & ~ads_df["products"].str.casefold().eq("grand total")
+    ].copy()
+    if ads_df.empty:
+        return sku_grouped, False
+
+    source_to_target = {
+        "ads_impressions": "ads_impressions",
+        "ads_clicks": "ads_clicks",
+        "spend": "ads_spend_raw",
+        "ads_spend_raw": "ads_spend_raw",
+        "ads_sale_units": "ads_sale_units",
+        "ads_sale_amount": "ads_sale_amount",
+        "sp_ads_sales": "sp_ads_sales",
+        "sd_ads_sales": "sd_ads_sales",
+        "sb_ads_sales": "sb_ads_sales",
+        "product_spend": "product_spend",
+        "display_spend": "display_spend",
+        "brand_spend": "brand_spend",
+    }
+
+    # Prefer the explicit ads_spend_raw column if both it and spend exist.
+    selected = {"products": ads_df["products"]}
+    for source, target in source_to_target.items():
+        if source in ads_df.columns and target not in selected:
+            selected[target] = pd.to_numeric(ads_df[source], errors="coerce").fillna(0.0)
+    ads_sku = pd.DataFrame(selected)
+
+    metric_cols = [c for c in ads_sku.columns if c != "products"]
+    if not metric_cols:
+        return sku_grouped, False
+
+    ads_sku = ads_sku.groupby("products", as_index=False)[metric_cols].sum()
+    ads_sku = ads_sku.rename(columns={"products": "sku"})
+    ads_sku["sku"] = ads_sku["sku"].astype(str).str.strip()
+
+    out = sku_grouped.copy()
+    out["sku"] = out["sku"].fillna("").astype(str).str.strip()
+    out = out.merge(ads_sku, on="sku", how="left", suffixes=("", "__ads"))
+
+    for col in metric_cols:
+        ads_col = f"{col}__ads"
+        if ads_col in out.columns:
+            out[col] = pd.to_numeric(out[ads_col], errors="coerce").fillna(0.0)
+            out.drop(columns=[ads_col], inplace=True)
+        else:
+            out[col] = pd.to_numeric(out.get(col, 0.0), errors="coerce").fillna(0.0)
+
+    # The ads report spend is the authoritative advertising expense.
+    spend = pd.to_numeric(out.get("ads_spend_raw", 0.0), errors="coerce").fillna(0.0).abs()
+    out["ads_spend"] = spend
+    out["advertising_total"] = spend
+    out["advertising_fees"] = spend
+    out["total_ads"] = spend
+
+    def num(name):
+        value = out[name] if name in out.columns else pd.Series(0.0, index=out.index)
+        return pd.to_numeric(value, errors="coerce").fillna(0.0)
+
+    net_sales = num("Net Sales") if "Net Sales" in out.columns else num("net_sales")
+    quantity = num("total_quantity") if "total_quantity" in out.columns else num("quantity")
+    clicks = num("ads_clicks")
+    ad_units = num("ads_sale_units")
+    ad_sales = num("ads_sale_amount")
+
+    if str(country).lower() == "us":
+        out["cm2_profit"] = (
+            num("profit")
+            - spend
+            - num("shipping_charges").abs()
+            - num("storage_fee").abs()
+            - num("inventory_charges_and_reimbursement")
+            - num("platform_management_fees").abs()
+            + num("other_adjustment")
+        )
+    else:
+        out["cm2_profit"] = (
+            num("profit")
+            - spend
+            - num("lost_total").abs()
+            - num("platform_fee").abs()
+        )
+
+    out["cm2_profit_per_unit"] = np.where(quantity != 0, out["cm2_profit"] / quantity, 0.0)
+    out["cm2_profit_per"] = np.where(net_sales != 0, (out["cm2_profit"] / net_sales) * 100.0, 0.0)
+    out["cm2_profit_percentage"] = out["cm2_profit_per"]
+    out["cm2_margins"] = out["cm2_profit_per"]
+    out["ads_conversion_rate"] = np.where(clicks != 0, (ad_units / clicks) * 100.0, 0.0)
+    out["ads_roas"] = np.where(spend != 0, ad_sales / spend, 0.0)
+    out["ads_acos"] = np.where(ad_sales != 0, (spend / ad_sales) * 100.0, 0.0)
+    out["acos"] = out["ads_acos"]
+    out["tacos_total_advertising_cost_of_sale"] = np.where(
+        net_sales != 0, (spend / net_sales) * 100.0, 0.0
+    )
+    out["reimbursement_vs_cm2_margins"] = np.where(
+        out["cm2_profit"] != 0,
+        (num("rembursement_fee") / out["cm2_profit"]) * 100.0,
+        0.0,
+    )
+    out["rembursment_vs_cm2_margins"] = out["reimbursement_vs_cm2_margins"]
+
+    for col in [
+        "cm2_profit", "cm2_profit_per_unit", "cm2_profit_per", "cm2_profit_percentage",
+        "cm2_margins", "ads_conversion_rate", "ads_roas", "ads_acos", "acos",
+        "tacos_total_advertising_cost_of_sale", "reimbursement_vs_cm2_margins",
+        "rembursment_vs_cm2_margins",
+    ]:
+        out[col] = pd.to_numeric(out[col], errors="coerce").replace([np.inf, -np.inf], 0).fillna(0.0)
+
+    print(f"[ADS] Applied SKU advertising data from {ads_table}")
+    return out, True
 
 def ensure_payment_columns(conn, table_name: str):
     # First-time fetch: rolling table may not exist yet.
@@ -870,6 +1067,18 @@ def process_skuwise_data(user_id, country, month, year):
             "errorstatus": "first",
             **({"shipping_credits": "sum"} if "shipping_credits" in df_base.columns else {}),
             **({"shipment_charges": "sum"} if "shipment_charges" in df_base.columns else {}),
+            **({"ads_impressions": "sum"} if "ads_impressions" in df_base.columns else {}),
+            **({"ads_clicks": "sum"} if "ads_clicks" in df_base.columns else {}),
+            **({"ads_spend_raw": "sum"} if "ads_spend_raw" in df_base.columns else {}),
+            **({"ads_sale_units": "sum"} if "ads_sale_units" in df_base.columns else {}),
+            **({"ads_sale_amount": "sum"} if "ads_sale_amount" in df_base.columns else {}),
+            **({"sp_ads_sales": "sum"} if "sp_ads_sales" in df_base.columns else {}),
+            **({"sd_ads_sales": "sum"} if "sd_ads_sales" in df_base.columns else {}),
+            **({"sb_ads_sales": "sum"} if "sb_ads_sales" in df_base.columns else {}),
+            **({"product_spend": "sum"} if "product_spend" in df_base.columns else {}),
+            **({"display_spend": "sum"} if "display_spend" in df_base.columns else {}),
+            **({"brand_spend": "sum"} if "brand_spend" in df_base.columns else {}),
+            **({"ad_type": "first"} if "ad_type" in df_base.columns else {}),
         }).reset_index()
 
         # --- ensure LOST-only SKUs also appear in sku_grouped (so merges can attach lost_total) ---
@@ -1281,6 +1490,9 @@ def process_skuwise_data(user_id, country, month, year):
         #     + sku_grouped["net_credits"]
         #     - sku_grouped["cost_of_unit_sold"]
         # )
+        sku_grouped, ads_table_applied = merge_monthly_ads_into_sku_grouped(
+            conn, sku_grouped, user_id, country, month, year
+        )
         total_profit = abs(sku_grouped["profit"].sum())
         total_Previous_profit = abs(sku_grouped["previous_profit"].sum())
         total_Previous_sales = abs(sku_grouped["previous_net_sales"].sum())
@@ -1326,6 +1538,9 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Additional Metrics (FIXED platform fee)
         advertising_total = abs(float(visible_ads_total)) + abs(float(dealsvouchar_ads_total))
+        if ads_table_applied:
+            advertising_total = abs(pd.to_numeric(sku_grouped["advertising_total"], errors="coerce").fillna(0.0).sum())
+            total_advertising = advertising_total
 
         lost_total_amount = float(
             pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0).sum()
@@ -1347,6 +1562,8 @@ def process_skuwise_data(user_id, country, month, year):
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
 
         cm2_profit = total_profit - lost_total_amount - (abs(advertising_total) + abs(platform_fee_fixed_total))
+        if ads_table_applied:
+            cm2_profit = float(pd.to_numeric(sku_grouped["cm2_profit"], errors="coerce").fillna(0.0).sum())
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
         rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
@@ -1594,6 +1811,8 @@ def process_skuwise_data(user_id, country, month, year):
             .fillna(0.0)
         )
 
+
+        sku_grouped = add_report_compat_columns(sku_grouped)
 
         total_row = sku_grouped[sku_grouped['sku'].astype(str).str.lower() == 'total']
         other_rows = sku_grouped[sku_grouped['sku'].astype(str).str.lower() != 'total']
@@ -1981,6 +2200,10 @@ def process_skuwise_data(user_id, country, month, year):
                 )
             """))
             ensure_storage_fee_columns(conn, tbl)
+            ensure_report_compat_db_columns(conn, tbl)
+
+        for tbl in (target_table, target_table_nse, target_table2, target_table_usd_month, target_table_usd_roll):
+            ensure_report_compat_db_columns(conn, tbl)
 
         # Replace month table; append to rolling tables
         conn.execute(
@@ -2067,7 +2290,7 @@ def process_skuwise_data(user_id, country, month, year):
             "profit_percentage","visible_ads","dealsvouchar_ads","advertising_total","platformfeenew",
             "platform_fee", "platform_fee_inventory_storage", "short_term_storage_fee", "long_term_storage_fee", "fba_disposal", "cm2_profit","cm2_profit_percentage",
             "acos","debt_payment","disbursement","rembursement_fee","rembursment_vs_cm2_margins","reimbursement_vs_sales","lost_total",
-            "sales_mix","profit_mix","user_id"
+            "sales_mix","profit_mix","user_id", *REPORT_COMPAT_COLUMNS
         ]
 
         # Ensure all required columns exist in df_month (fill defaults if missing)
@@ -2508,6 +2731,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 axis=1
             )
 
+            sku_grouped = add_report_compat_columns(sku_grouped)
             total_row = sku_grouped[sku_grouped["product_name"].str.lower() == "total"]
             other_rows = sku_grouped[sku_grouped["product_name"].str.lower() != "total"]
             other_rows = other_rows.sort_values(by="profit", ascending=False)
@@ -2567,6 +2791,7 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                     )
                 """))
 
+                ensure_report_compat_db_columns(conn_inner, quarter_table)
                 sku_grouped.columns = sku_grouped.columns.str.lower()
                 abs_cols = [
                     "visible_ads",
@@ -2784,6 +3009,7 @@ def process_yearly_skuwise_data(user_id, country, year):
                 axis=1
             )
 
+            sku_grouped = add_report_compat_columns(sku_grouped)
             total_row = sku_grouped[sku_grouped["product_name"].str.lower() == "total"]
             other_rows = sku_grouped[sku_grouped["product_name"].str.lower() != "total"]
             other_rows = other_rows.sort_values(by="profit", ascending=False)
@@ -2843,6 +3069,7 @@ def process_yearly_skuwise_data(user_id, country, year):
             """
             conn.execute(text(create_table_query))
 
+            ensure_report_compat_db_columns(conn, quarter_table)
             sku_grouped.columns = [col.lower() for col in sku_grouped.columns]
             abs_cols = [
                 "visible_ads",
