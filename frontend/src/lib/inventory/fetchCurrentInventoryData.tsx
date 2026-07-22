@@ -13,17 +13,67 @@ type FetchArgs = {
   country: string; // "global" | "uk" | "us" | "ca"
   month: string;   // "february" etc
   year: string;    // "2026" etc
+  marketplaceIds?: string | string[];
   XLSX?: any;      // no longer required for new response, kept to avoid caller changes
 };
 
-async function hitAgedInventoryOnce(baseURL: string, jwtToken: string) {
-  const res = await fetch(`${baseURL}/amazon_api/inventory/aged`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${jwtToken}`,
-      "Content-Type": "application/json",
-    },
-  });
+const DEFAULT_MARKETPLACE_IDS: Record<string, string> = {
+  uk: "A1F83G8C2ARO7P",
+  us: "ATVPDKIKX0DER",
+  ca: "A2EUQ1WTGCTBG2",
+};
+
+function getInventoryMarketplaceIds(
+  country: string,
+  marketplaceIds?: string | string[]
+) {
+  const provided = Array.isArray(marketplaceIds)
+    ? marketplaceIds
+    : marketplaceIds
+      ? [marketplaceIds]
+      : [];
+
+  if (provided.length) {
+    return Array.from(
+      new Set(provided.map((id) => String(id || "").trim()).filter(Boolean))
+    );
+  }
+
+  const countryKey = String(country || "").toLowerCase().trim();
+
+  if (countryKey === "global") {
+    return [DEFAULT_MARKETPLACE_IDS.uk, DEFAULT_MARKETPLACE_IDS.us];
+  }
+
+  const defaultMarketplace = DEFAULT_MARKETPLACE_IDS[countryKey];
+  return defaultMarketplace ? [defaultMarketplace] : [];
+}
+
+function buildInventorySyncUrl(baseURL: string, path: string, marketplaceId?: string) {
+  const url = new URL(`${baseURL}${path}`);
+
+  if (marketplaceId) {
+    url.searchParams.set("marketplace_id", marketplaceId);
+  }
+
+  return url.toString();
+}
+
+async function hitAgedInventoryOnce(
+  baseURL: string,
+  jwtToken: string,
+  marketplaceId?: string
+) {
+  const res = await fetch(
+    buildInventorySyncUrl(baseURL, "/amazon_api/inventory/aged", marketplaceId),
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 
   if (!res.ok) {
     let msg = `Aged Inventory API Error: ${res.status}`;
@@ -35,6 +85,32 @@ async function hitAgedInventoryOnce(baseURL: string, jwtToken: string) {
   }
 
   return res.json().catch(() => ({}));
+}
+
+async function hitAwdInventory(
+  baseURL: string,
+  jwtToken: string,
+  marketplaceId?: string
+) {
+  const url = buildInventorySyncUrl(baseURL, "/amazon_api/inventory/awd", marketplaceId);
+  const awdUrl = new URL(url);
+  awdUrl.searchParams.set("store_in_db", "true");
+
+  const res = await fetch(awdUrl.toString(), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${jwtToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  const json = await res.json().catch(() => ({}));
+
+  if (!res.ok || json?.success === false) {
+    throw new Error(json?.error || `AWD Inventory API Error: ${res.status}`);
+  }
+
+  return json;
 }
 
 function getCurrentInventoryEndpoint(baseURL: string) {
@@ -206,9 +282,14 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
   warnings?: string[];
   meta?: any;
 }> {
-  const { baseURL, token, country, month, year } = args;
+  const { baseURL, token, country, month, year, marketplaceIds } = args;
 
-  await hitAgedInventoryOnce(baseURL, token);
+  const syncMarketplaceIds = getInventoryMarketplaceIds(country, marketplaceIds);
+
+  for (const marketplaceId of syncMarketplaceIds) {
+    await hitAgedInventoryOnce(baseURL, token, marketplaceId);
+    await hitAwdInventory(baseURL, token, marketplaceId);
+  }
 
   const res = await fetch(getCurrentInventoryEndpoint(baseURL), {
     method: "POST",

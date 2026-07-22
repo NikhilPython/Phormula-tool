@@ -69,6 +69,10 @@ type Props<RowT> = {
   collapsedState?: Record<string, boolean>;
   onCollapsedChange?: (next: Record<string, boolean>) => void;
   preserveColumnWidths?: boolean | "responsive";
+  getGroupToggleCollapsedState?: (
+    groupId: string,
+    defaultIsCollapsed: boolean
+  ) => boolean;
 
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
 };
@@ -151,6 +155,7 @@ export default function GroupedCollapsibleTable<RowT>({
   onSortChange,
   bodyMaxHeight,
   preserveColumnWidths = false,
+  getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
@@ -693,6 +698,8 @@ export default function GroupedCollapsibleTable<RowT>({
             const g = groupMap.get(item.id);
             if (!g) return null;
             const isCollapsed = collapsed[g.id] ?? true;
+            const toggleIsCollapsed =
+              getGroupToggleCollapsedState?.(g.id, isCollapsed) ?? isCollapsed;
             const cols = isCollapsed ? g.collapsedCols : g.expandedCols;
             if (cols.length === 0) return null;
 
@@ -762,7 +769,7 @@ export default function GroupedCollapsibleTable<RowT>({
                         className={iconButtonClass}
                         title="Click to expand/collapse"
                       >
-                        {isCollapsed ? "+" : "−"}
+                        {toggleIsCollapsed ? "+" : "−"}
                       </button>
                     )}
                   </div>

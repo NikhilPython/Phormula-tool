@@ -49,7 +49,9 @@ type InventoryInsightsSectionProps = {
     heatmapExcelPeriodLabel?: string;
     heatmapExcelCompanyName?: string;
     heatmapExcelBrandName?: string;
-     salesLast30DaysLabel?: string;
+    salesLast30DaysLabel?: string;
+    useCurrentInventoryTableLayout?: boolean;
+    storageCostCurrencySymbol?: string;
     inventoryAgeSummary?: {
         total?: number;
         current_month_units_sold_total?: number;
@@ -109,6 +111,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     heatmapExcelCompanyName = "",
     heatmapExcelBrandName = "",
     inventoryAgeSummary,
+    useCurrentInventoryTableLayout = false,
+    storageCostCurrencySymbol = "$",
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -155,6 +159,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         inventoryAgeSummary={inventoryAgeSummary}
                         salesLast30DaysLabel={salesLast30DaysLabel}
                         unitSalesDataKey={unitSalesDataKey}
+                        useCurrentInventoryTableLayout={useCurrentInventoryTableLayout}
+                        storageCostCurrencySymbol={storageCostCurrencySymbol}
                     />
                 )}
 

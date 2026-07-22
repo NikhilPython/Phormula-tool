@@ -21,6 +21,10 @@ export default function DashboardInventoryInsightsTab({
     canDownloadInventoryInsightsExcel,
     handleHeatmapProductClick,
     countryName,
+    salesLast30DaysLabel,
+    unitSalesDataKey,
+    useCurrentInventoryTableLayout,
+    storageCostCurrencySymbol,
 }: DashboardInventoryInsightsTabProps) {
     return (
                     <div
@@ -88,6 +92,10 @@ export default function DashboardInventoryInsightsTab({
                                     }
                                     heatmapExcelPlatformLabel="Phormula"
                                     heatmapExcelTitleLine="Inventory Insights Report"
+                                    salesLast30DaysLabel={salesLast30DaysLabel}
+                                    unitSalesDataKey={unitSalesDataKey}
+                                    useCurrentInventoryTableLayout={useCurrentInventoryTableLayout}
+                                    storageCostCurrencySymbol={storageCostCurrencySymbol}
                                 />
                             </>
                         ) : (

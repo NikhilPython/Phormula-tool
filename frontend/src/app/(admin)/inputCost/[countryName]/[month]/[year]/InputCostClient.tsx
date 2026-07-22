@@ -796,7 +796,7 @@ const formatSalesLast30DaysMonthLabel = (
   return "";
 };
 
-const buildSalesLast30DaysLabel = (
+const buildCurrentMonthUnitsSoldLabel = (
   range: RangeType,
   selectedMonth: string,
   selectedQuarter: Quarter | "",
@@ -810,17 +810,10 @@ const buildSalesLast30DaysLabel = (
   );
 
   if (!monthLabel) {
-    return "Unit Sales";
+    return "Current Month Units Sold";
   }
 
-  const shortMonth = monthLabel.slice(0, 3);
-  const shortYear = String(selectedYear || "").slice(-2);
-
-  if (!shortYear) {
-    return `${shortMonth} Unit Sales`;
-  }
-
-  return `${shortMonth}'${shortYear} Unit Sales`;
+  return `Current Month Units Sold (${monthLabel})`;
 };
 
 const formatBestPerformancePeriod = (
@@ -1933,6 +1926,98 @@ const getInventoryRowCoverageRatio = (row: InventoryCurrentRow) => {
     'cover-months',
   ]);
 };
+
+const getInventoryCurrentFbaValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "available",
+    "Current Inventory FBA",
+    "current_inventory_fba",
+    "current-fba",
+    "fulfillable_quantity",
+    "afn_fulfillable_quantity",
+    "afn-fulfillable-quantity",
+  ]);
+
+const getInventoryCurrentAwdValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "total_onhand_quantity",
+    "Current Inventory AWD",
+    "current_inventory_awd",
+    "current-awd",
+    "available_awd",
+    "awd_available",
+  ]);
+
+const getInventoryTransitFbaValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "inbound-shipped\r",
+    "inbound-shipped",
+    "In Transit FBA",
+    "in_transit_fba",
+    "in-transit-fba",
+    "fc-transfer",
+    "fc_transfer",
+    "fcTransfer",
+    "reserved_fc_transfer",
+    "reserved-fc-transfer",
+    "inbound-working",
+  ]);
+
+const getInventoryTransitAwdValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "total_inbound_quantity",
+    "In Transit AWD",
+    "in_transit_awd",
+    "in-transit-awd",
+    "inbound_quantity",
+    "inbound-quantity",
+    "Inbound Units",
+    "inbound_units",
+    "inboundUnits",
+    "inbound-shipped",
+  ]);
+
+const getInventoryUnsellableFbaValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "Unsellable Inventory FBA",
+    "Unsellable FBA",
+    "unfulfillable-quantity",
+    "unfulfillable_quantity",
+    "unfulfillableUnits",
+    "unfulfillable_units",
+    "Unfulfillable Units",
+  ]);
+
+const getInventoryUnsellableAwdValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "Unsellable Inventory AWD",
+    "Unsellable AWD",
+    "unsellable_awd",
+    "unfulfillable_awd",
+  ]);
+
+const getInventoryStorageCostValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "Storage Cost (Est) - in USD",
+    "Storage Cost (Est) in USD",
+    "estimated-storage-cost-next-month",
+    "estimated_storage_cost_next_month",
+    "estimatedStorageCostNextMonth",
+    "Estimated Storage Cost",
+    "estimated_storage_cost",
+    "storage_cost_est",
+    "storage_cost",
+  ]);
+
+const getInventoryCoverageCurrentAndTransitValue = (row: InventoryCurrentRow) =>
+  pickInventoryNumber(row, [
+    "Coverage Ratio (Current + In Transit)",
+    "Coverage Ratio (Current + In transit)",
+    "Coverage Ratio (Current + Inventory)",
+    "coverage_ratio_current_in_transit",
+    "coverage_ratio_current_plus_in_transit",
+  ]);
+
 const getInventoryRowSalesLast30Days = (row: InventoryCurrentRow) => {
   return pickInventoryNumber(row, [
     'Sales Last 30 Days',
@@ -2537,13 +2622,30 @@ const buildInventoryInsightsFromResponses = (
 
       const totalUnits = sellableUnits || bucketTotal;
 
-      const unitsSold = getCurrentMonthUnitsSoldValue(
-        row,
-        currentMonthUnitsSoldKey
-      );
-
       // ✅ Needed for Others coverage ratio
       const salesLast30Days = getInventoryRowSalesLast30Days(row);
+      const unitsSold =
+        getCurrentMonthUnitsSoldValue(row, currentMonthUnitsSoldKey) ??
+        salesLast30Days;
+      const currentFba = getInventoryCurrentFbaValue(row);
+      const currentAwd = getInventoryCurrentAwdValue(row);
+      const transitFba = getInventoryTransitFbaValue(row);
+      const transitAwd = getInventoryTransitAwdValue(row);
+      const totalInStock =
+        pickInventoryNumber(row, [
+          "Total Sellable Inventory In Stock",
+          "Total Sellable In Stock",
+        ]) ||
+        currentFba + currentAwd;
+      const totalInTransit =
+        pickInventoryNumber(row, [
+          "Total Sellable Inventory In Transit",
+          "Total Sellable In Transit",
+        ]) ||
+        transitFba + transitAwd;
+      const coverageCurrentAndTransit =
+        getInventoryCoverageCurrentAndTransitValue(row) ||
+        (unitsSold > 0 ? (totalInStock + totalInTransit) / unitsSold : 0);
 
       return {
         productName: getInventoryRowProductName(row),
@@ -2573,6 +2675,16 @@ const buildInventoryInsightsFromResponses = (
         totalUnits,     // backend Sellable Units
 
         unsellableUnits: getInventoryRowUnfulfillableUnits(row),
+        currentFba,
+        currentAwd,
+        transitFba,
+        transitAwd,
+        totalInStock,
+        totalInTransit,
+        unsellableFba: getInventoryUnsellableFbaValue(row),
+        unsellableAwd: getInventoryUnsellableAwdValue(row),
+        storageCostUsd: getInventoryStorageCostValue(row),
+        coverageCurrentAndTransit,
         unitsSold,
         salesLast30Days,
         salesRank: getInventoryRowSalesRank(row),
@@ -2622,17 +2734,66 @@ const buildInventoryInsightsFromResponses = (
       totalUnits: getInventoryRowTotalUnits(backendTotalRawRow),
       inboundUnits: getInventoryRowInboundUnits(backendTotalRawRow),
       unsellableUnits: getInventoryRowUnfulfillableUnits(backendTotalRawRow),
+      currentFba: getInventoryCurrentFbaValue(backendTotalRawRow),
+      currentAwd: getInventoryCurrentAwdValue(backendTotalRawRow),
+      transitFba: getInventoryTransitFbaValue(backendTotalRawRow),
+      transitAwd: getInventoryTransitAwdValue(backendTotalRawRow),
+      totalInStock:
+        pickInventoryNumber(backendTotalRawRow, [
+          "Total Sellable Inventory In Stock",
+          "Total Sellable In Stock",
+        ]) ||
+        getInventoryCurrentFbaValue(backendTotalRawRow) +
+        getInventoryCurrentAwdValue(backendTotalRawRow),
+      totalInTransit:
+        pickInventoryNumber(backendTotalRawRow, [
+          "Total Sellable Inventory In Transit",
+          "Total Sellable In Transit",
+        ]) ||
+        getInventoryTransitFbaValue(backendTotalRawRow) +
+        getInventoryTransitAwdValue(backendTotalRawRow),
+      unsellableFba: getInventoryUnsellableFbaValue(backendTotalRawRow),
+      unsellableAwd: getInventoryUnsellableAwdValue(backendTotalRawRow),
+      storageCostUsd: getInventoryStorageCostValue(backendTotalRawRow),
 
-      unitsSold: getCurrentMonthUnitsSoldValue(
-        backendTotalRawRow,
-        currentMonthUnitsSoldKey
-      ),
+      unitsSold:
+        getCurrentMonthUnitsSoldValue(
+          backendTotalRawRow,
+          currentMonthUnitsSoldKey
+        ) ?? getInventoryRowSalesLast30Days(backendTotalRawRow),
 
       // ✅ backend total Sales Last 30 Days
       salesLast30Days: getInventoryRowSalesLast30Days(backendTotalRawRow),
 
       // ✅ backend total Coverage Ratio only
       coverageRatio: getInventoryRowCoverageRatio(backendTotalRawRow),
+      coverageCurrentAndTransit:
+        getInventoryCoverageCurrentAndTransitValue(backendTotalRawRow) ||
+        (() => {
+          const unitsSold =
+            getCurrentMonthUnitsSoldValue(
+              backendTotalRawRow,
+              currentMonthUnitsSoldKey
+            ) ?? getInventoryRowSalesLast30Days(backendTotalRawRow);
+          const totalInStock =
+            pickInventoryNumber(backendTotalRawRow, [
+              "Total Sellable Inventory In Stock",
+              "Total Sellable In Stock",
+            ]) ||
+            getInventoryCurrentFbaValue(backendTotalRawRow) +
+            getInventoryCurrentAwdValue(backendTotalRawRow);
+          const totalInTransit =
+            pickInventoryNumber(backendTotalRawRow, [
+              "Total Sellable Inventory In Transit",
+              "Total Sellable In Transit",
+            ]) ||
+            getInventoryTransitFbaValue(backendTotalRawRow) +
+            getInventoryTransitAwdValue(backendTotalRawRow);
+
+          return unitsSold > 0
+            ? (totalInStock + totalInTransit) / unitsSold
+            : 0;
+        })(),
 
       inventoryAlert: "",
       salesRank: "",
@@ -3693,7 +3854,7 @@ export default function InputCostPage({ params }: Params) {
   const [selectedYear, setSelectedYear] = useState<string>(getDefaultYear());
   const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
     useState<string>('365+ days');
-  const salesLast30DaysLabel = buildSalesLast30DaysLabel(
+  const salesLast30DaysLabel = buildCurrentMonthUnitsSoldLabel(
     range,
     selectedMonth,
     selectedQuarter,
@@ -3702,6 +3863,12 @@ export default function InputCostPage({ params }: Params) {
   const inventoryHeatmapUnitSalesDataKey: AgeingRiskUnitSalesDataKey = "unitsSold";
   const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
     useState<"uk" | "us">("uk");
+  const inventoryInsightsReportCountry =
+    countryName === "global" ? selectedGlobalInventoryCountry : countryName;
+  const showUsCurrentInventoryTable =
+    ["us", "usa", "united states"].includes(
+      String(inventoryInsightsReportCountry || "").trim().toLowerCase()
+    );
 
 
   const [inventoryInsightsData, setInventoryInsightsData] =
@@ -3752,11 +3919,8 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const getInventoryInsightsFileName = () => {
-    const reportCountry =
-      countryName === "global" ? selectedGlobalInventoryCountry : countryName;
-
     return `Inventory Insights Report - ${formatCountryLabel(
-      reportCountry
+      inventoryInsightsReportCountry
     )} - ${getInventoryInsightsPeriodLabel()}.xlsx`;
   };
 
@@ -6678,17 +6842,19 @@ export default function InputCostPage({ params }: Params) {
                     heatmapExcelFilename={getInventoryInsightsFileName()}
                     heatmapExcelTitleLine="Inventory Insights Report"
                     // heatmapExcelCountryLabel={formatCountryLabel(countryName)}
-                    heatmapExcelCountryLabel={
-                      countryName === "global"
-                        ? formatCountryLabel(selectedGlobalInventoryCountry)
-                        : formatCountryLabel(countryName)
-                    }
+                    heatmapExcelCountryLabel={formatCountryLabel(
+                      inventoryInsightsReportCountry
+                    )}
                     heatmapExcelPlatformLabel="Phormula"
                     heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
                     heatmapExcelCompanyName={userData?.company_name || ""}
                     heatmapExcelBrandName={userData?.brand_name || ""}
                     salesLast30DaysLabel={salesLast30DaysLabel}
                     unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
+                    useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
+                    storageCostCurrencySymbol={getCurrencySymbol(
+                      getCurrencyForCountry(inventoryInsightsReportCountry)
+                    )}
                   />
                 </>
               ) : (

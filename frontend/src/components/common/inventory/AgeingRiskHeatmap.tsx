@@ -1,5 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import {
+    RiCollapseDiagonalFill,
+    RiExpandDiagonalFill,
+    RiLayoutColumnFill,
+    RiLayoutColumnLine,
+} from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
 import GroupedCollapsibleTable, {
     type ColGroup,
@@ -29,6 +34,16 @@ export type AgeingRiskHeatmapRow = {
 
     inboundUnits?: number;
     unsellableUnits?: number;
+    currentFba?: number;
+    currentAwd?: number;
+    transitFba?: number;
+    transitAwd?: number;
+    totalInStock?: number;
+    totalInTransit?: number;
+    unsellableFba?: number;
+    unsellableAwd?: number;
+    storageCostUsd?: number;
+    coverageCurrentAndTransit?: number;
     unitsSold?: number;
     salesRank?: number | string;
     previousSalesRank?: number | string;
@@ -62,6 +77,8 @@ type AgeingRiskHeatmapProps = {
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
     showInventoryAlerts?: boolean;
+    useCurrentInventoryTableLayout?: boolean;
+    storageCostCurrencySymbol?: string;
 
     showExcelDownload?: boolean;
     excelFilename?: string;
@@ -255,6 +272,65 @@ const buildAggregateRow = (
         (sum, row) => sum + Number(row.unsellableUnits || 0),
         0
     );
+
+    aggregate.currentFba = rows.reduce(
+        (sum, row) => sum + Number(row.currentFba || row.available || 0),
+        0
+    );
+
+    aggregate.currentAwd = rows.reduce(
+        (sum, row) => sum + Number(row.currentAwd || 0),
+        0
+    );
+
+    aggregate.transitFba = rows.reduce(
+        (sum, row) => sum + Number(row.transitFba || row.fcTransfer || 0),
+        0
+    );
+
+    aggregate.transitAwd = rows.reduce(
+        (sum, row) => sum + Number(row.transitAwd || row.inboundUnits || 0),
+        0
+    );
+
+    aggregate.totalInStock = rows.reduce(
+        (sum, row) =>
+            sum +
+            Number(
+                row.totalInStock ??
+                row.totalUnits ??
+                Number(row.currentFba || row.available || 0) +
+                Number(row.currentAwd || 0)
+            ),
+        0
+    );
+
+    aggregate.totalInTransit = rows.reduce(
+        (sum, row) =>
+            sum +
+            Number(
+                row.totalInTransit ??
+                Number(row.transitFba || row.fcTransfer || 0) +
+                Number(row.transitAwd || row.inboundUnits || 0)
+            ),
+        0
+    );
+
+    aggregate.unsellableFba = rows.reduce(
+        (sum, row) => sum + Number(row.unsellableFba || row.unsellableUnits || 0),
+        0
+    );
+
+    aggregate.unsellableAwd = rows.reduce(
+        (sum, row) => sum + Number(row.unsellableAwd || 0),
+        0
+    );
+
+    aggregate.storageCostUsd = rows.reduce(
+        (sum, row) => sum + Number(row.storageCostUsd || 0),
+        0
+    );
+
     aggregate.salesRank = "";
 
     aggregate.unitsSold = rows.some(
@@ -279,7 +355,14 @@ const buildAggregateRow = (
 
         aggregate.coverageRatio =
             totalUnitSales > 0
-                ? totalAvailable / totalUnitSales
+                ? Number(aggregate.totalInStock || totalAvailable) / totalUnitSales
+                : 0;
+
+        aggregate.coverageCurrentAndTransit =
+            totalUnitSales > 0
+                ? (Number(aggregate.totalInStock || 0) +
+                    Number(aggregate.totalInTransit || 0)) /
+                totalUnitSales
                 : 0;
 
         return aggregate;
@@ -303,6 +386,15 @@ const buildAggregateRow = (
     aggregate.coverageRatio = aggregate.totalUnits
         ? weightedCoverageTotal / aggregate.totalUnits
         : 0;
+
+    const aggregateUnitSales = getUnitSalesValue(aggregate, unitSalesDataKey);
+
+    aggregate.coverageCurrentAndTransit =
+        aggregateUnitSales > 0
+            ? (Number(aggregate.totalInStock || aggregate.totalUnits || 0) +
+                Number(aggregate.totalInTransit || 0)) /
+            aggregateUnitSales
+            : undefined;
 
     return aggregate;
 };
@@ -427,6 +519,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     showInventoryAlerts = true,
+    useCurrentInventoryTableLayout = false,
+    storageCostCurrencySymbol = "$",
     showExcelDownload = true,
     excelFilename = "ageing-risk-heatmap.xlsx",
     excelTitleLine,
@@ -438,6 +532,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     inventoryAgeSummary,
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [isInventoryDetailsExpanded, setIsInventoryDetailsExpanded] =
+        useState(false);
+    const [isSalesCoverageDetailsExpanded, setIsSalesCoverageDetailsExpanded] =
+        useState(false);
+    const storageCostHeaderLabel = `Est. Storage Cost (${storageCostCurrencySymbol || "$"})`;
+    const areAllCurrentInventoryColumnsExpanded =
+        isInventoryDetailsExpanded && isSalesCoverageDetailsExpanded;
+
+    const handleToggleAllCurrentInventoryColumns = () => {
+        const nextExpanded = !areAllCurrentInventoryColumnsExpanded;
+
+        setIsInventoryDetailsExpanded(nextExpanded);
+        setIsSalesCoverageDetailsExpanded(nextExpanded);
+    };
 
     const showSellableBreakdown = useMemo(() => {
         return data.some((row) => {
@@ -487,9 +595,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             );
         });
 
+        const sortSalesKey = unitSalesDataKey;
+
         const sortedData = [...productRows].sort((a, b) => {
-            const aUnitSales = getUnitSalesSortValue(a, unitSalesDataKey);
-            const bUnitSales = getUnitSalesSortValue(b, unitSalesDataKey);
+            const aUnitSales = getUnitSalesSortValue(a, sortSalesKey);
+            const bUnitSales = getUnitSalesSortValue(b, sortSalesKey);
 
             return bUnitSales - aUnitSales;
         });
@@ -505,6 +615,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
                 // ✅ keep backend coverage ratio only
                 coverageRatio: Number(backendTotalRow.coverageRatio ?? 0),
+                coverageCurrentAndTransit: Number(
+                    backendTotalRow.coverageCurrentAndTransit ?? 0
+                ),
                 isTotalRow: true,
                 productName: "Total",
                 sku: "-",
@@ -545,10 +658,29 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     backendTotalRow.totalUnits ??
                     Number(backendTotalRow.available || 0) + Number(backendTotalRow.fcTransfer || 0)
                 );
+
+                totalRow.currentFba = Number(
+                    backendTotalRow.currentFba ?? backendTotalRow.available ?? 0
+                );
+                totalRow.currentAwd = Number(backendTotalRow.currentAwd || 0);
+                totalRow.transitFba = Number(
+                    backendTotalRow.transitFba ?? backendTotalRow.fcTransfer ?? 0
+                );
+                totalRow.transitAwd = Number(
+                    backendTotalRow.transitAwd ?? backendTotalRow.inboundUnits ?? 0
+                );
+                totalRow.totalInStock = Number(
+                    backendTotalRow.totalInStock ?? backendTotalRow.totalUnits ?? 0
+                );
+                totalRow.totalInTransit = Number(
+                    backendTotalRow.totalInTransit ?? backendTotalRow.inboundUnits ?? 0
+                );
+                totalRow.storageCostUsd = Number(backendTotalRow.storageCostUsd || 0);
             }
 
             if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
                 totalRow.unsellableUnits = inventoryAgeSummary.unfulfillable_total;
+                totalRow.unsellableFba = inventoryAgeSummary.unfulfillable_total;
             }
 
             if (typeof inventoryAgeSummary.current_month_units_sold_total === "number") {
@@ -565,22 +697,28 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             } as HeatmapTableRow);
 
         if (!canCollapse || isExpanded) {
-            return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
+            return useCurrentInventoryTableLayout
+                ? ([...sortedData, totalRow] as HeatmapTableRow[])
+                : ([...sortedData, totalRow, percentageRow] as HeatmapTableRow[]);
         }
 
         const mainRows = sortedData.slice(0, defaultVisibleRows);
         const otherRows = sortedData.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
-            return [...mainRows, totalRow, percentageRow] as HeatmapTableRow[];
+            return useCurrentInventoryTableLayout
+                ? ([...mainRows, totalRow] as HeatmapTableRow[])
+                : ([...mainRows, totalRow, percentageRow] as HeatmapTableRow[]);
         }
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
         }, unitSalesDataKey);
 
-        return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey]);
+        return useCurrentInventoryTableLayout
+            ? ([...mainRows, othersRow, totalRow] as HeatmapTableRow[])
+            : ([...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[]);
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, useCurrentInventoryTableLayout]);
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};
@@ -632,40 +770,31 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 : "-";
         };
 
-        const leftCols: LeafCol<HeatmapTableRow>[] = [
-            {
-                key: "sno",
-                label: "S.No.",
-                width: "48px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
-            {
-                key: "productName",
-                label: "Product Name",
-                width: "145px",
-                align: "left",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
-            {
-                key: "sku",
-                label: "SKU",
-                width: "120px",
-                align: "left",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
+        const makeCol = (
+            key: string,
+            label: React.ReactNode,
+            width: string,
+            align: "left" | "center" | "right" = "center",
+            tdClassName = defaultTdClassName
+        ): LeafCol<HeatmapTableRow> => ({
+            key,
+            label,
+            width,
+            align,
+            thClassName: heatmapHeaderClassName,
+            tdClassName,
+        });
 
-            },
-            {
-                key: "salesRank",
-                label: "Sales Rank",
-                width: hasAnySalesRankDelta ? "140px" : "90px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
+        const snoCol = makeCol("sno", useCurrentInventoryTableLayout ? "Sno." : "S.No.", "48px");
+        const productNameCol = makeCol("productName", "Product Name", useCurrentInventoryTableLayout ? "170px" : "145px", "left");
+        const skuCol = makeCol("sku", "SKU", "120px", "left");
+        const salesRankCol = makeCol("salesRank", "Sales Rank", hasAnySalesRankDelta ? "140px" : "90px");
+
+        const leftCols: LeafCol<HeatmapTableRow>[] = [
+            snoCol,
+            productNameCol,
+            skuCol,
+            salesRankCol,
         ];
 
         const ageBucketCols: LeafCol<HeatmapTableRow>[] = buckets.map((bucket) => ({
@@ -677,6 +806,82 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             tdClassName:
                 "relative !p-0 overflow-hidden text-center text-charcoal-500 text-[12px] min-[1700px]:text-[14px] whitespace-normal break-words",
         }));
+
+        const showAlertsColumn = showInventoryAlerts;
+
+        const currentInventoryGroups: ColGroup<HeatmapTableRow>[] = [
+            {
+                id: "currentInventory",
+                label: "Current Inventory",
+                expandable: false,
+                collapsedCols: [],
+                expandedCols: [
+                    makeCol("currentFba", "FBA", "84px"),
+                    makeCol("currentAwd", "AWD", "84px"),
+                ],
+            },
+            {
+                id: "transitInventory",
+                label: "In Transit Inventory",
+                expandable: false,
+                collapsedCols: [],
+                expandedCols: [
+                    makeCol("transitFba", "FBA", "84px"),
+                    makeCol("transitAwd", "AWD", "84px"),
+                ],
+            },
+            {
+                id: "totalSellableInventory",
+                label: "Total Sellable Inventory",
+                collapsedCols: [
+                    makeCol("totalInStock", "In Stock", "92px"),
+                    makeCol("totalInTransit", "In transit", "92px"),
+                ],
+                expandedCols: [
+                    makeCol("totalInStock", "In Stock", "92px"),
+                    makeCol("totalInTransit", "In transit", "92px"),
+                ],
+            },
+            {
+                id: "unsellableInventory",
+                label: "Unsellable Inventory",
+                expandable: false,
+                collapsedCols: [],
+                expandedCols: [
+                    makeCol("unsellableFba", "FBA", "84px"),
+                    makeCol("unsellableAwd", "AWD", "84px"),
+                ],
+            },
+            {
+                id: "fbaBreakup",
+                label: "Breakup - FBA Inventory",
+                expandable: false,
+                collapsedCols: [],
+                expandedCols: ageBucketCols,
+            },
+            {
+                id: "salesCoverage",
+                label: "Sales & Coverage Ratio",
+                collapsedCols: [
+                    makeCol("salesLast30Days", salesLast30DaysLabel, "120px"),
+                    makeCol("coverageRatio", "Coverage Ratio (Current Inventory)", "130px"),
+                    makeCol(
+                        "coverageCurrentAndTransit",
+                        "Coverage Ratio (Current + In transit)",
+                        "136px"
+                    ),
+                ],
+                expandedCols: [
+                    makeCol("salesLast30Days", salesLast30DaysLabel, "120px"),
+                    makeCol("coverageRatio", "Coverage Ratio (Current Inventory)", "130px"),
+                    makeCol(
+                        "coverageCurrentAndTransit",
+                        "Coverage Ratio (Current + In transit)",
+                        "136px"
+                    ),
+                ],
+            },
+        ];
 
         const sellableGroup: ColGroup<HeatmapTableRow> = {
             id: "sellable",
@@ -734,24 +939,36 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 ],
         };
 
-        const singleCols: LeafCol<HeatmapTableRow>[] = [
-            ...ageBucketCols,
-            {
-                key: "inboundUnits",
-                label: "Inbound Units",
-                width: "85px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
-            {
-                key: "unsellableUnits",
-                label: "Unfulfillable Units",
-                width: "95px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
+        const singleCols: LeafCol<HeatmapTableRow>[] = useCurrentInventoryTableLayout
+            ? [
+                makeCol("storageCostUsd", storageCostHeaderLabel, "120px"),
+                ...(showAlertsColumn
+                    ? [
+                        {
+                            ...makeCol("inventoryAlert", "Alerts", "170px"),
+                            align: "center" as const,
+                        },
+                    ]
+                    : []),
+            ]
+            : [
+                ...ageBucketCols,
+                {
+                    key: "inboundUnits",
+                    label: "Inbound Units",
+                    width: "85px",
+                    align: "center",
+                    thClassName: heatmapHeaderClassName,
+                    tdClassName: defaultTdClassName,
+                },
+                {
+                    key: "unsellableUnits",
+                    label: "Unfulfillable Units",
+                    width: "95px",
+                    align: "center",
+                    thClassName: heatmapHeaderClassName,
+                    tdClassName: defaultTdClassName,
+                },
             // {
             //     key: "unitsSold",
             //     label: "Units Sold",
@@ -760,69 +977,82 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             //     thClassName: heatmapHeaderClassName,
             //     tdClassName: defaultTdClassName,
             // },
-            {
-                key: "salesLast30Days",
-                label: salesLast30DaysLabel,
-                width: "115px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
-            {
-                key: "coverageRatio",
-                label: "Coverage Ratio (in Months)",
-                width: "110px",
-                align: "center",
-                thClassName: heatmapHeaderClassName,
-                tdClassName: defaultTdClassName,
-            },
-            ...(showInventoryAlerts
-                ? [
-                    {
-                        key: "inventoryAlert",
-                        label: "Inventory Alerts",
-                        width: "175px",
-                        align: "center" as const,
-                        thClassName: heatmapHeaderClassName,
-                    },
-                ]
-                : []),
-        ];
+                {
+                    key: "salesLast30Days",
+                    label: salesLast30DaysLabel,
+                    width: "115px",
+                    align: "center",
+                    thClassName: heatmapHeaderClassName,
+                    tdClassName: defaultTdClassName,
+                },
+                {
+                    key: "coverageRatio",
+                    label: "Coverage Ratio (in Months)",
+                    width: "110px",
+                    align: "center",
+                    thClassName: heatmapHeaderClassName,
+                    tdClassName: defaultTdClassName,
+                },
+                ...(showInventoryAlerts
+                    ? [
+                        {
+                            key: "inventoryAlert",
+                            label: "Inventory Alerts",
+                            width: "175px",
+                            align: "center" as const,
+                            thClassName: heatmapHeaderClassName,
+                        },
+                    ]
+                    : []),
+            ];
 
-        const layout = [
-            ...ageBucketCols.map((col) => ({
-                type: "single" as const,
-                key: col.key,
-            })),
-            {
-                type: "group" as const,
-                id: "sellable",
-            },
-            {
-                type: "single" as const,
-                key: "inboundUnits",
-            },
-            {
-                type: "single" as const,
-                key: "unsellableUnits",
-            },
-            {
-                type: "single" as const,
-                key: "salesLast30Days",
-            },
-            {
-                type: "single" as const,
-                key: "coverageRatio",
-            },
-            ...(showInventoryAlerts
-                ? [
-                    {
-                        type: "single" as const,
-                        key: "inventoryAlert",
-                    },
-                ]
-                : []),
-        ];
+        const layout = useCurrentInventoryTableLayout
+            ? [
+                { type: "group" as const, id: "currentInventory" },
+                { type: "group" as const, id: "transitInventory" },
+                { type: "group" as const, id: "totalSellableInventory" },
+                { type: "group" as const, id: "unsellableInventory" },
+                { type: "group" as const, id: "fbaBreakup" },
+                { type: "group" as const, id: "salesCoverage" },
+                { type: "single" as const, key: "storageCostUsd" },
+                ...(showAlertsColumn
+                    ? [{ type: "single" as const, key: "inventoryAlert" }]
+                    : []),
+            ]
+            : [
+                ...ageBucketCols.map((col) => ({
+                    type: "single" as const,
+                    key: col.key,
+                })),
+                {
+                    type: "group" as const,
+                    id: "sellable",
+                },
+                {
+                    type: "single" as const,
+                    key: "inboundUnits",
+                },
+                {
+                    type: "single" as const,
+                    key: "unsellableUnits",
+                },
+                {
+                    type: "single" as const,
+                    key: "salesLast30Days",
+                },
+                {
+                    type: "single" as const,
+                    key: "coverageRatio",
+                },
+                ...(showInventoryAlerts
+                    ? [
+                        {
+                            type: "single" as const,
+                            key: "inventoryAlert",
+                        },
+                    ]
+                    : []),
+            ];
 
         const getValue = (
             row: HeatmapTableRow,
@@ -1058,6 +1288,93 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     : "-";
             }
 
+            if (colKey === "coverageCurrentAndTransit") {
+                if (row.isPercentageRow) return "";
+
+                const coverageRatio = Number(row.coverageCurrentAndTransit ?? 0);
+
+                if (Number.isFinite(coverageRatio) && coverageRatio > 0) {
+                    return coverageRatio.toFixed(2);
+                }
+
+                const totalInStock = Number(
+                    row.totalInStock ??
+                    row.totalUnits ??
+                    Number(row.available || 0) + Number(row.currentAwd || 0)
+                );
+                const totalInTransit = Number(
+                    row.totalInTransit ??
+                    Number(row.transitFba || row.fcTransfer || 0) +
+                    Number(row.transitAwd || row.inboundUnits || 0)
+                );
+                const sales = getUnitSalesValue(row, unitSalesDataKey);
+
+                return sales > 0
+                    ? ((totalInStock + totalInTransit) / sales).toFixed(2)
+                    : "-";
+            }
+
+            if (colKey === "currentFba") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.currentFba ?? row.available);
+            }
+
+            if (colKey === "currentAwd") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.currentAwd);
+            }
+
+            if (colKey === "transitFba") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.transitFba ?? row.fcTransfer);
+            }
+
+            if (colKey === "transitAwd") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.transitAwd ?? row.inboundUnits);
+            }
+
+            if (colKey === "totalInStock") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(
+                    row.totalInStock ??
+                    row.totalUnits ??
+                    Number(row.available || 0) + Number(row.currentAwd || 0)
+                );
+            }
+
+            if (colKey === "totalInTransit") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(
+                    row.totalInTransit ??
+                    Number(row.transitFba || row.fcTransfer || 0) +
+                    Number(row.transitAwd || row.inboundUnits || 0)
+                );
+            }
+
+            if (colKey === "unsellableFba") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.unsellableFba ?? row.unsellableUnits);
+            }
+
+            if (colKey === "unsellableAwd") {
+                if (row.isPercentageRow) return "";
+                return numberDisplay(row.unsellableAwd);
+            }
+
+            if (colKey === "storageCostUsd") {
+                if (row.isPercentageRow) return "";
+
+                const storageCost = Number(row.storageCostUsd || 0);
+
+                return Number.isFinite(storageCost) && storageCost > 0
+                    ? storageCost.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                    })
+                    : "-";
+            }
+
             if (colKey === "inventoryAlert") {
                 if (row.isOthersRow || row.isTotalRow || row.isPercentageRow) return "";
 
@@ -1097,7 +1414,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         return {
             leftCols,
-            groups: [sellableGroup],
+            groups: useCurrentInventoryTableLayout
+                ? currentInventoryGroups
+                : [sellableGroup],
             singleCols,
             layout,
             getValue,
@@ -1111,7 +1430,33 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         showSellableBreakdown,
         salesLast30DaysLabel,
         unitSalesDataKey,
+        useCurrentInventoryTableLayout,
+        storageCostHeaderLabel,
     ]);
+
+    const currentInventoryCollapsedState = useMemo(
+        () => ({
+            currentInventory: !isInventoryDetailsExpanded,
+            transitInventory: !isInventoryDetailsExpanded,
+            totalSellableInventory: false,
+            unsellableInventory: !isSalesCoverageDetailsExpanded,
+            fbaBreakup: !isSalesCoverageDetailsExpanded,
+            salesCoverage: false,
+        }),
+        [isInventoryDetailsExpanded, isSalesCoverageDetailsExpanded]
+    );
+
+    const handleCurrentInventoryCollapsedChange = (
+        next: Record<string, boolean>
+    ) => {
+        if (next.totalSellableInventory !== false) {
+            setIsInventoryDetailsExpanded((prev) => !prev);
+        }
+
+        if (next.salesCoverage !== false) {
+            setIsSalesCoverageDetailsExpanded((prev) => !prev);
+        }
+    };
 
     const handleDownloadExcel = () => {
         if (onDownloadInventoryExcel) {
@@ -1119,10 +1464,11 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return;
         }
 
+        const excelSourceRows = useCurrentInventoryTableLayout ? data : displayRows;
         const excelRows =
             unitSalesDataKey === "salesLast30Days"
-                ? displayRows
-                : displayRows.map((row) => ({
+                ? excelSourceRows
+                : excelSourceRows.map((row) => ({
                     ...row,
                     salesLast30Days: getUnitSalesValue(row, unitSalesDataKey),
                 }));
@@ -1139,6 +1485,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             dataRows: excelRows,
             showInventoryAlerts,
             salesLast30DaysLabel,
+            useCurrentInventoryTableLayout,
+            unitSalesDataKey,
+            storageCostCurrencySymbol,
         });
     };
 
@@ -1171,6 +1520,30 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         </button>
                     )}
 
+                    {useCurrentInventoryTableLayout && (
+                        <button
+                            type="button"
+                            onClick={handleToggleAllCurrentInventoryColumns}
+                            title={
+                                areAllCurrentInventoryColumnsExpanded
+                                    ? "Collapse all columns"
+                                    : "Expand all columns"
+                            }
+                            aria-label={
+                                areAllCurrentInventoryColumnsExpanded
+                                    ? "Collapse all columns"
+                                    : "Expand all columns"
+                            }
+                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
+                        >
+                            {areAllCurrentInventoryColumnsExpanded ? (
+                                <RiLayoutColumnLine className="h-4 w-4" />
+                            ) : (
+                                <RiLayoutColumnFill className="h-4 w-4" />
+                            )}
+                        </button>
+                    )}
+
                     {/* {onDownloadInventoryExcel && (
                         <DownloadIconButton
                             onClick={onDownloadInventoryExcel}
@@ -1198,9 +1571,33 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     groups={tableConfig.groups}
                     singleCols={tableConfig.singleCols}
                     layout={tableConfig.layout}
-                    initialCollapsed={{
-                        sellable: true,
-                    }}
+                    initialCollapsed={
+                        useCurrentInventoryTableLayout
+                            ? undefined
+                            : {
+                                sellable: true,
+                            }
+                    }
+                    collapsedState={
+                        useCurrentInventoryTableLayout
+                            ? currentInventoryCollapsedState
+                            : undefined
+                    }
+                    onCollapsedChange={
+                        useCurrentInventoryTableLayout
+                            ? handleCurrentInventoryCollapsedChange
+                            : undefined
+                    }
+                    getGroupToggleCollapsedState={
+                        useCurrentInventoryTableLayout
+                            ? (groupId, defaultIsCollapsed) =>
+                                groupId === "totalSellableInventory"
+                                    ? !isInventoryDetailsExpanded
+                                    : groupId === "salesCoverage"
+                                        ? !isSalesCoverageDetailsExpanded
+                                        : defaultIsCollapsed
+                            : undefined
+                    }
                     getValue={tableConfig.getValue}
                     getRowKey={(row, index) =>
                         `${row.sku || row.productName || "row"}-${index}`
@@ -1214,6 +1611,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             : row.isPercentageRow
                                 ? "bg-[#F8F8F8] font-semibold"
                                 : ""
+                    }
+                    preserveColumnWidths={
+                        useCurrentInventoryTableLayout ? "responsive" : false
                     }
                 />
             </div>
