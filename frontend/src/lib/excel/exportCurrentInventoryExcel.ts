@@ -4001,6 +4001,10 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     rowProductName(row) === "percentage" ||
     rowSku(row) === "% of total" ||
     rowSku(row) === "percentage";
+  const getCurrentFbaValue = (row: Record<string, any>) =>
+    row.currentFba ?? row["Sellable Units"] ?? row.available;
+  const getCurrentFbaNumberValue = (row: Record<string, any>) =>
+    toNum(getCurrentFbaValue(row));
 
   const productRows = [...dataRows]
     .filter((row) => {
@@ -4042,7 +4046,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     });
 
     summary.currentFba = rows.reduce(
-      (sum, row) => sum + toNum(row.currentFba ?? row.available),
+      (sum, row) => sum + getCurrentFbaNumberValue(row),
       0
     );
     summary.currentAwd = rows.reduce(
@@ -4061,7 +4065,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
       (sum, row) =>
         sum +
         (toNum(row.totalInStock) ||
-          toNum(row.currentFba ?? row.available) + toNum(row.currentAwd)),
+          getCurrentFbaNumberValue(row) + toNum(row.currentAwd)),
       0
     );
     summary.totalInTransit = rows.reduce(
@@ -4286,7 +4290,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     const salesValue = getAgeingRiskSalesValue(row, unitSalesDataKey);
     const totalInStock =
       toNum(row.totalInStock) ||
-      toNum(row.currentFba ?? row.available) + toNum(row.currentAwd);
+      getCurrentFbaNumberValue(row) + toNum(row.currentAwd);
     const totalInTransit =
       toNum(row.totalInTransit) ||
       toNum(row.transitFba ?? row.fcTransfer) + toNum(row.transitAwd);
@@ -4304,7 +4308,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
         formatPercentValue(row.currentAwd),
         formatPercentValue(row.transitFba),
         formatPercentValue(row.transitAwd),
-        formatPercentValue(row.totalInStock ?? row.totalUnits ?? row.available),
+        formatPercentValue(row.totalInStock ?? row.totalUnits ?? getCurrentFbaValue(row)),
         formatPercentValue(row.totalInTransit),
         formatPercentValue(row.unsellableFba ?? row.unsellableUnits),
         formatPercentValue(row.unsellableAwd),
@@ -4322,7 +4326,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
       row.productName || row["Product Name"] || "",
       isTotalRow ? "" : row.sku || row.SKU || "-",
       isTotalRow ? "" : row.salesRank || row["Sales Rank"] || "",
-      formatNumber(row.currentFba ?? row.available),
+      formatNumber(getCurrentFbaValue(row)),
       formatNumber(row.currentAwd),
       formatNumber(row.transitFba ?? row.fcTransfer),
       formatNumber(row.transitAwd),
