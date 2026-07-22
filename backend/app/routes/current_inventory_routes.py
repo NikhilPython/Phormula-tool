@@ -831,10 +831,11 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
         )
 
         # Combined FBA + AWD inventory metrics.
-        # total_stock = FBA available + AWD on-hand quantity
+        # total_stock = FBA available + AWD on-hand quantity + FBA fc-transfer
         final_df["total_stock"] = (
             safe_numeric(final_df.get("available"), 0)
             + safe_numeric(final_df.get("total_onhand_quantity"), 0)
+            + safe_numeric(final_df.get("fc-transfer"), 0)
         )
 
         # total_transit = FBA inbound shipped + AWD inbound quantity
@@ -992,9 +993,11 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             final_df.drop(columns=["_asin_clean_for_inventory"], inplace=True, errors="ignore")
 
         # Recalculate combined FBA + AWD metrics after duplicate-ASIN adjustments.
+        # total_stock = FBA available + AWD on-hand quantity + FBA fc-transfer
         final_df["total_stock"] = (
             safe_numeric(final_df.get("available"), 0)
             + safe_numeric(final_df.get("total_onhand_quantity"), 0)
+            + safe_numeric(final_df.get("fc-transfer"), 0)
         )
 
         final_df["total_transit"] = (
