@@ -564,9 +564,9 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
 
     for _, row in df.iterrows():
         sku = normalize_sku_key(row.get("sku"))
-        product_name = str(row.get("product_name") or "").strip()
+        product_name = clean_text_value(row.get("product_name"))
 
-        is_total = sku == "" or product_name.strip().lower() == "total"
+        is_total = sku == "" or product_name.lower() in {"total", "grand total"}
 
         quantity = to_number(row.get("quantity"))
         return_quantity = to_number(row.get("return_quantity"))
@@ -597,6 +597,104 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
         "units_by_sku": units_by_sku,
         "product_by_sku": product_by_sku,
         "total_units": total_units,
+        "error": None,
+    }
+
+
+def fetch_product_name_map_from_sku_master(user_id, country_key):
+    """
+    Read product names from DATABASE_URL table:
+      public.sku_{user_id}_data_table
+
+    Country-specific SKU columns are preferred, for example:
+      US -> sku_us
+      UK -> sku_uk
+      CA -> sku_canada / sku_ca
+    """
+    table_name = f"sku_{user_id}_data_table"
+
+    if not is_safe_identifier(table_name):
+        return {
+            "table_name": table_name,
+            "product_by_sku": {},
+            "sku_column": None,
+            "error": "Invalid SKU master table name",
+        }
+
+    inspector = inspect(primary_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+
+    if table_name not in existing_tables:
+        return {
+            "table_name": table_name,
+            "product_by_sku": {},
+            "sku_column": None,
+            "error": f"SKU master table not found: {table_name}",
+        }
+
+    columns = {
+        column["name"]
+        for column in inspector.get_columns(table_name, schema="public")
+    }
+
+    country = str(country_key or "").strip().lower()
+    sku_candidates_by_country = {
+        "us": ["sku_us", "sku_usa", "sku"],
+        "usa": ["sku_us", "sku_usa", "sku"],
+        "uk": ["sku_uk", "sku_gb", "sku"],
+        "gb": ["sku_uk", "sku_gb", "sku"],
+        "ca": ["sku_canada", "sku_ca", "sku"],
+        "canada": ["sku_canada", "sku_ca", "sku"],
+    }
+    sku_candidates = sku_candidates_by_country.get(
+        country,
+        [f"sku_{country}", "sku"],
+    )
+    sku_column = next(
+        (candidate for candidate in sku_candidates if candidate in columns),
+        None,
+    )
+
+    if not sku_column:
+        return {
+            "table_name": table_name,
+            "product_by_sku": {},
+            "sku_column": None,
+            "error": f"Country SKU column not found for: {country_key}",
+        }
+
+    if "product_name" not in columns:
+        return {
+            "table_name": table_name,
+            "product_by_sku": {},
+            "sku_column": sku_column,
+            "error": "product_name column not found in SKU master table",
+        }
+
+    query = text(
+        f'SELECT "{sku_column}" AS sku, product_name '
+        f'FROM public."{table_name}" '
+        f'WHERE "{sku_column}" IS NOT NULL'
+    )
+
+    with primary_engine.connect() as connection:
+        result_rows = connection.execute(query).mappings().all()
+
+    product_by_sku = {}
+
+    for row in result_rows:
+        sku = normalize_sku_key(row.get("sku"))
+        product_name = clean_text_value(row.get("product_name"))
+
+        if not sku or not product_name:
+            continue
+
+        product_by_sku.setdefault(sku, product_name)
+
+    return {
+        "table_name": table_name,
+        "product_by_sku": product_by_sku,
+        "sku_column": sku_column,
         "error": None,
     }
 
@@ -637,8 +735,19 @@ def attach_current_month_units_sold(rows, columns, user_id, country_key, month_n
     )
 
     units_by_sku = sold_result["units_by_sku"]
-    product_by_sku = sold_result["product_by_sku"]
+    monthly_product_by_sku = sold_result["product_by_sku"]
     total_units = sold_result["total_units"]
+
+    # Fill product names from DATABASE_URL master SKU table.
+    sku_master_result = fetch_product_name_map_from_sku_master(
+        user_id=user_id,
+        country_key=country_key,
+    )
+    master_product_by_sku = sku_master_result["product_by_sku"]
+
+    # SKU master has priority; monthly table is the fallback.
+    product_by_sku = dict(monthly_product_by_sku)
+    product_by_sku.update(master_product_by_sku)
 
     updated_rows = []
     existing_skus = set()
@@ -657,6 +766,18 @@ def attach_current_month_units_sold(rows, columns, user_id, country_key, month_n
         if sku:
             existing_skus.add(sku)
 
+        # Fill missing product names from the SKU-wise monthly table.
+        # This fixes currentinventory rows where Product Name is SQL NULL.
+        current_product_name = clean_text_value(
+            new_row.get("Product Name") or new_row.get("product_name")
+        )
+        mapped_product_name = clean_text_value(product_by_sku.get(sku))
+
+        if not current_product_name and mapped_product_name:
+            new_row["Product Name"] = mapped_product_name
+        elif current_product_name:
+            new_row["Product Name"] = current_product_name
+
         new_row[units_column] = units_by_sku.get(sku, 0)
         updated_rows.append(new_row)
 
@@ -667,7 +788,7 @@ def attach_current_month_units_sold(rows, columns, user_id, country_key, month_n
 
         updated_rows.append({
             "SKU": sku,
-            "Product Name": product_by_sku.get(sku, ""),
+            "Product Name": clean_text_value(product_by_sku.get(sku)),
             "inv-age-0-to-90-days": 0,
             "inv-age-91-to-180-days": 0,
             "inv-age-181-to-270-days": 0,
@@ -710,6 +831,9 @@ def attach_current_month_units_sold(rows, columns, user_id, country_key, month_n
         "units_column": units_column,
         "units_source_table": sold_result["table_name"],
         "units_source_error": sold_result["error"],
+        "product_name_source_table": sku_master_result["table_name"],
+        "product_name_source_column": sku_master_result["sku_column"],
+        "product_name_source_error": sku_master_result["error"],
     }
 
 
@@ -1003,6 +1127,117 @@ def build_inventory_monthly_table_name(user_id, country_key, month_name, year):
     return f"inventorymonthly_{user_id}_{country_key}_{month_number:02d}_{year}"
 
 
+def sync_inventory_monthly_product_names(user_id, country_key, month_name, year):
+    """
+    Permanently fill blank product_name values in the Amazon DB table:
+      inventorymonthly_{user_id}_{country}_{MM}_{YYYY}
+
+    Names are read from DATABASE_URL table:
+      sku_{user_id}_data_table
+
+    Only NULL/blank/null-like product_name values are updated.
+    """
+    table_name = build_inventory_monthly_table_name(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
+
+    if not table_name or not is_safe_identifier(table_name):
+        return {
+            "success": False,
+            "updated_rows": 0,
+            "source_table": None,
+            "target_table": table_name,
+            "error": "Invalid inventory monthly table name",
+        }
+
+    master_result = fetch_product_name_map_from_sku_master(
+        user_id=user_id,
+        country_key=country_key,
+    )
+    product_by_sku = master_result.get("product_by_sku", {})
+
+    if master_result.get("error"):
+        return {
+            "success": False,
+            "updated_rows": 0,
+            "source_table": master_result.get("table_name"),
+            "target_table": table_name,
+            "error": master_result.get("error"),
+        }
+
+    if not product_by_sku:
+        return {
+            "success": True,
+            "updated_rows": 0,
+            "source_table": master_result.get("table_name"),
+            "target_table": table_name,
+            "error": None,
+        }
+
+    inspector = inspect(amazon_engine)
+    existing_tables = set(inspector.get_table_names(schema="public"))
+    if table_name not in existing_tables:
+        return {
+            "success": False,
+            "updated_rows": 0,
+            "source_table": master_result.get("table_name"),
+            "target_table": table_name,
+            "error": f"Inventory monthly table not found: {table_name}",
+        }
+
+    columns = {
+        column["name"]
+        for column in inspector.get_columns(table_name, schema="public")
+    }
+    target_sku_column = next(
+        (candidate for candidate in ["msku", "sku", "seller_sku", "SKU"] if candidate in columns),
+        None,
+    )
+
+    if not target_sku_column or "product_name" not in columns:
+        return {
+            "success": False,
+            "updated_rows": 0,
+            "source_table": master_result.get("table_name"),
+            "target_table": table_name,
+            "error": "Required SKU or product_name column not found in inventory monthly table",
+        }
+
+    update_query = text(f"""
+        UPDATE public."{table_name}"
+        SET product_name = :product_name
+        WHERE UPPER(TRIM(CAST("{target_sku_column}" AS TEXT))) = :normalized_sku
+          AND (
+                product_name IS NULL
+                OR TRIM(CAST(product_name AS TEXT)) = ''
+                OR LOWER(TRIM(CAST(product_name AS TEXT)))
+                   IN ('nan', 'none', 'null', '[null]', '<na>')
+          )
+    """)
+
+    updated_rows = 0
+    with amazon_engine.begin() as connection:
+        for normalized_sku, product_name in product_by_sku.items():
+            result = connection.execute(update_query, {
+                "normalized_sku": normalize_sku_key(normalized_sku),
+                "product_name": clean_text_value(product_name),
+            })
+            updated_rows += max(result.rowcount or 0, 0)
+
+    return {
+        "success": True,
+        "updated_rows": updated_rows,
+        "source_table": master_result.get("table_name"),
+        "source_sku_column": master_result.get("sku_column"),
+        "target_table": table_name,
+        "target_sku_column": target_sku_column,
+        "error": None,
+    }
+
+
 def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
     """
     Reads public.inventorymonthly_{user}_{country}_{MM}_{YYYY}
@@ -1066,6 +1301,14 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
             },
             "error": f"Inventory monthly table not found: {table_name}",
         }
+
+    # Permanently backfill missing names in the physical inventorymonthly table.
+    product_name_sync = sync_inventory_monthly_product_names(
+        user_id=user_id,
+        country_key=country_key,
+        month_name=month_name,
+        year=year,
+    )
 
     query = text(f"""
         SELECT *
@@ -1176,6 +1419,7 @@ def fetch_inventory_monthly_qty_map(user_id, country_key, month_name, year):
         "table_name": table_name,
         "data_by_sku": data_by_sku,
         "totals": totals,
+        "product_name_sync": product_name_sync,
         "error": None,
     }
 
@@ -2197,6 +2441,25 @@ def attach_previous_month_sales_rank(rows, columns, user_id, country_key, month_
 
 def normalize_sku_key(value):
     return str(value or "").strip().upper()
+
+
+def clean_text_value(value):
+    """Return a usable text value and treat DB/Pandas null-like values as blank."""
+    if value is None:
+        return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+
+    text_value = str(value).strip()
+
+    if text_value.lower() in {"nan", "none", "null", "[null]", "<na>"}:
+        return ""
+
+    return text_value
 
 
 def get_row_sku(row):

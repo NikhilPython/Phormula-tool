@@ -1550,34 +1550,102 @@ def _year_range(year: int) -> tuple[date, date]:
 # ENRICH PRODUCT NAME
 # =============================================================================
 
-def _attach_product_names_to_rows(rows: list[dict], user_id: int | None) -> None:
+def _attach_product_names_to_rows(
+    rows: list[dict],
+    user_id: int | None,
+    country: str | None = None,
+    marketplace_id: str | None = None,
+) -> None:
     """
-    Add product_name from public.sku_{user_id}_data_table where sku_uk = msku.
-    Modifies rows in place.
+    Fill product_name from public.sku_{user_id}_data_table.
+
+    Country mapping:
+      US -> sku_us
+      UK -> sku_uk
+      CA -> sku_canada / sku_ca
+
+    Existing non-empty product names are preserved when the master table
+    does not contain a matching value. Matching is case-insensitive and
+    ignores surrounding spaces.
     """
     if not rows or not user_id:
         return
 
-    mskus = sorted({r.get("msku") for r in rows if r.get("msku")})
-    if not mskus:
+    country_key = (country or MARKETPLACE_TO_COUNTRY.get(marketplace_id or "", "")).strip().lower()
+    candidates_by_country = {
+        "us": ["sku_us", "sku_usa", "sku"],
+        "usa": ["sku_us", "sku_usa", "sku"],
+        "uk": ["sku_uk", "sku_gb", "sku"],
+        "gb": ["sku_uk", "sku_gb", "sku"],
+        "ca": ["sku_canada", "sku_ca", "sku"],
+        "canada": ["sku_canada", "sku_ca", "sku"],
+    }
+
+    table_name = f"sku_{int(user_id)}_data_table"
+    if not re.fullmatch(r"[A-Za-z0-9_]+", table_name):
         return
 
-    sku_table = f"public.sku_{user_id}_data_table"
-    placeholders = ", ".join(f":sku{i}" for i in range(len(mskus)))
+    try:
+        column_rows = db.session.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        """), {"table_name": table_name}).all()
+        available_columns = {row[0] for row in column_rows}
+    except Exception:
+        logger.exception("Could not inspect SKU master table %s", table_name)
+        return
 
+    sku_column = next(
+        (c for c in candidates_by_country.get(country_key, [f"sku_{country_key}", "sku"]) if c in available_columns),
+        None,
+    )
+    if not sku_column or "product_name" not in available_columns:
+        logger.warning("No usable SKU/product columns found in public.%s for country=%s", table_name, country_key)
+        return
+
+    normalized_mskus = sorted({
+        str(r.get("msku") or "").strip().upper()
+        for r in rows
+        if str(r.get("msku") or "").strip()
+    })
+    if not normalized_mskus:
+        return
+
+    placeholders = ", ".join(f":sku{i}" for i in range(len(normalized_mskus)))
     sql = text(f"""
-        SELECT sku_uk, product_name
-        FROM {sku_table}
-        WHERE sku_uk IN ({placeholders})
+        SELECT
+            UPPER(TRIM(CAST("{sku_column}" AS TEXT))) AS normalized_sku,
+            product_name
+        FROM public."{table_name}"
+        WHERE UPPER(TRIM(CAST("{sku_column}" AS TEXT))) IN ({placeholders})
+          AND product_name IS NOT NULL
+          AND TRIM(CAST(product_name AS TEXT)) <> ''
     """)
+    params = {f"sku{i}": sku for i, sku in enumerate(normalized_mskus)}
 
-    params = {f"sku{i}": m for i, m in enumerate(mskus)}
-    result = db.session.execute(sql, params)
+    try:
+        result = db.session.execute(sql, params).mappings().all()
+    except Exception:
+        logger.exception("Could not read product names from public.%s", table_name)
+        return
 
-    mapping = {row.sku_uk: row.product_name for row in result}
+    mapping = {
+        str(row.get("normalized_sku") or "").strip().upper(): str(row.get("product_name") or "").strip()
+        for row in result
+        if str(row.get("normalized_sku") or "").strip()
+        and str(row.get("product_name") or "").strip()
+    }
 
-    for r in rows:
-        r["product_name"] = mapping.get(r.get("msku"))
+    for row in rows:
+        normalized_sku = str(row.get("msku") or "").strip().upper()
+        mapped_name = mapping.get(normalized_sku)
+        current_name = str(row.get("product_name") or "").strip()
+        if mapped_name:
+            row["product_name"] = mapped_name
+        elif current_name.lower() in {"nan", "none", "null", "[null]", "<na>"}:
+            row["product_name"] = None
 
 
 # =============================================================================
@@ -1592,7 +1660,11 @@ def _upsert_monthwise_inventory_rows(rows: list[dict], user_id: int | None) -> i
     if not rows:
         return 0
 
-    _attach_product_names_to_rows(rows, user_id)
+    _attach_product_names_to_rows(
+        rows,
+        user_id,
+        marketplace_id=(rows[0].get("marketplace_id") if rows else None),
+    )
 
     for r in rows:
         r["user_id"] = user_id
