@@ -631,10 +631,10 @@ const buildCurrentMonthUnitsSoldLabel = (
   );
 
   if (!monthLabel) {
-    return "Current Month Units Sold";
+    return "Unit Sales";
   }
 
-  return `Current Month Units Sold (${monthLabel})`;
+  return `${monthLabel}'s Unit Sales`;
 };
 
 const getPreviousSalesRankForSelectedMonth = (
