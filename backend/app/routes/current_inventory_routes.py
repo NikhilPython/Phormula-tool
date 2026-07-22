@@ -830,6 +830,19 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             summary_available
         )
 
+        # Combined FBA + AWD inventory metrics.
+        # total_stock = FBA available + AWD on-hand quantity
+        final_df["total_stock"] = (
+            safe_numeric(final_df.get("available"), 0)
+            + safe_numeric(final_df.get("total_onhand_quantity"), 0)
+        )
+
+        # total_transit = FBA inbound shipped + AWD inbound quantity
+        final_df["total_transit"] = (
+            safe_numeric(final_df.get("inbound-shipped"), 0)
+            + safe_numeric(final_df.get("total_inbound_quantity"), 0)
+        )
+
         final_df["Inventory Inwarded"] = final_df["inbound_quantity"]
 
         final_df["Inventory at the end of the month"] = (
@@ -978,7 +991,16 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
             final_df.drop(columns=["_asin_clean_for_inventory"], inplace=True, errors="ignore")
 
-        
+        # Recalculate combined FBA + AWD metrics after duplicate-ASIN adjustments.
+        final_df["total_stock"] = (
+            safe_numeric(final_df.get("available"), 0)
+            + safe_numeric(final_df.get("total_onhand_quantity"), 0)
+        )
+
+        final_df["total_transit"] = (
+            safe_numeric(final_df.get("inbound-shipped"), 0)
+            + safe_numeric(final_df.get("total_inbound_quantity"), 0)
+        )
 
         final_df.rename(columns={"sku": "SKU", "product_name": "Product Name"}, inplace=True)
 
@@ -993,15 +1015,24 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
                 ascending=[True, True]
             ).reset_index(drop=True)
 
-        # Use the same value that is displayed as "Current Inventory"
-        available_for_coverage = safe_numeric(final_df.get("available"), 0)
-        fc_transfer_for_coverage = safe_numeric(final_df.get("fc-transfer"), 0)
+        # Coverage based on current stock only.
+        # Formula: total_stock / Sales Last 30 Days
         sales_last_30_days = safe_numeric(final_df["Sales Last 30 Days"], 0)
 
-        current_inventory_for_coverage = available_for_coverage + fc_transfer_for_coverage
-
         final_df["Coverage Ratio (In Months)"] = (
-            current_inventory_for_coverage
+            safe_numeric(final_df.get("total_stock"), 0)
+            / sales_last_30_days.replace(0, pd.NA)
+        ).fillna(0).round(2)
+
+        # Coverage including current stock and stock currently in transit.
+        # Formula: (total_stock + total_transit) / Sales Last 30 Days
+        current_plus_intransit_inventory = (
+            safe_numeric(final_df.get("total_stock"), 0)
+            + safe_numeric(final_df.get("total_transit"), 0)
+        )
+
+        final_df["Coverage Ratio (Current + Intransit)"] = (
+            current_plus_intransit_inventory
             / sales_last_30_days.replace(0, pd.NA)
         ).fillna(0).round(2)
 
@@ -1026,6 +1057,8 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             "available",
             "total_onhand_quantity",
             "total_inbound_quantity",
+            "total_stock",
+            "total_transit",
             "unfulfillable-quantity",
             "inv-age-0-to-90-days",
             "inv-age-91-to-180-days",
@@ -1035,6 +1068,7 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             "sales-rank",
             "estimated-storage-cost-next-month",
             "Coverage Ratio (In Months)",
+            "Coverage Ratio (Current + Intransit)",
             "Inventory Alerts",
             "Inventory at the beginning of the month",
             current_month_col,
@@ -1058,17 +1092,27 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
         total_row["Product Name"] = "Total"
 
-        total_current_inventory = float(
-            (
-                safe_numeric(final_df.get("available"), 0)
-                + safe_numeric(final_df.get("fc-transfer"), 0)
-            ).sum()
+        total_stock_for_coverage = float(
+            safe_numeric(final_df.get("total_stock"), 0).sum()
         )
 
         total_sales_30 = float(safe_numeric(final_df["Sales Last 30 Days"], 0).sum())
 
         total_row["Coverage Ratio (In Months)"] = (
-            round(total_current_inventory / total_sales_30, 2)
+            round(total_stock_for_coverage / total_sales_30, 2)
+            if total_sales_30 > 0
+            else 0
+        )
+
+        total_current_plus_intransit = float(
+            (
+                safe_numeric(final_df.get("total_stock"), 0)
+                + safe_numeric(final_df.get("total_transit"), 0)
+            ).sum()
+        )
+
+        total_row["Coverage Ratio (Current + Intransit)"] = (
+            round(total_current_plus_intransit / total_sales_30, 2)
             if total_sales_30 > 0
             else 0
         )
