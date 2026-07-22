@@ -271,12 +271,191 @@ const hasAnyAgeingBucketValue = (row: InventoryCurrentRow) => {
     );
 };
 
+const normalizeInventoryKey = (key: string) =>
+    String(key || "")
+        .toLowerCase()
+        .trim()
+        .replace(/[%()]/g, "")
+        .replace(/[_\-\s]+/g, "_")
+        .replace(/__+/g, "_");
+
+const firstInventoryNumberValue = (
+    row: InventoryCurrentRow,
+    keys: string[]
+) => {
+    if (!row) return 0;
+
+    for (const key of keys) {
+        if (!key) continue;
+
+        const value = row?.[key];
+
+        if (value !== null && value !== undefined && value !== "") {
+            return inventoryToNum(value);
+        }
+    }
+
+    const normalizedTargets = keys.map(normalizeInventoryKey);
+
+    for (const [rowKey, rowValue] of Object.entries(row)) {
+        if (normalizedTargets.includes(normalizeInventoryKey(rowKey))) {
+            return inventoryToNum(rowValue);
+        }
+    }
+
+    return 0;
+};
+
 const getCurrentMonthUnitsSold = (row: InventoryCurrentRow) => {
     const directKey = Object.keys(row || {}).find((key) =>
-        key.toLowerCase().startsWith("current month units sold")
+        normalizeInventoryKey(key).startsWith("current_month_units_sold")
     );
 
-    return inventoryToNum(directKey ? row?.[directKey] : 0);
+    return firstInventoryNumberValue(row, [
+        directKey || "",
+        "Current Month Units Sold",
+        "current_month_units_sold",
+        "currentMonthUnitsSold",
+    ]);
+};
+
+const getSalesLast30DaysValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "Sales Last 30 Days",
+        "sales_last_30_days",
+        "sales-last-30-days",
+        "salesLast30Days",
+        "last_30_days_sales",
+        "last-30-days-sales",
+        "Last 30 Days Sales",
+    ]);
+
+const getInventoryCurrentFbaValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "available",
+        "Current Inventory FBA",
+        "current_inventory_fba",
+        "current-fba",
+        "fulfillable_quantity",
+        "available_quantity",
+    ]);
+
+const getInventoryCurrentAwdValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "total_onhand_quantity",
+        "Current Inventory AWD",
+        "current_inventory_awd",
+        "current-awd",
+        "available_awd",
+        "awd_available",
+    ]);
+
+const getInventoryTransitFbaValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "inbound-shipped\r",
+        "inbound-shipped",
+        "In Transit FBA",
+        "in_transit_fba",
+        "in-transit-fba",
+        "fc-transfer",
+        "fc_transfer",
+        "reserved_fc_transfer",
+        "inbound-working",
+    ]);
+
+const getInventoryTransitAwdValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "total_inbound_quantity",
+        "In Transit AWD",
+        "in_transit_awd",
+        "in-transit-awd",
+        "inbound_quantity",
+        "inbound-quantity",
+        "Inbound Units",
+        "inbound_units",
+        "inbound-shipped",
+    ]);
+
+const getInventoryUnsellableFbaValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "Unsellable Inventory FBA",
+        "Unsellable FBA",
+        "unfulfillable-quantity",
+        "unfulfillable_quantity",
+        "Unfulfillable Units",
+    ]);
+
+const getInventoryUnsellableAwdValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "Unsellable Inventory AWD",
+        "Unsellable AWD",
+        "unsellable_awd",
+        "unfulfillable_awd",
+    ]);
+
+const getInventoryStorageCostValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "Storage Cost (Est) - in USD",
+        "Storage Cost (Est) in USD",
+        "estimated-storage-cost-next-month",
+        "estimated_storage_cost_next_month",
+        "estimatedStorageCostNextMonth",
+        "Estimated Storage Cost",
+        "storage_cost_est",
+        "storage_cost",
+    ]);
+
+const getInventoryCoverageCurrentAndTransitValue = (row: InventoryCurrentRow) =>
+    firstInventoryNumberValue(row, [
+        "Coverage Ratio (Current + In Transit)",
+        "Coverage Ratio (Current + In transit)",
+        "Coverage Ratio (Current + Inventory)",
+        "coverage_ratio_current_in_transit",
+        "coverage_ratio_current_plus_in_transit",
+    ]);
+
+const mergeInventoryRowsBySku = (
+    rows: InventoryCurrentRow[]
+): InventoryCurrentRow[] => {
+    const unique = new Map<string, InventoryCurrentRow>();
+
+    rows.forEach((row) => {
+        const sku = getInventoryRowSku(row);
+        const productName = getInventoryRowProductName(row);
+        const key = `${sku || productName}`.trim().toLowerCase();
+
+        if (
+            !key ||
+            key === "total" ||
+            key === "grand total" ||
+            key === "percentage" ||
+            key === "% of total" ||
+            isInventoryInsightsTotalRow(row) ||
+            isInventoryInsightsPercentageRow(row)
+        ) {
+            return;
+        }
+
+        const next: InventoryCurrentRow = { ...(unique.get(key) || {}) };
+
+        Object.entries(row).forEach(([fieldKey, fieldValue]) => {
+            const isEmpty =
+                fieldValue === null ||
+                fieldValue === undefined ||
+                fieldValue === "" ||
+                String(fieldValue).trim().toLowerCase() === "nan" ||
+                String(fieldValue).trim().toLowerCase() === "none" ||
+                String(fieldValue).trim().toLowerCase() === "null";
+
+            if (!isEmpty) {
+                next[fieldKey] = fieldValue;
+            }
+        });
+
+        unique.set(key, next);
+    });
+
+    return Array.from(unique.values());
 };
 
 const getShortMonthLabel = (monthName?: string) => {
@@ -660,6 +839,12 @@ export const buildInventoryInsightsFromResponses = (
     );
 
     const rawRows = latestResponse?.rows ?? [];
+    const categoryRows = latestResponse?.categories
+        ? Object.values(latestResponse.categories).flatMap((category) =>
+            Array.isArray(category?.items) ? category.items : []
+        )
+        : [];
+    const mergedRows = mergeInventoryRowsBySku([...rawRows, ...categoryRows]);
 
     const backendPercentageRawRow = rawRows.find((row) =>
         isInventoryInsightsPercentageRow(row)
@@ -669,7 +854,7 @@ export const buildInventoryInsightsFromResponses = (
         isInventoryInsightsTotalRow(row)
     );
 
-    const latestRows = rawRows.filter(
+    const latestRows = mergedRows.filter(
         (row) =>
             !isInventoryInsightsTotalRow(row) &&
             !isInventoryInsightsPercentageRow(row) &&
@@ -775,12 +960,35 @@ export const buildInventoryInsightsFromResponses = (
             row?.["inbound-received"]
         );
 
-        const totalUnits = available || bucketTotal;
-
         const unsellableUnits = inventoryToNum(
             row?.["unfulfillable-quantity"] ??
             row?.unfulfillable_quantity
         );
+
+        const salesLast30Days = getSalesLast30DaysValue(row);
+        const unitsSold = getCurrentMonthUnitsSold(row) || salesLast30Days;
+        const dashboardSalesValue = salesLast30Days || unitsSold;
+        const currentFba = getInventoryCurrentFbaValue(row);
+        const currentAwd = getInventoryCurrentAwdValue(row);
+        const transitFba = getInventoryTransitFbaValue(row);
+        const transitAwd = getInventoryTransitAwdValue(row);
+        const totalInStock =
+            firstInventoryNumberValue(row, [
+                "Total Sellable Inventory In Stock",
+                "Total Sellable In Stock",
+            ]) ||
+            currentFba + currentAwd;
+        const totalInTransit =
+            firstInventoryNumberValue(row, [
+                "Total Sellable Inventory In Transit",
+                "Total Sellable In Transit",
+            ]) ||
+            transitFba + transitAwd;
+        const coverageCurrentAndTransit =
+            getInventoryCoverageCurrentAndTransitValue(row) ||
+            (dashboardSalesValue > 0
+                ? (totalInStock + totalInTransit) / dashboardSalesValue
+                : 0);
 
         const previousSalesRankKey = Object.keys(row || {}).find((key) =>
             String(key).toLowerCase().startsWith("previous month sales rank")
@@ -810,8 +1018,18 @@ export const buildInventoryInsightsFromResponses = (
             totalUnits: sellableUnits,
             inboundUnits,
             unsellableUnits,
+            currentFba,
+            currentAwd,
+            transitFba,
+            transitAwd,
+            totalInStock,
+            totalInTransit,
+            unsellableFba: getInventoryUnsellableFbaValue(row),
+            unsellableAwd: getInventoryUnsellableAwdValue(row),
+            storageCostUsd: getInventoryStorageCostValue(row),
+            coverageCurrentAndTransit,
 
-            unitsSold: getCurrentMonthUnitsSold(row),
+            unitsSold,
 
             salesRank:
                 row?.["sales-rank"] ??
@@ -823,7 +1041,7 @@ export const buildInventoryInsightsFromResponses = (
 
             previousSalesRank,
 
-            salesLast30Days: inventoryToNum(row?.["Sales Last 30 Days"]),
+            salesLast30Days,
             coverageRatio: inventoryToNum(row?.["Coverage Ratio (In Months)"]),
             inventoryAlert: String(row?.["Inventory Alerts"] || "").trim(),
         };
@@ -847,17 +1065,69 @@ export const buildInventoryInsightsFromResponses = (
             totalUnits: inventoryToNum(backendTotalRawRow?.["Sellable Units"]),
             inboundUnits: inventoryToNum(backendTotalRawRow?.["Inbound Units"]),
             unsellableUnits: inventoryToNum(backendTotalRawRow?.["unfulfillable-quantity"]),
+            currentFba: getInventoryCurrentFbaValue(backendTotalRawRow),
+            currentAwd: getInventoryCurrentAwdValue(backendTotalRawRow),
+            transitFba: getInventoryTransitFbaValue(backendTotalRawRow),
+            transitAwd: getInventoryTransitAwdValue(backendTotalRawRow),
+            totalInStock:
+                firstInventoryNumberValue(backendTotalRawRow, [
+                    "Total Sellable Inventory In Stock",
+                    "Total Sellable In Stock",
+                ]) ||
+                getInventoryCurrentFbaValue(backendTotalRawRow) +
+                getInventoryCurrentAwdValue(backendTotalRawRow),
+            totalInTransit:
+                firstInventoryNumberValue(backendTotalRawRow, [
+                    "Total Sellable Inventory In Transit",
+                    "Total Sellable In Transit",
+                ]) ||
+                getInventoryTransitFbaValue(backendTotalRawRow) +
+                getInventoryTransitAwdValue(backendTotalRawRow),
+            unsellableFba: getInventoryUnsellableFbaValue(backendTotalRawRow),
+            unsellableAwd: getInventoryUnsellableAwdValue(backendTotalRawRow),
+            storageCostUsd:
+                getInventoryStorageCostValue(backendTotalRawRow) ||
+                getEstimatedStorageCostTotal(latestResponse),
 
-            unitsSold: getCurrentMonthUnitsSold(backendTotalRawRow),
+            unitsSold:
+                getCurrentMonthUnitsSold(backendTotalRawRow) ||
+                getSalesLast30DaysValue(backendTotalRawRow),
 
             // ✅ Add this
-            salesLast30Days: inventoryToNum(backendTotalRawRow?.["Sales Last 30 Days"]),
+            salesLast30Days: getSalesLast30DaysValue(backendTotalRawRow),
 
             // ✅ backend value only
             coverageRatio: inventoryToNum(
                 backendTotalRawRow?.["Coverage Ratio (In Months)"] ??
                 backendTotalRawRow?.inventory_coverage_ratio
             ),
+            coverageCurrentAndTransit:
+                getInventoryCoverageCurrentAndTransitValue(backendTotalRawRow) ||
+                (() => {
+                    const unitsSold =
+                        getCurrentMonthUnitsSold(backendTotalRawRow) ||
+                        getSalesLast30DaysValue(backendTotalRawRow);
+                    const dashboardSalesValue =
+                        getSalesLast30DaysValue(backendTotalRawRow) || unitsSold;
+                    const totalInStock =
+                        firstInventoryNumberValue(backendTotalRawRow, [
+                            "Total Sellable Inventory In Stock",
+                            "Total Sellable In Stock",
+                        ]) ||
+                        getInventoryCurrentFbaValue(backendTotalRawRow) +
+                        getInventoryCurrentAwdValue(backendTotalRawRow);
+                    const totalInTransit =
+                        firstInventoryNumberValue(backendTotalRawRow, [
+                            "Total Sellable Inventory In Transit",
+                            "Total Sellable In Transit",
+                        ]) ||
+                        getInventoryTransitFbaValue(backendTotalRawRow) +
+                        getInventoryTransitAwdValue(backendTotalRawRow);
+
+                    return dashboardSalesValue > 0
+                        ? (totalInStock + totalInTransit) / dashboardSalesValue
+                        : 0;
+                })(),
 
             inventoryAlert: "",
             salesRank: "",
@@ -1349,7 +1619,7 @@ export const buildInventoryInsightsExcelRows = (
         // keep current month sold separately
         unitsSold: 0,
 
-        // ✅ ADD this for Excel Unit Sales in Last 30 Days column
+        // Legacy fallback sales value for older inventory responses.
         salesLast30Days: 0,
 
         salesRank: "",
@@ -1391,7 +1661,7 @@ export const buildInventoryInsightsExcelRows = (
         inventoryAgeSummary?.current_month_units_sold_total ??
         sortedRows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0);
 
-    // ✅ Excel "Unit Sales in Last 30 Days" should use Sales Last 30 Days, not Current Month Units Sold
+    // Keep the legacy sales value separate from current-month units sold.
     totalRow.salesLast30Days =
         sortedRows.reduce((sum, row) => sum + Number(row.salesLast30Days || 0), 0);
 

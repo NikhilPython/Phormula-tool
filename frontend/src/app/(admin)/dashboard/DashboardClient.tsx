@@ -105,6 +105,7 @@ import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDra
 import type {
     AgeingBucket,
     AgeingRiskHeatmapRow,
+    AgeingRiskUnitSalesDataKey,
 } from "@/components/common/inventory/AgeingRiskHeatmap";
 
 import type {
@@ -150,6 +151,12 @@ const GBP_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_GBP_TO_USD || "1.25");
 const INR_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_INR_TO_USD || "0.01128");
 const CAD_TO_USD_ENV = Number(process.env.NEXT_PUBLIC_CAD_TO_USD || "0.74");
 const SB_KEYWORD_ENDPOINT = `${baseURL}/api/ads/manager/sb_keyword_report`;
+
+const DEFAULT_INVENTORY_MARKETPLACE_IDS: Record<string, string> = {
+    uk: "A1F83G8C2ARO7P",
+    us: "ATVPDKIKX0DER",
+    ca: "A2EUQ1WTGCTBG2",
+};
 
 const USE_MANUAL_LAST_MONTH =
     (process.env.NEXT_PUBLIC_USE_MANUAL_LAST_MONTH || "false").toLowerCase() ===
@@ -2672,6 +2679,35 @@ export default function DashboardPage() {
         return "global";
     }, [platform, graphRegionToUse]);
 
+    const inventoryMarketplaceIds = useMemo(() => {
+        const inventoryConnections = (amazonConnections || []) as Array<{
+            country?: string;
+            marketplace_id?: string;
+        }>;
+
+        const marketplaceForCountry = (countryKey: "uk" | "us" | "ca") => {
+            const connectedMarketplace = inventoryConnections.find(
+                (connection) =>
+                    String(connection?.country || "").toLowerCase() === countryKey
+            )?.marketplace_id;
+
+            return (
+                connectedMarketplace ||
+                DEFAULT_INVENTORY_MARKETPLACE_IDS[countryKey]
+            );
+        };
+
+        if (inventoryCountry === "global") {
+            return [marketplaceForCountry("uk"), marketplaceForCountry("us")];
+        }
+
+        if (inventoryCountry === "uk" || inventoryCountry === "us" || inventoryCountry === "ca") {
+            return [marketplaceForCountry(inventoryCountry)];
+        }
+
+        return [];
+    }, [amazonConnections, inventoryCountry]);
+
     const invMonthYear = useMemo(() => {
         const { monthName, year } = getBackendCountryYearMonth();
 
@@ -2680,6 +2716,20 @@ export default function DashboardPage() {
             year: String(year),
         };
     }, [getBackendCountryYearMonth]);
+
+    const inventoryInsightsReportCountry =
+        platform === "global" ? selectedGlobalInventoryCountry : countryName;
+
+    const showUsCurrentInventoryTable = useMemo(() => {
+        return ["us", "usa", "united states"].includes(
+            String(inventoryInsightsReportCountry || "").trim().toLowerCase()
+        );
+    }, [inventoryInsightsReportCountry]);
+
+    const inventoryHeatmapUnitSalesDataKey: AgeingRiskUnitSalesDataKey =
+        "salesLast30Days";
+
+    const inventoryInsightsSalesLabel = "Sales Last 30 Days";
 
     const fetchInventory = useCallback(async () => {
         if (isMonthYearNA) {
@@ -2705,6 +2755,7 @@ export default function DashboardPage() {
                 country: inventoryCountry,
                 month: invMonthYear.month,
                 year: invMonthYear.year,
+                marketplaceIds: inventoryMarketplaceIds,
                 XLSX,
             });
 
@@ -2717,7 +2768,13 @@ export default function DashboardPage() {
         } finally {
             setInvLoading(false);
         }
-    }, [inventoryCountry, invMonthYear.month, invMonthYear.year, isMonthYearNA]);
+    }, [
+        inventoryCountry,
+        inventoryMarketplaceIds,
+        invMonthYear.month,
+        invMonthYear.year,
+        isMonthYearNA,
+    ]);
 
 
 
@@ -4098,7 +4155,7 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
-            setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
+            setStep(2, "Inventory Fetch", 20, "Fetching aged, AWD, and current inventory...");
             await fetchInventory();
 
             setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
@@ -10388,8 +10445,8 @@ export default function DashboardPage() {
         const productRows = rows.filter((row) => !row.isPercentageRow && !row.isTotalRow);
 
         const sortedRows = [...productRows].sort((a, b) => {
-            const aUnitsSold = Number(a.unitsSold || 0);
-            const bUnitsSold = Number(b.unitsSold || 0);
+            const aUnitsSold = Number(a.salesLast30Days || 0);
+            const bUnitsSold = Number(b.salesLast30Days || 0);
             return bUnitsSold - aUnitsSold;
         });
 
@@ -10449,6 +10506,12 @@ export default function DashboardPage() {
             inventoryAgeSummary?.current_month_units_sold_total ??
             sortedRows.reduce((sum, row) => sum + Number(row.unitsSold || 0), 0);
 
+        totalRow.salesLast30Days =
+            sortedRows.reduce(
+                (sum, row) => sum + Number(row.salesLast30Days || 0),
+                0
+            );
+
         return percentageRow
             ? [...sortedRows, totalRow, percentageRow]
             : [...sortedRows, totalRow];
@@ -10491,6 +10554,9 @@ export default function DashboardPage() {
                 ukRows: ukInventoryInsights.heatmapData || [],
                 usRows: usInventoryInsights.heatmapData || [],
                 showInventoryAlerts: true,
+                salesLast30DaysLabel: inventoryInsightsSalesLabel,
+                unitSalesDataKey: inventoryHeatmapUnitSalesDataKey,
+                storageCostCurrencySymbol: currencySymbol,
             });
 
             return;
@@ -10516,7 +10582,10 @@ export default function DashboardPage() {
             showInventoryAlerts: true,
 
             // ✅ ADD same label as UI
-            salesLast30DaysLabel: "Unit Sales in Last 30 Days",
+            salesLast30DaysLabel: inventoryInsightsSalesLabel,
+            useCurrentInventoryTableLayout: showUsCurrentInventoryTable,
+            unitSalesDataKey: inventoryHeatmapUnitSalesDataKey,
+            storageCostCurrencySymbol: currencySymbol,
         });
     }, [
         platform,
@@ -10530,6 +10599,10 @@ export default function DashboardPage() {
         inventoryInsightResponses,
         inventoryAgeSummaryResponses,
         selectedAgeingTrendBucket,
+        inventoryInsightsSalesLabel,
+        showUsCurrentInventoryTable,
+        inventoryHeatmapUnitSalesDataKey,
+        currencySymbol,
     ]);
 
     const formatExcelDash = (value: any) => {
@@ -11561,6 +11634,10 @@ export default function DashboardPage() {
                         canDownloadInventoryInsightsExcel={canDownloadInventoryInsightsExcel}
                         handleHeatmapProductClick={handleHeatmapProductClick}
                         countryName={countryName}
+                        salesLast30DaysLabel={inventoryInsightsSalesLabel}
+                        unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
+                        useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
+                        storageCostCurrencySymbol={currencySymbol}
                     />
                 )}
             </PreviewLockedSection>

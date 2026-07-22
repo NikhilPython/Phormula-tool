@@ -3897,6 +3897,548 @@ border: tableBorder,
 }
 
 
+type AgeingRiskSalesDataKey = "salesLast30Days" | "unitsSold";
+
+const getAgeingRiskSalesValue = (
+  row: Record<string, any>,
+  unitSalesDataKey: AgeingRiskSalesDataKey = "salesLast30Days"
+) => {
+  const primaryValue =
+    unitSalesDataKey === "unitsSold"
+      ? row.unitsSold ?? row["Units Sold"]
+      : row.salesLast30Days ??
+      row["Sales Last 30 Days"] ??
+      row["Unit Sales in Last 30 Days"];
+
+  const fallbackValue =
+    unitSalesDataKey === "unitsSold"
+      ? row.salesLast30Days ??
+      row["Sales Last 30 Days"] ??
+      row["Unit Sales in Last 30 Days"]
+      : row.unitsSold ?? row["Units Sold"];
+
+  const primaryNumber = toNumberLoose(primaryValue);
+
+  if (primaryNumber !== null) return primaryNumber;
+
+  const fallbackNumber = toNumberLoose(fallbackValue);
+
+  return fallbackNumber ?? 0;
+};
+
+const appendCurrentInventoryAgeingRiskSheet = (params: {
+  wb: XLSX.WorkBook;
+  sheetName: string;
+  filename?: string;
+  titleLine?: string;
+  countryName?: string;
+  countryLabel?: string;
+  titleCountry?: string;
+  platformLabel?: string;
+  periodLabel?: string;
+  companyName?: string;
+  brandName?: string;
+  homeCurrencyCode?: string;
+  buckets: {
+    key: string;
+    label: string;
+    color?: string;
+  }[];
+  dataRows: Record<string, any>[];
+  showInventoryAlerts?: boolean;
+  salesLast30DaysLabel?: string;
+  unitSalesDataKey?: AgeingRiskSalesDataKey;
+  storageCostCurrencySymbol?: string;
+}) => {
+  const {
+    wb,
+    sheetName,
+    titleLine = "Ageing Risk Heatmap",
+    countryName = "",
+    countryLabel = "",
+    titleCountry = "",
+    platformLabel = "Phormula",
+    periodLabel = "",
+    companyName = "",
+    brandName = "",
+    homeCurrencyCode,
+    buckets,
+    dataRows,
+    showInventoryAlerts = true,
+    salesLast30DaysLabel = "Sales Last 30 Days",
+    unitSalesDataKey = "salesLast30Days",
+    storageCostCurrencySymbol,
+  } = params;
+
+  const toNum = (value: any) => toNumberLoose(value) ?? 0;
+  const displayCountry = titleCountry || countryLabel || countryName || "";
+  const currencySymbol = getCurrencySymbol({
+    countryName: countryName || displayCountry,
+    homeCurrencyCode,
+  });
+  const storageCostHeaderLabel = `Est. Storage Cost (${storageCostCurrencySymbol || currencySymbol || "$"})`;
+
+  const rowProductName = (row: Record<string, any>) =>
+    String(row?.productName || row?.["Product Name"] || "")
+      .trim()
+      .toLowerCase();
+  const rowSku = (row: Record<string, any>) =>
+    String(row?.sku || row?.SKU || "")
+      .trim()
+      .toLowerCase();
+  const isOthersLikeRow = (row: Record<string, any>) =>
+    row?.isOthersRow === true || rowProductName(row) === "others";
+  const isTotalLikeRow = (row: Record<string, any>) =>
+    row?.isTotalRow === true ||
+    rowProductName(row) === "total" ||
+    rowProductName(row) === "grand total" ||
+    rowSku(row) === "total" ||
+    rowSku(row) === "grand total";
+  const isPercentageLikeRow = (row: Record<string, any>) =>
+    row?.isPercentageRow === true ||
+    row?.is_percentage_row === true ||
+    rowProductName(row) === "% of total" ||
+    rowProductName(row) === "percentage" ||
+    rowSku(row) === "% of total" ||
+    rowSku(row) === "percentage";
+
+  const productRows = [...dataRows]
+    .filter((row) => {
+      const productName = rowProductName(row);
+      const sku = rowSku(row);
+
+      if (!productName && !sku) return false;
+
+      return (
+        !isOthersLikeRow(row) &&
+        !isTotalLikeRow(row) &&
+        !isPercentageLikeRow(row)
+      );
+    })
+    .sort(
+      (a, b) =>
+        getAgeingRiskSalesValue(b, unitSalesDataKey) -
+        getAgeingRiskSalesValue(a, unitSalesDataKey)
+    );
+
+  const buildSummaryRow = (
+    productName: string,
+    rows: Record<string, any>[],
+    extra: Record<string, any> = {}
+  ) => {
+    const summary: Record<string, any> = {
+      productName,
+      sku: productName === "Total" ? "" : "-",
+      salesRank: "",
+      inventoryAlert: "",
+      ...extra,
+    };
+
+    buckets.forEach((bucket) => {
+      summary[bucket.key] = rows.reduce(
+        (sum, row) => sum + toNum(row[bucket.key]),
+        0
+      );
+    });
+
+    summary.currentFba = rows.reduce(
+      (sum, row) => sum + toNum(row.currentFba ?? row.available),
+      0
+    );
+    summary.currentAwd = rows.reduce(
+      (sum, row) => sum + toNum(row.currentAwd),
+      0
+    );
+    summary.transitFba = rows.reduce(
+      (sum, row) => sum + toNum(row.transitFba ?? row.fcTransfer),
+      0
+    );
+    summary.transitAwd = rows.reduce(
+      (sum, row) => sum + toNum(row.transitAwd),
+      0
+    );
+    summary.totalInStock = rows.reduce(
+      (sum, row) =>
+        sum +
+        (toNum(row.totalInStock) ||
+          toNum(row.currentFba ?? row.available) + toNum(row.currentAwd)),
+      0
+    );
+    summary.totalInTransit = rows.reduce(
+      (sum, row) =>
+        sum +
+        (toNum(row.totalInTransit) ||
+          toNum(row.transitFba ?? row.fcTransfer) + toNum(row.transitAwd)),
+      0
+    );
+    summary.unsellableFba = rows.reduce(
+      (sum, row) => sum + toNum(row.unsellableFba ?? row.unsellableUnits),
+      0
+    );
+    summary.unsellableAwd = rows.reduce(
+      (sum, row) => sum + toNum(row.unsellableAwd),
+      0
+    );
+    summary.storageCostUsd = rows.reduce(
+      (sum, row) => sum + toNum(row.storageCostUsd),
+      0
+    );
+    summary.salesLast30Days = rows.reduce(
+      (sum, row) => sum + getAgeingRiskSalesValue(row, "salesLast30Days"),
+      0
+    );
+    summary.unitsSold = rows.reduce(
+      (sum, row) => sum + getAgeingRiskSalesValue(row, "unitsSold"),
+      0
+    );
+
+    const summarySales = getAgeingRiskSalesValue(summary, unitSalesDataKey);
+
+    summary.coverageRatio =
+      summarySales > 0 ? toNum(summary.totalInStock) / summarySales : "";
+    summary.coverageCurrentAndTransit =
+      summarySales > 0
+        ? (toNum(summary.totalInStock) + toNum(summary.totalInTransit)) /
+        summarySales
+        : "";
+
+    return summary;
+  };
+
+  const mergeDefinedValues = (
+    fallback: Record<string, any>,
+    source?: Record<string, any>
+  ) => {
+    if (!source) return fallback;
+
+    const merged = { ...fallback };
+
+    Object.entries(source).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        merged[key] = value;
+      }
+    });
+
+    return merged;
+  };
+
+  const existingTotalRow = dataRows.find(isTotalLikeRow);
+  const computedTotalRow = buildSummaryRow(
+    "Total",
+    productRows,
+    { isTotalRow: true }
+  );
+  const totalRow: Record<string, any> = {
+    ...mergeDefinedValues(computedTotalRow, existingTotalRow),
+    productName: "Total",
+    sku: "",
+    isTotalRow: true,
+    salesRank: "",
+    inventoryAlert: "",
+  };
+
+  const exportRows: Record<string, any>[] = [
+    ...productRows,
+    totalRow,
+  ];
+
+  const leftCols = [
+    { key: "sno", label: "Sno." },
+    { key: "productName", label: "Product Name" },
+    { key: "sku", label: "SKU" },
+    { key: "salesRank", label: "Sales Rank" },
+  ];
+
+  const groups = [
+    {
+      label: "Current Inventory",
+      cols: [
+        { key: "currentFba", label: "FBA" },
+        { key: "currentAwd", label: "AWD" },
+      ],
+    },
+    {
+      label: "In Transit Inventory",
+      cols: [
+        { key: "transitFba", label: "FBA" },
+        { key: "transitAwd", label: "AWD" },
+      ],
+    },
+    {
+      label: "Total Sellable Inventory",
+      cols: [
+        { key: "totalInStock", label: "In Stock" },
+        { key: "totalInTransit", label: "In transit" },
+      ],
+    },
+    {
+      label: "Unsellable Inventory",
+      cols: [
+        { key: "unsellableFba", label: "FBA" },
+        { key: "unsellableAwd", label: "AWD" },
+      ],
+    },
+    {
+      label: "Breakup - FBA Inventory",
+      cols: buckets.map((bucket) => ({
+        key: bucket.key,
+        label: bucket.label,
+      })),
+    },
+    {
+      label: "Sales & Coverage Ratio",
+      cols: [
+        { key: "salesValue", label: salesLast30DaysLabel },
+        {
+          key: "coverageRatio",
+          label: "Coverage Ratio (Current Inventory)",
+        },
+        {
+          key: "coverageCurrentAndTransit",
+          label: "Coverage Ratio (Current + In transit)",
+        },
+      ],
+    },
+  ];
+
+  const rightCols = [
+    {
+      key: "storageCostUsd",
+      label: storageCostHeaderLabel,
+    },
+    ...(showInventoryAlerts
+      ? [{ key: "inventoryAlert", label: "Alerts" }]
+      : []),
+  ];
+
+  const headers = [
+    ...leftCols.map((col) => col.label),
+    ...groups.flatMap((group) => group.cols.map((col) => col.label)),
+    ...rightCols.map((col) => col.label),
+  ];
+
+  const headerTopRow = [
+    ...leftCols.map((col) => col.label),
+    ...groups.flatMap((group) =>
+      group.cols.map((_, index) => (index === 0 ? group.label : ""))
+    ),
+    ...rightCols.map((col) => col.label),
+  ];
+
+  const headerSubRow = [
+    ...leftCols.map(() => ""),
+    ...groups.flatMap((group) => group.cols.map((col) => col.label)),
+    ...rightCols.map(() => ""),
+  ];
+
+  const headerCount = headers.length;
+  const ANCHOR_COL_1_BASED = headerCount;
+  const tableBorder = {
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
+  };
+
+  const topAoA = buildTopAoA({
+    headerCount,
+    title: titleLine,
+    companyName,
+    brandName,
+    anchorCol1Based: ANCHOR_COL_1_BASED,
+    extraLines: [
+      `Country : ${displayCountry}`,
+      `Platform : ${platformLabel}`,
+      `Currency : ${currencySymbol}`,
+      `Period : ${periodLabel}`,
+    ],
+  });
+
+  const formatNumber = (value: any, decimals = 0) => {
+    const n = toNum(value);
+
+    if (!Number.isFinite(n) || n === 0) return "";
+
+    return decimals > 0 ? Number(n.toFixed(decimals)) : n;
+  };
+
+  const bodyRows = exportRows.map((row, index) => {
+    const isTotalRow = row.isTotalRow;
+    const salesValue = getAgeingRiskSalesValue(row, unitSalesDataKey);
+    const totalInStock =
+      toNum(row.totalInStock) ||
+      toNum(row.currentFba ?? row.available) + toNum(row.currentAwd);
+    const totalInTransit =
+      toNum(row.totalInTransit) ||
+      toNum(row.transitFba ?? row.fcTransfer) + toNum(row.transitAwd);
+    const coverageCurrentAndTransit =
+      toNum(row.coverageCurrentAndTransit) ||
+      (salesValue > 0 ? (totalInStock + totalInTransit) / salesValue : 0);
+
+    return [
+      isTotalRow ? "" : index + 1,
+      row.productName || row["Product Name"] || "",
+      isTotalRow ? "" : row.sku || row.SKU || "-",
+      isTotalRow ? "" : row.salesRank || row["Sales Rank"] || "",
+      formatNumber(row.currentFba ?? row.available),
+      formatNumber(row.currentAwd),
+      formatNumber(row.transitFba ?? row.fcTransfer),
+      formatNumber(row.transitAwd),
+      formatNumber(totalInStock),
+      formatNumber(totalInTransit),
+      formatNumber(row.unsellableFba ?? row.unsellableUnits),
+      formatNumber(row.unsellableAwd),
+      ...buckets.map((bucket) => formatNumber(row[bucket.key])),
+      formatNumber(salesValue),
+      formatNumber(row.coverageRatio, 2),
+      formatNumber(coverageCurrentAndTransit, 2),
+      formatNumber(row.storageCostUsd, 2),
+      ...(showInventoryAlerts ? [isTotalRow ? "" : row.inventoryAlert || ""] : []),
+    ];
+  });
+
+  const sheetAoA = [...topAoA, headerTopRow, headerSubRow, ...bodyRows];
+  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+  const headerTopRowIndex = topAoA.length;
+  const headerSubRowIndex = headerTopRowIndex + 1;
+  const firstBodyRowIndex = headerSubRowIndex + 1;
+
+  const merges: XLSX.Range[] = [];
+
+  for (let c = 0; c < leftCols.length; c++) {
+    merges.push({
+      s: { r: headerTopRowIndex, c },
+      e: { r: headerSubRowIndex, c },
+    });
+  }
+
+  let groupStartCol = leftCols.length;
+
+  groups.forEach((group) => {
+    const groupEndCol = groupStartCol + group.cols.length - 1;
+
+    merges.push({
+      s: { r: headerTopRowIndex, c: groupStartCol },
+      e: { r: headerTopRowIndex, c: groupEndCol },
+    });
+
+    groupStartCol = groupEndCol + 1;
+  });
+
+  for (let c = groupStartCol; c < headerCount; c++) {
+    merges.push({
+      s: { r: headerTopRowIndex, c },
+      e: { r: headerSubRowIndex, c },
+    });
+  }
+
+  ws["!merges"] = [...(ws["!merges"] || []), ...merges];
+  ws["!freeze"] = {
+    xSplit: 0,
+    ySplit: headerSubRowIndex + 1,
+  };
+  ws["!cols"] = headers.map((header) => {
+    if (header === "Sno.") return { wch: 8 };
+    if (header === "Product Name") return { wch: 28 };
+    if (header === "SKU") return { wch: 18 };
+    if (header === "Sales Rank") return { wch: 14 };
+    if (header.includes("Coverage Ratio")) return { wch: 26 };
+    if (header === storageCostHeaderLabel) return { wch: 22 };
+    if (header === "Alerts") return { wch: 28 };
+    if (header === salesLast30DaysLabel) return { wch: 24 };
+    return { wch: 14 };
+  });
+
+  applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
+
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+
+  for (let r = headerTopRowIndex; r <= headerSubRowIndex; r++) {
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+
+      if (!ws[addr]) {
+        ws[addr] = { t: "s", v: "" };
+      }
+
+      ws[addr].s = {
+        ...(ws[addr].s || {}),
+        font: {
+          bold: true,
+          sz: 11,
+          color: { rgb: "000000" },
+        },
+        fill: {
+          fgColor: { rgb: "FFFFFF" },
+        },
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: tableBorder,
+      };
+    }
+  }
+
+  for (let r = firstBodyRowIndex; r <= range.e.r; r++) {
+    const productNameAddr = XLSX.utils.encode_cell({ r, c: 1 });
+    const productName = String(ws[productNameAddr]?.v || "")
+      .trim()
+      .toLowerCase();
+    const isTotalRow = productName === "total";
+
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+
+      if (!ws[addr]) {
+        ws[addr] = { t: "s", v: "" };
+      }
+
+      const cell = ws[addr];
+      const header = headers[c];
+
+      if (
+        header !== "Product Name" &&
+        header !== "SKU" &&
+        header !== "Alerts" &&
+        cell.v !== ""
+      ) {
+        const n = toNumberLoose(cell.v);
+
+        if (n !== null) {
+          cell.v = n;
+          cell.t = "n";
+          cell.z = header.includes("Coverage Ratio") ||
+            header === storageCostHeaderLabel
+            ? "#,##0.00"
+            : "#,##0";
+        }
+      }
+
+      cell.s = {
+        ...(cell.s || {}),
+        font: {
+          bold: isTotalRow,
+          sz: 11,
+          color: { rgb: "000000" },
+        },
+        fill: {
+          fgColor: { rgb: "FFFFFF" },
+        },
+        alignment: {
+          horizontal: c === 1 ? "left" : "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: tableBorder,
+      };
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName(sheetName));
+};
+
 export function exportAgeingRiskHeatmapExcel(params: {
   filename: string;
   titleLine?: string;
@@ -3920,7 +4462,10 @@ export function exportAgeingRiskHeatmapExcel(params: {
 
   dataRows: Record<string, any>[];
   showInventoryAlerts?: boolean;
-   salesLast30DaysLabel?: string;
+  salesLast30DaysLabel?: string;
+  useCurrentInventoryTableLayout?: boolean;
+  unitSalesDataKey?: AgeingRiskSalesDataKey;
+  storageCostCurrencySymbol?: string;
 }) {
   const {
     filename,
@@ -3941,9 +4486,39 @@ export function exportAgeingRiskHeatmapExcel(params: {
     dataRows,
     showInventoryAlerts = true,
     salesLast30DaysLabel = "Unit Sales in Last 30 Days",
+    useCurrentInventoryTableLayout = false,
+    unitSalesDataKey = "salesLast30Days",
+    storageCostCurrencySymbol,
   } = params;
 
   if (!dataRows?.length) return;
+
+  if (useCurrentInventoryTableLayout) {
+    const wb = XLSX.utils.book_new();
+
+    appendCurrentInventoryAgeingRiskSheet({
+      wb,
+      sheetName: "Inventory Insights",
+      titleLine,
+      countryName,
+      countryLabel,
+      titleCountry,
+      platformLabel,
+      periodLabel,
+      companyName,
+      brandName,
+      homeCurrencyCode,
+      buckets,
+      dataRows,
+      showInventoryAlerts,
+      salesLast30DaysLabel,
+      unitSalesDataKey,
+      storageCostCurrencySymbol,
+    });
+
+    XLSX.writeFile(wb, filename);
+    return;
+  }
 
   const toNum = (value: any) => {
     if (value === null || value === undefined || value === "") return 0;
@@ -4434,6 +5009,9 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
   ukRows: Record<string, any>[];
   usRows: Record<string, any>[];
   showInventoryAlerts?: boolean;
+  salesLast30DaysLabel?: string;
+  unitSalesDataKey?: AgeingRiskSalesDataKey;
+  storageCostCurrencySymbol?: string;
 }) {
   const {
     filename,
@@ -4447,6 +5025,9 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
     ukRows,
     usRows,
     showInventoryAlerts = true,
+    salesLast30DaysLabel = "Sales Last 30 Days",
+    unitSalesDataKey = "salesLast30Days",
+    storageCostCurrencySymbol,
   } = params;
 
   if (!ukRows?.length && !usRows?.length) return;
@@ -4459,6 +5040,29 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
   ) => {
     if (!dataRows?.length) return;
 
+    if (titleCountry === "US") {
+      appendCurrentInventoryAgeingRiskSheet({
+        wb,
+        sheetName,
+        titleLine: `${titleLine} - ${titleCountry}`,
+        countryName: "global",
+        titleCountry,
+        platformLabel,
+        periodLabel,
+        companyName,
+        brandName,
+        homeCurrencyCode,
+        buckets,
+        dataRows,
+        showInventoryAlerts,
+        salesLast30DaysLabel,
+        unitSalesDataKey,
+        storageCostCurrencySymbol,
+      });
+
+      return;
+    }
+
     const toNum = (value: any) => {
       if (value === null || value === undefined || value === "") return 0;
       if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -4467,15 +5071,8 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
       return Number.isFinite(n) ? n : 0;
     };
 
-    const getUnitSalesSortValue = (row: Record<string, any>) => {
-  return toNum(
-    row.salesLast30Days ??
-      row["Sales Last 30 Days"] ??
-      row["Unit Sales in Last 30 Days"] ??
-      row.unitsSold ??
-      row["Units Sold"]
-  );
-};
+    const getUnitSalesSortValue = (row: Record<string, any>) =>
+      getAgeingRiskSalesValue(row, unitSalesDataKey);
 
     const currencySymbol = getCurrencySymbol({
       countryName: "global",
@@ -4491,7 +5088,7 @@ export function exportGlobalAgeingRiskHeatmapExcel(params: {
       "Inbound Units",
       "Sales Rank",
       "Unfulfillable Units",
-      "Units Sold",
+      salesLast30DaysLabel,
       "Coverage Ratio (in Months)",
       ...(showInventoryAlerts ? ["Inventory Alerts"] : []),
     ];
@@ -4581,8 +5178,13 @@ const backendPercentageRow = dataRows.find((row) => {
       0
     );
 
+    totalRow.salesLast30Days = realRows.reduce(
+      (sum, row) => sum + getAgeingRiskSalesValue(row, "salesLast30Days"),
+      0
+    );
+
     totalRow.unitsSold = realRows.reduce(
-      (sum, row) => sum + toNum(row.unitsSold),
+      (sum, row) => sum + getAgeingRiskSalesValue(row, "unitsSold"),
       0
     );
 
@@ -4638,6 +5240,7 @@ const formatPercentValue = (value: any) => {
     const bodyRows = exportRows.map((row, index) => {
       const isTotalRow = row.isTotalRow;
       const isPercentageRow = row.isPercentageRow;
+      const salesValue = getAgeingRiskSalesValue(row, unitSalesDataKey);
 
       return [
         isTotalRow || isPercentageRow ? "" : index + 1,
@@ -4679,8 +5282,8 @@ const formatPercentValue = (value: any) => {
 
         isPercentageRow
           ? ""
-          : toNum(row.unitsSold) > 0
-            ? toNum(row.unitsSold)
+          : salesValue > 0
+            ? salesValue
             : "",
 
         isTotalRow || isPercentageRow
@@ -4712,7 +5315,7 @@ const formatPercentValue = (value: any) => {
       if (header === "Inbound Units") return { wch: 16 };
       if (header === "Sales Rank") return { wch: 14 };
       if (header === "Unfulfillable Units") return { wch: 20 };
-      if (header === "Units Sold") return { wch: 14 };
+      if (header === salesLast30DaysLabel) return { wch: 22 };
       if (header === "Coverage Ratio (in Months)") return { wch: 24 };
       if (header === "Inventory Alerts") return { wch: 32 };
       return { wch: 16 };
