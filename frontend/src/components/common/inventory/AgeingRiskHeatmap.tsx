@@ -561,7 +561,19 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const canCollapse = data.length > defaultVisibleRows;
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
-        const backendPercentageRow = data.find((row) => row.isPercentageRow);
+        const backendPercentageRow = data.find((row) => {
+            const productName = String(row.productName || "").trim().toLowerCase();
+            const sku = String(row.sku || "").trim().toLowerCase();
+
+            return (
+                row.isPercentageRow === true ||
+                (row as any).is_percentage_row === true ||
+                productName === "% of total" ||
+                productName === "percentage" ||
+                sku === "% of total" ||
+                sku === "percentage"
+            );
+        });
 
         const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
@@ -583,9 +595,16 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const productRows = data.filter((row) => {
             const productName = String(row.productName || "").trim().toLowerCase();
             const sku = String(row.sku || "").trim().toLowerCase();
+            const isPercentageRow =
+                row.isPercentageRow === true ||
+                (row as any).is_percentage_row === true ||
+                productName === "% of total" ||
+                productName === "percentage" ||
+                sku === "% of total" ||
+                sku === "percentage";
 
             return (
-                !row.isPercentageRow &&
+                !isPercentageRow &&
                 !row.isTotalRow &&
                 productName !== "total" &&
                 productName !== "grand total" &&
@@ -688,36 +707,31 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
         }
 
-        const percentageRow =
-            backendPercentageRow ||
-            ({
+        const percentageRow = backendPercentageRow
+            ? ({
+                ...backendPercentageRow,
                 productName: "% of Total",
-                sku: "-",
+                sku: backendPercentageRow.sku || "-",
                 isPercentageRow: true,
-            } as HeatmapTableRow);
+            } as HeatmapTableRow)
+            : buildPercentageRow(totalRow, buckets, inventoryAgeSummary);
 
         if (!canCollapse || isExpanded) {
-            return useCurrentInventoryTableLayout
-                ? ([...sortedData, totalRow] as HeatmapTableRow[])
-                : ([...sortedData, totalRow, percentageRow] as HeatmapTableRow[]);
+            return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
         }
 
         const mainRows = sortedData.slice(0, defaultVisibleRows);
         const otherRows = sortedData.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
-            return useCurrentInventoryTableLayout
-                ? ([...mainRows, totalRow] as HeatmapTableRow[])
-                : ([...mainRows, totalRow, percentageRow] as HeatmapTableRow[]);
+            return [...mainRows, totalRow, percentageRow] as HeatmapTableRow[];
         }
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
         }, unitSalesDataKey);
 
-        return useCurrentInventoryTableLayout
-            ? ([...mainRows, othersRow, totalRow] as HeatmapTableRow[])
-            : ([...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[]);
+        return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
     }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, useCurrentInventoryTableLayout]);
 
     const bucketMaxValues = useMemo(() => {
@@ -1060,6 +1074,17 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             rowIndex: number
         ): React.ReactNode => {
             const textClass = "text-charcoal-500";
+            const hasPercentageValue = (value: any) =>
+                value !== null && value !== undefined && value !== "";
+            const percentageCell = (value: any) =>
+                hasPercentageValue(value) ? (
+                    <span className={percentageRowTextClassName}>
+                        {percentDisplay(value)}
+                    </span>
+                ) : (
+                    ""
+                );
+
             if (colKey === "sno") {
                 if (row.isTotalRow || row.isPercentageRow) return "";
                 return rowIndex + 1;
@@ -1315,27 +1340,31 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "currentFba") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.currentFba);
                 return numberDisplay(row.currentFba ?? row.available);
             }
 
             if (colKey === "currentAwd") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.currentAwd);
                 return numberDisplay(row.currentAwd);
             }
 
             if (colKey === "transitFba") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.transitFba);
                 return numberDisplay(row.transitFba ?? row.fcTransfer);
             }
 
             if (colKey === "transitAwd") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.transitAwd);
                 return numberDisplay(row.transitAwd ?? row.inboundUnits);
             }
 
             if (colKey === "totalInStock") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) {
+                    return percentageCell(
+                        row.totalInStock ?? row.totalUnits ?? row.available
+                    );
+                }
                 return numberDisplay(
                     row.totalInStock ??
                     row.totalUnits ??
@@ -1344,7 +1373,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "totalInTransit") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.totalInTransit);
                 return numberDisplay(
                     row.totalInTransit ??
                     Number(row.transitFba || row.fcTransfer || 0) +
@@ -1353,12 +1382,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             }
 
             if (colKey === "unsellableFba") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) {
+                    return percentageCell(row.unsellableFba ?? row.unsellableUnits);
+                }
                 return numberDisplay(row.unsellableFba ?? row.unsellableUnits);
             }
 
             if (colKey === "unsellableAwd") {
-                if (row.isPercentageRow) return "";
+                if (row.isPercentageRow) return percentageCell(row.unsellableAwd);
                 return numberDisplay(row.unsellableAwd);
             }
 

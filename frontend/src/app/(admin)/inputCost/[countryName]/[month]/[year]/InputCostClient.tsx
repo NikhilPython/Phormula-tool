@@ -2013,8 +2013,10 @@ const getInventoryCoverageCurrentAndTransitValue = (row: InventoryCurrentRow) =>
   pickInventoryNumber(row, [
     "Coverage Ratio (Current + In Transit)",
     "Coverage Ratio (Current + In transit)",
+    "Coverage Ratio (Current + Intransit)",
     "Coverage Ratio (Current + Inventory)",
     "coverage_ratio_current_in_transit",
+    "coverage_ratio_current_intransit",
     "coverage_ratio_current_plus_in_transit",
   ]);
 
@@ -2633,12 +2635,14 @@ const buildInventoryInsightsFromResponses = (
       const transitAwd = getInventoryTransitAwdValue(row);
       const totalInStock =
         pickInventoryNumber(row, [
+          "total_stock",
           "Total Sellable Inventory In Stock",
           "Total Sellable In Stock",
         ]) ||
         currentFba + currentAwd;
       const totalInTransit =
         pickInventoryNumber(row, [
+          "total_transit",
           "Total Sellable Inventory In Transit",
           "Total Sellable In Transit",
         ]) ||
@@ -2740,6 +2744,7 @@ const buildInventoryInsightsFromResponses = (
       transitAwd: getInventoryTransitAwdValue(backendTotalRawRow),
       totalInStock:
         pickInventoryNumber(backendTotalRawRow, [
+          "total_stock",
           "Total Sellable Inventory In Stock",
           "Total Sellable In Stock",
         ]) ||
@@ -2747,6 +2752,7 @@ const buildInventoryInsightsFromResponses = (
         getInventoryCurrentAwdValue(backendTotalRawRow),
       totalInTransit:
         pickInventoryNumber(backendTotalRawRow, [
+          "total_transit",
           "Total Sellable Inventory In Transit",
           "Total Sellable In Transit",
         ]) ||
@@ -2777,6 +2783,7 @@ const buildInventoryInsightsFromResponses = (
             ) ?? getInventoryRowSalesLast30Days(backendTotalRawRow);
           const totalInStock =
             pickInventoryNumber(backendTotalRawRow, [
+              "total_stock",
               "Total Sellable Inventory In Stock",
               "Total Sellable In Stock",
             ]) ||
@@ -2784,6 +2791,7 @@ const buildInventoryInsightsFromResponses = (
             getInventoryCurrentAwdValue(backendTotalRawRow);
           const totalInTransit =
             pickInventoryNumber(backendTotalRawRow, [
+              "total_transit",
               "Total Sellable Inventory In Transit",
               "Total Sellable In Transit",
             ]) ||

@@ -409,8 +409,10 @@ const getInventoryCoverageCurrentAndTransitValue = (row: InventoryCurrentRow) =>
     firstInventoryNumberValue(row, [
         "Coverage Ratio (Current + In Transit)",
         "Coverage Ratio (Current + In transit)",
+        "Coverage Ratio (Current + Intransit)",
         "Coverage Ratio (Current + Inventory)",
         "coverage_ratio_current_in_transit",
+        "coverage_ratio_current_intransit",
         "coverage_ratio_current_plus_in_transit",
     ]);
 
@@ -974,12 +976,14 @@ export const buildInventoryInsightsFromResponses = (
         const transitAwd = getInventoryTransitAwdValue(row);
         const totalInStock =
             firstInventoryNumberValue(row, [
+                "total_stock",
                 "Total Sellable Inventory In Stock",
                 "Total Sellable In Stock",
             ]) ||
             currentFba + currentAwd;
         const totalInTransit =
             firstInventoryNumberValue(row, [
+                "total_transit",
                 "Total Sellable Inventory In Transit",
                 "Total Sellable In Transit",
             ]) ||
@@ -1071,6 +1075,7 @@ export const buildInventoryInsightsFromResponses = (
             transitAwd: getInventoryTransitAwdValue(backendTotalRawRow),
             totalInStock:
                 firstInventoryNumberValue(backendTotalRawRow, [
+                    "total_stock",
                     "Total Sellable Inventory In Stock",
                     "Total Sellable In Stock",
                 ]) ||
@@ -1078,6 +1083,7 @@ export const buildInventoryInsightsFromResponses = (
                 getInventoryCurrentAwdValue(backendTotalRawRow),
             totalInTransit:
                 firstInventoryNumberValue(backendTotalRawRow, [
+                    "total_transit",
                     "Total Sellable Inventory In Transit",
                     "Total Sellable In Transit",
                 ]) ||
@@ -1111,6 +1117,7 @@ export const buildInventoryInsightsFromResponses = (
                         getSalesLast30DaysValue(backendTotalRawRow) || unitsSold;
                     const totalInStock =
                         firstInventoryNumberValue(backendTotalRawRow, [
+                            "total_stock",
                             "Total Sellable Inventory In Stock",
                             "Total Sellable In Stock",
                         ]) ||
@@ -1118,6 +1125,7 @@ export const buildInventoryInsightsFromResponses = (
                         getInventoryCurrentAwdValue(backendTotalRawRow);
                     const totalInTransit =
                         firstInventoryNumberValue(backendTotalRawRow, [
+                            "total_transit",
                             "Total Sellable Inventory In Transit",
                             "Total Sellable In Transit",
                         ]) ||

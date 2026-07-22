@@ -4123,6 +4123,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
   };
 
   const existingTotalRow = dataRows.find(isTotalLikeRow);
+  const existingPercentageRow = dataRows.find(isPercentageLikeRow);
   const computedTotalRow = buildSummaryRow(
     "Total",
     productRows,
@@ -4136,10 +4137,19 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     salesRank: "",
     inventoryAlert: "",
   };
+  const percentageRow: Record<string, any> | null = existingPercentageRow
+    ? {
+      ...existingPercentageRow,
+      productName: "% of Total",
+      sku: "",
+      isPercentageRow: true,
+    }
+    : null;
 
   const exportRows: Record<string, any>[] = [
     ...productRows,
     totalRow,
+    ...(percentageRow ? [percentageRow] : []),
   ];
 
   const leftCols = [
@@ -4261,9 +4271,18 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
 
     return decimals > 0 ? Number(n.toFixed(decimals)) : n;
   };
+  const formatPercentValue = (value: any) => {
+    if (value === null || value === undefined || value === "") return "";
+
+    const n = toNum(value);
+    if (!Number.isFinite(n) || n === 0) return "";
+
+    return `${n.toFixed(2)}%`;
+  };
 
   const bodyRows = exportRows.map((row, index) => {
     const isTotalRow = row.isTotalRow;
+    const isPercentageRow = isPercentageLikeRow(row);
     const salesValue = getAgeingRiskSalesValue(row, unitSalesDataKey);
     const totalInStock =
       toNum(row.totalInStock) ||
@@ -4274,6 +4293,29 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     const coverageCurrentAndTransit =
       toNum(row.coverageCurrentAndTransit) ||
       (salesValue > 0 ? (totalInStock + totalInTransit) / salesValue : 0);
+
+    if (isPercentageRow) {
+      return [
+        "",
+        "% of Total",
+        "",
+        "",
+        formatPercentValue(row.currentFba),
+        formatPercentValue(row.currentAwd),
+        formatPercentValue(row.transitFba),
+        formatPercentValue(row.transitAwd),
+        formatPercentValue(row.totalInStock ?? row.totalUnits ?? row.available),
+        formatPercentValue(row.totalInTransit),
+        formatPercentValue(row.unsellableFba ?? row.unsellableUnits),
+        formatPercentValue(row.unsellableAwd),
+        ...buckets.map((bucket) => formatPercentValue(row[bucket.key])),
+        "",
+        "",
+        "",
+        "",
+        ...(showInventoryAlerts ? [""] : []),
+      ];
+    }
 
     return [
       isTotalRow ? "" : index + 1,
@@ -4387,6 +4429,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
       .trim()
       .toLowerCase();
     const isTotalRow = productName === "total";
+    const isPercentageRow = productName === "% of total";
 
     for (let c = 0; c < headerCount; c++) {
       const addr = XLSX.utils.encode_cell({ r, c });
@@ -4402,6 +4445,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
         header !== "Product Name" &&
         header !== "SKU" &&
         header !== "Alerts" &&
+        !isPercentageRow &&
         cell.v !== ""
       ) {
         const n = toNumberLoose(cell.v);
@@ -4419,7 +4463,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
       cell.s = {
         ...(cell.s || {}),
         font: {
-          bold: isTotalRow,
+          bold: isTotalRow || isPercentageRow,
           sz: 11,
           color: { rgb: "000000" },
         },
