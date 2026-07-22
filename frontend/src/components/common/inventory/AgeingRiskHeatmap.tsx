@@ -23,8 +23,9 @@ export type AgeingRiskHeatmapRow = {
     productName: string;
     sku?: string;
 
-    // Sellable Units should come from backend "available" column
+    // Older inventory payloads used "available"; current inventory maps FBA from "Sellable Units".
     available?: number;
+    "Sellable Units"?: number | string;
 
     // FC Transfer units from backend "fc-transfer"
     fcTransfer?: number;
@@ -190,6 +191,12 @@ const getHeatmapColorBaseTotal = (
     return bucketTotal;
 };
 
+const getCurrentFbaValue = (row: AgeingRiskHeatmapRow) =>
+    row.currentFba ?? row["Sellable Units"] ?? row.available;
+
+const getCurrentFbaNumberValue = (row: AgeingRiskHeatmapRow) =>
+    Number(getCurrentFbaValue(row) ?? 0);
+
 const hasSellableBreakdown = (rows: AgeingRiskHeatmapRow[]) => {
     return rows.some(
         (row) =>
@@ -274,7 +281,7 @@ const buildAggregateRow = (
     );
 
     aggregate.currentFba = rows.reduce(
-        (sum, row) => sum + Number(row.currentFba || row.available || 0),
+        (sum, row) => sum + getCurrentFbaNumberValue(row),
         0
     );
 
@@ -299,7 +306,7 @@ const buildAggregateRow = (
             Number(
                 row.totalInStock ??
                 row.totalUnits ??
-                Number(row.currentFba || row.available || 0) +
+                getCurrentFbaNumberValue(row) +
                 Number(row.currentAwd || 0)
             ),
         0
@@ -679,7 +686,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 );
 
                 totalRow.currentFba = Number(
-                    backendTotalRow.currentFba ?? backendTotalRow.available ?? 0
+                    getCurrentFbaValue(backendTotalRow) ?? 0
                 );
                 totalRow.currentAwd = Number(backendTotalRow.currentAwd || 0);
                 totalRow.transitFba = Number(
@@ -1325,7 +1332,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 const totalInStock = Number(
                     row.totalInStock ??
                     row.totalUnits ??
-                    Number(row.available || 0) + Number(row.currentAwd || 0)
+                    getCurrentFbaNumberValue(row) + Number(row.currentAwd || 0)
                 );
                 const totalInTransit = Number(
                     row.totalInTransit ??
@@ -1341,7 +1348,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
             if (colKey === "currentFba") {
                 if (row.isPercentageRow) return percentageCell(row.currentFba);
-                return numberDisplay(row.currentFba ?? row.available);
+                return numberDisplay(getCurrentFbaValue(row));
             }
 
             if (colKey === "currentAwd") {
@@ -1362,13 +1369,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             if (colKey === "totalInStock") {
                 if (row.isPercentageRow) {
                     return percentageCell(
-                        row.totalInStock ?? row.totalUnits ?? row.available
+                        row.totalInStock ?? row.totalUnits ?? getCurrentFbaValue(row)
                     );
                 }
                 return numberDisplay(
                     row.totalInStock ??
                     row.totalUnits ??
-                    Number(row.available || 0) + Number(row.currentAwd || 0)
+                    getCurrentFbaNumberValue(row) + Number(row.currentAwd || 0)
                 );
             }
 

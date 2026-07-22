@@ -4926,6 +4926,7 @@ const firstInventoryNumberValue = (
 
 const getInventoryCurrentFbaValue = (row: InventoryCurrentRow) =>
   firstInventoryNumberValue(row, [
+    "Sellable Units",
     "available",
     "Current Inventory FBA",
     "current_inventory_fba",

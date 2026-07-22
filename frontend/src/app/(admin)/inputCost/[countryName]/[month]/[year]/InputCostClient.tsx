@@ -1929,6 +1929,7 @@ const getInventoryRowCoverageRatio = (row: InventoryCurrentRow) => {
 
 const getInventoryCurrentFbaValue = (row: InventoryCurrentRow) =>
   pickInventoryNumber(row, [
+    "Sellable Units",
     "available",
     "Current Inventory FBA",
     "current_inventory_fba",
@@ -5889,7 +5890,7 @@ export default function InputCostPage({ params }: Params) {
       },
       {
         id: 'units_in_transit',
-        label: 'Units in transit',
+        label: 'Units Inwarded',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
           { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
@@ -5900,24 +5901,7 @@ export default function InputCostPage({ params }: Params) {
           { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
-      {
-        id: 'other_items',
-        label: 'Other Items',
-        headerClassName: 'min-w-[120px]',
-        collapsedCols: [
-          { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
-        ],
-        expandedCols: [
-          { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
-          { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
-          { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
-          { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
-          { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
-          { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
-          { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
-          { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
-        ],
-      },
+
       {
         id: 'units_sold',
         label: 'Units Sold',
@@ -5942,6 +5926,24 @@ export default function InputCostPage({ params }: Params) {
           { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
           { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
           { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'other_items',
+        label: 'Other Items',
+        headerClassName: 'min-w-[120px]',
+        collapsedCols: [
+          { key: '__other_items_total', label: 'Total', width: 90, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
+          { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
+          { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
+          { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
+          { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
+          { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
+          { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
+          { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
       {
