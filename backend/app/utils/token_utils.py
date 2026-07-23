@@ -81,7 +81,7 @@ def generate_token(user_id, is_member=False, member_id=None):
     payload = {
         "user_id": int(user_id),  # ✅ always owner id for both owner + member
         "is_member": bool(is_member),
-        "exp": datetime.utcnow() + timedelta(days=12),
+        "exp": datetime.utcnow() + timedelta(days=1),
         "iat": datetime.utcnow(),
     }
     if is_member and member_id:

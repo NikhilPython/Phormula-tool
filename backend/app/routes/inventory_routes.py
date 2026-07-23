@@ -1660,6 +1660,17 @@ def _upsert_monthwise_inventory_rows(rows: list[dict], user_id: int | None) -> i
     if not rows:
         return 0
 
+    # SQLAlchemy multi-row INSERT requires every row to contain the same keys.
+    # Normalize product_name for all rows before enrichment. Use the Amazon title
+    # only as a fallback; the SKU master mapping below takes priority.
+    for r in rows:
+        current_name = str(r.get("product_name") or "").strip()
+        if current_name.lower() in {"", "nan", "none", "null", "[null]", "<na>"}:
+            fallback_title = str(r.get("title") or "").strip()
+            r["product_name"] = fallback_title or None
+        else:
+            r["product_name"] = current_name
+
     _attach_product_names_to_rows(
         rows,
         user_id,
@@ -1668,6 +1679,8 @@ def _upsert_monthwise_inventory_rows(rows: list[dict], user_id: int | None) -> i
 
     for r in rows:
         r["user_id"] = user_id
+        # Keep the key present even when no master/title match exists.
+        r.setdefault("product_name", None)
 
     stmt = pg_insert(MonthwiseInventory).values(rows)
 
@@ -2558,21 +2571,17 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
 
             COALESCE(SUM(COALESCE(mi.receipts, 0)), 0) AS transit_total,
 
-            -- Spreadsheet-style Other Items total.
-            -- Amazon stores inventory movements with their original signs:
-            -- outflows are normally negative and inflows are positive.
-            -- Negating the signed movement sum produces the value used by
-            -- Excel Difference = Beginning + Transit - Net Units - Ending - Other.
-            -- Warehouse Transfer In/Out must be included for monthly reconciliation.
-            - (
-                COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.warehouse_transfer_in_out, 0)), 0)
+            -- Displayed Other Items formula (same as the Excel columns):
+            -- Disposed + Damaged + Unknown + Other Events + Vendor Return
+            -- + Lost - Found. Warehouse Transfer is NOT an Other Items column.
+            (
+                ABS(COALESCE(SUM(COALESCE(mi.disposed, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.damaged, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.other_events, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.lost, 0)), 0))
+              - ABS(COALESCE(SUM(COALESCE(mi.found, 0)), 0))
             ) AS other_total,
 
             (
@@ -2602,9 +2611,9 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
                 0)
                 + COALESCE(SUM(COALESCE(mi.receipts, 0)), 0)
 
-                -- Subtract spreadsheet-style other_total. Because other_total
-                -- is the negative of Amazon's signed movements, this is equivalent
-                -- to adding all raw signed Other Item movements.
+                -- Reconciliation must use Amazon's raw signed movements.
+                -- Include Warehouse Transfer here even though it is not part of
+                -- the displayed other_total column.
                 + (
                     COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
                   + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
