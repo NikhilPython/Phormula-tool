@@ -70,6 +70,18 @@ REPORT_COMPAT_COLUMNS = [
 
 def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+
+    def numeric_series(column_name: str, fallback_column: str | None = None) -> pd.Series:
+        """Return a numeric Series aligned to df.index, even when a column is missing."""
+        if column_name in df.columns:
+            values = df[column_name]
+        elif fallback_column and fallback_column in df.columns:
+            values = df[fallback_column]
+        else:
+            values = pd.Series(0.0, index=df.index, dtype="float64")
+
+        return pd.to_numeric(values, errors="coerce").fillna(0.0)
+
     alias_map = {
         "cogs": "cost_of_unit_sold",
         "marketplace_fees": "amazon_fee",
@@ -88,16 +100,16 @@ def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
     }
     for target, source in alias_map.items():
         if target not in df.columns:
-            df[target] = pd.to_numeric(df.get(source, 0), errors="coerce").fillna(0.0)
+            df[target] = numeric_series(source)
 
-    qty = pd.to_numeric(df.get("total_quantity", df.get("quantity", 0)), errors="coerce").fillna(0.0)
-    net_sales = pd.to_numeric(df.get("net_sales", 0), errors="coerce").fillna(0.0)
-    profit = pd.to_numeric(df.get("profit", 0), errors="coerce").fillna(0.0)
-    cm2 = pd.to_numeric(df.get("cm2_profit", 0), errors="coerce").fillna(0.0)
-    ads = pd.to_numeric(df.get("advertising_total", 0), errors="coerce").fillna(0.0)
-    clicks = pd.to_numeric(df.get("ads_clicks", 0), errors="coerce").fillna(0.0)
-    ad_units = pd.to_numeric(df.get("ads_sale_units", 0), errors="coerce").fillna(0.0)
-    ad_sales = pd.to_numeric(df.get("ads_sale_amount", 0), errors="coerce").fillna(0.0)
+    qty = numeric_series("total_quantity", "quantity")
+    net_sales = numeric_series("net_sales")
+    profit = numeric_series("profit")
+    cm2 = numeric_series("cm2_profit")
+    ads = numeric_series("advertising_total")
+    clicks = numeric_series("ads_clicks")
+    ad_units = numeric_series("ads_sale_units")
+    ad_sales = numeric_series("ads_sale_amount")
 
     df["cm1_profit_per_unit"] = np.where(qty != 0, profit / qty, 0.0)
     df["cm1_profit_per"] = np.where(net_sales != 0, (profit / net_sales) * 100, 0.0)
@@ -105,7 +117,9 @@ def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["cm2_profit_per"] = np.where(net_sales != 0, (cm2 / net_sales) * 100, 0.0)
     df["ads_conversion_rate"] = np.where(clicks != 0, (ad_units / clicks) * 100, 0.0)
     df["ads_roas"] = np.where(ads != 0, ad_sales / ads, 0.0)
-    df["tacos_total_advertising_cost_of_sale"] = np.where(net_sales != 0, (ads / net_sales) * 100, 0.0)
+    df["tacos_total_advertising_cost_of_sale"] = np.where(
+        net_sales != 0, (ads / net_sales) * 100, 0.0
+    )
 
     if "generated_at_utc" not in df.columns:
         df["generated_at_utc"] = datetime.utcnow().isoformat()

@@ -2558,14 +2558,16 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
 
             COALESCE(SUM(COALESCE(mi.receipts, 0)), 0) AS transit_total,
 
+            -- Spreadsheet formula equivalent: SUM(Disposed:Lost) - Found
+            -- All displayed movement values are normalized with ABS().
             (
-                COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
-              + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+                ABS(COALESCE(SUM(COALESCE(mi.disposed, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.damaged, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.other_events, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0))
+              + ABS(COALESCE(SUM(COALESCE(mi.lost, 0)), 0))
+              - ABS(COALESCE(SUM(COALESCE(mi.found, 0)), 0))
             ) AS other_total,
 
             (
@@ -2595,19 +2597,26 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
                 0)
                 + COALESCE(SUM(COALESCE(mi.receipts, 0)), 0)
 
-                + (
-                    COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+                -- other_total is already the spreadsheet-style signed value:
+                -- Disposed + Damaged + Unknown + Other Events + Vendor Return
+                -- + Lost - Found. Excel subtracts this value in Difference.
+                - (
+                    ABS(COALESCE(SUM(COALESCE(mi.disposed, 0)), 0))
+                  + ABS(COALESCE(SUM(COALESCE(mi.damaged, 0)), 0))
+                  + ABS(COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0))
+                  + ABS(COALESCE(SUM(COALESCE(mi.other_events, 0)), 0))
+                  + ABS(COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0))
+                  + ABS(COALESCE(SUM(COALESCE(mi.lost, 0)), 0))
+                  - ABS(COALESCE(SUM(COALESCE(mi.found, 0)), 0))
                 )
 
+                -- sold_total is stored with Amazon's original sign.
+                -- Shipments are negative and returns are positive, so ADD the
+                -- signed sold_total to match Excel: Beginning + Transit
+                -- - Other Items - Net Units Sold - Ending Inventory.
                 + (
                     COALESCE(SUM(COALESCE(mi.customer_shipments, 0)), 0)
-                + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.customer_returns, 0)), 0)
                 )
 
                 - COALESCE(
