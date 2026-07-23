@@ -2558,16 +2558,21 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
 
             COALESCE(SUM(COALESCE(mi.receipts, 0)), 0) AS transit_total,
 
-            -- Spreadsheet formula equivalent: SUM(Disposed:Lost) - Found
-            -- All displayed movement values are normalized with ABS().
-            (
-                ABS(COALESCE(SUM(COALESCE(mi.disposed, 0)), 0))
-              + ABS(COALESCE(SUM(COALESCE(mi.damaged, 0)), 0))
-              + ABS(COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0))
-              + ABS(COALESCE(SUM(COALESCE(mi.other_events, 0)), 0))
-              + ABS(COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0))
-              + ABS(COALESCE(SUM(COALESCE(mi.lost, 0)), 0))
-              - ABS(COALESCE(SUM(COALESCE(mi.found, 0)), 0))
+            -- Spreadsheet-style Other Items total.
+            -- Amazon stores inventory movements with their original signs:
+            -- outflows are normally negative and inflows are positive.
+            -- Negating the signed movement sum produces the value used by
+            -- Excel Difference = Beginning + Transit - Net Units - Ending - Other.
+            -- Warehouse Transfer In/Out must be included for monthly reconciliation.
+            - (
+                COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
+              + COALESCE(SUM(COALESCE(mi.warehouse_transfer_in_out, 0)), 0)
             ) AS other_total,
 
             (
@@ -2597,17 +2602,18 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
                 0)
                 + COALESCE(SUM(COALESCE(mi.receipts, 0)), 0)
 
-                -- other_total is already the spreadsheet-style signed value:
-                -- Disposed + Damaged + Unknown + Other Events + Vendor Return
-                -- + Lost - Found. Excel subtracts this value in Difference.
-                - (
-                    ABS(COALESCE(SUM(COALESCE(mi.disposed, 0)), 0))
-                  + ABS(COALESCE(SUM(COALESCE(mi.damaged, 0)), 0))
-                  + ABS(COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0))
-                  + ABS(COALESCE(SUM(COALESCE(mi.other_events, 0)), 0))
-                  + ABS(COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0))
-                  + ABS(COALESCE(SUM(COALESCE(mi.lost, 0)), 0))
-                  - ABS(COALESCE(SUM(COALESCE(mi.found, 0)), 0))
+                -- Subtract spreadsheet-style other_total. Because other_total
+                -- is the negative of Amazon's signed movements, this is equivalent
+                -- to adding all raw signed Other Item movements.
+                + (
+                    COALESCE(SUM(COALESCE(mi.disposed, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.damaged, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.unknown_events, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.other_events, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.vendor_returns, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.lost, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.found, 0)), 0)
+                  + COALESCE(SUM(COALESCE(mi.warehouse_transfer_in_out, 0)), 0)
                 )
 
                 -- sold_total is stored with Amazon's original sign.
@@ -3115,7 +3121,7 @@ def inventory_ledger_summary_store_month():
     try:
         month = int(request.args.get("month", "0"))
         year = int(request.args.get("year", "0"))
-        start_date, end_date = _month_range(year, month)
+        requested_start, requested_end = _month_range(year, month)
     except Exception:
         return jsonify({"error": "Provide valid ?country=xx&month=MM&year=YYYY"}), 400
 
@@ -3123,23 +3129,66 @@ def inventory_ledger_summary_store_month():
 
     try:
         with amazon_conn() as conn:
-            # ✅ Do not create/update table here.
-            # ✅ Only check table exists.
-            if not _table_exists(conn, "public", table_name):
+            src = _get_source_table(conn)
+
+            # Rebuild the monthly table on every store-month request so old rows
+            # created with an earlier difference_total formula are corrected.
+            available_range = conn.execute(text(f"""
+                SELECT MIN(mi.date) AS first_date, MAX(mi.date) AS last_date
+                FROM {src} mi
+                WHERE mi.user_id = :user_id
+                  AND mi.marketplace_id = :mp
+                  AND mi.date >= :requested_start
+                  AND mi.date <= :requested_end
+            """), {
+                "user_id": user_id,
+                "mp": mp,
+                "requested_start": requested_start,
+                "requested_end": requested_end,
+            }).mappings().first()
+
+            if not available_range or not available_range.get("first_date") or not available_range.get("last_date"):
                 return jsonify({
                     "success": False,
-                    "error": "Inventory monthly table not found. Please fetch/sync inventory first.",
+                    "error": "No monthwise inventory data found for the requested month.",
                     "table": f"public.{table_name}",
                     "marketplace_id": mp,
                     "mode": "month",
                     "country": country,
-                    "start_date": start_date.isoformat(),
-                    "end_date": end_date.isoformat(),
+                    "start_date": requested_start.isoformat(),
+                    "end_date": requested_end.isoformat(),
                     "count": 0,
                     "items": [],
                 }), 404
 
-            # ✅ Only read existing table data
+            start_date = available_range["first_date"]
+            end_date = available_range["last_date"]
+
+            items = _aggregate_from_monthwise_inventory(
+                conn=conn,
+                user_id=user_id,
+                mp=mp,
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            for row in items:
+                row["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                    row.get("ending_total"), row.get("sold_total")
+                )
+
+            grand_total = _compute_grand_total(items)
+            grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
+                grand_total.get("ending_total"), grand_total.get("sold_total")
+            )
+
+            _ensure_inventory_summary_table_exists(conn, table_name)
+            saved = _upsert_inventory_summary_rows(
+                conn,
+                table_name,
+                items + [grand_total],
+            )
+
             read_items = _read_inventory_summary_table(
                 conn,
                 table_name,
@@ -3152,8 +3201,8 @@ def inventory_ledger_summary_store_month():
             "mode": "month",
             "country": country,
             "table": f"public.{table_name}",
-            "created_or_updated": False,
-            "saved_rows": 0,
+            "created_or_updated": True,
+            "saved_rows": saved,
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "count": max(len(read_items) - 1, 0) if read_items else 0,
@@ -3161,9 +3210,10 @@ def inventory_ledger_summary_store_month():
         }), 200
 
     except Exception as e:
+        logger.exception("Failed to rebuild monthly inventory summary")
         return jsonify({"success": False, "error": str(e)}), 500
-    
-       
+
+
 def _quarter_range_upto_latest_completed_month_end(
     conn,
     user_id: int,
