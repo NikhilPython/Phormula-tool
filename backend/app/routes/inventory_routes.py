@@ -1002,6 +1002,18 @@ MARKETPLACE_TO_COUNTRY = {
     "APJ6JRA9NG5V4": "it",
 }
 
+# Ledger Summary View can return multiple North America locations even when
+# the requested marketplace is US. Keep each marketplace isolated by the
+# report's Location column.
+MARKETPLACE_TO_LEDGER_LOCATION = {
+    "ATVPDKIKX0DER": "US",
+    "A2EUQ1WTGCTBG2": "CA",
+    "A1F83G8C2ARO7P": "GB",
+}
+
+def _ledger_location_for_marketplace(mp: str | None) -> str | None:
+    return MARKETPLACE_TO_LEDGER_LOCATION.get((mp or "").strip())
+
 @inventory_bp.route("/amazon_api/inventory/aged", methods=["GET"])
 def sync_inventory_aged():
     """
@@ -1960,6 +1972,15 @@ def inventory_ledger_summary():
     # ---- Fetch DAILY from Amazon ----
     try:
         rows = _fetch_ledger_summary_rows(mp, start_date, end_date, time_period="DAILY")
+
+        # Amazon NA ledger reports may include US, CA and MX rows together.
+        # For a US request, retain only Location=US; for CA retain only CA.
+        expected_location = _ledger_location_for_marketplace(mp)
+        if expected_location:
+            rows = [
+                r for r in rows
+                if str(r.get("location") or "").strip().upper() == expected_location
+            ]
     except Exception as e:
         logger.exception("Failed to fetch ledger summary")
         msg = str(e)
@@ -2510,6 +2531,11 @@ def _get_source_table(conn) -> str:
 
 def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date: date, end_date: date) -> list[dict]:
     src = _get_source_table(conn)
+    location_code = _ledger_location_for_marketplace(mp)
+    location_filter_sql = (
+        "AND UPPER(TRIM(COALESCE(mi.location, ''))) = :location_code"
+        if location_code else ""
+    )
 
     sql = text(f"""
         SELECT
@@ -2653,6 +2679,7 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
         FROM {src} mi
         WHERE mi.user_id = :user_id
           AND mi.marketplace_id = :mp
+          {location_filter_sql}
           AND mi.date >= :start_date
           AND mi.date <= :end_date
           AND mi.msku IS NOT NULL
@@ -2664,6 +2691,7 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
     rows = conn.execute(sql, {
         "user_id": user_id,
         "mp": mp,
+        "location_code": location_code,
         "start_date": start_date,
         "end_date": end_date,
     }).mappings().all()
@@ -3152,6 +3180,11 @@ def inventory_ledger_summary_store_month():
     try:
         with amazon_conn() as conn:
             src = _get_source_table(conn)
+            location_code = _ledger_location_for_marketplace(mp)
+            location_filter_sql = (
+                "AND UPPER(TRIM(COALESCE(mi.location, ''))) = :location_code"
+                if location_code else ""
+            )
 
             # Rebuild the monthly table on every store-month request so old rows
             # created with an earlier difference_total formula are corrected.
@@ -3160,11 +3193,13 @@ def inventory_ledger_summary_store_month():
                 FROM {src} mi
                 WHERE mi.user_id = :user_id
                   AND mi.marketplace_id = :mp
+                  {location_filter_sql}
                   AND mi.date >= :requested_start
                   AND mi.date <= :requested_end
             """), {
                 "user_id": user_id,
                 "mp": mp,
+                "location_code": location_code,
                 "requested_start": requested_start,
                 "requested_end": requested_end,
             }).mappings().first()
@@ -3272,6 +3307,11 @@ def _quarter_range_upto_latest_completed_month_end(
 
     start_date, quarter_end = _quarter_range(year, quarter)
     src = _get_source_table(conn)
+    location_code = _ledger_location_for_marketplace(mp)
+    location_filter_sql = (
+        "AND UPPER(TRIM(COALESCE(mi.location, ''))) = :location_code"
+        if location_code else ""
+    )
 
     # 1️⃣ Check if full quarter end exists (e.g. 30 Jun)
     full_q_sql = text(f"""
@@ -3279,6 +3319,7 @@ def _quarter_range_upto_latest_completed_month_end(
         FROM {src} mi
         WHERE mi.user_id = :user_id
           AND mi.marketplace_id = :mp
+          {location_filter_sql}
           AND mi.date = :quarter_end
         LIMIT 1
     """)
@@ -3286,6 +3327,7 @@ def _quarter_range_upto_latest_completed_month_end(
     full_exists = conn.execute(full_q_sql, {
         "user_id": user_id,
         "mp": mp,
+        "location_code": location_code,
         "quarter_end": quarter_end,
     }).first()
 
@@ -3300,6 +3342,7 @@ def _quarter_range_upto_latest_completed_month_end(
             FROM {src} mi
             WHERE mi.user_id = :user_id
               AND mi.marketplace_id = :mp
+              {location_filter_sql}
               AND mi.date >= :start_date
               AND mi.date <= :quarter_end
               AND mi.date = (
@@ -3313,6 +3356,7 @@ def _quarter_range_upto_latest_completed_month_end(
     last_completed = conn.execute(month_end_sql, {
         "user_id": user_id,
         "mp": mp,
+        "location_code": location_code,
         "start_date": start_date,
         "quarter_end": quarter_end,
     }).scalar()
@@ -3326,6 +3370,7 @@ def _quarter_range_upto_latest_completed_month_end(
         FROM {src} mi
         WHERE mi.user_id = :user_id
           AND mi.marketplace_id = :mp
+          {location_filter_sql}
           AND mi.date >= :start_date
           AND mi.date <= :quarter_end
     """)
@@ -3333,6 +3378,7 @@ def _quarter_range_upto_latest_completed_month_end(
     fallback = conn.execute(fallback_sql, {
         "user_id": user_id,
         "mp": mp,
+        "location_code": location_code,
         "start_date": start_date,
         "quarter_end": quarter_end,
     }).scalar()
@@ -3437,6 +3483,11 @@ def _year_range_upto_latest_completed_month_end(
     dec_31 = date(year, 12, 31)
 
     src = _get_source_table(conn)
+    location_code = _ledger_location_for_marketplace(mp)
+    location_filter_sql = (
+        "AND UPPER(TRIM(COALESCE(mi.location, ''))) = :location_code"
+        if location_code else ""
+    )
 
     # 1) if full year-end exists, use 31-Dec
     dec31_sql = text(f"""
@@ -3444,6 +3495,7 @@ def _year_range_upto_latest_completed_month_end(
         FROM {src} mi
         WHERE mi.user_id = :user_id
           AND mi.marketplace_id = :mp
+          {location_filter_sql}
           AND mi.date = :dec_31
         LIMIT 1
     """)
@@ -3452,6 +3504,7 @@ def _year_range_upto_latest_completed_month_end(
         {
             "user_id": user_id,
             "mp": mp,
+            "location_code": location_code,
             "dec_31": dec_31,
         },
     ).first()
@@ -3467,6 +3520,7 @@ def _year_range_upto_latest_completed_month_end(
             FROM {src} mi
             WHERE mi.user_id = :user_id
               AND mi.marketplace_id = :mp
+              {location_filter_sql}
               AND mi.date >= :start_date
               AND mi.date < :dec_31
               AND mi.date = (
@@ -3482,6 +3536,7 @@ def _year_range_upto_latest_completed_month_end(
         {
             "user_id": user_id,
             "mp": mp,
+            "location_code": location_code,
             "start_date": start_date,
             "dec_31": dec_31,
         },
@@ -3496,6 +3551,7 @@ def _year_range_upto_latest_completed_month_end(
         FROM {src} mi
         WHERE mi.user_id = :user_id
           AND mi.marketplace_id = :mp
+          {location_filter_sql}
           AND mi.date >= :start_date
           AND mi.date <= :dec_31
     """)
@@ -3505,6 +3561,7 @@ def _year_range_upto_latest_completed_month_end(
         {
             "user_id": user_id,
             "mp": mp,
+            "location_code": location_code,
             "start_date": start_date,
             "dec_31": dec_31,
         },
