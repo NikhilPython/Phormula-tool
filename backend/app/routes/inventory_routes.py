@@ -3401,7 +3401,7 @@ def inventory_ledger_summary_store_quarter():
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
-    country = request.args.get("country", "us")
+    country = (request.args.get("country") or "us").strip().lower()
 
     try:
         quarter = int(request.args.get("quarter", "0"))
@@ -3424,6 +3424,16 @@ def inventory_ledger_summary_store_quarter():
             )
 
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+
+            # Use the same short product_name mapping as the monthly table.
+            # This overwrites long Amazon ledger titles with product_name from
+            # public.sku_{user_id}_data_table (sku_us / sku_uk / sku_canada).
+            _attach_product_names_to_rows(
+                items,
+                user_id,
+                country=country,
+                marketplace_id=mp,
+            )
 
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
@@ -3586,7 +3596,7 @@ def inventory_ledger_summary_store_year():
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
-    country = request.args.get("country", "us")
+    country = (request.args.get("country") or "us").strip().lower()
 
     try:
         year = int(request.args.get("year", "0"))
@@ -3605,6 +3615,16 @@ def inventory_ledger_summary_store_year():
             )
 
             items = _aggregate_from_monthwise_inventory(conn, user_id, mp, start_date, end_date)
+
+            # Use the same short product_name mapping as the monthly table.
+            # This overwrites long Amazon ledger titles with product_name from
+            # public.sku_{user_id}_data_table (sku_us / sku_uk / sku_canada).
+            _attach_product_names_to_rows(
+                items,
+                user_id,
+                country=country,
+                marketplace_id=mp,
+            )
 
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
