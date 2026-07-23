@@ -2514,7 +2514,11 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
     sql = text(f"""
         SELECT
             mi.msku AS msku,
-            MAX(mi.product_name) AS product_name,
+            COALESCE(
+                MAX(NULLIF(TRIM(mi.product_name), '')),
+                MAX(NULLIF(TRIM(mi.title), '')),
+                mi.msku
+            ) AS product_name,
 
             SUM(COALESCE(mi.receipts, 0))           AS sum_receipts,
             SUM(COALESCE(mi.customer_shipments, 0)) AS sum_customer_shipments,
@@ -3056,6 +3060,15 @@ def _create_inventorymonthly_after_fetch(
                 end_date=end_date,
             )
 
+            # Prefer the SKU master product name for this country. The
+            # aggregation already falls back to Amazon's ledger Title/MSKU.
+            _attach_product_names_to_rows(
+                items,
+                user_id,
+                country=country,
+                marketplace_id=mp,
+            )
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"),
@@ -3179,6 +3192,15 @@ def inventory_ledger_summary_store_month():
                 mp=mp,
                 start_date=start_date,
                 end_date=end_date,
+            )
+
+            # Re-apply the US/UK/CA SKU master mapping while rebuilding the
+            # summary table, so existing NULL product names are backfilled.
+            _attach_product_names_to_rows(
+                items,
+                user_id,
+                country=country,
+                marketplace_id=mp,
             )
 
             for row in items:
