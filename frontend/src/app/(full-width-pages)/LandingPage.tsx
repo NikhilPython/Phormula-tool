@@ -1,12 +1,11 @@
 import React from "react";
-import FinancialDashboardMockup from "@/components/landing-page/financialDashboardMockup";
 import HowItWorks from "@/components/landing-page/HowitWorks";
 import { PhormulaBeamHero } from "@/components/landing-page/PhormulaBeamHero";
-import Services from "@/components/landing-page/Services";
 import Image from "next/image";
 import FaqAccordion from "@/components/landing-page/FaqAccordion";
 import Link from "next/link";
 import AnimatedHeroSection from "@/components/landing-page/AnimatedHeroSection";
+import PhormulaHero from "@/components/landing-page/PhormulaHero";
 
 export const metadata = {
   title: "Phormula — AI Financial Intelligence for D2C & Amazon Sellers",
@@ -87,7 +86,7 @@ export default function LandingPage() {
           </div>
         </section> */}
         <div>
-          <AnimatedHeroSection/>
+          <AnimatedHeroSection />
         </div>
 
         {/*METRIC STRIP*/}
@@ -130,238 +129,238 @@ export default function LandingPage() {
         </div>
 
         {/*PROBLEM*/}
-       <section id="platform" className="container center">
-  <div className="problem-container">
-    <div className="problem-header">
-      <div className="problem-eyebrow">
-        <span className="eyebrow-dot" />
-        The Problem
-      </div>
+        <section id="platform" className="container center">
+          <div className="problem-container">
+            <div className="problem-header">
+              <div className="problem-eyebrow">
+                <span className="eyebrow-dot" />
+                The Problem
+              </div>
 
-      <h2 className="problem-heading">
-        From scattered sheets to
-        <span> one source of truth</span>
-      </h2>
+              <h2 className="problem-heading">
+                From scattered sheets to
+                <span> one source of truth</span>
+              </h2>
 
-      <p className="problem-description">
-        Phormula replaces fragmented reporting and manual follow-ups with one
-        live, intelligent workspace for your business.
-      </p>
-    </div>
+              <p className="problem-description">
+                Phormula replaces fragmented reporting and manual follow-ups with one
+                live, intelligent workspace for your business.
+              </p>
+            </div>
 
-    <div className="comparison-labels">
-      <div className="comparison-label comparison-label-problem">
-        The Problem
-      </div>
+            <div className="comparison-labels">
+              <div className="comparison-label comparison-label-problem">
+                The Problem
+              </div>
 
-      <div className="comparison-label comparison-label-solution">
-        The Solution
-      </div>
-    </div>
+              <div className="comparison-label comparison-label-solution">
+                The Solution
+              </div>
+            </div>
 
-    <div className="problem-flow">
-      {/* Row 1 */}
-      <article className="problem-flow-card problem-side-card">
-        <div className="problem-card-icon problem-card-icon-red">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M7 3.75h7.5L19 8.25v12H7v-16.5Z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M14.5 3.75v4.5H19M10 12h6M10 15h6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </div>
+            <div className="problem-flow">
+              {/* Row 1 */}
+              <article className="problem-flow-card problem-side-card">
+                <div className="problem-card-icon problem-card-icon-red">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M7 3.75h7.5L19 8.25v12H7v-16.5Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M14.5 3.75v4.5H19M10 12h6M10 15h6"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
 
-        <div className="problem-card-content">
-          <span className="problem-card-index">01</span>
-          <h3>Scattered Sheets</h3>
-          <span className="problem-card-accent problem-card-accent-red" />
+                <div className="problem-card-content">
+                  <span className="problem-card-index">01</span>
+                  <h3>Scattered Sheets</h3>
+                  <span className="problem-card-accent problem-card-accent-red" />
 
-          <p>
-            Sales, fees, inventory, ads and expenses live across disconnected
-            files and reports.
-          </p>
-        </div>
-      </article>
+                  <p>
+                    Sales, fees, inventory, ads and expenses live across disconnected
+                    files and reports.
+                  </p>
+                </div>
+              </article>
 
-      <div className="problem-connector" aria-hidden="true">
-        <span className="connector-line" />
-        <span className="connector-arrow">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M5 12h13M14 8l4 4-4 4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-      </div>
+              <div className="problem-connector" aria-hidden="true">
+                <span className="connector-line" />
+                <span className="connector-arrow">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 12h13M14 8l4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </div>
 
-      <article className="problem-flow-card solution-side-card">
-        <div className="problem-card-icon problem-card-icon-green">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <rect
-              x="3.5"
-              y="4.5"
-              width="17"
-              height="11"
-              rx="1.5"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M8 19.5h8M12 15.5v4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-        </div>
+              <article className="problem-flow-card solution-side-card">
+                <div className="problem-card-icon problem-card-icon-green">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="3.5"
+                      y="4.5"
+                      width="17"
+                      height="11"
+                      rx="1.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                    <path
+                      d="M8 19.5h8M12 15.5v4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
 
-        <div className="problem-card-content">
-          <span className="problem-card-index">01</span>
-          <h3>One Live Dashboard</h3>
-          <span className="problem-card-accent problem-card-accent-green" />
+                <div className="problem-card-content">
+                  <span className="problem-card-index">01</span>
+                  <h3>One Live Dashboard</h3>
+                  <span className="problem-card-accent problem-card-accent-green" />
 
-          <p>
-            Finance, inventory, advertising and leadership stay aligned inside
-            one centralized workspace.
-          </p>
-        </div>
-      </article>
+                  <p>
+                    Finance, inventory, advertising and leadership stay aligned inside
+                    one centralized workspace.
+                  </p>
+                </div>
+              </article>
 
-      {/* Row 2 */}
-      <article className="problem-flow-card problem-side-card">
-        <div className="problem-card-icon problem-card-icon-red">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle
-              cx="12"
-              cy="13"
-              r="7"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            />
-            <path
-              d="M12 9v4l2.5 1.5M9 3h6M12 3v3"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+              {/* Row 2 */}
+              <article className="problem-flow-card problem-side-card">
+                <div className="problem-card-icon problem-card-icon-red">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="12"
+                      cy="13"
+                      r="7"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                    <path
+                      d="M12 9v4l2.5 1.5M9 3h6M12 3v3"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
 
-        <div className="problem-card-content">
-          <span className="problem-card-index">02</span>
-          <h3>Delayed Decisions</h3>
-          <span className="problem-card-accent problem-card-accent-red" />
+                <div className="problem-card-content">
+                  <span className="problem-card-index">02</span>
+                  <h3>Delayed Decisions</h3>
+                  <span className="problem-card-accent problem-card-accent-red" />
 
-          <p>
-            By the time reports are cleaned, the opportunity to protect margin
-            may already be gone.
-          </p>
-        </div>
-      </article>
+                  <p>
+                    By the time reports are cleaned, the opportunity to protect margin
+                    may already be gone.
+                  </p>
+                </div>
+              </article>
 
-      <div className="problem-connector" aria-hidden="true">
-        <span className="connector-line" />
-        <span className="connector-arrow">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M5 12h13M14 8l4 4-4 4"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </span>
-      </div>
+              <div className="problem-connector" aria-hidden="true">
+                <span className="connector-line" />
+                <span className="connector-arrow">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 12h13M14 8l4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </div>
 
-      <article className="problem-flow-card solution-side-card">
-        <div className="problem-card-icon problem-card-icon-green">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M9 18h6M10 21h4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-            <path
-              d="M8.2 14.5A6 6 0 1 1 15.8 14.5c-.95.7-1.55 1.48-1.8 2.5h-4c-.25-1.02-.85-1.8-1.8-2.5Z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinejoin="round"
-            />
-            <path
-              d="m10 11 1.3 1.3L14.5 9"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+              <article className="problem-flow-card solution-side-card">
+                <div className="problem-card-icon problem-card-icon-green">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M9 18h6M10 21h4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M8.2 14.5A6 6 0 1 1 15.8 14.5c-.95.7-1.55 1.48-1.8 2.5h-4c-.25-1.02-.85-1.8-1.8-2.5Z"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="m10 11 1.3 1.3L14.5 9"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
 
-        <div className="problem-card-content">
-          <span className="problem-card-index">02</span>
-          <h3>Actionable Insights</h3>
-          <span className="problem-card-accent problem-card-accent-green" />
+                <div className="problem-card-content">
+                  <span className="problem-card-index">02</span>
+                  <h3>Actionable Insights</h3>
+                  <span className="problem-card-accent problem-card-accent-green" />
 
-          <p>
-            AI explains what changed, why it matters and what action can improve
-            performance.
-          </p>
-        </div>
-      </article>
-    </div>
+                  <p>
+                    AI explains what changed, why it matters and what action can improve
+                    performance.
+                  </p>
+                </div>
+              </article>
+            </div>
 
-    <div className="problem-bottom-note">
-      <span className="bottom-note-icon">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path
-            d="m12 3 1.25 4.25L17.5 8.5l-4.25 1.25L12 14l-1.25-4.25L6.5 8.5l4.25-1.25L12 3Z"
-            fill="currentColor"
-          />
-          <path
-            d="m18.5 14 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3Z"
-            fill="currentColor"
-          />
-        </svg>
-      </span>
+            <div className="problem-bottom-note">
+              <span className="bottom-note-icon">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="m12 3 1.25 4.25L17.5 8.5l-4.25 1.25L12 14l-1.25-4.25L6.5 8.5l4.25-1.25L12 3Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="m18.5 14 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
 
-      <p>
-        Phormula turns operational chaos into clarity, so every decision is
-        faster and better informed.
-      </p>
-    </div>
-  </div>
-</section>
+              <p>
+                Phormula turns operational chaos into clarity, so every decision is
+                faster and better informed.
+              </p>
+            </div>
+          </div>
+        </section>
 
 
         {/*BEFORE / AFTER*/}
@@ -510,6 +509,10 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section>
+          <PhormulaHero />
+        </section>
+
         {/*VALUE*/}
         {/* <section>
       <div className="container value-grid">
@@ -557,192 +560,192 @@ export default function LandingPage() {
 
         {/*PRICING*/}
         <section id="pricing" className="pricing pricing-section">
-  <div className="pricing-bg pricing-bg-one" />
-  <div className="pricing-bg pricing-bg-two" />
+          <div className="pricing-bg pricing-bg-one" />
+          <div className="pricing-bg pricing-bg-two" />
 
-  <div className="container center pricing-container">
-    <div className="pricing-header">
-      <div className="eyebrow">Pricing</div>
+          <div className="container center pricing-container">
+            <div className="pricing-header">
+              <div className="eyebrow">Pricing</div>
 
-      <h2 className="section-heading">
-        Simple pricing. Serious business clarity.
-      </h2>
+              <h2 className="section-heading">
+                Simple pricing. Serious business clarity.
+              </h2>
 
-      <p className="section-copy">
-        Start with reliable financial reporting, then upgrade when you need
-        forecasting, cash-flow intelligence, and AI-powered recommendations.
-      </p>
+              <p className="section-copy">
+                Start with reliable financial reporting, then upgrade when you need
+                forecasting, cash-flow intelligence, and AI-powered recommendations.
+              </p>
 
-      <div className="pricing-trust-row">
-        <span>No setup fee</span>
-        <span>Cancel anytime</span>
-        <span>Secure Amazon connection</span>
-      </div>
-    </div>
-
-    <div className="pricing-grid">
-      {/* Reporting plan */}
-      <article className="price-card pricing-card-standard">
-        <div className="price-card-top">
-          <div>
-            <div className="plan">Reporting Plan</div>
-            <h3>Financial visibility</h3>
-          </div>
-
-          <div className="plan-icon plan-icon-reporting">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M5 19V10M12 19V5M19 19V13"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-              <path
-                d="M3 19.5H21"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-        </div>
-
-        <p className="plan-intro">
-          Essential reporting for sellers who want clean, reliable numbers
-          without spreadsheet dependency.
-        </p>
-
-        <div className="price">
-          <span className="currency">$</span>
-          <span className="amount">50</span>
-
-          <div className="price-meta">
-            <span className="period">/month</span>
-            <span className="billing-note">Billed monthly</span>
-          </div>
-        </div>
-
-        <div className="plan-divider" />
-
-        <div className="includes-label">Everything you need to report</div>
-
-        <ul className="price-list">
-          <li>Reporting dashboard</li>
-          <li>Complete P&amp;L dashboard</li>
-          <li>Sales, fees, and performance tracking</li>
-          <li>Amazon expense reconciliation</li>
-          <li>SKU-level financial visibility</li>
-          <li>Clean monthly reporting view</li>
-        </ul>
-
-        <a href="/signin" className="btn pricing-btn pricing-btn-outline">
-          Start with Reporting
-          <span aria-hidden="true">→</span>
-        </a>
-
-        <p className="pricing-footnote">
-          Best for sellers building a reliable reporting foundation.
-        </p>
-      </article>
-
-      {/* Growth plan */}
-      <article className="price-card featured pricing-card-growth">
-        <div className="badge">
-          <span className="badge-dot" />
-          Most popular
-        </div>
-
-        <div className="growth-glow growth-glow-one" />
-        <div className="growth-glow growth-glow-two" />
-
-        <div className="price-card-content">
-          <div className="price-card-top">
-            <div>
-              <div className="plan">Growth Plan</div>
-              <h3>Growth intelligence</h3>
+              <div className="pricing-trust-row">
+                <span>No setup fee</span>
+                <span>Cancel anytime</span>
+                <span>Secure Amazon connection</span>
+              </div>
             </div>
 
-            <div className="plan-icon plan-icon-growth">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-              >
-                <path
-                  d="M4 17L9 12L13 15L20 7"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M15 7H20V12"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+            <div className="pricing-grid">
+              {/* Reporting plan */}
+              <article className="price-card pricing-card-standard">
+                <div className="price-card-top">
+                  <div>
+                    <div className="plan">Reporting Plan</div>
+                    <h3>Financial visibility</h3>
+                  </div>
+
+                  <div className="plan-icon plan-icon-reporting">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M5 19V10M12 19V5M19 19V13"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M3 19.5H21"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </div>
+                </div>
+
+                <p className="plan-intro">
+                  Essential reporting for sellers who want clean, reliable numbers
+                  without spreadsheet dependency.
+                </p>
+
+                <div className="price">
+                  <span className="currency">$</span>
+                  <span className="amount">50</span>
+
+                  <div className="price-meta">
+                    <span className="period">/month</span>
+                    <span className="billing-note">Billed monthly</span>
+                  </div>
+                </div>
+
+                <div className="plan-divider" />
+
+                <div className="includes-label">Everything you need to report</div>
+
+                <ul className="price-list">
+                  <li>Reporting dashboard</li>
+                  <li>Complete P&amp;L dashboard</li>
+                  <li>Sales, fees, and performance tracking</li>
+                  <li>Amazon expense reconciliation</li>
+                  <li>SKU-level financial visibility</li>
+                  <li>Clean monthly reporting view</li>
+                </ul>
+
+                <a href="/signin" className="btn pricing-btn pricing-btn-outline">
+                  Start with Reporting
+                  <span aria-hidden="true">→</span>
+                </a>
+
+                <p className="pricing-footnote">
+                  Best for sellers building a reliable reporting foundation.
+                </p>
+              </article>
+
+              {/* Growth plan */}
+              <article className="price-card featured pricing-card-growth">
+                <div className="badge">
+                  <span className="badge-dot" />
+                  Most popular
+                </div>
+
+                <div className="growth-glow growth-glow-one" />
+                <div className="growth-glow growth-glow-two" />
+
+                <div className="price-card-content">
+                  <div className="price-card-top">
+                    <div>
+                      <div className="plan">Growth Plan</div>
+                      <h3>Growth intelligence</h3>
+                    </div>
+
+                    <div className="plan-icon plan-icon-growth">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M4 17L9 12L13 15L20 7"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M15 7H20V12"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+
+                  <p className="plan-intro">
+                    Full financial intelligence for founders who want to forecast,
+                    protect profitability, and make faster decisions.
+                  </p>
+
+                  <div className="price">
+                    <span className="currency">$</span>
+                    <span className="amount">100</span>
+
+                    <div className="price-meta">
+                      <span className="period">/month</span>
+                      <span className="billing-note">Billed monthly</span>
+                    </div>
+                  </div>
+
+                  <div className="plan-divider" />
+
+                  <div className="includes-label">Everything in Reporting, plus</div>
+
+                  <ul className="price-list">
+                    <li>AI business insights</li>
+                    <li>Inventory forecasting</li>
+                    <li>Dispatch and purchase-order reports</li>
+                    <li>Cash-flow visibility</li>
+                    <li>CM2-level profit analysis</li>
+                    <li>Objective-based recommendations</li>
+                    <li>SKU-level growth and risk actions</li>
+                  </ul>
+
+                  <a href="/signin" className="btn pricing-btn pricing-btn-growth">
+                    Choose Growth
+                    <span aria-hidden="true">→</span>
+                  </a>
+
+                  <p className="pricing-footnote">
+                    Best for founders actively scaling their Amazon business.
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            <div className="pricing-bottom-note">
+              <div className="pricing-bottom-icon">✓</div>
+
+              <p>
+                Both plans include secure data handling, onboarding support, and access
+                to your historical business data.
+              </p>
             </div>
           </div>
-
-          <p className="plan-intro">
-            Full financial intelligence for founders who want to forecast,
-            protect profitability, and make faster decisions.
-          </p>
-
-          <div className="price">
-            <span className="currency">$</span>
-            <span className="amount">100</span>
-
-            <div className="price-meta">
-              <span className="period">/month</span>
-              <span className="billing-note">Billed monthly</span>
-            </div>
-          </div>
-
-          <div className="plan-divider" />
-
-          <div className="includes-label">Everything in Reporting, plus</div>
-
-          <ul className="price-list">
-            <li>AI business insights</li>
-            <li>Inventory forecasting</li>
-            <li>Dispatch and purchase-order reports</li>
-            <li>Cash-flow visibility</li>
-            <li>CM2-level profit analysis</li>
-            <li>Objective-based recommendations</li>
-            <li>SKU-level growth and risk actions</li>
-          </ul>
-
-          <a href="/signin" className="btn pricing-btn pricing-btn-growth">
-            Choose Growth
-            <span aria-hidden="true">→</span>
-          </a>
-
-          <p className="pricing-footnote">
-            Best for founders actively scaling their Amazon business.
-          </p>
-        </div>
-      </article>
-    </div>
-
-    <div className="pricing-bottom-note">
-      <div className="pricing-bottom-icon">✓</div>
-
-      <p>
-        Both plans include secure data handling, onboarding support, and access
-        to your historical business data.
-      </p>
-    </div>
-  </div>
-</section>
+        </section>
 
         {/*FAQ*/}
         <section id="faq">
@@ -794,12 +797,12 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer>
+      <footer className="landing-footer">
         <div className="container footer-inner">
           <Image
             className="dark:hidden hidden lg:block"
             src="/images/logo/Logo_Phormula.png"
-            alt="Logo"
+            alt="Phormula"
             width={132}
             height={36}
           />
@@ -811,7 +814,13 @@ export default function LandingPage() {
             <a href="#demo">Contact</a>
           </div>
 
-          <div className="copyright">© 2026 Phormula. All rights reserved.</div>
+          <div className="copyright">
+            © 2026 Phormula. All rights reserved.
+          </div>
+        </div>
+
+        <div className="footer-wordmark" aria-hidden="true">
+          phormula
         </div>
       </footer>
     </div>
