@@ -511,25 +511,30 @@ def inventory_lost_compensation():
 
             main_sql = text(f"""
                 WITH sku_map AS (
-                    SELECT
+                    SELECT DISTINCT ON (UPPER(TRIM(COALESCE({sku_country_col}, ''))))
                         COALESCE(asin, '') AS asin,
                         COALESCE(product_barcode, '') AS product_barcode,
                         COALESCE(product_name, '') AS product_name,
-                        COALESCE({sku_country_col}, '') AS msku,
+                        TRIM(COALESCE({sku_country_col}, '')) AS msku,
                         COALESCE(price, 0) AS price,
                         COALESCE(currency, '') AS currency
                     FROM {sku_table}
                     WHERE user_id = :user_id
+                      AND TRIM(COALESCE({sku_country_col}, '')) <> ''
+                    ORDER BY
+                        UPPER(TRIM(COALESCE({sku_country_col}, ''))),
+                        CASE WHEN TRIM(COALESCE(product_name, '')) <> '' THEN 0 ELSE 1 END,
+                        CASE WHEN TRIM(COALESCE(asin, '')) <> '' THEN 0 ELSE 1 END
                 ),
                 settlement_source AS (
                     {settlement_union_sql}
                 ),
                 settlement_comp AS (
                     SELECT
-                        COALESCE(sku, '') AS asin,
+                        TRIM(COALESCE(sku, '')) AS msku,
                         SUM(
                             CASE
-                                WHEN UPPER(COALESCE(description, '')) IN (
+                                WHEN UPPER(TRIM(COALESCE(description, ''))) IN (
                                     'REVERSAL_REIMBURSEMENT',
                                     'COMPENSATED_CLAWBACK'
                                 )
@@ -539,7 +544,7 @@ def inventory_lost_compensation():
                         ) AS compensation_units,
                         SUM(
                             CASE
-                                WHEN UPPER(COALESCE(description, '')) IN (
+                                WHEN UPPER(TRIM(COALESCE(description, ''))) IN (
                                     'REVERSAL_REIMBURSEMENT',
                                     'COMPENSATED_CLAWBACK'
                                 )
@@ -548,18 +553,19 @@ def inventory_lost_compensation():
                             END
                         ) AS compensation_reimbursement_amount
                     FROM settlement_source
-                    WHERE UPPER(COALESCE(description, '')) IN (
-                        'REVERSAL_REIMBURSEMENT',
-                        'COMPENSATED_CLAWBACK'
-                    )
-                    GROUP BY COALESCE(sku, '')
+                    WHERE TRIM(COALESCE(sku, '')) <> ''
+                      AND UPPER(TRIM(COALESCE(description, ''))) IN (
+                            'REVERSAL_REIMBURSEMENT',
+                            'COMPENSATED_CLAWBACK'
+                      )
+                    GROUP BY TRIM(COALESCE(sku, ''))
                 ),
                 settlement_loss_events AS (
                     SELECT
-                        COALESCE(sku, '') AS asin,
+                        TRIM(COALESCE(sku, '')) AS msku,
                         SUM(
                             CASE
-                                WHEN UPPER(COALESCE(description, '')) IN (
+                                WHEN UPPER(TRIM(COALESCE(description, ''))) IN (
                                     'WAREHOUSE_LOST',
                                     'WAREHOUSE_DAMAGE',
                                     'MISSING_FROM_INBOUND',
@@ -571,7 +577,7 @@ def inventory_lost_compensation():
                         ) AS settlement_loss_event_units,
                         SUM(
                             CASE
-                                WHEN UPPER(COALESCE(description, '')) IN (
+                                WHEN UPPER(TRIM(COALESCE(description, ''))) IN (
                                     'WAREHOUSE_LOST',
                                     'WAREHOUSE_DAMAGE',
                                     'MISSING_FROM_INBOUND',
@@ -582,26 +588,27 @@ def inventory_lost_compensation():
                             END
                         ) AS settlement_loss_event_amount
                     FROM settlement_source
-                    WHERE UPPER(COALESCE(description, '')) IN (
-                        'WAREHOUSE_LOST',
-                        'WAREHOUSE_DAMAGE',
-                        'MISSING_FROM_INBOUND',
-                        'MISSING_FROM_INBOUND_CLAWBACK'
-                    )
-                    GROUP BY COALESCE(sku, '')
+                    WHERE TRIM(COALESCE(sku, '')) <> ''
+                      AND UPPER(TRIM(COALESCE(description, ''))) IN (
+                            'WAREHOUSE_LOST',
+                            'WAREHOUSE_DAMAGE',
+                            'MISSING_FROM_INBOUND',
+                            'MISSING_FROM_INBOUND_CLAWBACK'
+                      )
+                    GROUP BY TRIM(COALESCE(sku, ''))
                 ),
                 all_keys AS (
-                    SELECT asin FROM sku_map
+                    SELECT msku FROM sku_map
                     UNION
-                    SELECT asin FROM settlement_comp
+                    SELECT msku FROM settlement_comp
                     UNION
-                    SELECT asin FROM settlement_loss_events
+                    SELECT msku FROM settlement_loss_events
                 )
                 SELECT
-                    ak.asin,
+                    COALESCE(sm.asin, '') AS asin,
+                    ak.msku,
                     COALESCE(sm.product_barcode, '') AS product_barcode,
                     COALESCE(sm.product_name, '') AS product_name,
-                    COALESCE(sm.msku, '') AS msku,
                     COALESCE(sm.price, 0) AS price,
                     COALESCE(sm.currency, '') AS currency,
                     COALESCE(sc.compensation_units, 0) AS compensation_units,
@@ -610,11 +617,11 @@ def inventory_lost_compensation():
                     COALESCE(sl.settlement_loss_event_amount, 0) AS settlement_loss_event_amount
                 FROM all_keys ak
                 LEFT JOIN sku_map sm
-                    ON ak.asin = sm.asin
+                    ON UPPER(ak.msku) = UPPER(sm.msku)
                 LEFT JOIN settlement_comp sc
-                    ON ak.asin = sc.asin
+                    ON UPPER(ak.msku) = UPPER(sc.msku)
                 LEFT JOIN settlement_loss_events sl
-                    ON ak.asin = sl.asin
+                    ON UPPER(ak.msku) = UPPER(sl.msku)
             """)
 
             main_rows = conn.execute(main_sql, {"user_id": user_id}).mappings().all()
@@ -642,14 +649,14 @@ def inventory_lost_compensation():
 
             inventory_sql = text(f"""
                 SELECT
-                    COALESCE(msku, '') AS msku,
-                    COALESCE(product_name, '') AS inventory_product_name,
+                    TRIM(COALESCE(msku, '')) AS msku,
+                    MAX(COALESCE(product_name, '')) AS inventory_product_name,
                     SUM(ABS(COALESCE(sum_lost, 0))) AS lost_units,
                     SUM(ABS(COALESCE(sum_damaged, 0))) AS damaged_units
                 FROM {inventory_table}
-                WHERE COALESCE(msku, '') <> ''
-                  AND COALESCE(msku, '') <> 'Grand Total'
-                GROUP BY COALESCE(msku, ''), COALESCE(product_name, '')
+                WHERE TRIM(COALESCE(msku, '')) <> ''
+                  AND UPPER(TRIM(COALESCE(msku, ''))) <> 'GRAND TOTAL'
+                GROUP BY UPPER(TRIM(COALESCE(msku, ''))), TRIM(COALESCE(msku, ''))
             """)
 
             inventory_rows = conn.execute(inventory_sql).mappings().all()
@@ -665,8 +672,8 @@ def inventory_lost_compensation():
 
     inventory_map = {}
     for row in inventory_rows:
-        msku = row["msku"]
-        inventory_map[msku] = {
+        msku = (row["msku"] or "").strip()
+        inventory_map[msku.upper()] = {
             "lost_units": float(row["lost_units"] or 0),
             "damaged_units": float(row["damaged_units"] or 0),
             "inventory_product_name": row["inventory_product_name"] or ""
@@ -689,8 +696,8 @@ def inventory_lost_compensation():
     }
 
     for row in main_rows:
-        msku = row["msku"]
-        inv = inventory_map.get(msku, {})
+        msku = (row["msku"] or "").strip()
+        inv = inventory_map.get(msku.upper(), {})
 
         lost_units = float(inv.get("lost_units", 0))
         damaged_units = float(inv.get("damaged_units", 0))
@@ -710,7 +717,8 @@ def inventory_lost_compensation():
         product_name = (
             row["product_name"]
             or inv.get("inventory_product_name", "")
-            or row["asin"]   # 👈 fallback to ASIN
+            or row["asin"]
+            or msku
         )
 
         if (
