@@ -316,22 +316,38 @@ def fetch_data_from_table(table_name):
         # Check if table exists
         if not check_table_exists(cursor, table_name):
             return None
+
+        if not check_column_exists(cursor, table_name, "product_name"):
+            return None
+
+        if not check_column_exists(cursor, table_name, "profit"):
+            return None
+
+        has_net_sales = check_column_exists(cursor, table_name, "net_sales")
+        net_sales_expr = (
+            sql.SQL("net_sales")
+            if has_net_sales
+            else sql.SQL("NULL::numeric AS net_sales")
+        )
         
         # Fetch data - adjust column names as per your actual table structure
-        query = f"""
-            SELECT product_name, profit 
-            FROM {table_name} 
+        query = sql.SQL("""
+            SELECT product_name, profit, {net_sales_expr}
+            FROM {table_name}
             WHERE profit IS NOT NULL 
             AND product_name IS NOT NULL
             AND LOWER(TRIM(product_name)) != 'total'
             ORDER BY profit DESC
-        """
+        """).format(
+            net_sales_expr=net_sales_expr,
+            table_name=sql.Identifier(table_name)
+        )
         
         cursor.execute(query)
         data = cursor.fetchall()
         
         if data:
-            df = pd.DataFrame(data, columns=['product_name', 'profit'])
+            df = pd.DataFrame(data, columns=['product_name', 'profit', 'net_sales'])
             return df
         else:
             return None
@@ -390,50 +406,167 @@ def fetch_yearly_data_from_monthly_tables(user_id, country, year, months_to_proc
     return combined_df, used_tables, processed_months
 
 
-def prepare_pie_chart_data(df):
-    """Prepare data for pie chart - top 5 products + others"""
-    if df is None or df.empty:
-        return None, None
+def prepare_metric_rows(df, metric_column):
+    """Return product rows grouped and sorted by the requested metric."""
+    if df is None or df.empty or metric_column not in df.columns:
+        return []
 
-    df = df.copy()
+    metric_df = df.copy()
 
-    # Clean profit
-    df['profit'] = pd.to_numeric(df['profit'], errors='coerce')
-    df = df.dropna(subset=['profit'])
+    # Clean metric
+    metric_df[metric_column] = pd.to_numeric(metric_df[metric_column], errors='coerce')
+    metric_df = metric_df.dropna(subset=[metric_column])
 
     # Clean product name
-    df['product_name'] = df['product_name'].astype(str).str.strip()
+    metric_df['product_name'] = metric_df['product_name'].astype(str).str.strip()
 
     # Remove total row safely
-    df = df[df['product_name'].str.lower() != 'total']
+    metric_df = metric_df[
+        (metric_df['product_name'] != '') &
+        (metric_df['product_name'].str.lower() != 'total')
+    ]
 
-    if df.empty:
-        return None, None
+    if metric_df.empty:
+        return []
 
     # Group duplicate products first
     df_grouped = (
-        df.groupby('product_name', as_index=False)['profit']
+        metric_df.groupby('product_name', as_index=False)[metric_column]
         .sum()
     )
 
-    # Sort by profit
-    df_sorted = df_grouped.sort_values('profit', ascending=False)
+    # Sort by selected metric
+    df_sorted = df_grouped.sort_values(metric_column, ascending=False)
+
+    return [
+        {
+            "product_name": str(row["product_name"]).strip(),
+            metric_column: float(row[metric_column]) if row[metric_column] is not None else 0.0
+        }
+        for _, row in df_sorted.iterrows()
+    ]
+
+
+def prepare_pie_chart_data(df, metric_column='profit'):
+    """Prepare data for pie chart - top 5 products + others."""
+    metric_rows = prepare_metric_rows(df, metric_column)
+
+    if not metric_rows:
+        return None, None
 
     # Top 5
-    top_5 = df_sorted.head(5)
+    top_5 = metric_rows[:5]
 
     # Everything after top 5 is Others
-    remaining = df_sorted.iloc[5:]
+    remaining = metric_rows[5:]
 
-    labels = top_5['product_name'].tolist()
-    values = top_5['profit'].astype(float).tolist()
+    labels = [row['product_name'] for row in top_5]
+    values = [float(row[metric_column]) for row in top_5]
 
     if len(remaining) > 0:
-        others_sum = float(remaining['profit'].sum())
+        others_sum = sum(float(row[metric_column]) for row in remaining)
         labels.append('Others')
         values.append(others_sum)
 
     return labels, values
+
+
+def normalize_product_key(product_name):
+    return str(product_name or "").strip().lower()
+
+
+def delta_percentage(current_value, previous_value):
+    if previous_value == 0:
+        return None
+    return ((current_value - previous_value) / abs(previous_value)) * 100
+
+
+def percentage_of_total(value, total):
+    if not total:
+        return 0.0
+    return (value / total) * 100
+
+
+def build_compare_top5_metric(
+    current_rows,
+    previous_rows,
+    metric_key,
+    current_key,
+    previous_key,
+    delta_key,
+    delta_percentage_key,
+    current_total=None,
+    previous_total=None,
+    include_sales_mix=False
+):
+    """
+    Build top-5 + Others comparison rows for a metric.
+
+    Previous values are matched against the current top-5 products. The
+    previous Others value uses the same current-period products that were
+    aggregated into Others.
+    """
+    if not current_rows:
+        return []
+
+    if current_total is None:
+        current_total = sum(float(row.get(metric_key) or 0.0) for row in current_rows)
+
+    if previous_total is None:
+        previous_total = sum(float(row.get(metric_key) or 0.0) for row in previous_rows or [])
+
+    previous_map = {}
+    for row in previous_rows or []:
+        key = normalize_product_key(row.get("product_name"))
+        if not key:
+            continue
+        previous_map[key] = previous_map.get(key, 0.0) + float(row.get(metric_key) or 0.0)
+
+    def make_row(product_name, current_value, previous_value):
+        delta_value = current_value - previous_value
+        comparison_row = {
+            "product": product_name,
+            current_key: current_value,
+            previous_key: previous_value,
+            delta_key: delta_value,
+            delta_percentage_key: delta_percentage(current_value, previous_value),
+        }
+
+        if include_sales_mix:
+            current_sales_mix = percentage_of_total(current_value, current_total)
+            previous_sales_mix = percentage_of_total(previous_value, previous_total)
+            sales_mix_change = current_sales_mix - previous_sales_mix
+
+            comparison_row.update({
+                "current_sales_mix_percentage": current_sales_mix,
+                "previous_sales_mix_percentage": previous_sales_mix,
+                "sales_mix_delta_percentage": sales_mix_change,
+                "sales_mix_curr": current_sales_mix,
+                "sales_mix_prev": previous_sales_mix,
+                "sales_mix_change": sales_mix_change,
+            })
+
+        return comparison_row
+
+    top_rows = current_rows[:5]
+    remaining_rows = current_rows[5:]
+
+    compare_rows = []
+    for row in top_rows:
+        product_name = row.get("product_name")
+        current_value = float(row.get(metric_key) or 0.0)
+        previous_value = previous_map.get(normalize_product_key(product_name), 0.0)
+        compare_rows.append(make_row(product_name, current_value, previous_value))
+
+    if remaining_rows:
+        others_current = sum(float(row.get(metric_key) or 0.0) for row in remaining_rows)
+        others_previous = sum(
+            previous_map.get(normalize_product_key(row.get("product_name")), 0.0)
+            for row in remaining_rows
+        )
+        compare_rows.append(make_row("Others", others_current, others_previous))
+
+    return compare_rows
 
 
 def create_pie_chart(labels, values, title="Top 5 Products by Profit"):
@@ -835,8 +968,16 @@ def generate_pie_chart():
         if not labels or not values:
             return jsonify({'error': 'No valid data available for pie chart'}), 404
 
-                # ---------------- Prepare PREVIOUS pie data ----------------
+        current_net_sales = prepare_metric_rows(df, 'net_sales')
+        net_sales_labels, net_sales_values = prepare_pie_chart_data(df, 'net_sales')
+        if not net_sales_labels or not net_sales_values:
+            net_sales_labels, net_sales_values = [], []
+
+        # ---------------- Prepare PREVIOUS pie data ----------------
+        prev_df = None
         prev_labels, prev_values = [], []
+        previous_net_sales = []
+        prev_net_sales_labels, prev_net_sales_values = [], []
         prev_table = None
         prev_period_meta = None
         prev_candidates = []
@@ -943,6 +1084,10 @@ def generate_pie_chart():
 
             if prev_df is not None and not prev_df.empty:
                 prev_labels, prev_values = prepare_pie_chart_data(prev_df)
+                previous_net_sales = prepare_metric_rows(prev_df, 'net_sales')
+                prev_net_sales_labels, prev_net_sales_values = prepare_pie_chart_data(prev_df, 'net_sales')
+                if not prev_net_sales_labels or not prev_net_sales_values:
+                    prev_net_sales_labels, prev_net_sales_values = [], []
 
 
         # ---------------- Title ----------------
@@ -983,6 +1128,19 @@ def generate_pie_chart():
                 "previous_profit": prev_map.get(k, 0)
             })
 
+        compare_net_sales = build_compare_top5_metric(
+            current_rows=current_net_sales,
+            previous_rows=previous_net_sales,
+            metric_key="net_sales",
+            current_key="current_net_sales",
+            previous_key="previous_net_sales",
+            delta_key="net_sales_delta",
+            delta_percentage_key="net_sales_delta_percentage",
+            current_total=sum(float(row.get("net_sales") or 0.0) for row in current_net_sales),
+            previous_total=sum(float(row.get("net_sales") or 0.0) for row in previous_net_sales),
+            include_sales_mix=True
+        )
+
         # ---------------- Response ----------------
         response_data = {
             'success': True,
@@ -993,6 +1151,10 @@ def generate_pie_chart():
                 'top_5_count': min(5, len(labels)),
                 'others_count': 1 if 'Others' in labels else 0,
                 'total_profit': sum(values),
+                'net_sales': current_net_sales,
+                'net_sales_labels': net_sales_labels,
+                'net_sales_values': net_sales_values,
+                'total_net_sales': sum(net_sales_values) if net_sales_values else 0,
                 'table_used': used_table,
                 'tables_used': current_used_tables,
                 'processed_months': current_processed_months,
@@ -1008,6 +1170,10 @@ def generate_pie_chart():
                     "labels": prev_labels,
                     "values": prev_values,
                     "total_profit": sum(prev_values) if prev_values else 0,
+                    "net_sales": previous_net_sales,
+                    "net_sales_labels": prev_net_sales_labels,
+                    "net_sales_values": prev_net_sales_values,
+                    "total_net_sales": sum(prev_net_sales_values) if prev_net_sales_values else 0,
 
                     # Previous CM2 profit
                     "cm2_profit": previous_cm2_profit or [],
@@ -1017,6 +1183,7 @@ def generate_pie_chart():
 
                 # ✅ NEW comparison block
                 "compare_top5": compare,
+                "compare_top5_net_sales": compare_net_sales,
             }
         }
         if current_cm2_profit:
