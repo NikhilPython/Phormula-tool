@@ -123,6 +123,11 @@ inventory_marketplace_map = {
     "us": "ATVPDKIKX0DER"
 }
 
+inventory_location_map = {
+    "uk": "GB",
+    "us": "US"
+}
+
 # =====================================================
 # Product AI Summary constants
 # =====================================================
@@ -174,8 +179,9 @@ def get_monthly_inventory_units(
         return {}
 
     marketplace_id = inventory_marketplace_map.get(sku_country)
+    location_code = inventory_location_map.get(sku_country)
 
-    if not marketplace_id:
+    if not marketplace_id or not location_code:
         return {}
 
     month_numbers = [
@@ -189,11 +195,12 @@ def get_monthly_inventory_units(
         with amazon_engine.connect() as conn:
             for month_num in month_numbers:
                 query = text("""
-                    WITH first_date AS (
-                        SELECT MIN(date::date) AS first_available_date
+                    WITH last_date AS (
+                        SELECT MAX(date::date) AS last_available_date
                         FROM monthwise_inventory
                         WHERE user_id = :user_id
                           AND marketplace_id = :marketplace_id
+                          AND UPPER(TRIM(COALESCE(location, ''))) = :location_code
                           AND LOWER(TRIM(disposition)) = 'sellable'
                           AND EXTRACT(YEAR FROM date::date)::int = :year
                           AND EXTRACT(MONTH FROM date::date)::int = :month_num
@@ -207,12 +214,13 @@ def get_monthly_inventory_units(
                           )
                     )
                     SELECT
-                        COALESCE(SUM(starting_warehouse_balance), 0) AS inventory_units
+                        COALESCE(SUM(ending_warehouse_balance), 0) AS inventory_units
                     FROM monthwise_inventory
                     WHERE user_id = :user_id
                       AND marketplace_id = :marketplace_id
+                      AND UPPER(TRIM(COALESCE(location, ''))) = :location_code
                       AND LOWER(TRIM(disposition)) = 'sellable'
-                      AND date::date = (SELECT first_available_date FROM first_date)
+                      AND date::date = (SELECT last_available_date FROM last_date)
                       AND (
                             LOWER(TRIM(product_name)) = LOWER(TRIM(:product_name))
                             OR (
@@ -226,6 +234,7 @@ def get_monthly_inventory_units(
                 row = conn.execute(query, {
                     "user_id": int(user_id),
                     "marketplace_id": marketplace_id,
+                    "location_code": location_code,
                     "product_name": product_name,
                     "fallback_sku": fallback_sku,
                     "year": int(year),
@@ -2146,7 +2155,7 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
 
     Rules:
     - monthwise_inventory.msku = skuwisemonthly sku.
-    - Country is separated by marketplace_id.
+    - Country is separated by marketplace_id and ledger location.
     - For each sku + marketplace_id + disposition + month,
       take the LAST available date in that month.
     - Use ending_warehouse_balance from that last date.
@@ -2165,25 +2174,32 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
 
     # For global summary, combine UK + US inventory.
     if country.startswith("global"):
-        marketplace_ids = [
-            inventory_marketplace_map["uk"],
-            inventory_marketplace_map["us"]
+        inventory_scopes = [
+            (inventory_marketplace_map["uk"], inventory_location_map["uk"]),
+            (inventory_marketplace_map["us"], inventory_location_map["us"]),
         ]
     else:
         normalized_country = normalize_sku_country(country)
         marketplace_id = inventory_marketplace_map.get(normalized_country)
+        location_code = inventory_location_map.get(normalized_country)
 
-        if not marketplace_id:
+        if not marketplace_id or not location_code:
             return {}
 
-        marketplace_ids = [marketplace_id]
+        inventory_scopes = [(marketplace_id, location_code)]
 
     sku_placeholders = ", ".join(
         [f":sku_{i}" for i in range(len(sku_list))]
     )
 
-    marketplace_placeholders = ", ".join(
-        [f":marketplace_{i}" for i in range(len(marketplace_ids))]
+    inventory_scope_sql = " OR ".join(
+        [
+            (
+                f"(marketplace_id = :marketplace_{i} "
+                f"AND UPPER(TRIM(COALESCE(location, ''))) = :location_{i})"
+            )
+            for i in range(len(inventory_scopes))
+        ]
     )
 
     params = {
@@ -2193,8 +2209,9 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
     for i, sku in enumerate(sku_list):
         params[f"sku_{i}"] = sku.lower()
 
-    for i, marketplace_id in enumerate(marketplace_ids):
+    for i, (marketplace_id, location_code) in enumerate(inventory_scopes):
         params[f"marketplace_{i}"] = marketplace_id
+        params[f"location_{i}"] = location_code
 
     query = text(f"""
         WITH base AS (
@@ -2208,7 +2225,7 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
                 COALESCE(ending_warehouse_balance, 0) AS ending_warehouse_balance
             FROM monthwise_inventory
             WHERE user_id = :user_id
-              AND marketplace_id IN ({marketplace_placeholders})
+              AND ({inventory_scope_sql})
               AND LOWER(TRIM(msku)) IN ({sku_placeholders})
         ),
         last_dates AS (

@@ -1431,6 +1431,34 @@ def Pnlforecast():
 
         from sqlalchemy import text
 
+        table_columns_cache = {}
+
+        def quote_identifier(identifier):
+            return '"' + str(identifier).replace('"', '""') + '"'
+
+        def get_table_columns(table_name):
+            if table_name not in table_columns_cache:
+                try:
+                    table_columns_cache[table_name] = {
+                        str(column["name"]).lower(): str(column["name"])
+                        for column in inspector.get_columns(table_name)
+                    }
+                except Exception as e:
+                    print(f"Error reading columns for table {table_name}: {str(e)}")
+                    table_columns_cache[table_name] = {}
+            return table_columns_cache[table_name]
+
+        def get_cm1_profit_percentage_column(table_name):
+            columns = get_table_columns(table_name)
+            for candidate in ("cm1_profit_per", "profit_percentage"):
+                if candidate in columns:
+                    return columns[candidate]
+            print(
+                f"Table {table_name} has no CM1 percentage column "
+                f"(expected cm1_profit_per or profit_percentage)."
+            )
+            return None
+
         with engine.connect() as connection:
             for sku in df['sku'].unique():
                 result = None
@@ -1438,13 +1466,15 @@ def Pnlforecast():
                 # First try month-specific table if present
                 if selected_month_table:
                     try:
-                        query = text(f"""
-                            SELECT profit_percentage, net_sales, quantity, product_name
-                            FROM {selected_month_table}
-                            WHERE sku = :sku
-                            LIMIT 1
-                        """)
-                        result = connection.execute(query, {"sku": sku}).fetchone()
+                        cm1_pct_col = get_cm1_profit_percentage_column(selected_month_table)
+                        if cm1_pct_col:
+                            query = text(f"""
+                                SELECT {quote_identifier(cm1_pct_col)} AS profit_percentage, net_sales, quantity, product_name
+                                FROM {quote_identifier(selected_month_table)}
+                                WHERE sku = :sku
+                                LIMIT 1
+                            """)
+                            result = connection.execute(query, {"sku": sku}).fetchone()
                     except Exception as e:
                         print(f"Error querying month table for SKU {sku}: {str(e)}")
                         result = None
@@ -1452,29 +1482,31 @@ def Pnlforecast():
                 # Fallback to merge table
                 if result is None and merge_table_exists:
                     try:
-                        query_merge = text(f"""
-                            SELECT profit_percentage, net_sales, quantity, product_name
-                            FROM {merge_table}
-                            WHERE sku = :sku
-                            ORDER BY
-                                CAST(year AS INTEGER) DESC,
-                                CASE LOWER(month)
-                                    WHEN 'january' THEN 1
-                                    WHEN 'february' THEN 2
-                                    WHEN 'march' THEN 3
-                                    WHEN 'april' THEN 4
-                                    WHEN 'may' THEN 5
-                                    WHEN 'june' THEN 6
-                                    WHEN 'july' THEN 7
-                                    WHEN 'august' THEN 8
-                                    WHEN 'september' THEN 9
-                                    WHEN 'october' THEN 10
-                                    WHEN 'november' THEN 11
-                                    WHEN 'december' THEN 12
-                                END DESC
-                            LIMIT 1
-                        """)
-                        result = connection.execute(query_merge, {"sku": sku}).fetchone()
+                        cm1_pct_col = get_cm1_profit_percentage_column(merge_table)
+                        if cm1_pct_col:
+                            query_merge = text(f"""
+                                SELECT {quote_identifier(cm1_pct_col)} AS profit_percentage, net_sales, quantity, product_name
+                                FROM {quote_identifier(merge_table)}
+                                WHERE sku = :sku
+                                ORDER BY
+                                    CAST(year AS INTEGER) DESC,
+                                    CASE LOWER(month)
+                                        WHEN 'january' THEN 1
+                                        WHEN 'february' THEN 2
+                                        WHEN 'march' THEN 3
+                                        WHEN 'april' THEN 4
+                                        WHEN 'may' THEN 5
+                                        WHEN 'june' THEN 6
+                                        WHEN 'july' THEN 7
+                                        WHEN 'august' THEN 8
+                                        WHEN 'september' THEN 9
+                                        WHEN 'october' THEN 10
+                                        WHEN 'november' THEN 11
+                                        WHEN 'december' THEN 12
+                                    END DESC
+                                LIMIT 1
+                            """)
+                            result = connection.execute(query_merge, {"sku": sku}).fetchone()
                     except Exception as e:
                         print(f"Error querying merge table for SKU {sku}: {str(e)}")
                         result = None

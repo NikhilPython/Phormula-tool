@@ -61,6 +61,24 @@ MONTHS_MAP = {
     'september': 9, 'october': 10, 'november': 11, 'december': 12
 }
 
+INVENTORY_MARKETPLACE_BY_COUNTRY = {
+    "uk": "A1F83G8C2ARO7P",
+    "gb": "A1F83G8C2ARO7P",
+    "united kingdom": "A1F83G8C2ARO7P",
+    "us": "ATVPDKIKX0DER",
+    "usa": "ATVPDKIKX0DER",
+    "united states": "ATVPDKIKX0DER",
+}
+
+INVENTORY_LOCATION_BY_COUNTRY = {
+    "uk": "GB",
+    "gb": "GB",
+    "united kingdom": "GB",
+    "us": "US",
+    "usa": "US",
+    "united states": "US",
+}
+
 # ============================== DATE HELPERS ==============================
 def month_label(dt: datetime) -> str:
     return dt.strftime("%b'%y")
@@ -1237,6 +1255,18 @@ def _norm_sku(x: str) -> str:
     return re.sub(r"\s+", "", str(x)).upper()
 
 
+def _norm_country_key(country: str | None) -> str:
+    return re.sub(r"\s+", " ", str(country or "").strip().lower())
+
+
+def _inventory_marketplace_id_for_country(country: str | None) -> str | None:
+    return INVENTORY_MARKETPLACE_BY_COUNTRY.get(_norm_country_key(country))
+
+
+def _inventory_location_for_country(country: str | None) -> str | None:
+    return INVENTORY_LOCATION_BY_COUNTRY.get(_norm_country_key(country))
+
+
 def get_inventory_snapshot_date(selected_month: str, selected_year: int) -> str:
     """
     Rule:
@@ -1269,6 +1299,8 @@ def fetch_and_merge_inventory_monthwise_sellable(
     forecast_totals: pd.DataFrame,
     engine1,
     *,
+    user_id: int | None = None,
+    country: str | None = None,
     forecast_sku_col: str = "sku",
     forecast_marketplace_col: str | None = None,
     inventory_date: str | None = None,
@@ -1283,6 +1315,10 @@ def fetch_and_merge_inventory_monthwise_sellable(
         -> pick latest snapshot with date <= inventory_date
     - Else:
         -> pick latest snapshot per key
+    - If country is provided:
+        -> filter by marketplace_id and ledger location
+           UK/GB = A1F83G8C2ARO7P + GB
+           US = ATVPDKIKX0DER + US
 
     Merge:
     - always normalize SKU
@@ -1299,54 +1335,49 @@ def fetch_and_merge_inventory_monthwise_sellable(
 
     use_marketplace = forecast_marketplace_col is not None
 
+    inventory_marketplace_id = _inventory_marketplace_id_for_country(country)
+    inventory_location = _inventory_location_for_country(country)
+
+    if _norm_country_key(country) and (not inventory_marketplace_id or not inventory_location):
+        raise ValueError(
+            f"Unsupported inventory country '{country}'. Expected UK/GB or US."
+        )
+
+    params = {}
+    where_clauses = ["LOWER(TRIM(disposition)) = 'sellable'"]
+
     if inventory_date:
-        if use_marketplace:
-            sql = """
-                SELECT DISTINCT ON (msku, marketplace_id)
+        where_clauses.append("date <= :inv_date")
+        params["inv_date"] = inventory_date
+
+    if user_id is not None:
+        where_clauses.append("user_id = :user_id")
+        params["user_id"] = int(user_id)
+
+    if inventory_marketplace_id:
+        where_clauses.append("marketplace_id = :inventory_marketplace_id")
+        params["inventory_marketplace_id"] = inventory_marketplace_id
+
+    if inventory_location:
+        where_clauses.append("UPPER(TRIM(COALESCE(location, ''))) = :inventory_location")
+        params["inventory_location"] = inventory_location
+
+    distinct_cols = "msku, marketplace_id" if use_marketplace else "msku"
+    marketplace_select = (
+        'marketplace_id AS "marketplace_id",\n                    '
+        if use_marketplace else ""
+    )
+    where_sql = "\n                  AND ".join(where_clauses)
+
+    sql = f"""
+                SELECT DISTINCT ON ({distinct_cols})
                     msku AS "SKU",
-                    marketplace_id AS "marketplace_id",
-                    ending_warehouse_balance AS "Ending Warehouse Balance",
+                    {marketplace_select}ending_warehouse_balance AS "Ending Warehouse Balance",
                     date AS snapshot_date
                 FROM public.monthwise_inventory
-                WHERE disposition = 'SELLABLE'
-                  AND date <= :inv_date
-                ORDER BY msku, marketplace_id, date DESC
+                WHERE {where_sql}
+                ORDER BY {distinct_cols}, date DESC
             """
-        else:
-            sql = """
-                SELECT DISTINCT ON (msku)
-                    msku AS "SKU",
-                    ending_warehouse_balance AS "Ending Warehouse Balance",
-                    date AS snapshot_date
-                FROM public.monthwise_inventory
-                WHERE disposition = 'SELLABLE'
-                  AND date <= :inv_date
-                ORDER BY msku, date DESC
-            """
-        params = {"inv_date": inventory_date}
-    else:
-        if use_marketplace:
-            sql = """
-                SELECT DISTINCT ON (msku, marketplace_id)
-                    msku AS "SKU",
-                    marketplace_id AS "marketplace_id",
-                    ending_warehouse_balance AS "Ending Warehouse Balance",
-                    date AS snapshot_date
-                FROM public.monthwise_inventory
-                WHERE disposition = 'SELLABLE'
-                ORDER BY msku, marketplace_id, date DESC
-            """
-        else:
-            sql = """
-                SELECT DISTINCT ON (msku)
-                    msku AS "SKU",
-                    ending_warehouse_balance AS "Ending Warehouse Balance",
-                    date AS snapshot_date
-                FROM public.monthwise_inventory
-                WHERE disposition = 'SELLABLE'
-                ORDER BY msku, date DESC
-            """
-        params = {}
 
     inv_df = pd.read_sql(text(sql), con=engine1, params=params)
 
@@ -1998,6 +2029,8 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     inventory_forecast = fetch_and_merge_inventory_monthwise_sellable(
         forecast_totals,
         engine1,
+        user_id=user_id,
+        country=country,
         inventory_date=snapshot_date,
     )
     # ✅ PRODUCT NAME from monthly user_* tables (already present in new_df)
