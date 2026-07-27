@@ -257,122 +257,7 @@ def fetch_global_previous_mtd_ads_from_adsdaily(
     return product_ads_map, totals
 
 
-# def fetch_current_global_monthly_ads_cm2(
-#     user_id: int,
-#     year: int,
-#     month: int,
-# ) -> tuple[dict, dict]:
-#     """
-#     Reads CURRENT global monthly table:
-#       skuwisemonthly_{user_id}_global_{month_name}{year}_table
 
-#     Used for current productwise:
-#       ads_spend
-#       cm2_profit
-#       cm2_profit_per_unit
-#     """
-
-#     month_str = month_name[int(month)].lower()
-#     table_name = f"skuwisemonthly_{int(user_id)}_global_{month_str}{int(year)}_table"
-
-#     empty_totals = {
-#         "ads_spend": 0.0,
-#         "cm2_profit": 0.0,
-#         "cm2_profit_per_unit": 0.0,
-#         "source_table": table_name,
-#     }
-
-#     try:
-#         with engine_hist.connect() as conn:
-#             exists = conn.execute(
-#                 text("SELECT to_regclass(:table_name)"),
-#                 {"table_name": f"public.{table_name}"},
-#             ).scalar()
-
-#             if not exists:
-#                 print(f"[WARN] Current global monthly table missing: {table_name}")
-#                 return {}, empty_totals
-
-#             df = pd.read_sql(
-#                 text(f'SELECT * FROM public."{table_name}"'),
-#                 conn,
-#             )
-
-#     except Exception as e:
-#         print(f"[WARN] Failed reading current global table {table_name}: {e}")
-#         return {}, empty_totals
-
-#     if df is None or df.empty or "product_name" not in df.columns:
-#         return {}, empty_totals
-
-#     df = df.copy()
-
-#     if "sku" not in df.columns:
-#         df["sku"] = ""
-
-#     product_name_series = df["product_name"].fillna("").astype(str).str.strip().str.lower()
-#     sku_series = df["sku"].fillna("").astype(str).str.strip().str.lower()
-
-#     total_mask = (
-#         product_name_series.isin(["total", "totals", "grand total"])
-#         | sku_series.isin(["total", "totals", "grand total"])
-#     )
-
-#     df = df[~total_mask].copy()
-
-#     for col in ["ads_spend", "cm2_profit", "cm2_profit_per_unit", "total_quantity", "quantity"]:
-#         if col not in df.columns:
-#             df[col] = 0.0
-
-#         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
-
-#     df["product_key"] = df["product_name"].fillna("").astype(str).str.strip().str.lower()
-#     df = df[df["product_key"] != ""].copy()
-
-#     product_map = {}
-
-#     grouped = (
-#         df.groupby("product_key", as_index=False)
-#         .agg({
-#             "ads_spend": "sum",
-#             "cm2_profit": "sum",
-#             "cm2_profit_per_unit": "sum",
-#             "total_quantity": "sum",
-#             "quantity": "sum",
-#         })
-#     )
-
-#     for _, r in grouped.iterrows():
-#         product_key = str(r.get("product_key") or "").strip().lower()
-#         if not product_key:
-#             continue
-
-#         units = float(r.get("total_quantity") or r.get("quantity") or 0.0)
-#         cm2_profit = float(r.get("cm2_profit") or 0.0)
-#         cm2_profit_per_unit = float(r.get("cm2_profit_per_unit") or 0.0)
-
-#         if not cm2_profit_per_unit and units:
-#             cm2_profit_per_unit = cm2_profit / units
-
-#         product_map[product_key] = {
-#             "ads_spend": round(float(r.get("ads_spend") or 0.0), 2),
-#             "cm2_profit": round(cm2_profit, 2),
-#             "cm2_profit_per_unit": round(cm2_profit_per_unit, 2),
-#             "source_table": table_name,
-#         }
-
-#     total_ads = sum(float(v.get("ads_spend") or 0.0) for v in product_map.values())
-#     total_cm2 = sum(float(v.get("cm2_profit") or 0.0) for v in product_map.values())
-#     total_units = float(df["total_quantity"].sum() or df["quantity"].sum() or 0.0)
-
-#     totals = {
-#         "ads_spend": round(total_ads, 2),
-#         "cm2_profit": round(total_cm2, 2),
-#         "cm2_profit_per_unit": round(total_cm2 / total_units, 2) if total_units else 0.0,
-#         "source_table": table_name,
-#     }
-
-#     return product_map, totals
 
 def fetch_current_global_monthly_ads_cm2(
     user_id: int,
@@ -1385,6 +1270,141 @@ def build_cm1_profit_pie_slices(
         "total_profit_curr": total_profit,
         "min_named": min_named,
         "pareto_threshold": pareto_threshold,
+        "slices": slices,
+    }
+
+
+def _pie_safe_float(value):
+    try:
+        if value is None:
+            return 0.0
+        value = float(value)
+        if np.isnan(value):
+            return 0.0
+        return value
+    except Exception:
+        return 0.0
+
+
+def _pie_delta_pct(curr, prev):
+    if prev == 0:
+        return None
+    return ((curr - prev) / abs(prev)) * 100.0
+
+
+def _pie_pct_of_total(value, total):
+    if not total:
+        return 0.0
+    return (value / total) * 100.0
+
+
+def build_net_sales_pie_slices(rows, min_named=5, others_label="Others"):
+    """
+    Build live net-sales pie data with top 5 products + Others.
+
+    Output mirrors the historic /pie-chart net-sales comparison fields and
+    also includes pie-friendly slice fields for the live dashboard.
+    """
+    grouped = {}
+
+    for row in rows or []:
+        raw_name = row.get("product_name") or row.get("name") or row.get("sku")
+        sku = str(row.get("sku") or "").strip()
+        name = str(raw_name or "").strip()
+
+        if name == "0" and sku:
+            name = sku
+
+        name_key = name.lower()
+        sku_key = sku.upper()
+
+        if (
+            not name
+            or name_key in ("unknown", "total", "grand total")
+            or sku_key in ("TOTAL", "GRAND_TOTAL")
+        ):
+            continue
+
+        current_value = _pie_safe_float(
+            row.get("net_sales_curr", row.get("current_net_sales", row.get("net_sales")))
+        )
+        previous_value = _pie_safe_float(
+            row.get("net_sales_prev", row.get("previous_net_sales"))
+        )
+
+        if current_value == 0 and previous_value == 0:
+            continue
+
+        if name_key not in grouped:
+            grouped[name_key] = {
+                "name": name,
+                "net_sales_curr": 0.0,
+                "net_sales_prev": 0.0,
+            }
+
+        grouped[name_key]["net_sales_curr"] += current_value
+        grouped[name_key]["net_sales_prev"] += previous_value
+
+    items = list(grouped.values())
+    total_current = sum(item["net_sales_curr"] for item in items)
+    total_previous = sum(item["net_sales_prev"] for item in items)
+
+    def is_others(name):
+        return str(name or "").strip().lower() == others_label.lower()
+
+    sorted_items = sorted(items, key=lambda item: item["net_sales_curr"], reverse=True)
+    named_items = [item for item in sorted_items if not is_others(item["name"])]
+    top_items = named_items[:min_named]
+    top_names = {item["name"].strip().lower() for item in top_items}
+
+    remaining_items = [
+        item
+        for item in sorted_items
+        if item["name"].strip().lower() not in top_names
+    ]
+
+    final_items = list(top_items)
+
+    if remaining_items:
+        final_items.append({
+            "name": others_label,
+            "net_sales_curr": sum(item["net_sales_curr"] for item in remaining_items),
+            "net_sales_prev": sum(item["net_sales_prev"] for item in remaining_items),
+        })
+
+    def make_slice(item):
+        curr = item["net_sales_curr"]
+        prev = item["net_sales_prev"]
+        current_sales_mix = _pie_pct_of_total(curr, total_current)
+        previous_sales_mix = _pie_pct_of_total(prev, total_previous)
+        sales_mix_change = current_sales_mix - previous_sales_mix
+
+        return {
+            "name": item["name"],
+            "product": item["name"],
+            "value": curr,
+            "prevValue": prev,
+            "net_sales_curr": curr,
+            "net_sales_prev": prev,
+            "current_net_sales": curr,
+            "previous_net_sales": prev,
+            "net_sales_delta": curr - prev,
+            "net_sales_delta_percentage": _pie_delta_pct(curr, prev),
+            "pct": current_sales_mix,
+            "current_sales_mix_percentage": current_sales_mix,
+            "previous_sales_mix_percentage": previous_sales_mix,
+            "sales_mix_delta_percentage": sales_mix_change,
+            "sales_mix_curr": current_sales_mix,
+            "sales_mix_prev": previous_sales_mix,
+            "sales_mix_change": sales_mix_change,
+        }
+
+    slices = [make_slice(item) for item in final_items]
+
+    return {
+        "total_net_sales_curr": total_current,
+        "total_net_sales_prev": total_previous,
+        "min_named": min_named,
         "slices": slices,
     }
 
@@ -4586,6 +4606,12 @@ def live_mtd_vs_previous():
             pareto_threshold=0.8,
         )
 
+        net_sales_pie = build_net_sales_pie_slices(
+            growth_data,
+            min_named=5,
+        )
+        compare_top5_net_sales = net_sales_pie.get("slices", [])
+
 
         # ---------------------------
         # PORTFOLIO INVENTORY ALERTS (HISTORIC-PARITY)
@@ -6067,6 +6093,8 @@ def live_mtd_vs_previous():
                 "other_total": other_total_row,
             },
             "cm1_profit_pie": cm1_profit_pie,
+            "net_sales_pie": net_sales_pie,
+            "compare_top5_net_sales": compare_top5_net_sales,
 
             "daily_series": {
                 "current_mtd_global": current_mtd_global,
