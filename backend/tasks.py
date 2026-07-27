@@ -3,17 +3,19 @@ import jwt
 from datetime import date
 import base64
 import requests
+import re
 from urllib.parse import urlencode
 from app.routes.conversion_rate_routes import ensure_month_seeded, MONTHS_REVERSE_MAP
 from app import create_app, db
 from config import Config
-from app.models.user_models import User, amazon_user as AmazonUser
+from app.models.user_models import User, amazon_user as AmazonUser, Notification, NotificationAlertSKU
 from app.services.live_bi_email_service import build_live_mtd_bi_payload
 from app.utils.email_utils import (
     send_live_bi_email,
     get_user_email_and_name_by_id,
     has_recent_bi_email,
     mark_bi_email_sent,
+    send_daily_inventory_alert_email,
 )
 from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
 from app.utils.email_utils import get_user_email_and_name_by_id, send_email_with_attachment
@@ -322,7 +324,7 @@ def get_users_for_monthly_amazon_sync():
         return []
          
 
-from sqlalchemy import text
+from sqlalchemy import text, func
 import pandas as pd
 import io
 import base64
@@ -1003,3 +1005,146 @@ def run_agent_schedules():
             print(f"[ERROR] run_agent_schedules crashed: {e}")
 
             
+
+#--------------------------------------------- Daily country-wise inventory alert emails ---------------------------------------------#
+
+def _get_active_inventory_high_alerts(user_id: int, country: str):
+    notification = (
+        db.session.query(Notification)
+        .filter(Notification.user_id == user_id)
+        .filter(Notification.country == country)
+        .first()
+    )
+
+    response_data = {}
+    if notification:
+        response_data = notification.data or {}
+        if not isinstance(response_data, dict):
+            response_data = {}
+
+    ratio_by_sku = {}
+    for item in response_data.values():
+        if not isinstance(item, dict):
+            continue
+        item_sku = str(item.get("sku") or "").strip().upper()
+        if item_sku:
+            ratio_by_sku[item_sku] = item.get("inventory_coverage_ratio")
+
+    rows = (
+        db.session.query(NotificationAlertSKU)
+        .filter(NotificationAlertSKU.user_id == user_id)
+        .filter(NotificationAlertSKU.country == country)
+        .filter(NotificationAlertSKU.is_active.is_(True))
+        .filter(func.lower(NotificationAlertSKU.alert) == "high alert")
+        .order_by(NotificationAlertSKU.last_alert_time.desc())
+        .all()
+    )
+
+    alerts = []
+    for row in rows:
+        alert_type = row.alert_type or "Coverage ratio is low"
+        sku_key = str(row.sku or "").strip().upper()
+        ratio = ratio_by_sku.get(sku_key)
+
+        if ratio is None:
+            # Fallback for older rows where the ratio may be embedded in text.
+            match = re.search(
+                r"coverage\s*ratio(?:\s*\(in\s*months\))?[^0-9-]*(-?\d+(?:\.\d+)?)",
+                str(alert_type),
+                flags=re.IGNORECASE,
+            )
+            if match:
+                try:
+                    ratio = float(match.group(1))
+                except (TypeError, ValueError):
+                    ratio = None
+
+        alerts.append({
+            "sku": row.sku,
+            "product_name": row.product_name,
+            "inventory_coverage_ratio": ratio,
+            "alert": row.alert,
+            "alert_type": alert_type,
+            "last_alert_time": row.last_alert_time,
+        })
+
+    return alerts
+
+
+@celery_app.task(name="tasks.send_daily_inventory_alert_emails")
+def send_daily_inventory_alert_emails(country_filter=None):
+    """Send one separate UK or US inventory-alert email per connected user."""
+    with flask_app.app_context():
+        country = str(country_filter or "").strip().lower()
+        if country not in {"uk", "us"}:
+            print(f"[ERROR] Unsupported inventory-alert country: {country_filter}")
+            return {"success": False, "error": "country must be uk or us"}
+
+        stats = {
+            "success": True,
+            "country": country,
+            "users_checked": 0,
+            "emails_sent": 0,
+            "emails_failed": 0,
+        }
+
+        try:
+            users = get_users_for_live_bi_email()
+            processed = set()
+
+            for user in users:
+                if (user.get("country") or "").strip().lower() != country:
+                    continue
+
+                user_id = user["user_id"]
+                if user_id in processed:
+                    continue
+                processed.add(user_id)
+                stats["users_checked"] += 1
+
+                try:
+                    user_email = user.get("email")
+                    if not user_email:
+                        print(
+                            f"[WARN] Missing email for inventory alert "
+                            f"user_id={user_id}, country={country}"
+                        )
+                        stats["emails_failed"] += 1
+                        continue
+
+                    email_value, user_name = get_user_email_and_name_by_id(user_id)
+                    user_email = email_value or user_email
+                    alerts = _get_active_inventory_high_alerts(user_id, country)
+
+                    sent = send_daily_inventory_alert_email(
+                        to_email=user_email,
+                        user_name=user_name or "there",
+                        country=country,
+                        alerts=alerts,
+                    )
+
+                    if sent:
+                        stats["emails_sent"] += 1
+                    else:
+                        stats["emails_failed"] += 1
+
+                except Exception as exc:
+                    db.session.rollback()
+                    stats["emails_failed"] += 1
+                    print(
+                        f"[ERROR] Daily inventory alert failed "
+                        f"user_id={user_id}, country={country}: {repr(exc)}"
+                    )
+
+            print(f"[INFO] Daily inventory alert result: {stats}")
+            return stats
+
+        except Exception as exc:
+            db.session.rollback()
+            stats["success"] = False
+            stats["error"] = str(exc)
+            print(f"[ERROR] send_daily_inventory_alert_emails crashed: {repr(exc)}")
+            return stats
+
+        finally:
+            db.session.remove()
