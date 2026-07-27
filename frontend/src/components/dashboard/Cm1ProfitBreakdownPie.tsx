@@ -95,7 +95,8 @@ export default function Cm1ProfitBreakdownPie({
       : profitPieType === "cm1"
         ? data
         : cm2Data;
-  const activeTitle = "Profit Breakdown";
+  const activeTitle =
+    profitPieType === "net_sales" ? "Net Sales Breakdown" : "Profit Breakdown";
 
   const showDelta = useMemo(() => {
     return (activeData || []).some((item) => {

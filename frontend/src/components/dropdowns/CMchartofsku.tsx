@@ -211,6 +211,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
   const [activeMetric, setActiveMetric] = useState<CmMetric>(metric);
   const isCm2Unavailable = activeMetric === "cm2" && !showCm2Toggle;
+  const activeTitle =
+    activeMetric === "net_sales" ? "Net Sales Breakdown" : "Profit Breakdown";
   const chartRef = useRef<any>(null);
   const requestIdRef = useRef(0);
 
@@ -799,7 +801,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     ].join(" ")}>
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <PageBreadcrumb
-          pageTitle="Profit Breakdown"
+          pageTitle={activeTitle}
           variant="page"
           align="left"
           textSize="2xl"
