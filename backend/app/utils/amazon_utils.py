@@ -956,6 +956,19 @@ def run_upload_pipeline_from_df(
                 f'ALTER TABLE "{existing_table_name}" '
                 'ADD COLUMN IF NOT EXISTS "transaction_release_date" TEXT'
             ))
+            # Older tables created this field as DOUBLE PRECISION, which
+            # forces missing dates to 0 and rejects real timestamp strings.
+            # Convert it in place; legacy zero values become empty text and
+            # will be replaced by the next Amazon sync.
+            connection.execute(text(
+                f'ALTER TABLE "{existing_table_name}" '
+                'ALTER COLUMN "transaction_release_date" TYPE TEXT '
+                'USING CASE '
+                'WHEN "transaction_release_date" IS NULL THEN NULL '
+                'WHEN BTRIM("transaction_release_date"::TEXT) IN '
+                "('0', '0.0', '') THEN NULL "
+                'ELSE "transaction_release_date"::TEXT END'
+            ))
 
     # ---------------------------
     # ✅ FIXED DELETES (Table object -> table name)
@@ -2456,23 +2469,30 @@ def _find_release_date_recursively(value: Any) -> Optional[Any]:
 
 def _extract_transaction_release_date(tx: Dict[str, Any]) -> Optional[str]:
     """
-    Return Amazon's transaction release timestamp when it is included in the
-    Finances API payload. The search is recursive because Amazon may place the
-    field inside status/deferred details.
+    Return an explicit Amazon-side release timestamp when one is available.
+
+    The Finances v2024-06-19 Transaction schema exposes ``postedDate`` and
+    ``transactionStatus``, but does not define a separate release-date field.
+    Some report/payload variants do include a release timestamp, so accept only
+    that explicit value. ``postedDate`` must not be used as a substitute because
+    Seller Central's Transaction Release Date can be several days later.
+    Missing release dates remain NULL and must never become numeric zero.
     """
     if not isinstance(tx, dict):
         return None
 
     value = _find_release_date_recursively(tx)
-    if value is None:
+    if value is None or not str(value).strip():
         return None
 
-    marketplace_id = (
-        tx.get("marketplaceId")
-        or (tx.get("marketplaceDetails") or {}).get("marketplaceId")
-        if isinstance(tx.get("marketplaceDetails") or {}, dict)
-        else None
-    )
+    marketplace_details = tx.get("marketplaceDetails") or {}
+    selling_partner_metadata = tx.get("sellingPartnerMetadata") or {}
+    marketplace_id = tx.get("marketplaceId")
+    if not marketplace_id and isinstance(marketplace_details, dict):
+        marketplace_id = marketplace_details.get("marketplaceId")
+    if not marketplace_id and isinstance(selling_partner_metadata, dict):
+        marketplace_id = selling_partner_metadata.get("marketplaceId")
+
     return _format_release_datetime(value, marketplace_id)
 
 def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
@@ -3278,4 +3298,3 @@ def fetch_net_reimbursement_for_period(user_id, country, start_d: date, end_d: d
         df = pd.DataFrame(rows, columns=result.keys())
 
     return float(compute_net_reimbursement_from_df(df) or 0.0)
-

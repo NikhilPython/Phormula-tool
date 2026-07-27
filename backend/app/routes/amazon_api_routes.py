@@ -1317,7 +1317,20 @@ def finances_monthly_transactions():
 
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
-        df = df.reindex(columns=MTD_COLUMNS, fill_value=0.0)
+        df = df.reindex(columns=MTD_COLUMNS)
+        # Date/text columns must remain text. Using 0.0 as the reindex fill
+        # value caused transaction_release_date to be exported/stored as zero
+        # whenever Amazon omitted the optional value.
+        text_columns = {
+            "date_time", "transaction_release_date", "settlement_id", "type",
+            "order_id", "sku", "description", "marketplace", "fulfilment",
+            "order_city", "order_state", "order_postal",
+            "tax_collection_model", "account_type", "bucket",
+        }
+        for column in text_columns.intersection(df.columns):
+            df[column] = df[column].fillna("").astype(str)
+        for column in set(df.columns) - text_columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -4312,8 +4325,17 @@ def finances_mtd_transactions():
                 "tax_and_credits",
                 "misc_transaction",
             ],
-            fill_value=0.0
         )
+        text_columns = {
+            "date_time", "transaction_release_date", "settlement_id", "type",
+            "order_id", "sku", "description", "marketplace", "fulfilment",
+            "order_city", "order_state", "order_postal",
+            "tax_collection_model", "account_type", "bucket",
+        }
+        for column in text_columns.intersection(df.columns):
+            df[column] = df[column].fillna("").astype(str)
+        for column in set(df.columns) - text_columns:
+            df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0.0)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:

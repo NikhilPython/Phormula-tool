@@ -304,16 +304,16 @@ export default function SuperAdminDashboardPage() {
 
     toast.custom(
       (toastId) => (
-     <div className="w-[360px] rounded-xl border border-white/10 bg-[#37384f] p-4 text-white shadow-[0_24px_55px_rgba(20,22,45,0.45)]">
+        <div className="w-[360px] rounded-xl border border-white/10 bg-[#37384f] p-4 text-white shadow-[0_24px_55px_rgba(20,22,45,0.45)]">
           <div>
-         <h3 className="text-sm font-semibold text-white">
+            <h3 className="text-sm font-semibold text-white">
               Confirm status change
             </h3>
 
             <p className="mt-1 text-sm text-white/60">
               Are you sure you want to {nextLabel}{" "}
               <span className="font-medium text-white">
-                {user.email}
+                {user.company_name?.trim() || "Company not added"}
               </span>
               ?
             </p>
@@ -335,8 +335,8 @@ export default function SuperAdminDashboardPage() {
                 handleToggleStatus(user);
               }}
               className={`rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${currentStatus === "active"
-                ? "bg-red-600 hover:bg-red-700"
-                : "bg-emerald-600 hover:bg-emerald-700"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
             >
               Yes, {nextLabel}
@@ -599,7 +599,7 @@ export default function SuperAdminDashboardPage() {
             <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-2xl font-bold tracking-tight text-white">
-                 Recent Brands
+                  Recent Brands
                 </h2>
 
                 <p className="mt-1 text-sm text-white/55">
