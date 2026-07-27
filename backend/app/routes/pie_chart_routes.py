@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import io
 import base64
-from datetime import datetime
+from datetime import datetime, date
 import jwt
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
@@ -359,6 +359,51 @@ def fetch_data_from_table(table_name):
         if conn:
             conn.close()
 
+
+def get_yearly_months_to_process(year):
+    """
+    Return the month names that should be included in yearly dashboard totals.
+
+    For the current year, use completed months only. This matches the yearly
+    P&L tables, which are built through the last completed month.
+    """
+    try:
+        year_int = int(str(year).strip())
+    except (TypeError, ValueError):
+        return MONTHS
+
+    today = date.today()
+
+    if year_int == today.year:
+        return MONTHS[:max(today.month - 1, 0)]
+
+    if year_int > today.year:
+        return []
+
+    return MONTHS
+
+
+def get_quarterly_months_to_process(year, quarter=None, month=None):
+    """Return quarter months, capped at the last completed month for current-year requests."""
+    quarter_name = None
+
+    if quarter:
+        quarter_name = get_quarter_from_quarter_param(quarter)
+    elif month:
+        if is_quarter_format(month):
+            quarter_name = get_quarter_from_quarter_param(month)
+        else:
+            quarter_name = get_quarter_from_month(month)
+
+    if not quarter_name:
+        return []
+
+    quarter_months = QUARTER_MONTHS.get(quarter_name, [])
+    completed_months = set(get_yearly_months_to_process(year))
+
+    return [month_name for month_name in quarter_months if month_name in completed_months]
+
+
 def fetch_yearly_data_from_monthly_tables(user_id, country, year, months_to_process=None):
     """
     For yearly pie-chart, do not use skuwiseyearly table.
@@ -375,7 +420,11 @@ def fetch_yearly_data_from_monthly_tables(user_id, country, year, months_to_proc
     year = str(year).strip()
     country = str(country).strip().lower()
 
-    months = months_to_process if months_to_process is not None else MONTHS
+    months = (
+        months_to_process
+        if months_to_process is not None
+        else get_yearly_months_to_process(year)
+    )
 
     all_dfs = []
     used_tables = []
@@ -404,6 +453,25 @@ def fetch_yearly_data_from_monthly_tables(user_id, country, year, months_to_proc
     combined_df = pd.concat(all_dfs, ignore_index=True)
 
     return combined_df, used_tables, processed_months
+
+
+def fetch_quarterly_data_from_monthly_tables(user_id, country, year, quarter=None, month=None):
+    """
+    For quarterly pie-chart, combine monthly SKU-wise tables only.
+    Current-month data is excluded for current-year requests.
+    """
+    months_to_process = get_quarterly_months_to_process(
+        year=year,
+        quarter=quarter,
+        month=month
+    )
+
+    return fetch_yearly_data_from_monthly_tables(
+        user_id=user_id,
+        country=country,
+        year=year,
+        months_to_process=months_to_process
+    )
 
 
 def prepare_metric_rows(df, metric_column):
@@ -813,7 +881,19 @@ def generate_pie_chart():
 
         is_monthly_request = (
             rt == "monthly"
-            or (month_str and year_str and not quarter and not is_quarter_format(month_str))
+            or (
+                not rt
+                and month_str
+                and year_str
+                and not quarter
+                and not is_quarter_format(month_str)
+            )
+        )
+
+        is_quarterly_request = (
+            rt == "quarterly"
+            or bool(quarter)
+            or bool(month_str and is_quarter_format(month_str))
         )
 
         current_processed_months = []
@@ -847,6 +927,38 @@ def generate_pie_chart():
                             "country": country,
                             "month": month_str,
                             "year": year_str,
+                            "range_type": range_type
+                        }
+                    }), 404
+
+            # Quarterly request: combine monthly tables only, up to the last completed month
+            elif is_quarterly_request:
+                if not year_str:
+                    return jsonify({
+                        "error": "year is required for quarterly pie chart"
+                    }), 400
+
+                df, current_used_tables, current_processed_months = fetch_quarterly_data_from_monthly_tables(
+                    user_id=user_id,
+                    country=country,
+                    year=year_str,
+                    quarter=quarter,
+                    month=month_str
+                )
+
+                if df is not None and not df.empty:
+                    used_table = ", ".join(current_used_tables)
+                else:
+                    return jsonify({
+                        "error": "No monthly data available for selected quarterly range",
+                        "tables_checked": current_used_tables,
+                        "processed_months": current_processed_months,
+                        "parameters": {
+                            "user_id": user_id,
+                            "country": country,
+                            "year": year_str,
+                            "quarter": quarter,
+                            "month": month_str,
                             "range_type": range_type
                         }
                     }), 404
@@ -992,15 +1104,22 @@ def generate_pie_chart():
 
                 q_display = quarter if quarter else month
                 prev_q, prev_y = _prev_quarter_year(q_display, year)
-                prev_period_meta = {"type": "quarterly", "quarter": prev_q, "year": prev_y}
+                prev_period_meta = {
+                    "type": "quarterly",
+                    "quarter": prev_q,
+                    "year": prev_y
+                }
 
-                prev_df, prev_table, prev_candidates = _fetch_best_table_for_mode(
+                prev_df, prev_used_tables, prev_processed_months = fetch_quarterly_data_from_monthly_tables(
                     user_id=user_id,
                     country=country,
-                    quarter=prev_q,
                     year=prev_y,
-                    mode="quarterly",
+                    quarter=prev_q,
                 )
+
+                prev_period_meta["months_used"] = prev_processed_months
+                prev_table = ", ".join(prev_used_tables) if prev_used_tables else None
+                prev_candidates = prev_used_tables
 
           
             # YEARLY previous
