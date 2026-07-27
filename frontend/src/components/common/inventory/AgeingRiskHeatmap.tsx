@@ -121,7 +121,7 @@ type AgeingRiskHeatmapProps = {
 
 type HeatmapTableRow = AgeingRiskHeatmapRow;
 
-const parseSalesRankNumber = (value: any) => {
+const parseSalesRankNumber = (value: unknown) => {
     if (
         value === null ||
         value === undefined ||
@@ -136,19 +136,20 @@ const parseSalesRankNumber = (value: any) => {
     return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-const getSalesRankDelta = (currentRankValue: any, previousRankValue: any) => {
+const getSalesRankMovement = (currentRankValue: unknown, previousRankValue: unknown) => {
     const currentRank = parseSalesRankNumber(currentRankValue);
     const previousRank = parseSalesRankNumber(previousRankValue);
 
     if (!currentRank || !previousRank) return null;
 
     // Sales Rank me lower rank better hota hai.
-    // Example: previous 300, current 200 => improvement +33.33%
-    const deltaPct = ((previousRank - currentRank) / Math.abs(previousRank)) * 100;
+    const rankDifference = previousRank - currentRank;
+
+    if (rankDifference === 0) return null;
 
     return {
-        value: deltaPct,
-        isGood: deltaPct > 0,
+        value: rankDifference,
+        isGood: rankDifference > 0,
     };
 };
 
@@ -757,13 +758,13 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     }, [buckets, displayRows]);
 
 
-    const hasAnySalesRankDelta = useMemo(() => {
+    const hasAnySalesRankMovement = useMemo(() => {
         return displayRows.some((row) => {
             if (row.isTotalRow || row.isPercentageRow || row.isOthersRow) {
                 return false;
             }
 
-            return !!getSalesRankDelta(row.salesRank, row.previousSalesRank);
+            return !!getSalesRankMovement(row.salesRank, row.previousSalesRank);
         });
     }, [displayRows]);
 
@@ -809,7 +810,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const snoCol = makeCol("sno", useCurrentInventoryTableLayout ? "Sno." : "S.No.", "48px");
         const productNameCol = makeCol("productName", "Product Name", useCurrentInventoryTableLayout ? "170px" : "145px", "left");
         const skuCol = makeCol("sku", "SKU", "120px", "left");
-        const salesRankCol = makeCol("salesRank", "Sales Rank", hasAnySalesRankDelta ? "140px" : "90px");
+        const salesRankCol = makeCol("salesRank", "Sales Rank", hasAnySalesRankMovement ? "140px" : "90px");
 
         const leftCols: LeafCol<HeatmapTableRow>[] = [
             snoCol,
@@ -1150,9 +1151,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 const rankNumber = parseSalesRankNumber(row.salesRank);
                 if (!rankNumber) return "-";
 
-                const delta = getSalesRankDelta(row.salesRank, row.previousSalesRank);
+                const rankMovement = getSalesRankMovement(row.salesRank, row.previousSalesRank);
 
-                if (!delta) {
+                if (!rankMovement) {
                     return (
                         <div className="flex w-full items-center justify-center whitespace-nowrap tabular-nums">
                             {rankNumber.toLocaleString()}
@@ -1169,14 +1170,18 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         <span
                             className={[
                                 "inline-flex min-w-[52px] items-center justify-end text-right text-[10px] min-[1700px]:text-xs font-semibold tabular-nums",
-                                delta.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
+                                rankMovement.isGood ? "text-[#5EA68E]" : "text-[#FF5C5C]",
                             ].join(" ")}
-                            title="Compared with previous month sales rank"
+                            title="Sales rank movement from previous month"
                         >
                             <span className="w-3 shrink-0 text-center">
-                                {delta.isGood ? "▲" : "▼"}
+                                {rankMovement.isGood ? "▲" : "▼"}
                             </span>
-                            <span>{Math.abs(delta.value).toFixed(2)}%</span>
+                            <span>
+                                {Math.abs(rankMovement.value).toLocaleString(undefined, {
+                                    maximumFractionDigits: 0,
+                                })}
+                            </span>
                         </span>
                     </div>
                 );
@@ -1463,7 +1468,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         buckets,
         onProductClick,
         showInventoryAlerts,
-        hasAnySalesRankDelta,
+        hasAnySalesRankMovement,
         bucketMaxValues,
         showSellableBreakdown,
         salesLast30DaysLabel,

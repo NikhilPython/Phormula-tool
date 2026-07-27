@@ -17,6 +17,7 @@ import SegmentedToggle from "@/components/ui/SegmentedToggle";
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
+type ProfitPieType = "net_sales" | "cm1" | "cm2";
 
 type Cm1PieSlice = {
   name: string;
@@ -29,6 +30,7 @@ type Cm1PieSlice = {
 
 type Props = {
   title?: string;
+  netSalesData?: Cm1PieSlice[];
   data: Cm1PieSlice[];
   cm2Data?: Cm1PieSlice[];
   currency: CurrencyCode;
@@ -56,6 +58,7 @@ const currencySymbolFromCode = (c: CurrencyCode) => {
 
 export default function Cm1ProfitBreakdownPie({
   title = "CM1 Profit Breakdown",
+  netSalesData = [],
   data,
   cm2Data = [],
   currency,
@@ -65,9 +68,33 @@ export default function Cm1ProfitBreakdownPie({
 }: Props) {
   const currencySymbol = currencySymbolFromCode(currency);
 
-  const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
+  const [profitPieType, setProfitPieType] = useState<ProfitPieType>("net_sales");
 
-  const activeData = profitPieType === "cm1" ? data : cm2Data;
+  const toggleOptions = useMemo(() => {
+    const options: Array<{ value: ProfitPieType; label: string }> = [
+      { value: "net_sales", label: "Net Sales" },
+      { value: "cm1", label: "CM1" },
+    ];
+
+    if (cm2Data?.length > 0) {
+      options.push({ value: "cm2", label: "CM2" });
+    }
+
+    return options;
+  }, [cm2Data]);
+
+  useEffect(() => {
+    if (profitPieType === "cm2" && !cm2Data?.length) {
+      setProfitPieType("net_sales");
+    }
+  }, [cm2Data, profitPieType]);
+
+  const activeData =
+    profitPieType === "net_sales"
+      ? netSalesData
+      : profitPieType === "cm1"
+        ? data
+        : cm2Data;
   const activeTitle = "Profit Breakdown";
 
   const showDelta = useMemo(() => {
@@ -391,24 +418,19 @@ export default function Cm1ProfitBreakdownPie({
           />
         </div>
 
-        {cm2Data?.length > 0 && (
-          <SegmentedToggle<"cm1" | "cm2">
-            value={profitPieType}
-            options={[
-              { value: "cm1", label: "CM1" },
-              { value: "cm2", label: "CM2" },
-            ]}
-            onChange={setProfitPieType}
-            compact
-            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-          />
-        )}
+        <SegmentedToggle<ProfitPieType>
+          value={profitPieType}
+          options={toggleOptions}
+          onChange={setProfitPieType}
+          compact
+          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+        />
       </div>
 
       {!chartData ? (
         noDataFound ? null : (
           <p className="text-center text-sm text-gray-500">
-            No CM1 data available.
+            No data available.
           </p>
         )
       ) : (

@@ -19,7 +19,7 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 type Range = "monthly" | "quarterly" | "yearly";
 type Quarter = "Q1" | "Q2" | "Q3" | "Q4";
 
-type CmMetric = "cm1" | "cm2";
+type CmMetric = "net_sales" | "cm1" | "cm2";
 type CmChartOfSkuProps = {
   range: Range;
   month?: string;
@@ -42,9 +42,24 @@ type CompareTop5Item = {
   previous_profit: number | string;
 };
 
+type CompareTop5NetSalesItem = {
+  product: string;
+  current_net_sales?: number | string;
+  previous_net_sales?: number | string;
+  net_sales_delta?: number | string;
+  net_sales_delta_percentage?: number | string | null;
+  current_sales_mix_percentage?: number | string;
+  previous_sales_mix_percentage?: number | string;
+  sales_mix_delta_percentage?: number | string;
+  sales_mix_curr?: number | string;
+  sales_mix_prev?: number | string;
+  sales_mix_change?: number | string;
+};
+
 type ApiSkuRow = {
   product_name?: string;
   sku?: string;
+  net_sales?: number | string;
   profit?: number | string;
   cm2_profit?: number | string;
 };
@@ -56,8 +71,11 @@ type Cm2ProfitItem = {
 
 type PieChartPayload = {
   compare_top5?: CompareTop5Item[];
+  compare_top5_net_sales?: CompareTop5NetSalesItem[];
   labels?: string[];
   values?: Array<number | string>;
+  net_sales_labels?: string[];
+  net_sales_values?: Array<number | string>;
 
   // CM1/current-vs-previous row format
   current_data?: ApiSkuRow[];
@@ -70,6 +88,8 @@ type PieChartPayload = {
   previous?: {
     available?: boolean;
     cm2_profit?: Cm2ProfitItem[];
+    net_sales_labels?: string[];
+    net_sales_values?: Array<number | string>;
   };
 
   error?: string;
@@ -155,7 +175,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   homeCurrency,
   onExportBase64Ready,
   disableInternalFade = false,
-  metric = "cm1",
+  metric = "net_sales",
   showCm2Toggle = false,
 }) => {
   const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
@@ -237,9 +257,10 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const [slices, setSlices] = useState<CmPieSlice[]>([]);
 
   const getMetricValue = (row: ApiSkuRow, selectedMetric: CmMetric) => {
-    return selectedMetric === "cm2"
-      ? toNum(row.cm2_profit)
-      : toNum(row.profit);
+    if (selectedMetric === "cm2") return toNum(row.cm2_profit);
+    if (selectedMetric === "net_sales") return toNum(row.net_sales);
+
+    return toNum(row.profit);
   };
 
   const isTotalOrEmptyRow = (row: ApiSkuRow) => {
@@ -334,6 +355,81 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ");
+
+  const firstFiniteNumber = (...values: unknown[]) => {
+    for (const value of values) {
+      const num = Number(value);
+      if (Number.isFinite(num)) return num;
+    }
+
+    return null;
+  };
+
+  const buildSlicesFromNetSalesCompare = (
+    rows: CompareTop5NetSalesItem[]
+  ): CmPieSlice[] => {
+    const normalizedRows = rows
+      .map((row) => {
+        const currentValue = toNum(row.current_net_sales);
+        const previousValue = toNum(row.previous_net_sales);
+
+        return {
+          name: String(row.product || "").trim(),
+          value: Math.abs(currentValue),
+          prevValue: Math.abs(previousValue),
+          pctFromApi: firstFiniteNumber(
+            row.current_sales_mix_percentage,
+            row.sales_mix_curr
+          ),
+          deltaPctFromApi: firstFiniteNumber(row.net_sales_delta_percentage),
+        };
+      })
+      .filter((row) => row.name && Number.isFinite(row.value) && row.value !== 0);
+
+    const totalCurrent = normalizedRows.reduce((sum, row) => sum + row.value, 0);
+
+    return normalizedRows.map((row) => {
+      const fallbackPct = totalCurrent ? (row.value / totalCurrent) * 100 : 0;
+
+      return {
+        name: row.name,
+        value: row.value,
+        prevValue: row.prevValue,
+        pct: row.pctFromApi == null ? fallbackPct : Math.abs(row.pctFromApi),
+        deltaPct:
+          row.deltaPctFromApi == null
+            ? row.prevValue === 0
+              ? null
+              : ((row.value - row.prevValue) / row.prevValue) * 100
+            : row.deltaPctFromApi,
+      };
+    });
+  };
+
+  const buildSlicesFromLabelsValues = (
+    labels: string[] = [],
+    values: Array<number | string> = [],
+    previousValues: Array<number | string> = []
+  ): CmPieSlice[] => {
+    const numericValues = values.map((v) => Math.abs(toNum(v)));
+    const totalCurrent = numericValues.reduce((a, b) => a + b, 0);
+
+    return labels
+      .map((label, i) => {
+        const cur = numericValues[i] ?? 0;
+        const prev = Math.abs(toNum(previousValues[i]));
+        const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
+
+        return {
+          name: label,
+          value: cur,
+          prevValue: prev,
+          pct,
+          deltaPct: prev === 0 ? null : ((cur - prev) / prev) * 100,
+        };
+      })
+      .filter((row) => row.name && Number.isFinite(row.value) && row.value !== 0);
+  };
 
   const buildSlicesFromCm2Profit = (
     cm2Rows: Cm2ProfitItem[],
@@ -487,7 +583,24 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
 
         // IMPORTANT:
         // If CM2 is selected, never fall back to CM1 data.
-        if (activeMetric === "cm2") {
+        if (activeMetric === "net_sales") {
+          const rows = Array.isArray(payload.compare_top5_net_sales)
+            ? payload.compare_top5_net_sales
+            : [];
+
+          if (rows.length) {
+            built = buildSlicesFromNetSalesCompare(rows);
+          } else if (
+            Array.isArray(payload.net_sales_labels) &&
+            Array.isArray(payload.net_sales_values)
+          ) {
+            built = buildSlicesFromLabelsValues(
+              payload.net_sales_labels,
+              payload.net_sales_values,
+              payload.previous?.net_sales_values ?? []
+            );
+          }
+        } else if (activeMetric === "cm2") {
           if (!showCm2Toggle || !Array.isArray(payload.cm2_profit)) {
             setSlices([]);
             setNoDataFound(true);
@@ -535,22 +648,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
               };
             });
           } else if (Array.isArray(payload.labels) && Array.isArray(payload.values)) {
-            const labels = payload.labels as string[];
-            const values = (payload.values || []).map((v) => Math.abs(toNum(v)));
-            const totalCurrent = values.reduce((a, b) => a + b, 0);
-
-            built = labels.map((label, i) => {
-              const cur = values[i] ?? 0;
-              const pct = totalCurrent ? (cur / totalCurrent) * 100 : 0;
-
-              return {
-                name: label,
-                value: cur,
-                prevValue: 0,
-                pct,
-                deltaPct: null,
-              };
-            });
+            built = buildSlicesFromLabelsValues(payload.labels, payload.values);
           }
         }
 
@@ -711,6 +809,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           value={activeMetric}
           onChange={setActiveMetric}
           options={[
+            { value: "net_sales", label: "Net Sales" },
             { value: "cm1", label: "CM1" },
             { value: "cm2", label: "CM2" },
           ]}

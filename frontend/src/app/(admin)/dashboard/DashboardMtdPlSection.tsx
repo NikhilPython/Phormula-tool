@@ -22,6 +22,7 @@ type DashboardMtdPlSectionProps = {
     loading: boolean;
     finalAllValuesZero: boolean;
     isUsingDummyData: boolean;
+    netSalesPieData: any[];
     finalCm1ProfitPieData: any[];
     cm2ProfitPieData: any[];
     displayCurrency: CurrencyCode;
@@ -42,6 +43,7 @@ export default function DashboardMtdPlSection({
     loading,
     finalAllValuesZero,
     isUsingDummyData,
+    netSalesPieData,
     finalCm1ProfitPieData,
     cm2ProfitPieData,
     displayCurrency,
@@ -166,6 +168,7 @@ export default function DashboardMtdPlSection({
                                         }
                                     >
                                         <Cm1ProfitBreakdownPie
+                                            netSalesData={netSalesPieData}
                                             data={finalCm1ProfitPieData}
                                             cm2Data={cm2ProfitPieData}
                                             currency={displayCurrency}

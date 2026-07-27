@@ -9594,6 +9594,107 @@ export default function DashboardPage() {
         ? dummyCm1ProfitPieData
         : cm1ProfitPieData;
 
+    const netSalesPieData = useMemo<Cm1PieSlice[]>(() => {
+        const rows = Array.isArray(liveBiPayload?.compare_top5_net_sales)
+            ? liveBiPayload.compare_top5_net_sales
+            : [];
+
+        const toNullableNumber = (value: any): number | null => {
+            if (value === undefined || value === null || value === "") return null;
+
+            const n = Number(String(value).replace(/,/g, "").trim());
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const getFirstNumber = (...values: any[]): number | null => {
+            for (const value of values) {
+                const n = toNullableNumber(value);
+                if (n !== null) return n;
+            }
+
+            return null;
+        };
+
+        const isInvalidNetSalesPieRow = (name: string) => {
+            const n = String(name || "").trim().toLowerCase();
+
+            return (
+                !n ||
+                n === "unknown" ||
+                n === "total" ||
+                n === "grand total"
+            );
+        };
+
+        type NetSalesPieRow = Cm1PieSlice & { hasPctFromApi: boolean };
+
+        const mappedRows: NetSalesPieRow[] = rows
+            .map((row: any): NetSalesPieRow => {
+                const rawName = String(
+                    row?.product ||
+                    row?.name ||
+                    row?.product_name ||
+                    row?.sku ||
+                    "Unknown"
+                ).trim();
+
+                const name = normalizeProductDisplayName(rawName);
+                const value =
+                    getFirstNumber(row?.current_net_sales, row?.net_sales_curr, row?.value) ?? 0;
+                const prevValue =
+                    getFirstNumber(row?.previous_net_sales, row?.net_sales_prev, row?.prevValue) ?? 0;
+                const pctFromApi = getFirstNumber(
+                    row?.current_sales_mix_percentage,
+                    row?.sales_mix_curr,
+                    row?.pct
+                );
+                const deltaPct =
+                    getFirstNumber(row?.net_sales_delta_percentage, row?.deltaPct, row?.delta_pct) ??
+                    safeDeltaPct(value, prevValue);
+
+                return {
+                    name,
+                    value,
+                    prevValue,
+                    pct: pctFromApi ?? 0,
+                    deltaPct,
+                    hasPctFromApi: pctFromApi !== null,
+                };
+            })
+            .filter((row: NetSalesPieRow) => {
+                return (
+                    !isInvalidNetSalesPieRow(row.name) &&
+                    (Number(row.value || 0) !== 0 || Number(row.prevValue || 0) !== 0)
+                );
+            });
+
+        const total = mappedRows.reduce(
+            (sum: number, row: NetSalesPieRow) => sum + Math.abs(Number(row.value || 0)),
+            0
+        );
+
+        return mappedRows
+            .sort((a: NetSalesPieRow, b: NetSalesPieRow) =>
+                Math.abs(Number(b.value || 0)) - Math.abs(Number(a.value || 0))
+            )
+            .map((row: NetSalesPieRow): Cm1PieSlice => {
+                const { hasPctFromApi, ...pieRow } = row;
+
+                return {
+                    ...pieRow,
+                    pct: hasPctFromApi
+                        ? Number(pieRow.pct || 0)
+                        : total
+                            ? (Math.abs(Number(pieRow.value || 0)) / total) * 100
+                            : 0,
+                };
+            });
+    }, [liveBiPayload]);
+
+    const finalNetSalesPieData = isUsingDummyData
+        ? dummyCm1ProfitPieData
+        : netSalesPieData;
+
 
 
     const hasRealInventoryRows = Array.isArray(invRows) && invRows.length > 0;
@@ -11614,6 +11715,7 @@ export default function DashboardPage() {
                             loading={loading}
                             finalAllValuesZero={finalAllValuesZero}
                             isUsingDummyData={isUsingDummyData}
+                            netSalesPieData={finalNetSalesPieData}
                             finalCm1ProfitPieData={finalCm1ProfitPieData}
                             cm2ProfitPieData={cm2ProfitPieData}
                             displayCurrency={displayCurrency}
