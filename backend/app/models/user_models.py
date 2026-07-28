@@ -196,13 +196,82 @@ class Category(db.Model):
 
 
 class CountryProfile(db.Model):
-    __tablename__ = 'country_profile'
+    __tablename__ = "country_profile"
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, nullable=False)
     country = Column(String(255), nullable=False)
     marketplace = Column(String(255), nullable=False)
-    transit_time = Column(Integer, nullable=False)
-    stock_unit = Column(Integer, nullable=False)
+
+    # All durations are stored in weeks.
+    ship_time_weeks = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    air_time_weeks = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    stock_unit_weeks = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "user_id",
+            "country",
+            "marketplace",
+            name="uq_country_profile_user_country_marketplace",
+        ),
+    )
+
+    def get_transit_weeks(self, transit_mode):
+        mode = str(transit_mode or "").strip().lower()
+
+        if mode == "ship":
+            return self.ship_time_weeks
+
+        if mode == "air":
+            return self.air_time_weeks
+
+        raise ValueError("transit_mode must be 'ship' or 'air'")
+
+    def get_alert_threshold_weeks(self, transit_mode):
+        transit_weeks = self.get_transit_weeks(transit_mode)
+
+        return int(transit_weeks or 0) + int(
+            self.stock_unit_weeks or 0
+        )
+
+    def to_dict(self, transit_mode=None):
+        data = {
+            "id": self.id,
+            "user_id": self.user_id,
+            "country": self.country,
+            "marketplace": self.marketplace,
+            "ship_time_weeks": self.ship_time_weeks,
+            "air_time_weeks": self.air_time_weeks,
+            "stock_unit_weeks": self.stock_unit_weeks,
+        }
+
+        if transit_mode:
+            mode = str(transit_mode).strip().lower()
+
+            data["transit_mode"] = mode
+            data["selected_transit_weeks"] = (
+                self.get_transit_weeks(mode)
+            )
+            data["alert_threshold_weeks"] = (
+                self.get_alert_threshold_weeks(mode)
+            )
+
+        return data
 
 class UploadHistory(db.Model):
     __tablename__ = 'upload_history'  

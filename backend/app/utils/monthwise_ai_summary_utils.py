@@ -2329,8 +2329,13 @@ def build_inventory_alerts(df: pd.DataFrame, user_id: int, country: str) -> dict
 
 def fetch_high_alert_threshold(user_id: int, country: str) -> float | None:
     """
-    High alert threshold = transit_time + stock_unit.
-    Fallback is handled inside generate_sku_inventory_flags().
+    Return the sea replenishment high-alert threshold in months.
+
+    Country profile values are stored in weeks:
+        ship_time_weeks + stock_unit_weeks
+
+    Inventory coverage ratios in this module are still expressed in months,
+    so the weekly threshold is converted using 4.345 weeks per month.
     """
 
     country_key = str(country or "").strip().lower()
@@ -2344,8 +2349,9 @@ def fetch_high_alert_threshold(user_id: int, country: str) -> float | None:
     try:
         query = text("""
             SELECT
-                transit_time,
-                stock_unit
+                ship_time_weeks,
+                air_time_weeks,
+                stock_unit_weeks
             FROM public.country_profile
             WHERE user_id = :user_id
               AND LOWER(TRIM(country)) = :country
@@ -2359,17 +2365,19 @@ def fetch_high_alert_threshold(user_id: int, country: str) -> float | None:
                 "user_id": user_id,
                 "country": country_key,
                 "marketplace": marketplace,
-            }).fetchone()
+            }).mappings().first()
 
         if not row:
             return None
 
-        transit_time = safe_float(row.transit_time)
-        stock_unit = safe_float(row.stock_unit)
+        ship_time_weeks = safe_float(row.get("ship_time_weeks"))
+        stock_unit_weeks = safe_float(row.get("stock_unit_weeks"))
 
-        threshold = transit_time + stock_unit
+        threshold_weeks = ship_time_weeks + stock_unit_weeks
+        if threshold_weeks <= 0:
+            return None
 
-        return float(threshold) if threshold > 0 else None
+        return round(float(threshold_weeks) / 4.345, 2)
 
     except Exception as e:
         print("[WARN] Failed to fetch high alert threshold:", e)
@@ -3089,39 +3097,63 @@ def build_comparison_label(period: str, timeline: str, year: int):
     return ""
 
 def fetch_high_alert_threshold(user_id: int, country: str):
+    """
+    Return the sea replenishment high-alert threshold in months.
+
+    Database values are weekly, while inventory coverage in this module is
+    monthly. Sea transit is used as the primary replenishment threshold.
+    """
+
     query = text("""
         SELECT
-            transit_time,
-            stock_unit
+            ship_time_weeks,
+            air_time_weeks,
+            stock_unit_weeks
         FROM public.country_profile
         WHERE user_id = :user_id
           AND LOWER(country) = :country
+        ORDER BY id DESC
         LIMIT 1
     """)
 
-    with phormula_engine.connect() as conn:
-        row = conn.execute(query, {
-            "user_id": user_id,
-            "country": str(country or "").strip().lower(),
-        }).fetchone()
+    try:
+        with phormula_engine.connect() as conn:
+            row = conn.execute(query, {
+                "user_id": user_id,
+                "country": str(country or "").strip().lower(),
+            }).mappings().first()
+    except Exception as e:
+        print("[WARN] Failed to fetch high alert threshold:", e)
+        return None
 
     if not row:
         return None
 
-    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
-    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+    ship_time_weeks = pd.to_numeric(
+        row.get("ship_time_weeks"),
+        errors="coerce",
+    )
+    stock_unit_weeks = pd.to_numeric(
+        row.get("stock_unit_weeks"),
+        errors="coerce",
+    )
 
-    if pd.isna(transit_time) or pd.isna(stock_unit):
+    if pd.isna(ship_time_weeks) or pd.isna(stock_unit_weeks):
         return None
 
-    return float(transit_time) + float(stock_unit)
+    threshold_weeks = float(ship_time_weeks) + float(stock_unit_weeks)
+    if threshold_weeks <= 0:
+        return None
+
+    return round(threshold_weeks / 4.345, 2)
+
 
 def build_sku_inventory_flags(inventory_df: pd.DataFrame, user_id: int, country: str) -> dict:
     """
     Returns SKU-level inventory risk flags + classified alert.
 
     High alert rule:
-        coverage_ratio <= transit_time + stock_unit
+        coverage_ratio_months <= (ship_time_weeks + stock_unit_weeks) / 4.345
 
     Fallback:
         if country_profile is missing, old threshold 2 is used.

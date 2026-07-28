@@ -1155,8 +1155,9 @@ def manual_forecast():
         if not profile:
             return jsonify({'error': f'Country profile not found for user {user_id} and country {country}'}), 404
 
-        transit_time = int(profile.transit_time or 0)
-        stock_unit = int(profile.stock_unit or 0)
+        ship_time_weeks = int(profile.ship_time_weeks or 0)
+        air_time_weeks = int(profile.air_time_weeks or 0)
+        stock_unit_weeks = int(profile.stock_unit_weeks or 0)
 
         # --- 1) Enforce "last 4 months" availability (mv-1 .. mv-4) ---
         ref_month = datetime(req_year, mv_num, 1)
@@ -1282,8 +1283,10 @@ def manual_forecast():
             mv=mv_lower,
             year=req_year,
             custom_growth_map=custom_growth_map,
-            transit_time=transit_time,
-            stock_unit=stock_unit,
+            ship_time_weeks=ship_time_weeks,
+            air_time_weeks=air_time_weeks,
+            stock_unit_weeks=stock_unit_weeks,
+            transit_mode="ship",
             preview=preview,
         )
 

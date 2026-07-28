@@ -355,8 +355,10 @@ def generate_manual_forecast(
     mv: str,
     year: int,
     custom_growth_map: dict[str, float],
-    transit_time: int,
-    stock_unit: int,
+    ship_time_weeks: int,
+    stock_unit_weeks: int,
+    air_time_weeks: int | None = None,
+    transit_mode: str = "ship",
     preview: bool = False,
 ):
     """
@@ -387,9 +389,32 @@ def generate_manual_forecast(
     mv = _norm_mv(mv)
     req_year = int(year)
     req_month_num = MONTHS_MAP[mv]
-    horizon = max(int(transit_time) + int(stock_unit), 0)
 
-    print(f"[manual] generate_manual_forecast: user={user_id} country={country} mv={mv} year={req_year} horizon={horizon} preview={preview}")
+    # Country profile durations are stored in weeks, while forecast columns
+    # are monthly. Select the requested transit mode and convert the total
+    # replenishment window to a whole-month forecast horizon.
+    transit_mode = str(transit_mode or "ship").strip().lower()
+    if transit_mode not in {"ship", "air"}:
+        raise ValueError("transit_mode must be 'ship' or 'air'")
+
+    ship_weeks = max(int(ship_time_weeks or 0), 0)
+    air_weeks = max(int(air_time_weeks or 0), 0)
+    buffer_weeks = max(int(stock_unit_weeks or 0), 0)
+
+    selected_transit_weeks = ship_weeks if transit_mode == "ship" else air_weeks
+    total_horizon_weeks = selected_transit_weeks + buffer_weeks
+
+    # 1 average month = 4.345 weeks. Round upward so the forecast always
+    # covers the complete transit + stock-buffer window.
+    horizon = int(np.ceil(total_horizon_weeks / 4.345)) if total_horizon_weeks > 0 else 0
+
+    print(
+        f"[manual] generate_manual_forecast: user={user_id} country={country} "
+        f"mv={mv} year={req_year} transit_mode={transit_mode} "
+        f"selected_transit_weeks={selected_transit_weeks} "
+        f"stock_buffer_weeks={buffer_weeks} total_horizon_weeks={total_horizon_weeks} "
+        f"horizon_months={horizon} preview={preview}"
+    )
 
     # ---- 1) Build monthly actuals ----
     df = new_df.copy()

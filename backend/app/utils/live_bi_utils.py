@@ -572,35 +572,55 @@ def fetch_user_objective(user_id: int, country: str = None) -> dict:
 
 
 
-def fetch_transit_time(user_id: int, marketplace: str, country: str):
-    query = text("""
+def fetch_transit_time(user_id: int, marketplace: str | None, country: str):
+    """
+    Backward-compatible inventory transit helper.
+
+    Values are stored in weeks. Sea transit is used as the default/main
+    replenishment mode, and month aliases are returned for old consumers.
+    """
+    marketplace_filter = ""
+    params = {
+        "user_id": int(user_id),
+        "country": str(country or "").strip().lower(),
+    }
+
+    if marketplace:
+        marketplace_filter = "AND marketplace = :marketplace"
+        params["marketplace"] = marketplace
+
+    query = text(f"""
         SELECT
-            transit_time,
+            ship_time_weeks,
+            air_time_weeks,
+            stock_unit_weeks,
             marketplace,
             country
         FROM public.country_profile
         WHERE user_id = :user_id
-          AND marketplace = :marketplace
-          AND country = :country
+          {marketplace_filter}
+          AND LOWER(country) = :country
         LIMIT 1
     """)
 
-    params = {
-        "user_id": user_id,
-        "marketplace": marketplace,
-        "country": country.lower(),  # optional normalization
-    }
-
     with engine_hist.connect() as conn:
-        row = conn.execute(query, params).fetchone()
+        row = conn.execute(query, params).mappings().first()
 
     if not row:
         return None
 
+    ship_weeks = float(pd.to_numeric(row.get("ship_time_weeks"), errors="coerce") or 0.0)
+    air_weeks = float(pd.to_numeric(row.get("air_time_weeks"), errors="coerce") or 0.0)
+    buffer_weeks = float(pd.to_numeric(row.get("stock_unit_weeks"), errors="coerce") or 0.0)
+
     return {
-        "transit_time": row.transit_time,
-        "marketplace": row.marketplace,
-        "country": row.country,
+        "ship_time_weeks": ship_weeks,
+        "air_time_weeks": air_weeks,
+        "stock_unit_weeks": buffer_weeks,
+        "transit_time": round(ship_weeks / 4.345, 2),
+        "stock_unit": round(buffer_weeks / 4.345, 2),
+        "marketplace": row.get("marketplace"),
+        "country": row.get("country"),
     }
 
 # -----------------------------------------------------------------------------
@@ -4877,14 +4897,19 @@ def club_inventory_alerts_by_type(
 
 def fetch_inventory_policy_context(user_id: int, country: str) -> dict:
     """
-    Returns transit_time, stock_unit and required coverage months.
-    required_coverage_months = transit_time + stock_unit
-    """
+    Fetch the weekly inventory policy.
 
+    Main High Alert rule uses the sea replenishment threshold:
+      ship_time_weeks + stock_unit_weeks
+
+    Coverage ratios elsewhere are still in months, so month equivalents and
+    backward-compatible aliases are returned as well.
+    """
     query = text("""
         SELECT
-            transit_time,
-            stock_unit
+            ship_time_weeks,
+            air_time_weeks,
+            stock_unit_weeks
         FROM public.country_profile
         WHERE user_id = :user_id
           AND LOWER(country) = :country
@@ -4894,32 +4919,54 @@ def fetch_inventory_policy_context(user_id: int, country: str) -> dict:
     try:
         with engine_hist.connect() as conn:
             row = conn.execute(query, {
-                "user_id": user_id,
+                "user_id": int(user_id),
                 "country": str(country or "").strip().lower(),
-            }).fetchone()
-    except Exception as e:
-        print("[WARN] Failed to fetch inventory policy context:", e)
+            }).mappings().first()
+    except Exception as exc:
+        print("[WARN] Failed to fetch inventory policy context:", exc)
         row = None
 
     if not row:
         return {
+            "ship_time_weeks": 0.0,
+            "air_time_weeks": 0.0,
+            "stock_unit_weeks": 0.0,
+            "sea_threshold_weeks": 0.0,
+            "air_threshold_weeks": 0.0,
+            "required_coverage_months": 0.0,
+            "air_required_coverage_months": 0.0,
             "transit_time": 0.0,
             "stock_unit": 0.0,
-            "required_coverage_months": 0.0,
         }
 
-    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
-    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+    def _number(value):
+        parsed = pd.to_numeric(value, errors="coerce")
+        return float(parsed) if pd.notna(parsed) else 0.0
 
-    transit_time = float(transit_time) if pd.notna(transit_time) else 0.0
-    stock_unit = float(stock_unit) if pd.notna(stock_unit) else 0.0
+    ship_time_weeks = _number(row.get("ship_time_weeks"))
+    air_time_weeks = _number(row.get("air_time_weeks"))
+    stock_unit_weeks = _number(row.get("stock_unit_weeks"))
+
+    sea_threshold_weeks = ship_time_weeks + stock_unit_weeks
+    air_threshold_weeks = air_time_weeks + stock_unit_weeks
+
+    ship_time_months = ship_time_weeks / 4.345
+    stock_unit_months = stock_unit_weeks / 4.345
+    required_coverage_months = sea_threshold_weeks / 4.345
+    air_required_coverage_months = air_threshold_weeks / 4.345
 
     return {
-        "transit_time": round(transit_time, 2),
-        "stock_unit": round(stock_unit, 2),
-        "required_coverage_months": round(transit_time + stock_unit, 2),
+        "ship_time_weeks": round(ship_time_weeks, 2),
+        "air_time_weeks": round(air_time_weeks, 2),
+        "stock_unit_weeks": round(stock_unit_weeks, 2),
+        "sea_threshold_weeks": round(sea_threshold_weeks, 2),
+        "air_threshold_weeks": round(air_threshold_weeks, 2),
+        "required_coverage_months": round(required_coverage_months, 2),
+        "air_required_coverage_months": round(air_required_coverage_months, 2),
+        # Backward-compatible aliases for older consumers.
+        "transit_time": round(ship_time_months, 2),
+        "stock_unit": round(stock_unit_months, 2),
     }
-
 
 
 def fetch_high_alert_threshold(user_id: int, country: str):
@@ -5028,7 +5075,7 @@ def generate_sku_inventory_flags(
 
     IMPORTANT:
     - High alert logic uses:
-        coverage_ratio <= transit_time + stock_unit
+        coverage_ratio <= (ship_time_weeks + stock_unit_weeks) / 4.345
     - Route may pass coverage_override_by_sku only as a data source.
     """
 

@@ -1550,7 +1550,7 @@ def build_live_email_high_alert_summary_from_inventory_current(
 
     Source logic:
       High Alert = coverage_ratio > 0
-      and coverage_ratio <= transit_time + stock_unit
+      and coverage_ratio <= (ship_time_weeks + stock_unit_weeks) / 4.345
 
     Fallback threshold inside inventory_current:
       2.0 months
@@ -2916,8 +2916,8 @@ def live_mtd_vs_previous():
 
                     if not required_coverage_months:
                         required_coverage_months = (
-                            _safe_float_global(policy.get("transit_time"))
-                            + _safe_float_global(policy.get("stock_unit"))
+                            _safe_float_global(policy.get("sea_threshold_weeks"))
+                            / 4.345
                         )
 
                     coverage_gap_months = round(avg_coverage_ratio_months - required_coverage_months, 2)
@@ -2937,8 +2937,11 @@ def live_mtd_vs_previous():
                         "available_total": round(available_total, 2),
                         "avg_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
                         "total_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
-                        "transit_time": _safe_float_global(policy.get("transit_time")),
-                        "stock_unit": _safe_float_global(policy.get("stock_unit")),
+                        "ship_time_weeks": _safe_float_global(policy.get("ship_time_weeks")),
+                        "air_time_weeks": _safe_float_global(policy.get("air_time_weeks")),
+                        "stock_unit_weeks": _safe_float_global(policy.get("stock_unit_weeks")),
+                        "sea_threshold_weeks": _safe_float_global(policy.get("sea_threshold_weeks")),
+                        "air_threshold_weeks": _safe_float_global(policy.get("air_threshold_weeks")),
                         "required_coverage_months": round(required_coverage_months, 2),
                         "coverage_gap_months": coverage_gap_months,
                         "inventory_coverage_status": inventory_coverage_status,
@@ -4850,8 +4853,11 @@ def live_mtd_vs_previous():
         portfolio_coverage_context = {
             "available_total": round(float(frontend_inventory_totals.get("available_total", 0.0) or 0.0), 2),
             "avg_coverage_ratio_months": round(avg_coverage_ratio_months, 2),
-            "transit_time": inventory_policy_context.get("transit_time", 0.0),
-            "stock_unit": inventory_policy_context.get("stock_unit", 0.0),
+            "ship_time_weeks": inventory_policy_context.get("ship_time_weeks", 0.0),
+            "air_time_weeks": inventory_policy_context.get("air_time_weeks", 0.0),
+            "stock_unit_weeks": inventory_policy_context.get("stock_unit_weeks", 0.0),
+            "sea_threshold_weeks": inventory_policy_context.get("sea_threshold_weeks", 0.0),
+            "air_threshold_weeks": inventory_policy_context.get("air_threshold_weeks", 0.0),
             "required_coverage_months": round(required_coverage_months, 2),
             "coverage_gap_months": coverage_gap_months,
             "inventory_coverage_status": inventory_coverage_status,

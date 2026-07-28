@@ -1326,113 +1326,156 @@ def get_inventory_aged_selected_columns():
 
 @inventory_bp.route("/country-profile", methods=["POST"])
 def upsert_country_profile():
-    # ---- Auth (JWT Bearer) ----
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+    auth_header = request.headers.get("Authorization")
 
-    token = auth_header.split(' ')[1]
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "error": "Authorization token is missing or invalid"
+        }), 401
+
+    token = auth_header.split(" ")[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
-        return jsonify({'error': 'Token has expired'}), 401
+        return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
-        return jsonify({'error': 'Invalid token'}), 401
+        return jsonify({"error": "Invalid token"}), 401
 
-    # ---- Input JSON ----
+    if not user_id:
+        return jsonify({"error": "Invalid user"}), 401
+
     data = request.get_json(silent=True) or {}
-    country = (data.get("country") or "").strip()
-    marketplace = (data.get("marketplace") or "").strip()
-    transit_time = data.get("transit_time")
-    stock_unit = data.get("stock_unit")
 
-    # ---- Validation ----
+    country = str(data.get("country") or "").strip().lower()
+    marketplace = str(data.get("marketplace") or "").strip()
+
+    ship_time_weeks = data.get("ship_time_weeks")
+    air_time_weeks = data.get("air_time_weeks")
+    stock_unit_weeks = data.get("stock_unit_weeks")
+
     errors = {}
+
     if not country:
         errors["country"] = "country is required"
+
     if not marketplace:
         errors["marketplace"] = "marketplace is required"
-    try:
-        transit_time = int(transit_time)
-        if transit_time <= 0:
-            raise ValueError
-    except Exception:
-        errors["transit_time"] = "transit_time must be a positive integer"
 
-    try:
-        stock_unit = int(stock_unit)
-        if stock_unit <= 0:
-            raise ValueError
-    except Exception:
-        errors["stock_unit"] = "stock_unit must be a positive integer"
+    def validate_positive_integer(value, field_name):
+        try:
+            parsed_value = int(value)
+
+            if parsed_value <= 0:
+                raise ValueError
+
+            return parsed_value
+        except (TypeError, ValueError):
+            errors[field_name] = (
+                f"{field_name} must be a positive integer"
+            )
+            return None
+
+    ship_time_weeks = validate_positive_integer(
+        ship_time_weeks,
+        "ship_time_weeks",
+    )
+    air_time_weeks = validate_positive_integer(
+        air_time_weeks,
+        "air_time_weeks",
+    )
+    stock_unit_weeks = validate_positive_integer(
+        stock_unit_weeks,
+        "stock_unit_weeks",
+    )
 
     if errors:
-        return jsonify({"errors": errors}), 400
+        return jsonify({
+            "success": False,
+            "errors": errors,
+        }), 400
 
-    # ---- Upsert ----
     try:
         profile = CountryProfile.query.filter_by(
             user_id=user_id,
             country=country,
-            marketplace=marketplace
+            marketplace=marketplace,
         ).first()
 
-        created = False
-        if profile is None:
+        created = profile is None
+
+        if created:
             profile = CountryProfile(
                 user_id=user_id,
                 country=country,
                 marketplace=marketplace,
-                transit_time=transit_time,
-                stock_unit=stock_unit
+                ship_time_weeks=ship_time_weeks,
+                air_time_weeks=air_time_weeks,
+                stock_unit_weeks=stock_unit_weeks,
             )
             db.session.add(profile)
-            created = True
         else:
-            if transit_time <= 0 or stock_unit <= 0:
-                return jsonify({
-                    "error": "Invalid country profile values. Existing values were not overwritten.",
-                    "transit_time": transit_time,
-                    "stock_unit": stock_unit
-                }), 400
-
-            profile.transit_time = transit_time
-            profile.stock_unit = stock_unit
+            profile.ship_time_weeks = ship_time_weeks
+            profile.air_time_weeks = air_time_weeks
+            profile.stock_unit_weeks = stock_unit_weeks
 
         db.session.commit()
 
         return jsonify({
+            "success": True,
             "created": created,
             "profile": {
                 "id": profile.id,
                 "user_id": profile.user_id,
                 "country": profile.country,
                 "marketplace": profile.marketplace,
-                "transit_time": profile.transit_time,
-                "stock_unit": profile.stock_unit
-            }
+                "ship_time_weeks": profile.ship_time_weeks,
+                "air_time_weeks": profile.air_time_weeks,
+                "stock_unit_weeks": profile.stock_unit_weeks,
+                "ship_alert_threshold_weeks": (
+                    int(profile.ship_time_weeks or 0)
+                    + int(profile.stock_unit_weeks or 0)
+                ),
+                "air_alert_threshold_weeks": (
+                    int(profile.air_time_weeks or 0)
+                    + int(profile.stock_unit_weeks or 0)
+                ),
+            },
         }), 201 if created else 200
 
-    except SQLAlchemyError as e:
+    except SQLAlchemyError as exc:
         db.session.rollback()
-        return jsonify({"error": "Database error", "detail": str(e)}), 500
+        return jsonify({
+            "success": False,
+            "error": "Database error",
+            "detail": str(exc),
+        }), 500
+
 
 @inventory_bp.route("/country-profile", methods=["GET"])
 def get_country_profile():
     auth_header = request.headers.get("Authorization")
+
     if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Authorization token is missing or invalid"}), 401
+        return jsonify({
+            "error": "Authorization token is missing or invalid"
+        }), 401
 
     token = auth_header.split(" ")[1]
 
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = payload.get("user_id")
     except jwt.ExpiredSignatureError:
         return jsonify({"error": "Token has expired"}), 401
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
 
-    country = (request.args.get("country") or "").strip()
+    if not user_id:
+        return jsonify({"error": "Invalid token payload"}), 401
+
+    country = (request.args.get("country") or "").strip().lower()
     marketplace = (request.args.get("marketplace") or "").strip()
 
     if not country or not marketplace:
@@ -1443,13 +1486,13 @@ def get_country_profile():
     profile = CountryProfile.query.filter_by(
         user_id=user_id,
         country=country,
-        marketplace=marketplace
+        marketplace=marketplace,
     ).first()
 
     if not profile:
         return jsonify({
             "exists": False,
-            "profile": None
+            "profile": None,
         }), 200
 
     return jsonify({
@@ -1459,13 +1502,21 @@ def get_country_profile():
             "user_id": profile.user_id,
             "country": profile.country,
             "marketplace": profile.marketplace,
-            "transit_time": profile.transit_time,
-            "stock_unit": profile.stock_unit
-        }
+            "ship_time_weeks": profile.ship_time_weeks,
+            "air_time_weeks": profile.air_time_weeks,
+            "stock_unit_weeks": profile.stock_unit_weeks,
+            "ship_alert_threshold_weeks": (
+                int(profile.ship_time_weeks or 0)
+                + int(profile.stock_unit_weeks or 0)
+            ),
+            "air_alert_threshold_weeks": (
+                int(profile.air_time_weeks or 0)
+                + int(profile.stock_unit_weeks or 0)
+            ),
+        },
     }), 200
 
- 
-    
+
 #------------------------------------------------------------------------------ MonthwiseInventory upsert logic --------------------------------------
 def _safe_int(v):
     try:

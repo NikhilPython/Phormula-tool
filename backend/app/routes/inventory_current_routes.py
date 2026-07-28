@@ -1807,42 +1807,65 @@ def resolve_inventory_current_source(user_id, country_key, range_type, month_nam
     }
 
 def fetch_high_alert_threshold(user_id: int, country_key: str):
+    """
+    Return the main High Alert threshold in months.
+
+    Country profile values are stored in weeks:
+      Sea threshold = ship_time_weeks + stock_unit_weeks
+
+    The current inventory coverage column is still expressed in months,
+    so the weekly threshold is converted to months before comparison.
+    """
     query = text("""
         SELECT
-            transit_time,
-            stock_unit
+            ship_time_weeks,
+            air_time_weeks,
+            stock_unit_weeks
         FROM public.country_profile
         WHERE user_id = :user_id
           AND LOWER(country) = :country
         LIMIT 1
     """)
 
-    with primary_engine.connect() as conn:
-        row = conn.execute(query, {
-            "user_id": int(user_id),
-            "country": str(country_key).strip().lower(),
-        }).fetchone()
+    try:
+        with primary_engine.connect() as conn:
+            row = conn.execute(query, {
+                "user_id": int(user_id),
+                "country": str(country_key or "").strip().lower(),
+            }).mappings().first()
+    except Exception as exc:
+        print("[WARN] Failed to fetch high alert threshold:", exc)
+        return None
 
     if not row:
         return None
 
-    transit_time = pd.to_numeric(row.transit_time, errors="coerce")
-    stock_unit = pd.to_numeric(row.stock_unit, errors="coerce")
+    ship_time_weeks = pd.to_numeric(
+        row.get("ship_time_weeks"),
+        errors="coerce",
+    )
+    stock_unit_weeks = pd.to_numeric(
+        row.get("stock_unit_weeks"),
+        errors="coerce",
+    )
 
-    if pd.isna(transit_time) or pd.isna(stock_unit):
+    if pd.isna(ship_time_weeks) or pd.isna(stock_unit_weeks):
         return None
 
-    return float(transit_time) + float(stock_unit)
+    threshold_weeks = float(ship_time_weeks) + float(stock_unit_weeks)
+    threshold_months = threshold_weeks / 4.345
+
+    return round(threshold_months, 2)
 
 def build_high_alert_coverage_summary(rows, user_id, country_key):
     """
     Calculates average coverage ratio only for High Alert SKUs.
 
     High Alert logic:
-      coverage_ratio <= transit_time + stock_unit
+      coverage_ratio <= (ship_time_weeks + stock_unit_weeks) / 4.345
 
     Fallback:
-      if transit_time/stock_unit is missing, threshold = 2.0
+      if the weekly policy is missing, threshold = 2.0 months
     """
 
     high_alert_threshold = fetch_high_alert_threshold(user_id, country_key)

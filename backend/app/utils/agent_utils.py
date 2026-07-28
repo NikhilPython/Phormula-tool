@@ -309,26 +309,61 @@ def load_inventory_forecast(engine, user_id, country):
 
 
 def load_country_profile(engine, user_id, country):
+    """
+    Load inventory policy values stored in weeks.
+
+    Sea transit is used as the primary replenishment route for stock
+    planning. Air transit remains available for expedited planning.
+    """
     query = text("""
-        SELECT transit_time, stock_unit
+        SELECT
+            ship_time_weeks,
+            air_time_weeks,
+            stock_unit_weeks
         FROM public.country_profile
         WHERE user_id = :user_id
           AND LOWER(country) = :country
+        ORDER BY id DESC
         LIMIT 1
     """)
 
     with engine.connect() as conn:
         row = conn.execute(query, {
             "user_id": user_id,
-            "country": country.lower()
-        }).fetchone()
+            "country": country.lower(),
+        }).mappings().first()
 
     if not row:
-        return {"transit_time": 2, "stock_unit": 2}  # fallback
+        # Backward-safe default: 8 weeks sea, 2 weeks air,
+        # and 2 weeks stock buffer.
+        ship_time_weeks = 8.0
+        air_time_weeks = 2.0
+        stock_unit_weeks = 2.0
+    else:
+        ship_time_weeks = float(row.get("ship_time_weeks") or 0)
+        air_time_weeks = float(row.get("air_time_weeks") or 0)
+        stock_unit_weeks = float(row.get("stock_unit_weeks") or 0)
+
+    sea_required_coverage_weeks = (
+        ship_time_weeks + stock_unit_weeks
+    )
+    air_required_coverage_weeks = (
+        air_time_weeks + stock_unit_weeks
+    )
 
     return {
-        "transit_time": row[0],
-        "stock_unit": row[1]
+        "ship_time_weeks": ship_time_weeks,
+        "air_time_weeks": air_time_weeks,
+        "stock_unit_weeks": stock_unit_weeks,
+        "sea_required_coverage_weeks": sea_required_coverage_weeks,
+        "air_required_coverage_weeks": air_required_coverage_weeks,
+        "sea_required_coverage_months": (
+            sea_required_coverage_weeks / 4.345
+        ),
+        "air_required_coverage_months": (
+            air_required_coverage_weeks / 4.345
+        ),
+        "stock_buffer_months": stock_unit_weeks / 4.345,
     }
 
 def get_forecast_column(future_event):
@@ -790,14 +825,25 @@ def compute_forecast_node(state: EventPlannerState) -> EventPlannerState:
 
     # 🔥 STEP 8: inventory policy
     country_profile = state["country_profile"]
-    transit_time = float(country_profile.get("transit_time", 2))
-    stock_unit = float(country_profile.get("stock_unit", 2))
+    ship_time_weeks = float(
+        country_profile.get("ship_time_weeks", 8)
+    )
+    air_time_weeks = float(
+        country_profile.get("air_time_weeks", 2)
+    )
+    stock_unit_weeks = float(
+        country_profile.get("stock_unit_weeks", 2)
+    )
 
-    coverage_months = float(transit_time + stock_unit)
+    # Demand is monthly, so convert the weekly inventory policy to months.
+    # Sea transit is the standard replenishment route.
+    coverage_weeks = ship_time_weeks + stock_unit_weeks
+    coverage_months = coverage_weeks / 4.345
+    stock_buffer_months = stock_unit_weeks / 4.345
     monthly_demand = float(adj_q)
 
     recommended = float(monthly_demand * coverage_months)
-    safety = float(monthly_demand * stock_unit)
+    safety = float(monthly_demand * stock_buffer_months)
     procurement = float(max(0.0, recommended - inventory_units))
 
     # 🔥 STEP 9: risk detection
@@ -858,6 +904,10 @@ def compute_forecast_node(state: EventPlannerState) -> EventPlannerState:
         "recommended_stock": float(recommended),
         "procurement": float(procurement),
         "coverage_months": float(coverage_months),
+        "coverage_weeks": float(coverage_weeks),
+        "ship_time_weeks": float(ship_time_weeks),
+        "air_time_weeks": float(air_time_weeks),
+        "stock_unit_weeks": float(stock_unit_weeks),
         "asp": float(asp),
     }
 

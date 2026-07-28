@@ -278,8 +278,7 @@ def calculate_remaining_months_v2(
     user_id,
     country,
     inventory_forecast,
-    transit_time,
-    stock_unit,
+    forecast_horizon_months,
     recent_hist_map,
     base_months_map,
     anchor_months_all,
@@ -287,7 +286,7 @@ def calculate_remaining_months_v2(
 ):
     """
     Per-SKU extra months:
-      extra[sku] = (transit_time + stock_unit) - base
+      extra[sku] = forecast_horizon_months - base
       base = 3 for ARIMA winner, 4 for HYBRID winner
     anchor_months_all: sorted list of the forecast month labels (first 3 are ARIMA anchors).
     Creates numeric future-month columns and fills forecasts using growth rule.
@@ -300,7 +299,7 @@ def calculate_remaining_months_v2(
 
     def extra_for(sku):
         base = int(base_months_map.get(sku, 3))
-        return max((transit_time + stock_unit) - base, 0)
+        return max(int(forecast_horizon_months) - base, 0)
 
     # figure out max number of "extra" months needed across SKUs
     max_extra = 0
@@ -332,7 +331,7 @@ def calculate_remaining_months_v2(
             continue
 
         base = int(base_months_map.get(sku_key, 3))
-        extra = max((transit_time + stock_unit) - base, 0)
+        extra = max(int(forecast_horizon_months) - base, 0)
 
         # ✅ base sales now comes from dynamic sold column (e.g., "Nov'25 Sold") if provided
         if row.get(base_sales_col, 0) > 0:
@@ -781,8 +780,8 @@ def forecast_next_two_months_with_append(sku_id, data, global_last_training_mont
 def _hybrid_forecast_for_sku(
     sku_id,
     data,
-    transit_time: int,
-    stock_unit: int,
+    ship_time_weeks: int,
+    stock_unit_weeks: int,
     global_last_training_month
 ):
     """
@@ -1147,8 +1146,17 @@ def _adjudicate_by_history_trend(lastN_daily: pd.Series, arima_monthly: pd.Serie
     return 'HYBRID' if score_h < score_a else 'ARIMA'
 
 # ============================== CHATGPT ADJUDICATOR (primary) ==============================
-def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_months: list,
-                             transit_time: int, stock_unit: int, sku: str, country: str) -> str:
+def call_chatgpt_adjudicator(
+    lastN_months: list,
+    arima_months: list,
+    hybrid_months: list,
+    ship_time_weeks: int,
+    air_time_weeks: int,
+    stock_unit_weeks: int,
+    forecast_horizon_months: int,
+    sku: str,
+    country: str,
+) -> str:
     """
     Uses ChatGPT to pick ARIMA vs HYBRID. Returns 'ARIMA' or 'HYBRID'.
     Falls back to local expert if key/lib not available or any error occurs.
@@ -1176,8 +1184,10 @@ def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_mont
                     "content": json.dumps({
                         "sku": sku,
                         "country": country,
-                        "transit_time": transit_time,
-                        "stock_unit": stock_unit,
+                        "ship_time_weeks": ship_time_weeks,
+                        "air_time_weeks": air_time_weeks,
+                        "stock_unit_weeks": stock_unit_weeks,
+                        "forecast_horizon_months": forecast_horizon_months,
                         "last_N_months_actual": lastN_months,  # 👈 now 4 values
                         "arima_forecast_3m": arima_months,
                         "hybrid_forecast_4m": hybrid_months
@@ -1218,8 +1228,10 @@ def call_chatgpt_adjudicator(lastN_months: list, arima_months: list, hybrid_mont
                         "content": json.dumps({
                             "sku": sku,
                             "country": country,
-                            "transit_time": transit_time,
-                            "stock_unit": stock_unit,
+                            "ship_time_weeks": ship_time_weeks,
+                            "air_time_weeks": air_time_weeks,
+                            "stock_unit_weeks": stock_unit_weeks,
+                            "forecast_horizon_months": forecast_horizon_months,
                             "last_N_months_actual": lastN_months,  # 👈 now 4 values
                             "arima_forecast_3m": arima_months,
                             "hybrid_forecast_4m": hybrid_months
@@ -1807,8 +1819,18 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
     if not profile:
         raise ValueError(f"Country profile not found for user {user_id} and country {country}")
-    transit_time = int(profile.transit_time)
-    stock_unit = int(profile.stock_unit)
+    ship_time_weeks = int(profile.ship_time_weeks or 0)
+    air_time_weeks = int(profile.air_time_weeks or 0)
+    stock_unit_weeks = int(profile.stock_unit_weeks or 0)
+
+    # Forecast files are month-based. Use sea transit as the primary
+    # replenishment route and convert the complete weekly requirement
+    # into the required number of forecast months.
+    total_requirement_weeks = ship_time_weeks + stock_unit_weeks
+    forecast_horizon_months = max(
+        1,
+        int(np.ceil(total_requirement_weeks / 4.345)),
+    )
 
     # HARD CAP workers to prevent EC2 OOM
     max_workers = min(2, max(1, cpu_count() - 1))
@@ -1847,8 +1869,8 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                     _hybrid_forecast_for_sku,
                     sku,
                     new_df,
-                    transit_time,
-                    stock_unit,
+                    ship_time_weeks,
+                    stock_unit_weeks,
                     global_last_training_month
                 ): sku
                 for sku in unique_skus
@@ -1942,8 +1964,10 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
                 lastN_months=lastN_m,
                 arima_months=a_list,
                 hybrid_months=h_list,
-                transit_time=transit_time,
-                stock_unit=stock_unit,
+                ship_time_weeks=ship_time_weeks,
+                air_time_weeks=air_time_weeks,
+                stock_unit_weeks=stock_unit_weeks,
+                forecast_horizon_months=forecast_horizon_months,
                 sku=sku,
                 country=country,
             )
@@ -2085,7 +2109,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             recent_hist_map[sku] = last4
 
     # ---- extend remaining months ----
-    extra_months = max(transit_time + stock_unit - 3, 0)
+    extra_months = max(forecast_horizon_months - 3, 0)
     start_after_third = add_months(anchor_dt, 4)
     future_month_columns = [month_label(add_months(start_after_third, i)) for i in range(extra_months)]
     future_month_columns = [m for m in future_month_columns if m not in monthwise_forecast_cols]
@@ -2099,8 +2123,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         user_id,
         country,
         inventory_forecast,
-        transit_time,
-        stock_unit,
+        forecast_horizon_months,
         recent_hist_map,
         base_months_map=base_months_map,
         anchor_months_all=monthwise_forecast_cols,

@@ -123,11 +123,14 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
   const [showDashboard, setShowDashboard] = useState(false);
   const [selectedMarketplaceId, setSelectedMarketplaceId] = useState("");
 
-  const [stockUnit, setStockUnit] = useState("");
-  const [transitTime, setTransitTime] = useState("");
+  const [stockUnitWeeks, setStockUnitWeeks] = useState("");
+  const [shipTimeWeeks, setShipTimeWeeks] = useState("");
+  const [airTimeWeeks, setAirTimeWeeks] = useState("");
+
   const [fieldErrors, setFieldErrors] = useState<{
-    stockUnit?: string;
-    transitTime?: string;
+    stockUnitWeeks?: string;
+    shipTimeWeeks?: string;
+    airTimeWeeks?: string;
   }>({});
 
   const [isStep3Unlocked, setIsStep3Unlocked] = useState(
@@ -169,8 +172,9 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
   const resetProfileStateForRegionChange = (nextRegion: string) => {
     setShowProfileFields(false);
-    setStockUnit("");
-    setTransitTime("");
+    setStockUnitWeeks("");
+    setShipTimeWeeks("");
+    setAirTimeWeeks("");
     setFieldErrors({});
     setMessage("");
     setError("");
@@ -233,37 +237,40 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
   };
 
   const validateProfileFields = () => {
-    const nextErrors: { stockUnit?: string; transitTime?: string } = {};
+    const nextErrors: {
+      stockUnitWeeks?: string;
+      shipTimeWeeks?: string;
+      airTimeWeeks?: string;
+    } = {};
 
-    const parsedStockUnit = Number(stockUnit);
-    const parsedTransitTime = Number(transitTime);
+    const parsedStockUnitWeeks = Number(stockUnitWeeks);
+    const parsedShipTimeWeeks = Number(shipTimeWeeks);
+    const parsedAirTimeWeeks = Number(airTimeWeeks);
 
-    if (
-      stockUnit === "" ||
-      Number.isNaN(parsedStockUnit) ||
-      parsedStockUnit <= 0
-    ) {
-      nextErrors.stockUnit = "Stock unit must be a positive integer";
-    } else if (!Number.isInteger(parsedStockUnit)) {
-      nextErrors.stockUnit = "Stock unit must be an integer";
-    }
+    const validatePositiveInteger = (
+      value: string,
+      parsedValue: number,
+      fieldName: "stockUnitWeeks" | "shipTimeWeeks" | "airTimeWeeks",
+      label: string
+    ) => {
+      if (value === "" || Number.isNaN(parsedValue) || parsedValue <= 0) {
+        nextErrors[fieldName] = `${label} must be a positive integer`;
+      } else if (!Number.isInteger(parsedValue)) {
+        nextErrors[fieldName] = `${label} must be an integer`;
+      }
+    };
 
-    if (
-      transitTime === "" ||
-      Number.isNaN(parsedTransitTime) ||
-      parsedTransitTime <= 0
-    ) {
-      nextErrors.transitTime = "Transit time must be a positive integer";
-    } else if (!Number.isInteger(parsedTransitTime)) {
-      nextErrors.transitTime = "Transit time must be an integer";
-    }
+    validatePositiveInteger(stockUnitWeeks, parsedStockUnitWeeks, "stockUnitWeeks", "Stock buffer");
+    validatePositiveInteger(shipTimeWeeks, parsedShipTimeWeeks, "shipTimeWeeks", "Ship transit time");
+    validatePositiveInteger(airTimeWeeks, parsedAirTimeWeeks, "airTimeWeeks", "Air transit time");
 
     setFieldErrors(nextErrors);
 
     return {
       isValid: Object.keys(nextErrors).length === 0,
-      parsedStockUnit,
-      parsedTransitTime,
+      parsedStockUnitWeeks,
+      parsedShipTimeWeeks,
+      parsedAirTimeWeeks,
     };
   };
 
@@ -282,16 +289,19 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
       const data = (await api(`/country-profile?${qs}`)) as any;
 
       if (data?.exists && data?.profile) {
-        setStockUnit(String(data.profile.stock_unit ?? ""));
-        setTransitTime(String(data.profile.transit_time ?? ""));
+        setStockUnitWeeks(String(data.profile.stock_unit_weeks ?? data.profile.stock_unit ?? ""));
+        setShipTimeWeeks(String(data.profile.ship_time_weeks ?? data.profile.transit_time ?? ""));
+        setAirTimeWeeks(String(data.profile.air_time_weeks ?? data.profile.transit_time ?? ""));
       } else {
-        setStockUnit("");
-        setTransitTime("");
+        setStockUnitWeeks("");
+        setShipTimeWeeks("");
+        setAirTimeWeeks("");
       }
     } catch (err) {
       console.error("Failed to load country profile:", err);
-      setStockUnit("");
-      setTransitTime("");
+      setStockUnitWeeks("");
+      setShipTimeWeeks("");
+      setAirTimeWeeks("");
     }
   };
 
@@ -318,7 +328,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
         setResolvedMarketplaceId(marketplaceIdFromStatus);
         setSelectedMarketplaceId(marketplaceIdFromStatus);
         setShowProfileFields(true);
-        setMessage("Connected to Amazon ✅. Please enter stock unit and transit time.");
+        setMessage("Connected to Amazon ✅. Please enter stock buffer, ship time, and air time in weeks.");
 
         if (!marketplaceIdFromStatus) {
           setError(
@@ -416,8 +426,12 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
       return;
     }
 
-    const { isValid, parsedStockUnit, parsedTransitTime } =
-      validateProfileFields();
+    const {
+      isValid,
+      parsedStockUnitWeeks,
+      parsedShipTimeWeeks,
+      parsedAirTimeWeeks,
+    } = validateProfileFields();
 
     if (!isValid) return;
 
@@ -429,8 +443,9 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
         body: JSON.stringify({
           country,
           marketplace: finalMarketplaceId,
-          stock_unit: parsedStockUnit,
-          transit_time: parsedTransitTime,
+          stock_unit_weeks: parsedStockUnitWeeks,
+          ship_time_weeks: parsedShipTimeWeeks,
+          air_time_weeks: parsedAirTimeWeeks,
         }),
       });
 
@@ -628,51 +643,86 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
           {showProfileFields && resolvedMarketplaceId && (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Stock Unit (in months)
-                    <span className="text-rose-500">*</span>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-start">
+                <div className="flex h-full flex-col">
+                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                    <span>
+                      Stock Buffer (weeks)
+                      <span className="text-rose-500">*</span>
+                    </span>
                   </label>
 
                   <input
                     type="number"
                     min="1"
                     step="1"
-                    value={stockUnit}
-                    onChange={(e) => setStockUnit(e.target.value)}
-                    className="mb-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
-                    placeholder="Enter stock unit"
+                    value={stockUnitWeeks}
+                    onChange={(e) => setStockUnitWeeks(e.target.value)}
+                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    placeholder="e.g. 2"
                   />
 
-                  {fieldErrors.stockUnit && (
-                    <p className="text-xs text-red-600">
-                      {fieldErrors.stockUnit}
-                    </p>
-                  )}
+                  <div className="min-h-[20px] pt-1">
+                    {fieldErrors.stockUnitWeeks && (
+                      <p className="text-xs text-red-600">
+                        {fieldErrors.stockUnitWeeks}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs sm:text-sm font-semibold text-charcoal-500">
-                    Transit Time (in months)
-                    <span className="text-rose-500">*</span>
+                <div className="flex h-full flex-col">
+                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                    <span>
+                      Sea Transit Time (weeks)
+                      <span className="text-rose-500">*</span>
+                    </span>
                   </label>
 
                   <input
                     type="number"
                     min="1"
                     step="1"
-                    value={transitTime}
-                    onChange={(e) => setTransitTime(e.target.value)}
-                    className="mb-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
-                    placeholder="Enter transit time"
+                    value={shipTimeWeeks}
+                    onChange={(e) => setShipTimeWeeks(e.target.value)}
+                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    placeholder="e.g. 8"
                   />
 
-                  {fieldErrors.transitTime && (
-                    <p className="text-xs text-red-600">
-                      {fieldErrors.transitTime}
-                    </p>
-                  )}
+                  <div className="min-h-[20px] pt-1">
+                    {fieldErrors.shipTimeWeeks && (
+                      <p className="text-xs text-red-600">
+                        {fieldErrors.shipTimeWeeks}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex h-full flex-col">
+                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                    <span>
+                      Air Transit Time (weeks)
+                      <span className="text-rose-500">*</span>
+                    </span>
+                  </label>
+
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={airTimeWeeks}
+                    onChange={(e) => setAirTimeWeeks(e.target.value)}
+                    className="h-11 w-full rounded-md border border-gray-300 bg-white px-3 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
+                    placeholder="e.g. 2"
+                  />
+
+                  <div className="min-h-[20px] pt-1">
+                    {fieldErrors.airTimeWeeks && (
+                      <p className="text-xs text-red-600">
+                        {fieldErrors.airTimeWeeks}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

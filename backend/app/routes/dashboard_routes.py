@@ -69,10 +69,21 @@ def check_country_profile(country):
 
     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
     if profile:
+        ship_time_weeks = int(profile.ship_time_weeks or 0)
+        air_time_weeks = int(profile.air_time_weeks or 0)
+        stock_unit_weeks = int(profile.stock_unit_weeks or 0)
+
         return jsonify({
             'exists': True,
-            'transit_time': profile.transit_time,
-            'stock_unit': profile.stock_unit
+            'ship_time_weeks': ship_time_weeks,
+            'air_time_weeks': air_time_weeks,
+            'stock_unit_weeks': stock_unit_weeks,
+            'sea_alert_threshold_weeks': (
+                ship_time_weeks + stock_unit_weeks
+            ),
+            'air_alert_threshold_weeks': (
+                air_time_weeks + stock_unit_weeks
+            )
         })
     else:
         return jsonify({'exists': False})

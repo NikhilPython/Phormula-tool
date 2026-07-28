@@ -11,7 +11,7 @@ from config import Config
 from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, make_response, request
 from app import db
-from app.models.user_models import amazon_user, Product
+from app.models.user_models import amazon_user, Product, CountryProfile
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
@@ -1212,22 +1212,65 @@ def list_amazon_connections():
 
     rows = amazon_user.query.filter_by(user_id=user_id).all()
 
+    connections = []
+
+    for r in rows:
+        country_key = str(
+            getattr(r, "country_name", None) or ""
+        ).strip().lower()
+
+        profile = CountryProfile.query.filter_by(
+            user_id=user_id,
+            marketplace=r.marketplace_id,
+        ).first()
+
+        if profile is None and country_key:
+            profile = CountryProfile.query.filter_by(
+                user_id=user_id,
+                country=country_key,
+            ).first()
+
+        ship_time_weeks = (
+            int(profile.ship_time_weeks or 0)
+            if profile else None
+        )
+        air_time_weeks = (
+            int(profile.air_time_weeks or 0)
+            if profile else None
+        )
+        stock_unit_weeks = (
+            int(profile.stock_unit_weeks or 0)
+            if profile else None
+        )
+
+        connections.append({
+            "region": r.region,
+            "marketplace_id": r.marketplace_id,
+            "marketplace_name": r.marketplace_name,
+            "seller_id": getattr(r, "seller_id", None),
+            "currency": r.currency,
+            "is_connected": r.is_connected,
+            "country": getattr(r, "country_name", None),
+            "ship_time_weeks": ship_time_weeks,
+            "air_time_weeks": air_time_weeks,
+            "stock_unit_weeks": stock_unit_weeks,
+            "sea_alert_threshold_weeks": (
+                ship_time_weeks + stock_unit_weeks
+                if ship_time_weeks is not None
+                and stock_unit_weeks is not None
+                else None
+            ),
+            "air_alert_threshold_weeks": (
+                air_time_weeks + stock_unit_weeks
+                if air_time_weeks is not None
+                and stock_unit_weeks is not None
+                else None
+            ),
+        })
+
     return jsonify({
         "success": True,
-        "connections": [
-            {
-                "region": r.region,
-                "marketplace_id": r.marketplace_id,
-                "marketplace_name": r.marketplace_name,
-                "seller_id": getattr(r, "seller_id", None),
-                "currency": r.currency,
-                "is_connected": r.is_connected,
-                "country": r.country_name,
-                "stock_unit": r.stock_unit,
-                "transit_time": r.transit_time
-            }
-            for r in rows
-        ]
+        "connections": connections,
     })
 
 
