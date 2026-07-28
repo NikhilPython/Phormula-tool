@@ -217,6 +217,17 @@ const formatPositive2Decimal = (value: any) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const isDashboardAbortError = (error: unknown) =>
+    (error as { name?: string } | null)?.name === "AbortError";
+
+const throwIfDashboardAbortRequested = (signal?: AbortSignal) => {
+    if (!signal?.aborted) return;
+
+    const error = new Error("Dashboard refresh cancelled");
+    error.name = "AbortError";
+    throw error;
+};
+
 const toVariant = (t?: string): UiAlert["variant"] => {
     const x = (t || "").toLowerCase();
 
@@ -915,8 +926,11 @@ const ensureSpReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
     country: string, // "UK" | "US" | "CA"
-    force = false
+    force = false,
+    signal?: AbortSignal
 ) => {
+    throwIfDashboardAbortRequested(signal);
+
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
@@ -927,6 +941,8 @@ const ensureSpReportSeedOncePerDay = async (
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
+        throwIfDashboardAbortRequested(signal);
+
         // re-check after lock to avoid race
         if (!force && localStorage.getItem(storageKey) === "1") return;
 
@@ -948,8 +964,11 @@ const ensureSpReportSeedOncePerDay = async (
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify(body),
+                signal,
             }
         );
+
+        throwIfDashboardAbortRequested(signal);
 
         if (!res.ok) {
             const errJson = await res.json().catch(() => ({}));
@@ -978,8 +997,11 @@ const ensureSdReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
     country: string, // "UK" | "US"
-    force = false
+    force = false,
+    signal?: AbortSignal
 ) => {
+    throwIfDashboardAbortRequested(signal);
+
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
@@ -990,6 +1012,8 @@ const ensureSdReportSeedOncePerDay = async (
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
+        throwIfDashboardAbortRequested(signal);
+
         // re-check after lock to avoid race
         if (!force && localStorage.getItem(storageKey) === "1") return;
 
@@ -1013,8 +1037,11 @@ const ensureSdReportSeedOncePerDay = async (
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify(body),
+                signal,
             }
         );
+
+        throwIfDashboardAbortRequested(signal);
 
         if (res.ok) {
             localStorage.setItem(storageKey, "1");
@@ -1034,8 +1061,11 @@ const ensureSbKeywordReportSeedOncePerDay = async (
     baseUrl: string,
     jwtToken: string,
     country: string, // "UK" | "US" | "CA"
-    force = false
+    force = false,
+    signal?: AbortSignal
 ) => {
+    throwIfDashboardAbortRequested(signal);
+
     const userId = decodeJwtUserId(jwtToken) || "unknown";
     const { start_date, end_date } = getIstMonthToTodayRangeISO();
 
@@ -1046,6 +1076,8 @@ const ensureSbKeywordReportSeedOncePerDay = async (
     const lockKey = `${storageKey}_lock`;
 
     const didRun = await withLocalStorageLock(lockKey, async () => {
+        throwIfDashboardAbortRequested(signal);
+
         // re-check after lock to avoid race
         if (!force && localStorage.getItem(storageKey) === "1") return;
 
@@ -1066,7 +1098,10 @@ const ensureSbKeywordReportSeedOncePerDay = async (
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(body),
+            signal,
         });
+
+        throwIfDashboardAbortRequested(signal);
 
         if (!res.ok) {
             const errJson = await res.json().catch(() => ({}));
@@ -2219,9 +2254,12 @@ export default function DashboardPage() {
 
     const runAdsBackgroundSync = useCallback(async ({
         forceReportSync = false,
+        signal,
     }: {
         forceReportSync?: boolean;
+        signal?: AbortSignal;
     } = {}) => {
+        if (signal?.aborted) return;
         if (adsBackgroundLoadingRef.current) return;
         if (isMonthYearNA) return;
         if (platform === "shopify") return;
@@ -2246,17 +2284,18 @@ export default function DashboardPage() {
 
         try {
             const adsSeedTasks = [
-                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
-                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
+                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync, signal),
+                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync, signal),
             ];
 
             if (country === "UK" || country === "US") {
                 adsSeedTasks.push(
-                    ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)
+                    ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync, signal)
                 );
             }
 
             await Promise.all(adsSeedTasks);
+            throwIfDashboardAbortRequested(signal);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthToNumber(monthName.toLowerCase());
@@ -2278,7 +2317,10 @@ export default function DashboardPage() {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify(adsDbPayload),
+                    signal,
                 });
+
+                throwIfDashboardAbortRequested(signal);
 
                 const json = await res.json().catch(() => ({}));
                 const errMsg = String(json?.error || json?.message || json?.detail || "");
@@ -2301,6 +2343,7 @@ export default function DashboardPage() {
             };
 
             await callAdsDbSync(MONTHLY_SP_ENDPOINT, "monthly_sp_sd_to_db");
+            throwIfDashboardAbortRequested(signal);
 
             await callAdsDbSync(DAILY_SP_SD_SB_ENDPOINT, "daily_sp_sd_sb_to_db");
 
@@ -2311,6 +2354,8 @@ export default function DashboardPage() {
             // IMPORTANT: do not update UI automatically here.
             // await fetchMonthlySp(true);
         } catch (e: any) {
+            if (isDashboardAbortError(e)) return;
+
             console.error("Background ads sync failed:", e);
             adsSeededRef.current = false;
             adsSeedErrorRef.current = e?.message || "Ads background sync failed";
@@ -2381,6 +2426,7 @@ export default function DashboardPage() {
 
     const [dashboardBusy, setDashboardBusy] = useState(false);
     const [showDashboardStepLoader, setShowDashboardStepLoader] = useState(false);
+    const dashboardRefreshAbortRef = useRef<AbortController | null>(null);
 
     const [currentStep, setCurrentStep] = useState<number>(0); // 0 = idle
     const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -2396,6 +2442,18 @@ export default function DashboardPage() {
         percentage: 0,
         detail: "",
     });
+
+    const cancelDashboardRefresh = useCallback(() => {
+        const controller = dashboardRefreshAbortRef.current;
+
+        if (!controller || controller.signal.aborted) return;
+
+        setStepProgress((prev) => ({
+            ...prev,
+            detail: "Cancelling dashboard refresh...",
+        }));
+        controller.abort();
+    }, []);
 
     const markStepComplete = (step: number) => {
         setCompletedSteps((prev) => new Set([...prev, step]));
@@ -2455,8 +2513,9 @@ export default function DashboardPage() {
 
     const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
-    const fetchFxRates = useCallback(async () => {
+    const fetchFxRates = useCallback(async (signal?: AbortSignal) => {
         try {
+            throwIfDashboardAbortRequested(signal);
             setFxLoading(true);
 
             const token =
@@ -2465,10 +2524,11 @@ export default function DashboardPage() {
             const headers: HeadersInit = { Accept: "application/json" };
             if (token) (headers as any).Authorization = `Bearer ${token}`;
 
-            const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers });
+            const res = await fetch(FX_RATES_GET_ENDPOINT, { method: "GET", headers, signal });
             if (!res.ok) throw new Error(`FX rates fetch failed: ${res.status}`);
 
             const rows: CurrencyRateRow[] = await res.json();
+            throwIfDashboardAbortRequested(signal);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthName.toLowerCase();
@@ -2498,6 +2558,8 @@ export default function DashboardPage() {
             if (cadUsd != null) setCadToUsd(cadUsd);
 
         } catch (err) {
+            if (isDashboardAbortError(err)) throw err;
+
             console.error("Failed to fetch FX from DB, keeping env defaults", err);
         } finally {
             setFxLoading(false);
@@ -2559,11 +2621,13 @@ export default function DashboardPage() {
         return "uk";
     }, [platform]);
 
-    const fetchTargetSummary = useCallback(async () => {
+    const fetchTargetSummary = useCallback(async (signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setTargetSummaries({});
             return;
         }
+
+        throwIfDashboardAbortRequested(signal);
 
         const token =
             typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2588,6 +2652,7 @@ export default function DashboardPage() {
                         Accept: "application/json",
                         Authorization: `Bearer ${token}`,
                     },
+                    signal,
                 });
 
                 const json = await res.json().catch(() => null);
@@ -2596,17 +2661,21 @@ export default function DashboardPage() {
             })
         );
 
+        throwIfDashboardAbortRequested(signal);
+
         const next = Object.fromEntries(results);
 
 
         setTargetSummaries(next);
     }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
-    const fetchPrevTargetSummary = useCallback(async () => {
+    const fetchPrevTargetSummary = useCallback(async (signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setPrevTargetSummaries({});
             return;
         }
+
+        throwIfDashboardAbortRequested(signal);
 
         const token =
             typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -2631,6 +2700,7 @@ export default function DashboardPage() {
                         Accept: "application/json",
                         Authorization: `Bearer ${token}`,
                     },
+                    signal,
                 });
 
                 const json = await res.json().catch(() => null);
@@ -2638,6 +2708,8 @@ export default function DashboardPage() {
                 return [country, json?.data ?? null] as const;
             })
         );
+
+        throwIfDashboardAbortRequested(signal);
 
         const next = Object.fromEntries(results);
         setPrevTargetSummaries(next);
@@ -2731,7 +2803,7 @@ export default function DashboardPage() {
 
     const inventoryInsightsSalesLabel = "Sales Last 30 Days";
 
-    const fetchInventory = useCallback(async () => {
+    const fetchInventory = useCallback(async (signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setInvLoading(false);
             setInvError("");
@@ -2739,6 +2811,8 @@ export default function DashboardPage() {
             setInventoryAlerts({});
             return;
         }
+        throwIfDashboardAbortRequested(signal);
+
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) {
             setInvError("Authorization token is missing");
@@ -2757,11 +2831,16 @@ export default function DashboardPage() {
                 year: invMonthYear.year,
                 marketplaceIds: inventoryMarketplaceIds,
                 XLSX,
+                signal,
             });
+
+            throwIfDashboardAbortRequested(signal);
 
             setInvRows(rows);
             setInventoryAlerts(alerts);
         } catch (e: any) {
+            if (isDashboardAbortError(e)) throw e;
+
             setInvError(e?.message || "Unknown error");
             setInvRows([]);
             setInventoryAlerts({});
@@ -2898,7 +2977,7 @@ export default function DashboardPage() {
         });
     };
 
-    const fetchInventoryInsights = useCallback(async () => {
+    const fetchInventoryInsights = useCallback(async (signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setInventoryInsightsData(null);
             setInventoryInsightsError(null);
@@ -2906,7 +2985,7 @@ export default function DashboardPage() {
             return;
         }
 
-        const ac = new AbortController();
+        throwIfDashboardAbortRequested(signal);
 
         try {
             setInventoryInsightsLoading(true);
@@ -2928,18 +3007,22 @@ export default function DashboardPage() {
                     selectedInventoryMonth.month,
                     selectedInventoryMonth.year,
                     country,
-                    ac.signal
+                    signal
                 ),
             ]);
+
+            throwIfDashboardAbortRequested(signal);
 
             const ageSummaryResults = await Promise.allSettled([
                 fetchSingleMonthInventoryAgeSummaryForInsights(
                     selectedInventoryMonth.month,
                     selectedInventoryMonth.year,
                     country,
-                    ac.signal
+                    signal
                 ),
             ]);
+
+            throwIfDashboardAbortRequested(signal);
 
             const inventoryResponses = inventoryResults
                 .filter(
@@ -2972,9 +3055,11 @@ export default function DashboardPage() {
                 selectedGlobalInventoryCountry
             );
 
+            throwIfDashboardAbortRequested(signal);
+
             setInventoryInsightsData(builtInventoryInsights);
         } catch (e: any) {
-            if (e?.name === "AbortError") return;
+            if (isDashboardAbortError(e)) throw e;
 
             setInventoryInsightsData(null);
             setInventoryInsightsError(
@@ -3547,7 +3632,7 @@ export default function DashboardPage() {
     ]);
 
     /* ===================== AMAZON FETCH ===================== */
-    const fetchAmazon = useCallback(async () => {
+    const fetchAmazon = useCallback(async (signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setLoading(false);
             setUnauthorized(false);
@@ -3555,6 +3640,7 @@ export default function DashboardPage() {
             setData(null);
             return;
         }
+        throwIfDashboardAbortRequested(signal);
         setLoading(true);
         setUnauthorized(false);
         setError(null);
@@ -3621,6 +3707,7 @@ export default function DashboardPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 credentials: "omit",
+                signal,
             });
 
             if (res.status === 401) {
@@ -3629,12 +3716,15 @@ export default function DashboardPage() {
             }
 
             const json = await res.json();
+            throwIfDashboardAbortRequested(signal);
             if (!res.ok || json?.success === false) {
                 throw new Error(json?.error || `Request failed: ${res.status}`);
             }
 
             setData(json); // ✅ data now matches your new response shape
         } catch (e: any) {
+            if (isDashboardAbortError(e)) throw e;
+
             setError(e?.message || "Failed to load data");
             setData(null);
         } finally {
@@ -3687,7 +3777,8 @@ export default function DashboardPage() {
     }, []);
 
     /* ===================== SHOPIFY CURRENT MONTH ===================== */
-    const fetchShopify = useCallback(async () => {
+    const fetchShopify = useCallback(async (signal?: AbortSignal) => {
+        throwIfDashboardAbortRequested(signal);
         setShopifyLoading(true);
         setShopifyError(null);
         try {
@@ -3716,15 +3807,20 @@ export default function DashboardPage() {
                 method: "GET",
                 headers: { Accept: "application/json", Authorization: `Bearer ${user_token}` },
                 credentials: "omit",
+                signal,
             });
 
             if (res.status === 401) throw new Error("Unauthorized — token missing/invalid/expired.");
             if (!res.ok) throw new Error(`Shopify request failed: ${res.status}`);
 
             const json = await res.json();
+            throwIfDashboardAbortRequested(signal);
+
             const row = json?.last_row_data ? json.last_row_data : null;
             setShopifyRows(row ? [row] : []);
         } catch (e: any) {
+            if (isDashboardAbortError(e)) throw e;
+
             setShopifyError(e?.message || "Failed to load Shopify data");
             setShopifyRows([]);
         } finally {
@@ -3733,8 +3829,10 @@ export default function DashboardPage() {
     }, [shopifyStore, activeDateRegion]);
 
     /* ===================== SHOPIFY PREVIOUS MONTH ===================== */
-    const fetchShopifyPrev = useCallback(async () => {
+    const fetchShopifyPrev = useCallback(async (signal?: AbortSignal) => {
         try {
+            throwIfDashboardAbortRequested(signal);
+
             const user_token =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
             if (!user_token) throw new Error("No token found. Please sign in.");
@@ -3760,15 +3858,20 @@ export default function DashboardPage() {
                 method: "GET",
                 headers: { Accept: "application/json", Authorization: `Bearer ${user_token}` },
                 credentials: "omit",
+                signal,
             });
 
             if (res.status === 401) throw new Error("Unauthorized — token missing/invalid/expired.");
             if (!res.ok) throw new Error(`Shopify (prev) request failed: ${res.status}`);
 
             const json = await res.json();
+            throwIfDashboardAbortRequested(signal);
+
             const row = json?.last_row_data ? json.last_row_data : null;
             setShopifyPrevRows(row ? [row] : []);
         } catch (e: any) {
+            if (isDashboardAbortError(e)) throw e;
+
             console.warn("Shopify prev-month fetch failed:", e?.message);
             setShopifyPrevRows([]);
         }
@@ -3903,7 +4006,8 @@ export default function DashboardPage() {
 
     const fetchPreviousSkuwiseGlobal = useCallback(async (
         startDay: number | null = selectedStartDay,
-        endDay: number | null = selectedEndDay
+        endDay: number | null = selectedEndDay,
+        signal?: AbortSignal
     ) => {
         if (isMonthYearNA) {
             setPreviousSkuwiseGlobalData(null);
@@ -3921,6 +4025,7 @@ export default function DashboardPage() {
         if (!token) return;
 
         try {
+            throwIfDashboardAbortRequested(signal);
             setPreviousSkuwiseGlobalLoading(true);
 
             const finalStartDay = startDay ?? 1;
@@ -3940,10 +4045,12 @@ export default function DashboardPage() {
                         Accept: "application/json",
                         Authorization: `Bearer ${token}`,
                     },
+                    signal,
                 }
             );
 
             const json = await res.json().catch(() => null);
+            throwIfDashboardAbortRequested(signal);
 
             if (!res.ok || json?.success === false) {
                 throw new Error(json?.error || `Previous SKU-wise global failed: ${res.status}`);
@@ -3951,6 +4058,8 @@ export default function DashboardPage() {
 
             setPreviousSkuwiseGlobalData(json);
         } catch (err) {
+            if (isDashboardAbortError(err)) throw err;
+
             console.error("Failed to fetch previous SKU-wise global:", err);
             setPreviousSkuwiseGlobalData(null);
         } finally {
@@ -3974,8 +4083,11 @@ export default function DashboardPage() {
 
             // ✅ ADD THIS
             manualAiRefresh = false,
+            signal,
         }: FetchLiveBiPayloadArgs = {}) => {
             if (isMonthYearNA) return;
+
+            throwIfDashboardAbortRequested(signal);
 
             const shouldShowBiLoader = !skipLoader && !generateInsights;
 
@@ -4012,6 +4124,7 @@ export default function DashboardPage() {
 
                 const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                    signal,
                 });
 
                 if (!res.ok) {
@@ -4019,6 +4132,7 @@ export default function DashboardPage() {
                 }
 
                 const json: BiApiResponse = await res.json();
+                throwIfDashboardAbortRequested(signal);
 
                 setLiveBiPayload((prev: any) => {
                     // ✅ Manual AI refresh must replace parent payload completely.
@@ -4058,6 +4172,8 @@ export default function DashboardPage() {
 
                 return json;
             } catch (e: any) {
+                if (isDashboardAbortError(e)) throw e;
+
                 setBiError(e?.message || "Failed to load BI data");
 
                 if (!skipLoader) {
@@ -4094,6 +4210,12 @@ export default function DashboardPage() {
             return;
         }
 
+        dashboardRefreshAbortRef.current?.abort();
+        const abortController = new AbortController();
+        dashboardRefreshAbortRef.current = abortController;
+        const { signal } = abortController;
+        const ensureRefreshActive = () => throwIfDashboardAbortRequested(signal);
+
         setShowDashboardStepLoader(true);
         setLoadingStartedAt(Date.now());
         setDashboardBusy(true);
@@ -4115,18 +4237,23 @@ export default function DashboardPage() {
         });
 
         try {
+            ensureRefreshActive();
             setStep(1, "MTD Fetching", 5, "Preparing dashboard refresh...");
 
             setStep(1, "MTD Fetching", 10, "Fetching currency rates...");
-            await fetchFxRates();
+            await fetchFxRates(signal);
+            ensureRefreshActive();
 
             setStep(1, "MTD Fetching", 15, "Fetching target summary...");
-            await fetchTargetSummary();
-            await fetchPrevTargetSummary();
+            await fetchTargetSummary(signal);
+            ensureRefreshActive();
+            await fetchPrevTargetSummary(signal);
+            ensureRefreshActive();
 
             if (platform === "global") {
                 setStep(1, "MTD Fetching", 22, "Fetching SKU-wise global data...");
-                await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay);
+                await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay, signal);
+                ensureRefreshActive();
             }
 
             const jwtToken =
@@ -4134,32 +4261,39 @@ export default function DashboardPage() {
 
             if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
-                void runAdsBackgroundSync({ forceReportSync: forceAdsReportSync });
+                void runAdsBackgroundSync({ forceReportSync: forceAdsReportSync, signal });
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
+            ensureRefreshActive();
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
-            await fetchAmazon();
+            await fetchAmazon(signal);
+            ensureRefreshActive();
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
                 setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
-                await fetchShopify();
+                await fetchShopify(signal);
+                ensureRefreshActive();
 
                 setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
-                await fetchShopifyPrev();
+                await fetchShopifyPrev(signal);
+                ensureRefreshActive();
             } else {
                 setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
+            ensureRefreshActive();
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
             setStep(2, "Inventory Fetch", 20, "Fetching aged, AWD, and current inventory...");
-            await fetchInventory();
+            await fetchInventory(signal);
+            ensureRefreshActive();
 
             setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
-            await fetchInventoryInsights();
+            await fetchInventoryInsights(signal);
+            ensureRefreshActive();
 
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
@@ -4177,24 +4311,30 @@ export default function DashboardPage() {
                     // ✅ Browser/page reload must fetch backend cached AI summary.
                     // Do not preserve stale parent AI summary here.
                     dataOnlyRefresh,
+                    signal,
                 });
+                ensureRefreshActive();
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
             }
 
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
+            ensureRefreshActive();
 
             setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
             await waitForPaint();
+            ensureRefreshActive();
 
             setStep(3, "Plotting Graph", 95, "Final render in progress...");
             await waitForPaint();
+            ensureRefreshActive();
 
             setStep(3, "Plotting Graph", 100, "Dashboard ready");
             markStepComplete(3);
 
             await waitForPaint();
+            ensureRefreshActive();
 
             setStepProgress((prev) => ({
                 ...prev,
@@ -4204,6 +4344,16 @@ export default function DashboardPage() {
             setLoadingStartedAt(null);
             setDashboardBusy(false);
         } catch (e: any) {
+            if (isDashboardAbortError(e)) {
+                setDashboardBusy(false);
+                setStepProgress((prev) => ({
+                    ...prev,
+                    active: false,
+                    detail: "Dashboard refresh cancelled.",
+                }));
+                throw e;
+            }
+
             console.error("runDashboardLoadWithSteps failed:", e);
             setError(e?.message || "Failed to load dashboard");
             setDashboardBusy(false);
@@ -4212,6 +4362,9 @@ export default function DashboardPage() {
                 active: false,
             }));
         } finally {
+            if (dashboardRefreshAbortRef.current === abortController) {
+                dashboardRefreshAbortRef.current = null;
+            }
             setDashboardBusy(false);
             setShowDashboardStepLoader(false);
             setStepProgress((prev) => ({
@@ -4872,7 +5025,7 @@ export default function DashboardPage() {
     const STEP_ESTIMATED_SECONDS: Record<number, number> = {
         1: 60,
         2: 60,
-        3: 60,
+        3: 8,
     };
 
     // useEffect(() => {
@@ -4922,6 +5075,12 @@ export default function DashboardPage() {
             shouldPostCacheRef.current = true;
             setCacheSaveTick((x) => x + 1);
         } catch (err) {
+            if (isDashboardAbortError(err)) {
+                isManualRefreshRef.current = false;
+                shouldPostCacheRef.current = false;
+                return;
+            }
+
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
@@ -4995,6 +5154,15 @@ export default function DashboardPage() {
                 shouldPostCacheRef.current = true;
                 setCacheSaveTick((x) => x + 1);
             } catch (err) {
+                if (isDashboardAbortError(err)) {
+                    didBootstrapRef.current = null;
+
+                    resetStepState();
+                    setDashboardBusy(false);
+                    setShowDashboardStepLoader(false);
+                    return;
+                }
+
                 console.error("Dashboard bootstrap failed:", err);
 
                 didBootstrapRef.current = null;
@@ -11454,6 +11622,7 @@ export default function DashboardPage() {
                     stepProgress={stepProgress}
                     loadingStartedAt={loadingStartedAt}
                     estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
+                    onCancel={cancelDashboardRefresh}
                 />
             )}
 

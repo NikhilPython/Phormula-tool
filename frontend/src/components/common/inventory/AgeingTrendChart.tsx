@@ -46,7 +46,7 @@ const getShortMonth = (label: string) => {
 };
 
 const AgeingTrendChart: React.FC<AgeingTrendChartProps> = ({
-  title = "Ageing Trend Over Time",
+  title = "FBA Inventory Ageing Trend Over Time",
   allSeriesData = [],
 }) => {
   const echartsInstanceRef = useRef<any>(null);

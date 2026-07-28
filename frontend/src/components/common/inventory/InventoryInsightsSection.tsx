@@ -168,7 +168,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:items-stretch">
                         {hasTrend && (
                             <AgeingTrendChart
-                                title="Ageing Trend Over Time"
+                                title="FBA Inventory Ageing Trend Over Time"
                                 subtitle="Track how old inventory is increasing or decreasing"
                                 allSeriesData={trendAllSeriesData}
                             />
