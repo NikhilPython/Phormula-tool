@@ -1409,6 +1409,192 @@ def build_net_sales_pie_slices(rows, min_named=5, others_label="Others"):
     }
 
 
+def build_net_sales_pie_slices_from_period_rows(
+    current_rows,
+    previous_rows,
+    min_named=5,
+    others_label="Others",
+    previous_total=None,
+):
+    """
+    Build net-sales pie data from current product rows and an explicit previous
+    period row source. This is used to keep the live pie comparison aligned with
+    the P&L table, which gets previous net sales from the Amazon MTD payload.
+    """
+    previous_by_name = {}
+    previous_by_sku = {}
+
+    def clean_name(row):
+        raw_name = (
+            row.get("product_name")
+            or row.get("name")
+            or row.get("product")
+            or row.get("sku")
+        )
+        sku = str(row.get("sku") or "").strip()
+        name = str(raw_name or "").strip()
+
+        if name == "0" and sku:
+            name = sku
+
+        return name
+
+    def is_invalid(name, sku=""):
+        name_key = str(name or "").strip().lower()
+        sku_key = str(sku or "").strip().upper()
+        return (
+            not name_key
+            or name_key in ("unknown", "total", "grand total")
+            or sku_key in ("TOTAL", "GRAND_TOTAL")
+        )
+
+    for row in previous_rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        sku = str(row.get("sku") or "").strip()
+        name = clean_name(row)
+
+        if is_invalid(name, sku):
+            continue
+
+        value = _pie_safe_float(
+            row.get(
+                "net_sales_prev",
+                row.get("previous_net_sales", row.get("net_sales")),
+            )
+        )
+
+        name_key = name.lower()
+        previous_by_name[name_key] = previous_by_name.get(name_key, 0.0) + value
+
+        if sku:
+            sku_key = sku.upper()
+            previous_by_sku[sku_key] = previous_by_sku.get(sku_key, 0.0) + value
+
+    grouped = {}
+
+    for row in current_rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        sku = str(row.get("sku") or "").strip()
+        name = clean_name(row)
+
+        if is_invalid(name, sku):
+            continue
+
+        current_value = _pie_safe_float(
+            row.get(
+                "net_sales_curr",
+                row.get("current_net_sales", row.get("net_sales")),
+            )
+        )
+
+        name_key = name.lower()
+
+        if name_key not in grouped:
+            grouped[name_key] = {
+                "name": name,
+                "net_sales_curr": 0.0,
+                "net_sales_prev": 0.0,
+                "skus": set(),
+            }
+
+        grouped[name_key]["net_sales_curr"] += current_value
+        if sku:
+            grouped[name_key]["skus"].add(sku.upper())
+
+    for name_key, item in grouped.items():
+        previous_by_product_name = previous_by_name.get(name_key, 0.0)
+        previous_by_current_skus = sum(
+            previous_by_sku.get(sku, 0.0)
+            for sku in item["skus"]
+        )
+
+        item["net_sales_prev"] = (
+            previous_by_product_name
+            if previous_by_product_name != 0
+            else previous_by_current_skus
+        )
+
+    items = [
+        {
+            "name": item["name"],
+            "net_sales_curr": item["net_sales_curr"],
+            "net_sales_prev": item["net_sales_prev"],
+        }
+        for item in grouped.values()
+        if item["net_sales_curr"] != 0 or item["net_sales_prev"] != 0
+    ]
+
+    total_current = sum(item["net_sales_curr"] for item in items)
+    total_previous_from_rows = sum(previous_by_name.values())
+    total_previous = _pie_safe_float(previous_total)
+    if not total_previous:
+        total_previous = total_previous_from_rows
+
+    def is_others(name):
+        return str(name or "").strip().lower() == others_label.lower()
+
+    sorted_items = sorted(items, key=lambda item: item["net_sales_curr"], reverse=True)
+    named_items = [item for item in sorted_items if not is_others(item["name"])]
+    top_items = named_items[:min_named]
+    top_names = {item["name"].strip().lower() for item in top_items}
+
+    remaining_items = [
+        item
+        for item in sorted_items
+        if item["name"].strip().lower() not in top_names
+    ]
+
+    final_items = list(top_items)
+
+    if remaining_items:
+        final_items.append({
+            "name": others_label,
+            "net_sales_curr": sum(item["net_sales_curr"] for item in remaining_items),
+            "net_sales_prev": sum(item["net_sales_prev"] for item in remaining_items),
+        })
+
+    def make_slice(item):
+        curr = item["net_sales_curr"]
+        prev = item["net_sales_prev"]
+        current_sales_mix = _pie_pct_of_total(curr, total_current)
+        previous_sales_mix = _pie_pct_of_total(prev, total_previous)
+        sales_mix_change = current_sales_mix - previous_sales_mix
+
+        return {
+            "name": item["name"],
+            "product": item["name"],
+            "value": curr,
+            "prevValue": prev,
+            "net_sales_curr": curr,
+            "net_sales_prev": prev,
+            "current_net_sales": curr,
+            "previous_net_sales": prev,
+            "net_sales_delta": curr - prev,
+            "net_sales_delta_percentage": _pie_delta_pct(curr, prev),
+            "pct": current_sales_mix,
+            "current_sales_mix_percentage": current_sales_mix,
+            "previous_sales_mix_percentage": previous_sales_mix,
+            "sales_mix_delta_percentage": sales_mix_change,
+            "sales_mix_curr": current_sales_mix,
+            "sales_mix_prev": previous_sales_mix,
+            "sales_mix_change": sales_mix_change,
+        }
+
+    slices = [make_slice(item) for item in final_items]
+
+    return {
+        "total_net_sales_curr": total_current,
+        "total_net_sales_prev": total_previous,
+        "min_named": min_named,
+        "previous_source": "amazon_mtd_previous_period_sku_metrics",
+        "slices": slices,
+    }
+
+
 def generate_objective_hash(obj):
     return hashlib.md5(
         json.dumps(obj, sort_keys=True).encode()
@@ -4162,7 +4348,7 @@ def live_mtd_vs_previous():
 
             curr_daily = []
 
-      
+        curr_ai_data_for_net_sales_pie = list(curr_ai_data or [])
 
 
         # ---------------------------
@@ -4342,16 +4528,16 @@ def live_mtd_vs_previous():
         # Match /amazon_api/finances/mtd_transactions
         # previous_period.totals.advertising_fees
         # -------------------------------------------------
+        previous_card_payload_for_summary = {}
         previous_card_totals_for_summary = {}
 
         try:
             from app.routes.amazon_api_routes import get_previous_month_mtd_payload
 
-            # Use curr_end so as_of/date-range testing also stays aligned.
-            now_for_previous_card = datetime.combine(
-                curr_end,
-                datetime.utcnow().time()
-            ).replace(tzinfo=timezone.utc)
+            # Match /amazon_api/finances/mtd_transactions exactly. That route
+            # derives previous MTD from the current UTC day, so using curr_end
+            # here can lag by one day for US/PDT late-night refreshes.
+            now_for_previous_card = datetime.now(timezone.utc)
 
             previous_card_payload_for_summary = get_previous_month_mtd_payload(
                 user_id=int(user_id),
@@ -4609,10 +4795,24 @@ def live_mtd_vs_previous():
             pareto_threshold=0.8,
         )
 
-        net_sales_pie = build_net_sales_pie_slices(
-            growth_data,
-            min_named=5,
+        previous_rows_for_net_sales_pie = (
+            previous_card_payload_for_summary.get("sku_metrics", [])
+            if isinstance(previous_card_payload_for_summary, dict)
+            else []
         )
+
+        if previous_rows_for_net_sales_pie:
+            net_sales_pie = build_net_sales_pie_slices_from_period_rows(
+                current_rows=curr_ai_data_for_net_sales_pie or curr_ai_data,
+                previous_rows=previous_rows_for_net_sales_pie,
+                min_named=5,
+                previous_total=previous_card_totals_for_summary.get("net_sales"),
+            )
+        else:
+            net_sales_pie = build_net_sales_pie_slices(
+                growth_data,
+                min_named=5,
+            )
         compare_top5_net_sales = net_sales_pie.get("slices", [])
 
 
