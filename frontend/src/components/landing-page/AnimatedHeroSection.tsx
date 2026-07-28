@@ -73,52 +73,230 @@ export default function AnimatedHeroSection() {
 
   const activeSlide = slides[activeIndex];
 
-  return (
-    <section className="hero !mt-10 ">
-      <div className="container hero-grid">
-        <div className="hero-content">
-          <div className="eyebrow">AI Financial Intelligence</div>
-
-          <h1 className="hero-heading min-[1700px]:!text-7xl !text-5xl">
-            Empowering D2C Founders with{" "}
-            <span
-              className={`hero-rotating-copy  min-[1700px]:!text-5xl !text-4xl ${isTransitioning ? "is-changing" : ""}`}
-              aria-live="polite"
+ return (
+  <section
+  className="
+    hero
+    !mt-0
+    !px-4
+    sm:!px-6
+    lg:!px-8
+    xl:!px-10
+    2xl:!px-12
+    !pb-14
+    !pt-[116px]
+    sm:!pb-16
+    sm:!pt-[132px]
+    lg:!pb-16
+    lg:!pt-[126px]
+    xl:!pt-[108px]
+    2xl:!pb-20
+    2xl:!pt-[132px]
+  "
+>
+   <div
+  className="
+    relative
+    z-10
+    mx-auto
+    grid
+    w-full
+    max-w-[1440px]
+    grid-cols-1
+    items-center
+    gap-12
+    lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]
+    lg:gap-10
+    xl:grid-cols-[minmax(420px,0.9fr)_minmax(560px,1.1fr)]
+    xl:gap-12
+    2xl:grid-cols-[minmax(500px,0.95fr)_minmax(620px,1.05fr)]
+    2xl:gap-14
+  "
+>
+      {/* Left content */}
+      <div
+        className="
+          relative
+          z-20
+          w-full
+          max-w-[620px]
+          lg:max-w-[460px]
+          xl:max-w-[500px]
+          2xl:max-w-[610px]
+        "
+      >
+        <div
+              className="
+                inline-flex items-center gap-[7px]
+                rounded-full border border-[#269770]/20
+                bg-[#ebf7f1]/80
+                px-[13px] py-[7px]
+                text-[10px] font-extrabold uppercase
+                leading-none tracking-[0.12em]
+                text-[#277d64]
+              "
             >
-              <span key={activeSlide.title} className="hero-rotating-word">
-                {activeSlide.title}
-              </span>
-            </span>
-          </h1>
+              <span className="h-1.5 w-1.5 rounded-full bg-[#36a47d] shadow-[0_0_0_4px_rgba(54,164,125,0.12)]" />
+              AI Financial Intelligence
+            </div>
 
-          <p className="hero-copy min-[1700px]:!text-lg !text-sm">
-            AI-powered financial clarity that helps founders lead, not just read reports.
-          </p>
+       <h1
+  className="
+    hero-heading
+    !mt-5
+    !max-w-[500px]
+    !text-[36px]
+    !leading-[0.98]
+    !tracking-[-0.05em]
+    sm:!text-[40px]
+    lg:!text-[38px]
+    xl:!text-[42px]
+    2xl:!max-w-[620px]
+    2xl:!text-[58px]
+    min-[1700px]:!text-[66px]
+  "
+>
+  Empowering D2C <br className="hidden min-[1700px]:block "/> Founders with
 
-          <div className="hero-actions">
-            <a href="#demo" className="btn btn-primary !text-yellow-200">
-              Book a demo
-            </a>
-          </div>
+  
+   
+  <span
+    className={`
+      hero-rotating-copy
+      !mt-1
+      !min-h-[1.14em]
+      !text-[29px]
+      !leading-[1.08]
+      sm:!text-[33px]
+      lg:!text-[31px]
+      xl:!text-[35px]
+      2xl:!text-[48px]
+      min-[1700px]:!text-[54px]
+      ${isTransitioning ? "is-changing" : ""}
+    `}
+  >
+    <span
+      key={activeSlide.title}
+      className="
+        hero-rotating-word
+        !w-full
+        whitespace-normal
+        !text-green-500
+        lg:whitespace-nowrap
+      "
+    >
+      {activeSlide.title}
+    </span>
+  </span>
+</h1>
 
-          <p className="hero-note min-[1700px]:!text-lg !text-sm">
-            Built for operators tired of spreadsheet chaos, delayed reports, and unclear margins.
-          </p>
-        </div>
+       <p
+  className="
+    hero-copy
+    !mt-4
+    !max-w-[480px]
+    !text-[13px]
+    !leading-5
+    xl:!text-[14px]
+    2xl:!text-[17px]
+    2xl:!leading-7
+  "
+>
+  AI-powered financial clarity that helps founders lead, not just
+  read reports.
+</p>
 
-        <div className="mockup-wrap">
-          <AnimatedDashboard
-            activeIndex={activeIndex}
-            activeVisual={activeSlide.visual}
-            eyebrow={activeSlide.eyebrow}
-            description={activeSlide.description}
-            onSelect={changeSlide}
-            isTransitioning={isTransitioning}
-          />
-        </div>
+        <a
+  href="#demo"
+  className="
+    btn
+    btn-primary
+    !mt-5
+    !flex
+    !h-[44px]
+    !w-[190px]
+    !items-center
+    !justify-center
+    !rounded-[10px]
+    !bg-[#37455F]
+    !px-5
+    !text-[13px]
+    !font-extrabold
+    !text-[#F8EDCE]
+    !shadow-[0_8px_22px_rgba(55,69,95,0.2)]
+    transition
+    hover:!bg-[#202A3A]
+    sm:!w-[200px]
+    lg:!w-[205px]
+    xl:!h-[46px]
+    xl:!w-[215px]
+    xl:!text-[14px]
+    2xl:!mt-6
+    2xl:!h-[56px]
+    2xl:!w-[260px]
+    2xl:!rounded-xl
+    2xl:!text-[16px]
+  "
+>
+  Book a demo
+</a>
+
+        <p
+  className="
+    hero-note
+    !mt-4
+    !max-w-[480px]
+    !text-[11px]
+    !leading-[18px]
+    xl:!text-[12px]
+    2xl:!mt-5
+    2xl:!text-[15px]
+    2xl:!leading-6
+  "
+>
+  Built for operators tired of spreadsheet chaos, delayed reports,
+  and unclear margins.
+</p>
       </div>
-    </section>
-  );
+
+      {/* Right dashboard */}
+     {/* Right dashboard */}
+<div
+  className="
+    mockup-wrap
+    relative
+    z-10
+    flex
+    w-full
+    min-w-0
+    justify-center
+    lg:justify-end
+  "
+>
+  <div
+  className="
+    w-full
+    max-w-[560px]
+    sm:max-w-[580px]
+    lg:max-w-[520px]
+    xl:max-w-[570px]
+    2xl:max-w-[660px]
+    min-[1700px]:max-w-[720px]
+  "
+>
+    <AnimatedDashboard
+      activeIndex={activeIndex}
+      activeVisual={activeSlide.visual}
+      eyebrow={activeSlide.eyebrow}
+      description={activeSlide.description}
+      onSelect={changeSlide}
+      isTransitioning={isTransitioning}
+    />
+  </div>
+</div>
+    </div>
+  </section>
+);
 }
 
 function AnimatedDashboard({

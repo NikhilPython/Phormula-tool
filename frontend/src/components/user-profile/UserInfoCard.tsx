@@ -1763,7 +1763,7 @@ export default function UserInfoCard({ activeTab = "personal" }: { activeTab?: P
                       )
                     }
                   >
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
                       <InfoItem
                         label="Name"
                         required
