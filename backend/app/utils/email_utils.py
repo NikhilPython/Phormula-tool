@@ -2694,3 +2694,329 @@ def send_email_with_attachment(
         if smtp_user and smtp_pass:
             server.login(smtp_user, smtp_pass)
         server.send_message(msg)
+
+def send_daily_inventory_alert_email(
+    *,
+    to_email: str,
+    user_name: str,
+    country: str,
+    alerts: list,
+    dashboard_base_url: str = "https://phormula.io",
+) -> bool:
+    """Send one country-specific daily inventory alert email."""
+    import traceback
+
+    if not to_email:
+        print("[WARN] Daily inventory alert skipped because recipient email is missing.")
+        return False
+
+    country = str(country or "").strip().lower()
+
+    if country not in ("uk", "us"):
+        raise ValueError("country must be 'uk' or 'us'")
+
+    rows = list(alerts or [])
+    country_label = country.upper()
+    safe_name = html.escape(str(user_name or "there").strip())
+    generated_date = datetime.now().strftime("%d %B %Y")
+    dashboard_url = (
+        f"{dashboard_base_url.rstrip('/')}"
+        f"/live-dashboard/{country}#current-inventory"
+    )
+
+    def _coverage_sort_value(item):
+        ratio = item.get("inventory_coverage_ratio")
+        try:
+            return (ratio is None, float(ratio or 0))
+        except (TypeError, ValueError):
+            return (True, 0)
+
+    if rows:
+        cards = []
+
+        for row in sorted(rows, key=_coverage_sort_value):
+            product = html.escape(
+                str(
+                    row.get("product_name")
+                    or row.get("sku")
+                    or "Unknown product"
+                )
+            )
+            sku = html.escape(str(row.get("sku") or "-"))
+
+            ratio = row.get("inventory_coverage_ratio")
+            try:
+                ratio_text = "N/A" if ratio is None else f"{float(ratio):.2f}"
+            except (TypeError, ValueError):
+                ratio_text = "N/A"
+
+            alert_type = html.escape(
+                str(
+                    row.get("alert_type")
+                    or "Coverage ratio is low"
+                )
+            )
+
+            cards.append(
+                f"""
+                <div style="
+                    border:1px solid #E4E7EC;
+                    border-left:4px solid #F04438;
+                    border-radius:10px;
+                    padding:14px 16px;
+                    margin-bottom:12px;
+                    background:#FFFFFF;
+                ">
+                  <div style="
+                      font-size:15px;
+                      font-weight:700;
+                      color:#344054;
+                      margin-bottom:6px;
+                  ">
+                    {product}
+                  </div>
+
+                  <div style="
+                      font-size:12px;
+                      color:#667085;
+                      margin-bottom:8px;
+                  ">
+                    SKU: {sku}
+                  </div>
+
+                  <div style="
+                      font-size:14px;
+                      font-weight:700;
+                      color:#B42318;
+                      line-height:1.5;
+                  ">
+                    High alert — Coverage ratio: {ratio_text} months
+                  </div>
+
+                  <div style="
+                      font-size:13px;
+                      color:#475467;
+                      line-height:1.5;
+                      margin-top:4px;
+                  ">
+                    {alert_type}
+                  </div>
+                </div>
+                """
+            )
+
+        alert_cards_html = "".join(cards)
+    else:
+        alert_cards_html = """
+        <div style="
+            padding:16px;
+            border:1px solid #D1E9E2;
+            background:#F2FAF7;
+            border-radius:10px;
+            color:#376859;
+            font-size:14px;
+            line-height:1.6;
+        ">
+          No active high inventory alerts today.
+        </div>
+        """
+
+    subject = (
+        f"[Phormula] {country_label} Daily Inventory Alerts "
+        f"— {len(rows)} high alert(s)"
+    )
+
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+
+    <body style="
+        margin:0;
+        padding:0;
+        background:#F8FAFC;
+        font-family:Arial,Helvetica,sans-serif;
+    ">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="padding:18px 0;">
+        <tr>
+          <td align="center">
+
+            <table width="640" cellpadding="0" cellspacing="0" border="0"
+                   style="
+                       width:640px;
+                       max-width:100%;
+                       background:#FFFFFF;
+                       border-collapse:collapse;
+                   ">
+
+              <tr>
+                <td style="
+                    background:#7FB5A5;
+                    padding:18px 24px;
+                    color:#F8EDCF;
+                ">
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="vertical-align:middle;">
+                        <img
+                          src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                          alt="Phormula"
+                          width="40"
+                          style="display:block;border:0;"
+                        >
+                      </td>
+
+                      <td align="right" style="
+                          vertical-align:middle;
+                          font-size:16px;
+                          font-weight:600;
+                      ">
+                        {country_label} Inventory Alert Report
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <tr>
+                <td style="
+                    padding:28px 30px;
+                    border-left:1px solid #E4E7EC;
+                    border-right:1px solid #E4E7EC;
+                ">
+
+                  <img
+                    src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                    alt="Phormula"
+                    width="210"
+                    style="
+                        display:block;
+                        margin:0 auto 20px auto;
+                        border:0;
+                        max-width:100%;
+                        height:auto;
+                    "
+                  >
+
+                  <p style="
+                      font-size:15px;
+                      color:#344054;
+                      line-height:1.7;
+                      margin:0 0 8px 0;
+                  ">
+                    Hi <strong>{safe_name}</strong>,
+                  </p>
+
+                  <p style="
+                      font-size:14px;
+                      color:#475467;
+                      line-height:1.7;
+                      margin:0 0 22px 0;
+                  ">
+                    Here is your daily
+                    <strong>{country_label}</strong>
+                    inventory alert summary for
+                    <strong>{generated_date}</strong>.
+                    Products are ordered from the lowest coverage ratio first.
+                  </p>
+
+                  <div style="
+                      font-size:20px;
+                      font-weight:700;
+                      color:#37455F;
+                      margin-bottom:6px;
+                  ">
+                    {country_label} inventory alerts
+                  </div>
+
+                  <div style="
+                      font-size:13px;
+                      color:#667085;
+                      margin-bottom:16px;
+                  ">
+                    {len(rows)} high alert(s)
+                  </div>
+
+                  {alert_cards_html}
+
+                  <div style="
+                      text-align:center;
+                      margin-top:22px;
+                  ">
+                    <a href="{dashboard_url}" style="
+                        display:inline-block;
+                        background:#37455F;
+                        color:#F8EDCF;
+                        text-decoration:none;
+                        padding:10px 22px;
+                        border-radius:8px;
+                        font-size:14px;
+                        font-weight:700;
+                    ">
+                      View {country_label} Inventory
+                    </a>
+                  </div>
+
+                  <p style="
+                      font-size:12px;
+                      color:#98A2B3;
+                      line-height:1.6;
+                      margin:26px 0 0 0;
+                  ">
+                    This email is generated automatically every day.
+                    Support:
+                    <a href="mailto:care@phormula.io"
+                       style="color:#37455F;text-decoration:none;">
+                      care@phormula.io
+                    </a>
+                  </p>
+
+                </td>
+              </tr>
+
+              <tr>
+                <td align="center" style="
+                    background:#7FB5A5;
+                    padding:12px 18px;
+                    color:#F8EDCF;
+                    font-size:12px;
+                ">
+                  © 2026 Phormula. All rights reserved.
+                </td>
+              </tr>
+
+            </table>
+
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    msg = Message(
+        subject,
+        sender=("Phormula Care Team", "care@phormula.io"),
+        recipients=[to_email],
+    )
+    msg.html = html_body
+
+    try:
+        mail.send(msg)
+        print(
+            f"[INFO] {country_label} daily inventory alert "
+            f"sent to {to_email}"
+        )
+        return True
+
+    except Exception as exc:
+        print(
+            f"[ERROR] {country_label} daily inventory alert "
+            f"failed for {to_email}: {exc}"
+        )
+        traceback.print_exc()
+        return False
