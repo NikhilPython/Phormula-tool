@@ -28,51 +28,49 @@ const slides: Slide[] = [
     name: "Daily Pulse",
     tone: "blue",
     href: "#insights-showcase",
-    image: "/hero/daily-pulse.png",
+    image: "/hero/dashboard-overview.png",
   },
   {
     name: "Trends",
     tone: "blue",
     href: "#insights-showcase",
-    image:
-      "https://vcbvkgmpzppausxwrljp.supabase.co/storage/v1/object/public/brand-images/landing%20page%20image/business%20trends%20landing%20page%20image.png",
+    image: "/hero/mtd-sales.png",
   },
   {
     name: "Brand Intel",
     tone: "blue",
     href: "#insights-showcase",
-    image:
-      "https://vcbvkgmpzppausxwrljp.supabase.co/storage/v1/object/public/brand-images/landing%20page%20image/brand%20%26%20search%20landing%20page%20image.png",
+    image: "/hero/pl-breakdown.png",
   },
   {
     name: "Advertising",
     tone: "green",
     href: "#growth-showcase",
-    image: "/hero/advertising.png",
+    image: "/hero/mtd-sales.png",
   },
   {
     name: "Keywords",
     tone: "green",
     href: "#growth-showcase",
-    image: "/hero/keywords.png",
+    image: "/hero/dashboard-overview.png",
   },
   {
     name: "Inventory",
     tone: "orange",
     href: "#features",
-    image: "/hero/inventory.png",
+    image: "/hero/inventory-insights.png",
   },
   {
     name: "Reviews & Returns",
     tone: "orange",
     href: "#features",
-    image: "/hero/reviews-returns.png",
+    image: "/hero/inventory-insights.png",
   },
   {
     name: "Catalog",
     tone: "orange",
     href: "#features",
-    image: "/hero/catalog.png",
+    image: "/hero/pl-breakdown.png",
   },
 ];
 
@@ -243,12 +241,37 @@ export default function PhormulaHero() {
           </span>
         </div>
 
-        <h1 className={`${styles.title} ${styles.enter} ${styles.d2}`}>
+        <h1  className="
+            mx-auto mt-4 text-center
+            max-w-[820px]
+            text-[34px]
+            leading-[1.08]
+            tracking-[-0.035em]
+            text-white
+
+            sm:text-[38px]
+            lg:text-[42px]
+            xl:text-[42px]
+
+            2xl:max-w-[1000px]
+            2xl:text-[54px]
+            text-white
+          ">
           Run your Amazon business with{" "}
           <span>AI built on your real data</span>
         </h1>
 
-        <p className={`${styles.copy} ${styles.enter} ${styles.d3}`}>
+        <p className="
+                mx-auto mt-4 max-w-[690px]
+                text-[14px] leading-[1.7]
+                text-[#68748a]
+                text-center
+
+                md:text-[15px]
+                2xl:mt-[18px]
+                2xl:max-w-[610px]
+                2xl:leading-[1.75]
+              ">
           Phormula brings your sales, ads, search, inventory, and customer data
           into one system, then helps your team make faster decisions without
           digging through Seller Central, spreadsheets, and disconnected tools.
