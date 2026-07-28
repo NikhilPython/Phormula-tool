@@ -76,66 +76,100 @@ def load_current_inventory_coverage_df(user_id: int, country: str, month: str = 
 
 
 def build_coverage_map_from_df(coverage_df: pd.DataFrame):
-    """
-    Supports both:
-    1. Current inventory table format:
-       SKU, Product Name, Coverage Ratio (In Months)
-
-    2. compute_inventory_coverage_ratio format:
-       sku, product_name, inventory_coverage_ratio
-    """
+    """Build the SKU inventory context used by notifications and email alerts."""
     coverage_map = {}
 
     if coverage_df is None or coverage_df.empty:
         return coverage_map
 
-    # Current inventory table format
-    if "SKU" in coverage_df.columns:
-        for _, row in coverage_df.iterrows():
-            sku = row.get("SKU")
-            if sku is None or pd.isna(sku):
-                continue
+    def first_value(row, names, default=None):
+        for name in names:
+            if name in row.index:
+                value = row.get(name)
+                if value is not None and not pd.isna(value):
+                    return value
+        return default
 
-            sku_key = normalize_sku(sku)
-            if not sku_key or sku_key == "TOTAL":
-                continue
+    def number(row, names, default=0.0):
+        value = first_value(row, names, default)
+        try:
+            return float(pd.to_numeric(value, errors="coerce"))
+        except Exception:
+            return float(default)
 
-            coverage_value = row.get("Coverage Ratio (In Months)")
-            product_name = row.get("Product Name")
+    sku_column = "SKU" if "SKU" in coverage_df.columns else "sku"
 
-            coverage_map[sku_key] = {
-                "inventory_coverage_ratio": None
-                if pd.isna(coverage_value)
-                else float(coverage_value),
-                "product_name": None
-                if product_name is None or pd.isna(product_name)
-                else str(product_name).strip(),
-            }
-
+    if sku_column not in coverage_df.columns:
         return coverage_map
 
-    # compute_inventory_coverage_ratio format
-    if "sku" in coverage_df.columns:
-        for _, row in coverage_df.iterrows():
-            sku = row.get("sku")
-            if sku is None or pd.isna(sku):
-                continue
+    for _, row in coverage_df.iterrows():
+        sku = row.get(sku_column)
+        if sku is None or pd.isna(sku):
+            continue
 
-            sku_key = normalize_sku(sku)
-            if not sku_key or sku_key == "TOTAL":
-                continue
+        sku_key = normalize_sku(sku)
+        if not sku_key or sku_key == "TOTAL":
+            continue
 
-            coverage_value = row.get("inventory_coverage_ratio")
-            product_name = row.get("product_name")
+        product_name = first_value(
+            row,
+            ["Product Name", "product_name"],
+            sku_key,
+        )
 
-            coverage_map[sku_key] = {
-                "inventory_coverage_ratio": None
-                if pd.isna(coverage_value)
-                else float(coverage_value),
-                "product_name": None
-                if product_name is None or pd.isna(product_name)
-                else str(product_name).strip(),
-            }
+        current_inventory = number(
+            row,
+            ["total_stock", "Total Stock", "Inventory at the end of the month"],
+            0,
+        )
+        in_transit = number(
+            row,
+            ["total_transit", "Total Transit", "In Transit Units"],
+            0,
+        )
+        inbound = number(
+            row,
+            ["inbound_quantity", "Inbound Quantity", "Inventory Inwarded"],
+            0,
+        )
+        sales_last_30_days = number(
+            row,
+            ["Sales Last 30 Days", "sales_last_30_days", "Unit Sales in Last 30 Days"],
+            0,
+        )
+
+        current_coverage = number(
+            row,
+            [
+                "Coverage Ratio (In Months)",
+                "Coverage Ratio (Current Inventory)",
+                "inventory_coverage_ratio",
+            ],
+            0,
+        )
+        future_coverage = number(
+            row,
+            [
+                "Coverage Ratio (Current + Intransit)",
+                "Coverage Ratio (Current + In Transit)",
+                "coverage_ratio_current_intransit",
+            ],
+            0,
+        )
+
+        if not future_coverage and sales_last_30_days > 0:
+            future_coverage = (current_inventory + in_transit) / sales_last_30_days
+
+        coverage_map[sku_key] = {
+            "inventory_coverage_ratio": round(current_coverage, 2),
+            "future_coverage_ratio": round(future_coverage, 2),
+            "current_inventory": round(current_inventory, 2),
+            "in_transit": round(in_transit, 2),
+            "inbound": round(inbound, 2),
+            "sales_last_30_days": round(sales_last_30_days, 2),
+            "future_stock": round(current_inventory + in_transit, 2),
+            "product_name": str(product_name).strip() if product_name else sku_key,
+        }
 
     return coverage_map
 
@@ -378,6 +412,12 @@ def notification():
                 "sku": sku,
                 "product_name": product_name,
                 "inventory_coverage_ratio": inventory_coverage_ratio,
+                "future_coverage_ratio": sku_data.get("future_coverage_ratio"),
+                "current_inventory": sku_data.get("current_inventory", 0),
+                "in_transit": sku_data.get("in_transit", 0),
+                "inbound": sku_data.get("inbound", 0),
+                "sales_last_30_days": sku_data.get("sales_last_30_days", 0),
+                "future_stock": sku_data.get("future_stock", 0),
                 "alert": alert_value,
                 "alert_type": alert_type,
             }

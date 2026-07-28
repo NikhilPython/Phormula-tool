@@ -2703,299 +2703,325 @@ def send_daily_inventory_alert_email(
     alerts: list,
     dashboard_base_url: str = "https://phormula.io",
 ) -> bool:
-    """Send one country-specific daily inventory alert email."""
+    """Send a country-specific inventory action email with stock and transit context."""
     import traceback
+    import math
+    import pandas as pd
 
     if not to_email:
         print("[WARN] Daily inventory alert skipped because recipient email is missing.")
         return False
 
     country = str(country or "").strip().lower()
-
     if country not in ("uk", "us"):
         raise ValueError("country must be 'uk' or 'us'")
 
-    rows = list(alerts or [])
+    def safe_float(value, default=0.0):
+        try:
+            number = float(value)
+            return number if math.isfinite(number) else default
+        except (TypeError, ValueError):
+            return default
+
+    def find_user_id_by_email(email_address):
+        query = text('SELECT id FROM "user" WHERE LOWER(email) = LOWER(:email) LIMIT 1')
+        with engine_hist.connect() as conn:
+            row = conn.execute(query, {"email": email_address}).fetchone()
+        return int(row[0]) if row else None
+
+    def load_policy(user_id):
+        defaults = {
+            "ship_time_weeks": 0.0,
+            "air_time_weeks": 0.0,
+            "stock_unit_weeks": 0.0,
+        }
+        if not user_id:
+            return defaults
+
+        query = text("""
+            SELECT ship_time_weeks, air_time_weeks, stock_unit_weeks
+            FROM public.country_profile
+            WHERE user_id = :user_id
+              AND LOWER(country) = :country
+            ORDER BY id DESC
+            LIMIT 1
+        """)
+        try:
+            with engine_hist.connect() as conn:
+                row = conn.execute(query, {
+                    "user_id": user_id,
+                    "country": country,
+                }).mappings().first()
+            if not row:
+                return defaults
+            return {
+                "ship_time_weeks": safe_float(row.get("ship_time_weeks")),
+                "air_time_weeks": safe_float(row.get("air_time_weeks")),
+                "stock_unit_weeks": safe_float(row.get("stock_unit_weeks")),
+            }
+        except Exception as exc:
+            print(f"[WARN] Could not load inventory policy for daily email: {exc}")
+            return defaults
+
+    def load_latest_inventory_rows(user_id):
+        if not user_id:
+            return {}
+
+        current_month = datetime.now().strftime("%B").lower()
+        current_year = datetime.now().year
+        preferred = f"currentinventory_{user_id}_{country}_{current_month}{current_year}_table"
+
+        lookup = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name LIKE :pattern
+            ORDER BY
+              CASE WHEN table_name = :preferred THEN 0 ELSE 1 END,
+              table_name DESC
+            LIMIT 1
+        """)
+
+        try:
+            with engine_hist.connect() as conn:
+                table_name = conn.execute(lookup, {
+                    "pattern": f"currentinventory_{user_id}_{country}_%_table",
+                    "preferred": preferred,
+                }).scalar()
+
+            if not table_name:
+                return {}
+
+            df = pd.read_sql_query(
+                text(f'SELECT * FROM public."{table_name}"'),
+                engine_hist,
+            )
+        except Exception as exc:
+            print(f"[WARN] Could not load current inventory for daily email: {exc}")
+            return {}
+
+        if df.empty:
+            return {}
+
+        def first_value(row, names, default=None):
+            for name in names:
+                if name in row.index:
+                    value = row.get(name)
+                    if value is not None and not pd.isna(value):
+                        return value
+            return default
+
+        def num(row, names, default=0.0):
+            return safe_float(first_value(row, names, default), default)
+
+        sku_col = "SKU" if "SKU" in df.columns else "sku" if "sku" in df.columns else None
+        if not sku_col:
+            return {}
+
+        result = {}
+        for _, row in df.iterrows():
+            sku = str(row.get(sku_col) or "").strip().upper()
+            if not sku or sku == "TOTAL":
+                continue
+
+            current_inventory = num(
+                row,
+                ["total_stock", "Total Stock", "Inventory at the end of the month"],
+            )
+            in_transit = num(
+                row,
+                ["total_transit", "Total Transit", "In Transit Units"],
+            )
+            inbound = num(
+                row,
+                ["inbound_quantity", "Inbound Quantity", "Inventory Inwarded"],
+            )
+            demand = num(
+                row,
+                ["Sales Last 30 Days", "sales_last_30_days", "Unit Sales in Last 30 Days"],
+            )
+            current_cover = num(
+                row,
+                ["Coverage Ratio (In Months)", "Coverage Ratio (Current Inventory)"],
+            )
+            future_cover = num(
+                row,
+                [
+                    "Coverage Ratio (Current + Intransit)",
+                    "Coverage Ratio (Current + In Transit)",
+                ],
+            )
+            if not future_cover and demand > 0:
+                future_cover = (current_inventory + in_transit) / demand
+
+            result[sku] = {
+                "product_name": first_value(row, ["Product Name", "product_name"], sku),
+                "current_inventory": current_inventory,
+                "in_transit": in_transit,
+                "inbound": inbound,
+                "sales_last_30_days": demand,
+                "inventory_coverage_ratio": current_cover,
+                "future_coverage_ratio": future_cover,
+                "future_stock": current_inventory + in_transit,
+            }
+        return result
+
+    user_id = find_user_id_by_email(to_email)
+    policy = load_policy(user_id)
+    inventory_map = load_latest_inventory_rows(user_id)
+
+    ship_weeks = policy["ship_time_weeks"]
+    air_weeks = policy["air_time_weeks"]
+    buffer_weeks = policy["stock_unit_weeks"]
+    sea_required_weeks = ship_weeks + buffer_weeks
+    air_required_weeks = air_weeks + buffer_weeks
+    sea_required_months = sea_required_weeks / 4.345 if sea_required_weeks else 0.0
+    air_required_months = air_required_weeks / 4.345 if air_required_weeks else 0.0
+
+    rows = []
+    for alert in list(alerts or []):
+        item = dict(alert or {})
+        sku_key = str(item.get("sku") or "").strip().upper()
+        saved = inventory_map.get(sku_key, {})
+
+        for field in (
+            "product_name", "current_inventory", "in_transit", "inbound",
+            "sales_last_30_days", "inventory_coverage_ratio",
+            "future_coverage_ratio", "future_stock",
+        ):
+            if item.get(field) in (None, "") and field in saved:
+                item[field] = saved[field]
+
+        current_inventory = safe_float(item.get("current_inventory"))
+        in_transit = safe_float(item.get("in_transit"))
+        inbound = safe_float(item.get("inbound"))
+        demand = safe_float(item.get("sales_last_30_days"))
+        current_cover = safe_float(item.get("inventory_coverage_ratio"))
+        future_stock = safe_float(item.get("future_stock"), current_inventory + in_transit)
+        future_cover = safe_float(item.get("future_coverage_ratio"))
+
+        if not future_stock:
+            future_stock = current_inventory + in_transit
+        if not future_cover and demand > 0:
+            future_cover = future_stock / demand
+
+        sea_units_needed = max(0, math.ceil(demand * sea_required_months - future_stock)) if demand else 0
+        air_units_needed = max(0, math.ceil(demand * air_required_months - future_stock)) if demand else 0
+
+        if future_cover >= sea_required_months > 0:
+            action = (
+                "Current stock is low, but current plus in-transit inventory covers "
+                "the sea-transit requirement. No additional shipment is required now."
+            )
+            severity = "Covered by in-transit stock"
+            accent = "#12B76A"
+        elif future_cover >= air_required_months > 0:
+            action = (
+                f"Future stock covers the air requirement but not the sea requirement. "
+                f"Plan a sea shipment of about {sea_units_needed:,} units."
+            )
+            severity = "Sea shipment required"
+            accent = "#F79009"
+        else:
+            action = (
+                f"Future stock is below the air-transit requirement. "
+                f"Arrange about {air_units_needed:,} units by air urgently"
+                + (f" and plan {sea_units_needed:,} units for full sea coverage." if sea_units_needed else ".")
+            )
+            severity = "Urgent air shipment required"
+            accent = "#F04438"
+
+        item.update({
+            "current_inventory": current_inventory,
+            "in_transit": in_transit,
+            "inbound": inbound,
+            "sales_last_30_days": demand,
+            "inventory_coverage_ratio": current_cover,
+            "future_stock": future_stock,
+            "future_coverage_ratio": future_cover,
+            "sea_units_needed": sea_units_needed,
+            "air_units_needed": air_units_needed,
+            "action_message": action,
+            "severity": severity,
+            "accent": accent,
+        })
+        rows.append(item)
+
+    rows.sort(key=lambda x: safe_float(x.get("future_coverage_ratio")))
     country_label = country.upper()
     safe_name = html.escape(str(user_name or "there").strip())
     generated_date = datetime.now().strftime("%d %B %Y")
-    dashboard_url = (
-        f"{dashboard_base_url.rstrip('/')}"
-        f"/live-dashboard/{country}#current-inventory"
-    )
+    dashboard_url = f"{dashboard_base_url.rstrip('/')}/live-dashboard/{country}#current-inventory"
 
-    def _coverage_sort_value(item):
-        ratio = item.get("inventory_coverage_ratio")
-        try:
-            return (ratio is None, float(ratio or 0))
-        except (TypeError, ValueError):
-            return (True, 0)
+    cards = []
+    for row in rows:
+        product = html.escape(str(row.get("product_name") or row.get("sku") or "Unknown product"))
+        sku = html.escape(str(row.get("sku") or "-"))
+        action = html.escape(str(row.get("action_message") or ""))
+        severity = html.escape(str(row.get("severity") or "Inventory action required"))
+        accent = row.get("accent") or "#F04438"
 
-    if rows:
-        cards = []
+        def fmt_units(value):
+            return f"{safe_float(value):,.0f}"
 
-        for row in sorted(rows, key=_coverage_sort_value):
-            product = html.escape(
-                str(
-                    row.get("product_name")
-                    or row.get("sku")
-                    or "Unknown product"
-                )
-            )
-            sku = html.escape(str(row.get("sku") or "-"))
+        def fmt_cover(value):
+            return f"{safe_float(value):.2f} months"
 
-            ratio = row.get("inventory_coverage_ratio")
-            try:
-                ratio_text = "N/A" if ratio is None else f"{float(ratio):.2f}"
-            except (TypeError, ValueError):
-                ratio_text = "N/A"
+        cards.append(f"""
+        <div style="border:1px solid #E4E7EC;border-left:4px solid {accent};border-radius:10px;padding:14px 16px;margin-bottom:14px;background:#FFFFFF;">
+          <div style="font-size:16px;font-weight:700;color:#344054;">{product}</div>
+          <div style="font-size:12px;color:#667085;margin:4px 0 12px 0;">SKU: {sku}</div>
 
-            alert_type = html.escape(
-                str(
-                    row.get("alert_type")
-                    or "Coverage ratio is low"
-                )
-            )
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:10px;">
+            <tr>
+              <td style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">Current inventory<br><strong style="color:#344054;">{fmt_units(row.get('current_inventory'))}</strong></td>
+              <td style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">In transit<br><strong style="color:#344054;">{fmt_units(row.get('in_transit'))}</strong></td>
+              <td style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">Inbound<br><strong style="color:#344054;">{fmt_units(row.get('inbound'))}</strong></td>
+              <td style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">Sales last 30 days<br><strong style="color:#344054;">{fmt_units(row.get('sales_last_30_days'))}</strong></td>
+            </tr>
+            <tr>
+              <td colspan="2" style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">Current cover<br><strong style="color:#344054;">{fmt_cover(row.get('inventory_coverage_ratio'))}</strong></td>
+              <td colspan="2" style="padding:7px;border:1px solid #EAECF0;font-size:12px;color:#667085;">Future cover (current + transit)<br><strong style="color:#344054;">{fmt_cover(row.get('future_coverage_ratio'))}</strong></td>
+            </tr>
+          </table>
 
-            cards.append(
-                f"""
-                <div style="
-                    border:1px solid #E4E7EC;
-                    border-left:4px solid #F04438;
-                    border-radius:10px;
-                    padding:14px 16px;
-                    margin-bottom:12px;
-                    background:#FFFFFF;
-                ">
-                  <div style="
-                      font-size:15px;
-                      font-weight:700;
-                      color:#344054;
-                      margin-bottom:6px;
-                  ">
-                    {product}
-                  </div>
-
-                  <div style="
-                      font-size:12px;
-                      color:#667085;
-                      margin-bottom:8px;
-                  ">
-                    SKU: {sku}
-                  </div>
-
-                  <div style="
-                      font-size:14px;
-                      font-weight:700;
-                      color:#B42318;
-                      line-height:1.5;
-                  ">
-                    High alert — Coverage ratio: {ratio_text} months
-                  </div>
-
-                  <div style="
-                      font-size:13px;
-                      color:#475467;
-                      line-height:1.5;
-                      margin-top:4px;
-                  ">
-                    {alert_type}
-                  </div>
-                </div>
-                """
-            )
-
-        alert_cards_html = "".join(cards)
-    else:
-        alert_cards_html = """
-        <div style="
-            padding:16px;
-            border:1px solid #D1E9E2;
-            background:#F2FAF7;
-            border-radius:10px;
-            color:#376859;
-            font-size:14px;
-            line-height:1.6;
-        ">
-          No active high inventory alerts today.
+          <div style="font-size:13px;font-weight:700;color:{accent};margin-bottom:5px;">{severity}</div>
+          <div style="font-size:13px;color:#475467;line-height:1.6;">{action}</div>
         </div>
-        """
+        """)
 
-    subject = (
-        f"[Phormula] {country_label} Daily Inventory Alerts "
-        f"— {len(rows)} high alert(s)"
-    )
+    alert_cards_html = "".join(cards) if cards else """
+      <div style="padding:16px;border:1px solid #D1E9E2;background:#F2FAF7;border-radius:10px;color:#376859;font-size:14px;">
+        No active high inventory alerts today.
+      </div>
+    """
 
+    policy_html = f"""
+      <div style="background:#F8FAFC;border:1px solid #E4E7EC;border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:13px;color:#475467;line-height:1.7;">
+        <strong style="color:#344054;">Inventory policy:</strong>
+        Sea {ship_weeks:g} weeks + buffer {buffer_weeks:g} weeks = {sea_required_weeks:g} weeks ({sea_required_months:.2f} months).<br>
+        Air {air_weeks:g} weeks + buffer {buffer_weeks:g} weeks = {air_required_weeks:g} weeks ({air_required_months:.2f} months).
+      </div>
+    """
+
+    subject = f"[Phormula] {country_label} Inventory Action Alerts — {len(rows)} item(s)"
     html_body = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-
-    <body style="
-        margin:0;
-        padding:0;
-        background:#F8FAFC;
-        font-family:Arial,Helvetica,sans-serif;
-    ">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="padding:18px 0;">
-        <tr>
-          <td align="center">
-
-            <table width="640" cellpadding="0" cellspacing="0" border="0"
-                   style="
-                       width:640px;
-                       max-width:100%;
-                       background:#FFFFFF;
-                       border-collapse:collapse;
-                   ">
-
-              <tr>
-                <td style="
-                    background:#7FB5A5;
-                    padding:18px 24px;
-                    color:#F8EDCF;
-                ">
-                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td style="vertical-align:middle;">
-                        <img
-                          src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
-                          alt="Phormula"
-                          width="40"
-                          style="display:block;border:0;"
-                        >
-                      </td>
-
-                      <td align="right" style="
-                          vertical-align:middle;
-                          font-size:16px;
-                          font-weight:600;
-                      ">
-                        {country_label} Inventory Alert Report
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-
-              <tr>
-                <td style="
-                    padding:28px 30px;
-                    border-left:1px solid #E4E7EC;
-                    border-right:1px solid #E4E7EC;
-                ">
-
-                  <img
-                    src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
-                    alt="Phormula"
-                    width="210"
-                    style="
-                        display:block;
-                        margin:0 auto 20px auto;
-                        border:0;
-                        max-width:100%;
-                        height:auto;
-                    "
-                  >
-
-                  <p style="
-                      font-size:15px;
-                      color:#344054;
-                      line-height:1.7;
-                      margin:0 0 8px 0;
-                  ">
-                    Hi <strong>{safe_name}</strong>,
-                  </p>
-
-                  <p style="
-                      font-size:14px;
-                      color:#475467;
-                      line-height:1.7;
-                      margin:0 0 22px 0;
-                  ">
-                    Here is your daily
-                    <strong>{country_label}</strong>
-                    inventory alert summary for
-                    <strong>{generated_date}</strong>.
-                    Products are ordered from the lowest coverage ratio first.
-                  </p>
-
-                  <div style="
-                      font-size:20px;
-                      font-weight:700;
-                      color:#37455F;
-                      margin-bottom:6px;
-                  ">
-                    {country_label} inventory alerts
-                  </div>
-
-                  <div style="
-                      font-size:13px;
-                      color:#667085;
-                      margin-bottom:16px;
-                  ">
-                    {len(rows)} high alert(s)
-                  </div>
-
-                  {alert_cards_html}
-
-                  <div style="
-                      text-align:center;
-                      margin-top:22px;
-                  ">
-                    <a href="{dashboard_url}" style="
-                        display:inline-block;
-                        background:#37455F;
-                        color:#F8EDCF;
-                        text-decoration:none;
-                        padding:10px 22px;
-                        border-radius:8px;
-                        font-size:14px;
-                        font-weight:700;
-                    ">
-                      View {country_label} Inventory
-                    </a>
-                  </div>
-
-                  <p style="
-                      font-size:12px;
-                      color:#98A2B3;
-                      line-height:1.6;
-                      margin:26px 0 0 0;
-                  ">
-                    This email is generated automatically every day.
-                    Support:
-                    <a href="mailto:care@phormula.io"
-                       style="color:#37455F;text-decoration:none;">
-                      care@phormula.io
-                    </a>
-                  </p>
-
-                </td>
-              </tr>
-
-              <tr>
-                <td align="center" style="
-                    background:#7FB5A5;
-                    padding:12px 18px;
-                    color:#F8EDCF;
-                    font-size:12px;
-                ">
-                  © 2026 Phormula. All rights reserved.
-                </td>
-              </tr>
-
-            </table>
-
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
+    <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="margin:0;padding:0;background:#F8FAFC;font-family:Arial,Helvetica,sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="padding:18px 0;"><tr><td align="center">
+        <table width="680" cellpadding="0" cellspacing="0" style="width:680px;max-width:100%;background:#FFFFFF;border-collapse:collapse;">
+          <tr><td style="background:#7FB5A5;padding:18px 24px;color:#F8EDCF;font-size:16px;font-weight:600;">{country_label} Inventory Action Report</td></tr>
+          <tr><td style="padding:26px 28px;border-left:1px solid #E4E7EC;border-right:1px solid #E4E7EC;">
+            <p style="font-size:15px;color:#344054;line-height:1.7;margin:0 0 8px 0;">Hi <strong>{safe_name}</strong>,</p>
+            <p style="font-size:14px;color:#475467;line-height:1.7;margin:0 0 18px 0;">Here are the inventory actions for <strong>{generated_date}</strong>. Each item compares current stock and in-transit stock against both air and sea replenishment requirements.</p>
+            {policy_html}
+            {alert_cards_html}
+            <div style="text-align:center;margin-top:22px;"><a href="{dashboard_url}" style="display:inline-block;background:#37455F;color:#F8EDCF;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:700;">View {country_label} Inventory</a></div>
+          </td></tr>
+          <tr><td align="center" style="background:#7FB5A5;padding:12px 18px;color:#F8EDCF;font-size:12px;">© 2026 Phormula. All rights reserved.</td></tr>
+        </table>
+      </td></tr></table>
+    </body></html>
     """
 
     msg = Message(
@@ -3007,16 +3033,10 @@ def send_daily_inventory_alert_email(
 
     try:
         mail.send(msg)
-        print(
-            f"[INFO] {country_label} daily inventory alert "
-            f"sent to {to_email}"
-        )
+        print(f"[INFO] {country_label} inventory action email sent to {to_email}")
         return True
-
     except Exception as exc:
-        print(
-            f"[ERROR] {country_label} daily inventory alert "
-            f"failed for {to_email}: {exc}"
-        )
+        print(f"[ERROR] {country_label} inventory action email failed for {to_email}: {exc}")
         traceback.print_exc()
         return False
+
