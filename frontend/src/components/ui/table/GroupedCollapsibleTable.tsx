@@ -69,6 +69,8 @@ type Props<RowT> = {
   collapsedState?: Record<string, boolean>;
   onCollapsedChange?: (next: Record<string, boolean>) => void;
   preserveColumnWidths?: boolean | "responsive";
+  stickyLeftCols?: boolean;
+  hideStickyLeftColsWhileScrolling?: boolean;
   getGroupToggleCollapsedState?: (
     groupId: string,
     defaultIsCollapsed: boolean
@@ -155,6 +157,8 @@ export default function GroupedCollapsibleTable<RowT>({
   onSortChange,
   bodyMaxHeight,
   preserveColumnWidths = false,
+  stickyLeftCols = true,
+  hideStickyLeftColsWhileScrolling = true,
   getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
@@ -616,6 +620,17 @@ export default function GroupedCollapsibleTable<RowT>({
   // }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScrollLeftRef = useRef(0);
+  const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (scrollStopTimeoutRef.current) {
+        clearTimeout(scrollStopTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /* ---------------- Row 2 Headers ---------------- */
   type Row2Cell<RowT> =
@@ -650,6 +665,106 @@ export default function GroupedCollapsibleTable<RowT>({
   const thBase =
     `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
 
+  const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
+  const stickyLeftDrawerWidth = visibleLeafCols
+    .slice(0, stickyLeftCount)
+    .reduce((sum, col) => sum + getMinWidthForCol(col), 0);
+  const shouldHideStickyLeftDrawer =
+    hideStickyLeftColsWhileScrolling &&
+    isStickyLeftDrawerHidden &&
+    stickyLeftDrawerWidth > 0;
+
+  const getStickyLeftOffset = (colIndex: number) =>
+    visibleLeafCols
+      .slice(0, colIndex)
+      .reduce((sum, col) => sum + getMinWidthForCol(col), 0);
+
+  const getStickyLeftStyle = (
+    colIndex: number,
+    surface: "header" | "body" | "sign" = "body"
+  ): React.CSSProperties | undefined => {
+    if (colIndex >= stickyLeftCount) return undefined;
+
+    const dividerColor =
+      surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
+    const stickyDividers = [
+      `inset -1px 0 0 ${dividerColor}`,
+      `inset 0 -1px 0 ${dividerColor}`,
+    ];
+
+    return {
+      left: `${getStickyLeftOffset(colIndex)}px`,
+      boxShadow: stickyDividers.join(", "),
+      borderColor: "transparent",
+      transform: shouldHideStickyLeftDrawer
+        ? `translateX(-${stickyLeftDrawerWidth}px)`
+        : "translateX(0)",
+      transition: "transform 180ms ease",
+      willChange: "transform",
+    };
+  };
+
+  const getStickyBoundaryNeighborStyle = (
+    colIndex: number
+  ): React.CSSProperties | undefined => {
+    if (
+      stickyLeftCount === 0 ||
+      colIndex !== stickyLeftCount ||
+      shouldHideStickyLeftDrawer
+    ) {
+      return undefined;
+    }
+
+    return { borderLeftColor: "transparent" };
+  };
+
+  const getStickyLeftClassName = (
+    colIndex: number,
+    surface: "header" | "body" | "sign" = "body"
+  ) => {
+    if (colIndex >= stickyLeftCount) return "";
+
+    return [
+      "sticky",
+      surface === "header" ? "z-30" : "z-10",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  };
+
+  const getStickyBodyBackgroundClassName = (rowClassName?: string) => {
+    if (rowClassName?.includes("bg-[#EFEFEF]")) return "bg-[#EFEFEF]";
+    if (rowClassName?.includes("bg-gray-50")) return "bg-gray-50";
+    if (rowClassName?.includes("bg-gray-100")) return "bg-gray-100";
+    if (rowClassName?.includes("bg-white")) return "bg-white";
+
+    return "bg-white";
+  };
+
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (!hideStickyLeftColsWhileScrolling || stickyLeftCount === 0) return;
+
+    const nextScrollLeft = event.currentTarget.scrollLeft;
+    const didScrollHorizontally =
+      Math.abs(nextScrollLeft - lastScrollLeftRef.current) > 0.5;
+
+    lastScrollLeftRef.current = nextScrollLeft;
+
+    if (!didScrollHorizontally) return;
+
+    if (scrollStopTimeoutRef.current) {
+      clearTimeout(scrollStopTimeoutRef.current);
+    }
+
+    const shouldHideDrawer = nextScrollLeft >= Math.max(stickyLeftDrawerWidth - 8, 0);
+
+    setIsStickyLeftDrawerHidden(shouldHideDrawer);
+
+    scrollStopTimeoutRef.current = setTimeout(() => {
+      setIsStickyLeftDrawerHidden(false);
+    }, 220);
+  };
+
   /* ---------------- Render ---------------- */
 
   /* ---------------- Render ---------------- */
@@ -682,18 +797,19 @@ export default function GroupedCollapsibleTable<RowT>({
     <thead className={bodyMaxHeight ? "sticky top-0 z-20 font-bold" : "font-bold"}>
       {/* -------- Header Row 1 -------- */}
       <tr className={headerRow1ClassName}>
-        {leftCols.map((c) => (
+        {leftCols.map((c, colIndex) => (
           <th
             key={c.key}
             rowSpan={anyGroupExpanded ? 2 : 1}
-            className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+            style={getStickyLeftStyle(colIndex, "header")}
+            className={`${thBase} ${getStickyLeftClassName(colIndex, "header")} ${colIndex < stickyLeftCount ? "bg-[#5EA68E]" : ""} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
               }`}
           >
             {renderHeaderContent(c)}
           </th>
         ))}
 
-        {resolvedLayout.map((item) => {
+        {resolvedLayout.map((item, itemIndex) => {
           if (item.type === "group") {
             const g = groupMap.get(item.id);
             if (!g) return null;
@@ -714,6 +830,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 key={g.id}
                 colSpan={cols.length}
                 rowSpan={groupRowSpan}
+                style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
                 className={`${thBase} text-center ${g.headerClassName || ""}`}
               >
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
@@ -789,6 +906,7 @@ export default function GroupedCollapsibleTable<RowT>({
             <th
               key={c.key}
               rowSpan={anyGroupExpanded ? 2 : 1}
+              style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
                 }`}
             >
@@ -808,9 +926,10 @@ export default function GroupedCollapsibleTable<RowT>({
       {/* -------- Header Row 2 -------- */}
       {anyGroupExpanded && (
         <tr className={headerRow2ClassName}>
-          {row2Cells.map((c) => (
+          {row2Cells.map((c, colIndex) => (
             <th
               key={c.key}
+              style={colIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
               {renderHeaderContent(c)}
@@ -823,14 +942,15 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const renderSignRow = () =>
     showSignRowInBody ? (
-      <tr className="font-bold text-center">
-        {visibleLeafCols.map((c) => {
+      <tr className="bg-white font-bold text-center">
+        {visibleLeafCols.map((c, colIndex) => {
           const sign = getSignForCol?.(c.key);
 
           return (
             <td
               key={c.key}
-              className={`border ${cellPadding} ${sign?.className || ""}`}
+              style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
+              className={`border ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
             </td>
@@ -842,18 +962,24 @@ export default function GroupedCollapsibleTable<RowT>({
   const renderBodyRows = (rowsToRender: RowT[], startIndex = 0) =>
     rowsToRender.map((row, idx) => {
       const realIndex = startIndex + idx;
+      const rowClassName = getRowClassName?.(row, realIndex);
+      const stickyBodyBackgroundClassName =
+        getStickyBodyBackgroundClassName(rowClassName);
 
       return (
         <tr
           key={getRowKey?.(row, realIndex) ?? realIndex}
-          className={getRowClassName?.(row, realIndex)}
+          className={rowClassName}
         >
-          {visibleLeafCols.map((c) => (
+          {visibleLeafCols.map((c, colIndex) => (
             <td
               key={c.key}
+              style={getStickyLeftStyle(colIndex, "body") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={[
                 "border",
                 cellPadding,
+                getStickyLeftClassName(colIndex, "body"),
+                colIndex < stickyLeftCount ? stickyBodyBackgroundClassName : "",
                 c.key === "sku" ? "text-left" : alignClass(c.align),
                 "overflow-hidden truncate",
                 c.tdClassName || "",
@@ -996,6 +1122,7 @@ export default function GroupedCollapsibleTable<RowT>({
     return (
       <div
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="w-full overflow-auto"
         style={{
           maxHeight: `${bodyMaxHeight}px`,
@@ -1026,17 +1153,23 @@ export default function GroupedCollapsibleTable<RowT>({
    * Everything stays in one table
    */
   return (
-    <table className={tableClassName} style={tableStyle}>
-      {renderColGroup()}
-      {renderTableHead()}
+    <div
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      className="w-full overflow-x-auto"
+    >
+      <table className={tableClassName} style={tableStyle}>
+        {renderColGroup()}
+        {renderTableHead()}
 
-      <tbody>
-        {renderSignRow()}
-        {renderBodyRows(scrollRows)}
-        {pinnedRows.length > 0 && renderBodyRows(pinnedRows, scrollRows.length)}
-      </tbody>
+        <tbody>
+          {renderSignRow()}
+          {renderBodyRows(scrollRows)}
+          {pinnedRows.length > 0 && renderBodyRows(pinnedRows, scrollRows.length)}
+        </tbody>
 
-      {renderSummaryFooter()}
-    </table>
+        {renderSummaryFooter()}
+      </table>
+    </div>
   );
 }

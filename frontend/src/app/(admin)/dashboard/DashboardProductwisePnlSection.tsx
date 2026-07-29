@@ -692,7 +692,7 @@ export default function DashboardProductwisePnlSection({
                                             // initialCollapsed={{ marketplace_fees: false }}
                                             getRowClassName={(row, index) => {
                                                 if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-                                                if (row.isOthers) return "";
+                                                if (row.isOthers) return "bg-white";
                                                 return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                                             }}
                                             getValue={(row, colKey) => {
