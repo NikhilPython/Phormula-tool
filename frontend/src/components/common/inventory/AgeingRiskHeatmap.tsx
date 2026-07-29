@@ -1668,6 +1668,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         useCurrentInventoryTableLayout ? "responsive" : false
                     }
                     stickyLeftWidthMode="declared"
+                    stickyLeftDividerMode="leading"
+                    showStickyLeftOuterBorder
                 />
             </div>
         </div>

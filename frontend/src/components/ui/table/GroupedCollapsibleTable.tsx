@@ -74,6 +74,7 @@ type Props<RowT> = {
   stickyLeftBorderMode?: "transparent" | "shadow-only";
   stickyLeftDividerMode?: "trailing" | "leading";
   stickyLeftWidthMode?: "fallback" | "declared";
+  showStickyLeftOuterBorder?: boolean;
   getGroupToggleCollapsedState?: (
     groupId: string,
     defaultIsCollapsed: boolean
@@ -165,6 +166,7 @@ export default function GroupedCollapsibleTable<RowT>({
   stickyLeftBorderMode = "transparent",
   stickyLeftDividerMode = "trailing",
   stickyLeftWidthMode = "fallback",
+  showStickyLeftOuterBorder = false,
   getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
@@ -753,9 +755,14 @@ export default function GroupedCollapsibleTable<RowT>({
 
     const dividerColor =
       surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
+    const outerLeftDivider =
+      showStickyLeftOuterBorder && colIndex === 0
+        ? `inset 1px 0 0 ${dividerColor}`
+        : "";
     const stickyDividers =
       stickyLeftDividerMode === "leading"
         ? [
+          outerLeftDivider,
           colIndex > 0 ? `inset 1px 0 0 ${dividerColor}` : "",
           colIndex === stickyLeftCount - 1
             ? `inset -1px 0 0 ${dividerColor}`
@@ -763,9 +770,10 @@ export default function GroupedCollapsibleTable<RowT>({
           `inset 0 -1px 0 ${dividerColor}`,
         ].filter(Boolean)
         : [
+          outerLeftDivider,
           `inset -1px 0 0 ${dividerColor}`,
           `inset 0 -1px 0 ${dividerColor}`,
-        ];
+        ].filter(Boolean);
 
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
