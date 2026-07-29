@@ -71,6 +71,7 @@ type Props<RowT> = {
   preserveColumnWidths?: boolean | "responsive";
   stickyLeftCols?: boolean;
   hideStickyLeftColsWhileScrolling?: boolean;
+  stickyLeftBorderMode?: "transparent" | "shadow-only";
   getGroupToggleCollapsedState?: (
     groupId: string,
     defaultIsCollapsed: boolean
@@ -159,6 +160,7 @@ export default function GroupedCollapsibleTable<RowT>({
   preserveColumnWidths = false,
   stickyLeftCols = true,
   hideStickyLeftColsWhileScrolling = true,
+  stickyLeftBorderMode = "transparent",
   getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
@@ -695,7 +697,9 @@ export default function GroupedCollapsibleTable<RowT>({
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
       boxShadow: stickyDividers.join(", "),
-      borderColor: "transparent",
+      ...(stickyLeftBorderMode === "shadow-only"
+        ? { borderWidth: 0 }
+        : { borderColor: "transparent" }),
       transform: shouldHideStickyLeftDrawer
         ? `translateX(-${stickyLeftDrawerWidth}px)`
         : "translateX(0)",
@@ -1100,7 +1104,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
                   <td
                     colSpan={endColSpan}
-                    style={getSummaryValueStyle("rgb(249 250 251)")}
+                    style={getSummaryValueStyle("#ffffff")}
                     className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
                   >
                     {sec.endValue}
