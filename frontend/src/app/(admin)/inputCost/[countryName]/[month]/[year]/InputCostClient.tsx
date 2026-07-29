@@ -7287,6 +7287,7 @@ export default function InputCostPage({ params }: Params) {
                   // headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
                   stickyLeftBorderMode="shadow-only"
                   stickyLeftDividerMode="leading"
+                  stickyLeftWidthMode="declared"
                   showSignRowInBody
                   getSignForCol={getSignForCol}
                 />

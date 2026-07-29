@@ -1667,6 +1667,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     preserveColumnWidths={
                         useCurrentInventoryTableLayout ? "responsive" : false
                     }
+                    stickyLeftWidthMode="declared"
                 />
             </div>
         </div>

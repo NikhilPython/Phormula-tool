@@ -73,6 +73,7 @@ type Props<RowT> = {
   hideStickyLeftColsWhileScrolling?: boolean;
   stickyLeftBorderMode?: "transparent" | "shadow-only";
   stickyLeftDividerMode?: "trailing" | "leading";
+  stickyLeftWidthMode?: "fallback" | "declared";
   getGroupToggleCollapsedState?: (
     groupId: string,
     defaultIsCollapsed: boolean
@@ -163,6 +164,7 @@ export default function GroupedCollapsibleTable<RowT>({
   hideStickyLeftColsWhileScrolling = true,
   stickyLeftBorderMode = "transparent",
   stickyLeftDividerMode = "trailing",
+  stickyLeftWidthMode = "fallback",
   getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
@@ -566,6 +568,22 @@ export default function GroupedCollapsibleTable<RowT>({
     return 110;
   };
 
+  const getDeclaredWidthPx = (width: LeafCol<RowT>["width"]) => {
+    if (typeof width === "number") return width;
+    if (typeof width !== "string") return undefined;
+
+    const trimmedWidth = width.trim();
+    if (!trimmedWidth.endsWith("px")) return undefined;
+
+    const numericWidth = Number.parseFloat(trimmedWidth);
+    return Number.isFinite(numericWidth) ? numericWidth : undefined;
+  };
+
+  const getStickyLeftWidthForCol = (col: LeafCol<RowT>) =>
+    stickyLeftWidthMode === "declared"
+      ? getDeclaredWidthPx(col.width) ?? getMinWidthForCol(col)
+      : getMinWidthForCol(col);
+
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
 
   useEffect(() => {
@@ -716,7 +734,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
   const stickyLeftDrawerWidth = visibleLeafCols
     .slice(0, stickyLeftCount)
-    .reduce((sum, col) => sum + getMinWidthForCol(col), 0);
+    .reduce((sum, col) => sum + getStickyLeftWidthForCol(col), 0);
   const shouldHideStickyLeftDrawer =
     hideStickyLeftColsWhileScrolling &&
     isStickyLeftDrawerHidden &&
@@ -725,7 +743,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const getStickyLeftOffset = (colIndex: number) =>
     visibleLeafCols
       .slice(0, colIndex)
-      .reduce((sum, col) => sum + getMinWidthForCol(col), 0);
+      .reduce((sum, col) => sum + getStickyLeftWidthForCol(col), 0);
 
   const getStickyLeftStyle = (
     colIndex: number,
