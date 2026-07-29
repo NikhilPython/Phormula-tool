@@ -741,6 +741,47 @@ export default function GroupedCollapsibleTable<RowT>({
     return "bg-white";
   };
 
+  const getSummaryLabelContentStyle = (
+    leftOffsetPx = 12
+  ): React.CSSProperties => ({
+    position: "sticky",
+    left: `${leftOffsetPx}px`,
+    zIndex: 12,
+    maxWidth: `min(520px, calc(100vw - ${leftOffsetPx + 260}px))`,
+  });
+
+  const summaryChildLabelContentStyle: React.CSSProperties = {
+    position: "sticky",
+    left: "150px",
+    zIndex: 12,
+    maxWidth: "min(420px, calc(100vw - 620px))",
+  };
+
+  const getSummaryValueStyle = (
+    backgroundColor: string,
+    rightOffsetPx = 0,
+    showRightDivider = false
+  ): React.CSSProperties => ({
+    position: "sticky",
+    right: `${rightOffsetPx}px`,
+    zIndex: 14,
+    backgroundColor,
+    borderLeftColor: "transparent",
+    borderRightColor: showRightDivider ? "transparent" : undefined,
+    boxShadow: [
+      "inset 1px 0 0 rgb(209 213 219)",
+      showRightDivider ? "inset -1px 0 0 rgb(209 213 219)" : "",
+    ].filter(Boolean).join(", "),
+  });
+
+  const summaryBeforeValueCellStyle: React.CSSProperties = {
+    borderRightColor: "transparent",
+  };
+
+  const summaryAfterChildValueCellStyle: React.CSSProperties = {
+    borderLeftColor: "transparent",
+  };
+
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     if (!hideStickyLeftColsWhileScrolling || stickyLeftCount === 0) return;
 
@@ -1011,6 +1052,11 @@ export default function GroupedCollapsibleTable<RowT>({
     }
 
     const boldSectionsByDefault = summary?.boldSectionsByDefault ?? true;
+    const summaryLabelColSpan = labelColSpan + midColSpan;
+    const summaryEndValueWidth =
+      visibleLeafCols[visibleCount - 1]
+        ? getMinWidthForCol(visibleLeafCols[visibleCount - 1])
+        : 0;
 
     return (
       <tfoot>
@@ -1032,24 +1078,24 @@ export default function GroupedCollapsibleTable<RowT>({
                   title="Click to expand/collapse"
                 >
                   <td
-                    colSpan={labelColSpan}
+                    colSpan={summaryLabelColSpan}
+                    style={summaryBeforeValueCellStyle}
                     className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
                   >
-                    <span className="inline-flex items-center gap-2">
+                    <span
+                      style={getSummaryLabelContentStyle()}
+                      className="inline-flex items-center gap-2 overflow-hidden whitespace-nowrap bg-gray-50 pr-3"
+                    >
                       <span className="rounded border border-gray-400 px-1 text-xs">
                         {isCollapsed ? "+" : "−"}
                       </span>
-                      {sec.label}
+                      <span className="min-w-0 truncate">{sec.label}</span>
                     </span>
                   </td>
 
                   <td
-                    colSpan={midColSpan}
-                    className="border border-gray-300 px-2 sm:px-3 py-3"
-                  />
-
-                  <td
                     colSpan={endColSpan}
+                    style={getSummaryValueStyle("rgb(249 250 251)")}
                     className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
                   >
                     {sec.endValue}
@@ -1061,13 +1107,20 @@ export default function GroupedCollapsibleTable<RowT>({
                     <tr key={ch.id}>
                       <td
                         colSpan={labelColSpan}
-                        className="border border-gray-300 px-2 sm:px-3 py-3 pl-8 text-right"
+                        style={summaryBeforeValueCellStyle}
+                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
                       >
-                        {ch.label}
+                        <span
+                          style={summaryChildLabelContentStyle}
+                          className="inline-block overflow-hidden truncate whitespace-nowrap bg-white pr-4 text-right"
+                        >
+                          {ch.label}
+                        </span>
                       </td>
 
                       <td
                         colSpan={midColSpan}
+                        style={getSummaryValueStyle("#ffffff", summaryEndValueWidth, true)}
                         className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
                       >
                         {ch.midValue ?? ""}
@@ -1075,6 +1128,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
                       <td
                         colSpan={endColSpan}
+                        style={summaryAfterChildValueCellStyle}
                         className="border border-gray-300 px-2 sm:px-3 py-3"
                       />
                     </tr>
@@ -1089,19 +1143,21 @@ export default function GroupedCollapsibleTable<RowT>({
           return (
             <tr key={r.id} className={isBold ? "font-semibold" : undefined}>
               <td
-                colSpan={labelColSpan}
+                colSpan={summaryLabelColSpan}
+                style={summaryBeforeValueCellStyle}
                 className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
               >
-                {r.label}
+                <span
+                  style={getSummaryLabelContentStyle()}
+                  className="inline-flex items-center overflow-hidden whitespace-nowrap bg-white pr-3"
+                >
+                  <span className="min-w-0 truncate">{r.label}</span>
+                </span>
               </td>
 
               <td
-                colSpan={midColSpan}
-                className="border border-gray-300 px-2 sm:px-3 py-3"
-              />
-
-              <td
                 colSpan={endColSpan}
+                style={getSummaryValueStyle("#ffffff")}
                 className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
               >
                 {r.endValue ?? ""}
