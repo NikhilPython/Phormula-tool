@@ -770,7 +770,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const tableConfig = useMemo(() => {
         const heatmapHeaderClassName =
-            "!px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-visible !text-[12px] min-[1700px]:!text-[14px]";
+            "!z-20 !px-1 !py-2 !h-auto !whitespace-normal !break-words !text-center !leading-tight !overflow-hidden !text-[12px] min-[1700px]:!text-[14px]";
         const defaultTdClassName =
             "!text-[12px] min-[1700px]:!text-[14px] text-charcoal-500 whitespace-nowrap overflow-hidden truncate";
 
@@ -815,6 +815,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const leftCols: LeafCol<HeatmapTableRow>[] = [
             snoCol,
             productNameCol,
+        ];
+
+        const scrollableIdentityCols: LeafCol<HeatmapTableRow>[] = [
             skuCol,
             salesRankCol,
         ];
@@ -963,6 +966,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         const singleCols: LeafCol<HeatmapTableRow>[] = useCurrentInventoryTableLayout
             ? [
+                ...scrollableIdentityCols,
                 makeCol("storageCostUsd", storageCostHeaderLabel, "120px"),
                 ...(showAlertsColumn
                     ? [
@@ -974,6 +978,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     : []),
             ]
             : [
+                ...scrollableIdentityCols,
                 ...ageBucketCols,
                 {
                     key: "inboundUnits",
@@ -1030,6 +1035,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         const layout = useCurrentInventoryTableLayout
             ? [
+                { type: "single" as const, key: "sku" },
+                { type: "single" as const, key: "salesRank" },
                 { type: "group" as const, id: "currentInventory" },
                 { type: "group" as const, id: "transitInventory" },
                 { type: "group" as const, id: "totalSellableInventory" },
@@ -1042,6 +1049,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     : []),
             ]
             : [
+                { type: "single" as const, key: "sku" },
+                { type: "single" as const, key: "salesRank" },
                 ...ageBucketCols.map((col) => ({
                     type: "single" as const,
                     key: col.key,

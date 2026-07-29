@@ -72,6 +72,7 @@ type Props<RowT> = {
   stickyLeftCols?: boolean;
   hideStickyLeftColsWhileScrolling?: boolean;
   stickyLeftBorderMode?: "transparent" | "shadow-only";
+  stickyLeftDividerMode?: "trailing" | "leading";
   getGroupToggleCollapsedState?: (
     groupId: string,
     defaultIsCollapsed: boolean
@@ -161,6 +162,7 @@ export default function GroupedCollapsibleTable<RowT>({
   stickyLeftCols = true,
   hideStickyLeftColsWhileScrolling = true,
   stickyLeftBorderMode = "transparent",
+  stickyLeftDividerMode = "trailing",
   getGroupToggleCollapsedState,
 
 }: Props<RowT>) {
@@ -622,8 +624,10 @@ export default function GroupedCollapsibleTable<RowT>({
   // }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
   const scrollStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScrollLeftRef = useRef(0);
+  const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
   const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
 
   useEffect(() => {
@@ -663,6 +667,48 @@ export default function GroupedCollapsibleTable<RowT>({
   const midColSpan = 1;
   const endColSpan = 1;
 
+  useEffect(() => {
+    const table = tableRef.current;
+
+    if (!table || visibleCount === 0) {
+      setSummaryEndColumnWidth(null);
+      return;
+    }
+
+    const measureSummaryEndColumn = () => {
+      const endCell =
+        table.querySelector<HTMLElement>("tbody tr td:last-child") ??
+        table.querySelector<HTMLElement>("thead tr:last-child th:last-child") ??
+        table.querySelector<HTMLElement>("tfoot tr td:last-child");
+      const measuredWidth = endCell?.getBoundingClientRect().width;
+
+      if (!measuredWidth || measuredWidth <= 0) return;
+
+      const roundedWidth = Math.round(measuredWidth * 100) / 100;
+
+      setSummaryEndColumnWidth((currentWidth) =>
+        currentWidth !== null && Math.abs(currentWidth - roundedWidth) < 0.5
+          ? currentWidth
+          : roundedWidth
+      );
+    };
+
+    measureSummaryEndColumn();
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measureSummaryEndColumn)
+        : null;
+
+    resizeObserver?.observe(table);
+    window.addEventListener("resize", measureSummaryEndColumn);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measureSummaryEndColumn);
+    };
+  }, [visibleCount, shouldPreserveColumnWidths, requiredTableWidth, anyGroupExpanded]);
+
   const cellPadding = "px-2 sm:px-3 py-3";
   const thBase =
     `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
@@ -689,10 +735,19 @@ export default function GroupedCollapsibleTable<RowT>({
 
     const dividerColor =
       surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
-    const stickyDividers = [
-      `inset -1px 0 0 ${dividerColor}`,
-      `inset 0 -1px 0 ${dividerColor}`,
-    ];
+    const stickyDividers =
+      stickyLeftDividerMode === "leading"
+        ? [
+          colIndex > 0 ? `inset 1px 0 0 ${dividerColor}` : "",
+          colIndex === stickyLeftCount - 1
+            ? `inset -1px 0 0 ${dividerColor}`
+            : "",
+          `inset 0 -1px 0 ${dividerColor}`,
+        ].filter(Boolean)
+        : [
+          `inset -1px 0 0 ${dividerColor}`,
+          `inset 0 -1px 0 ${dividerColor}`,
+        ];
 
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
@@ -1058,7 +1113,7 @@ export default function GroupedCollapsibleTable<RowT>({
     const boldSectionsByDefault = summary?.boldSectionsByDefault ?? true;
     const summaryLabelColSpan = labelColSpan + midColSpan;
     const summaryEndCol = visibleLeafCols[visibleCount - 1];
-    const summaryEndValueOffset =
+    const fallbackSummaryEndValueOffset =
       summaryEndCol && !shouldPreserveColumnWidths && summaryEndCol.width
         ? typeof summaryEndCol.width === "number"
           ? `${summaryEndCol.width}px`
@@ -1066,6 +1121,8 @@ export default function GroupedCollapsibleTable<RowT>({
         : summaryEndCol
           ? getMinWidthForCol(summaryEndCol)
           : 0;
+    const summaryEndValueOffset =
+      summaryEndColumnWidth ?? fallbackSummaryEndValueOffset;
 
     return (
       <tfoot>
@@ -1194,7 +1251,7 @@ export default function GroupedCollapsibleTable<RowT>({
           scrollbarGutter: "stable",
         }}
       >
-        <table className={tableClassName} style={tableStyle}>
+        <table ref={tableRef} className={tableClassName} style={tableStyle}>
           {renderColGroup()}
 
           <thead className="sticky top-0 z-20 font-bold">
@@ -1223,7 +1280,7 @@ export default function GroupedCollapsibleTable<RowT>({
       onScroll={handleScroll}
       className="w-full overflow-x-auto"
     >
-      <table className={tableClassName} style={tableStyle}>
+      <table ref={tableRef} className={tableClassName} style={tableStyle}>
         {renderColGroup()}
         {renderTableHead()}
 
