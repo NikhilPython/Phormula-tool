@@ -5896,7 +5896,6 @@ export default function InputCostPage({ params }: Params) {
   const leftCols: LeafCol<AnyRow>[] = [
     { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
     { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
-    { key: 'msku', label: 'SKU', width: 110, align: 'left' },
   ];
 
   const groups: ColGroup<AnyRow>[] = useMemo(
@@ -5996,6 +5995,13 @@ export default function InputCostPage({ params }: Params) {
   const singleCols: LeafCol<AnyRow>[] = useMemo(
     () => [
       {
+        key: "msku",
+        label: "SKU",
+        width: 110,
+        align: "left",
+        tdClassName: "!pl-5",
+      },
+      {
         key: "inventory_coverage_ratio",
         label: "Inventory Coverage Ratio",
         width: 140,
@@ -6009,6 +6015,19 @@ export default function InputCostPage({ params }: Params) {
       },
     ],
     []
+  );
+
+  const reconTableLayout = useMemo(
+    () => [
+      { type: "single" as const, key: "msku" },
+      ...groups.map((group) => ({
+        type: "group" as const,
+        id: group.id,
+      })),
+      { type: "single" as const, key: "inventory_coverage_ratio" },
+      { type: "single" as const, key: "difference_total" },
+    ],
+    [groups]
   );
 
   const reconDisplayRows = useMemo(() => {
@@ -6440,6 +6459,11 @@ export default function InputCostPage({ params }: Params) {
       cols.push({ key: col.key, header: String(col.label) });
     }
 
+    const skuCol = singleCols.find((col) => col.key === "msku");
+    if (skuCol) {
+      cols.push({ key: skuCol.key, header: String(skuCol.label) });
+    }
+
     for (const group of groups) {
       for (const col of group.expandedCols) {
         cols.push({
@@ -6450,6 +6474,7 @@ export default function InputCostPage({ params }: Params) {
     }
 
     for (const col of singleCols) {
+      if (col.key === "msku") continue;
       cols.push({ key: col.key, header: String(col.label) });
     }
 
@@ -7243,6 +7268,7 @@ export default function InputCostPage({ params }: Params) {
                   leftCols={leftCols}
                   groups={groups}
                   singleCols={singleCols}
+                  layout={reconTableLayout}
                   getValue={getReconValue}
                   getRowClassName={getReconRowClassName}
                   onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
@@ -7259,6 +7285,8 @@ export default function InputCostPage({ params }: Params) {
                   }
                   // headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
                   // headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  stickyLeftBorderMode="shadow-only"
+                  stickyLeftDividerMode="leading"
                   showSignRowInBody
                   getSignForCol={getSignForCol}
                 />
