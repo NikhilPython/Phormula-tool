@@ -819,17 +819,34 @@ def build_global_country_recommendations(
                 "current": growth_row.get("profit_curr"),
             },
             "cm2_profit": {
-                "previous": r.get("cm2_profit_prev", 0),
-                "current": r.get("cm2_profit_curr", 0),
-                "growth_pct": r.get("cm2_profit_growth_pct", 0),
+                "previous": growth_row.get("cm2_profit_prev", 0),
+                "current": growth_row.get("cm2_profit_curr", 0),
+                "growth_pct": growth_row.get("cm2_profit_growth_pct", 0),
             },
             "cm2_profit_per_unit": {
-                "previous": r.get("cm2_profit_per_unit_prev", 0),
-                "current": r.get("cm2_profit_per_unit_curr", 0),
+                "previous": growth_row.get("cm2_profit_per_unit_prev", 0),
+                "current": growth_row.get("cm2_profit_per_unit_curr", 0),
             },
             "cm2_margin": {
-                "previous": r.get("cm2_margin_prev", 0),
-                "current": r.get("cm2_margin_curr", 0),
+                "previous": growth_row.get("cm2_margin_prev", 0),
+                "current": growth_row.get("cm2_margin_curr", 0),
+            },
+            "ads": {
+                "spend_previous": growth_row.get("ads_spend_prev", 0),
+                "spend_current": growth_row.get("ads_spend_curr", 0),
+                "spend_growth_pct": growth_row.get("ads_spend_growth_pct", 0),
+
+                "sales_previous": growth_row.get("ads_sales_prev", 0),
+                "sales_current": growth_row.get("ads_sales_curr", 0),
+                "sales_growth_pct": growth_row.get("ads_sales_growth_pct", 0),
+
+                "roas_previous": growth_row.get("roas_prev", 0),
+                "roas_current": growth_row.get("roas_curr", 0),
+
+                "acos_previous": growth_row.get("ads_acos_prev", 0),
+                "acos_current": growth_row.get("ads_acos_curr", 0),
+
+                "clicks_growth_pct": (growth_row.get("mtd_ads_change") or {}).get("clicks_pct", 0),
             },
             "profit_per_unit": {
                 "previous": growth_row.get("unit_wise_profitability_prev"),
@@ -5419,6 +5436,17 @@ def live_mtd_vs_previous():
                     "current": row.get("profit_curr"),
                 },
 
+                "cm2_profit": {
+                    "previous": row.get("cm2_profit_prev", 0),
+                    "current": row.get("cm2_profit_curr", 0),
+                    "growth_pct": row.get("cm2_profit_growth_pct", 0),
+                },
+
+                "cm2_profit_per_unit": {
+                    "previous": row.get("cm2_profit_per_unit_prev", 0),
+                    "current": row.get("cm2_profit_per_unit_curr", 0),
+                },
+
                 "profit_per_unit": {
                     "previous": row.get("unit_wise_profitability_prev"),
                     "current": row.get("unit_wise_profitability_curr"),
@@ -5820,6 +5848,55 @@ def live_mtd_vs_previous():
             action["long_term_aged_units"] = inv_flag.get("long_term_aged_units", 0)
             action["estimated_storage_cost"] = inv_flag.get("estimated_storage_cost", 0)
 
+        # -------------------------------------------------
+        # Keep every response surface aligned with deterministic actions.
+        # The dashboard reads recommendations from multiple payload areas:
+        # rendered action blocks, card rows, and sometimes SKU insight rows.
+        # -------------------------------------------------
+        def _sku_lookup(mapping, sku_value):
+            sku_text = str(sku_value or "").strip()
+            if not sku_text or not isinstance(mapping, dict):
+                return None
+
+            return (
+                mapping.get(sku_text)
+                or mapping.get(sku_text.upper())
+                or mapping.get(sku_text.lower())
+            )
+
+        def _sync_action_fields_to_rows(rows):
+            if not isinstance(rows, list):
+                return rows
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+
+                sku = row.get("sku")
+                rec = _sku_lookup(excel_live_recommendations, sku)
+                action = _sku_lookup(sku_strategy_actions, sku) or {}
+
+                if rec:
+                    row["recommendation"] = rec
+                    row["amazon_recommendation"] = rec
+                    row["action_recommendation"] = rec
+
+                if isinstance(action, dict):
+                    if action.get("ads_recommendation"):
+                        row["ads_recommendation"] = action.get("ads_recommendation")
+                    if action.get("inventory_recommendation"):
+                        row["inventory_recommendation"] = action.get("inventory_recommendation")
+
+            return rows
+
+        _sync_action_fields_to_rows(all_action_rows)
+        _sync_action_fields_to_rows(frontend_all_action_rows)
+        _sync_action_fields_to_rows(frontend_focus_sku_rows)
+        _sync_action_fields_to_rows(top_80_skus)
+        _sync_action_fields_to_rows(new_skus)
+        _sync_action_fields_to_rows(reviving_skus)
+        _sync_action_fields_to_rows(other_skus)
+
         remaining_skus_reco = strategy_parsed.get("remaining_skus_recommendation")
         remaining_skus_journey = strategy_parsed.get("remaining_skus_journey_summary")
 
@@ -5994,6 +6071,18 @@ def live_mtd_vs_previous():
                         import traceback
                         print("[LIVE MTD AI INSIGHT THREAD ERROR]", e)
                         traceback.print_exc()
+
+            for key, res in insights.items():
+                if not isinstance(res, dict):
+                    continue
+
+                rec = (
+                    _sku_lookup(excel_live_recommendations, res.get("sku"))
+                    or _sku_lookup(excel_live_recommendations, key)
+                )
+
+                if rec:
+                    res["recommendation"] = rec
             
 
         # ---------------------------
