@@ -13,7 +13,11 @@ import { useRouter } from 'next/navigation';
 import { IoMdLock } from "react-icons/io";
 import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCountryUpload";
 import Loader from '@/components/loader/Loader';
-import { exportSkuInformationExcel, exportWarehouseDataExcel } from '@/lib/excel/exportCurrentInventoryExcel';
+import {
+  exportInventoryReconExcel,
+  exportSkuInformationExcel,
+  exportWarehouseDataExcel,
+} from '@/lib/excel/exportCurrentInventoryExcel';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
 import GroupedCollapsibleTable, {
@@ -3552,6 +3556,30 @@ const formatReconCell = (v: any) => {
   return String(v);
 };
 
+const sanitizeExportValue = (value: any) => {
+  if (value === null || value === undefined || value === "") return "-";
+  if (React.isValidElement(value)) return "";
+
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? value.toLocaleString() : String(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (trimmed === "" || trimmed === "-") return trimmed;
+
+    const numeric = Number(trimmed.replace(/,/g, ""));
+    if (!Number.isNaN(numeric)) {
+      return Number.isInteger(numeric) ? numeric.toLocaleString() : String(numeric);
+    }
+
+    return value;
+  }
+
+  return value;
+};
+
 const isTotalRow = (row: AnyRow) => {
   const msku = String(row?.msku || "").trim().toUpperCase();
   const pn = String(row?.product_name || "").trim().toUpperCase();
@@ -6389,6 +6417,238 @@ export default function InputCostPage({ params }: Params) {
     ];
   }, [countryCurrencySymbol]);
 
+  const getReconExcelPeriodLabel = () => {
+    if (range === "monthly") {
+      return `${formatMonthName(selectedMonth)} ${selectedYear}`.trim();
+    }
+
+    if (range === "quarterly") {
+      return `${selectedQuarter} ${selectedYear}`.trim();
+    }
+
+    return selectedYear;
+  };
+
+  const getReconExcelCountryLabel = () => {
+    return formatCountryLabel(countryName) || countryName.toUpperCase() || "Export";
+  };
+
+  const getExpandedReconExportColumns = () => {
+    const cols: { key: string; header: string }[] = [];
+
+    for (const col of leftCols) {
+      cols.push({ key: col.key, header: String(col.label) });
+    }
+
+    for (const group of groups) {
+      for (const col of group.expandedCols) {
+        cols.push({
+          key: col.key,
+          header: `${String(group.label)} - ${String(col.label)}`,
+        });
+      }
+    }
+
+    for (const col of singleCols) {
+      cols.push({ key: col.key, header: String(col.label) });
+    }
+
+    return cols;
+  };
+
+  const getReconExportValue = (
+    row: AnyRow,
+    colKey: string,
+    exportIndex?: number
+  ) => {
+    const isSpecialRow =
+      row?.__isTotal === true ||
+      row?.__isOthers === true ||
+      isTotalRow(row);
+
+    if (colKey === "msku" && isSpecialRow) return "-";
+
+    if (colKey === "product_name") {
+      const productName = String(row?.product_name || "").trim();
+      const normalizedName = productName.toUpperCase();
+
+      if (normalizedName === "OTHERS") return "Others";
+      if (normalizedName === "TOTAL" || normalizedName === "GRAND TOTAL") {
+        return "Total";
+      }
+
+      return formatReconCell(productName);
+    }
+
+    return getReconValue(row, colKey, exportIndex);
+  };
+
+  const buildReconExportDataRows = () => {
+    const cols = getExpandedReconExportColumns();
+    const sourceRows = isNA ? DUMMY_RECON_ROWS : reconRows;
+
+    if (!sourceRows?.length) return [];
+
+    const grandTotalRow = sourceRows.find(isTotalRow) || null;
+    const dataRows = sourceRows.filter((row) => !isTotalRow(row));
+
+    const sortedDataRows = [...dataRows].sort(
+      (a, b) =>
+        Math.abs(toInventoryInt(b?.sold_total)) -
+        Math.abs(toInventoryInt(a?.sold_total))
+    );
+
+    const exportRows = grandTotalRow
+      ? [...sortedDataRows, { ...grandTotalRow, __isTotal: true }]
+      : (() => {
+        const keys = Array.from(
+          new Set(
+            dataRows.flatMap((row) =>
+              Object.keys(row || {}).filter(
+                (key) =>
+                  isNumericLike(row?.[key]) &&
+                  key !== "inventory_coverage_ratio"
+              )
+            )
+          )
+        );
+
+        const totalRow = sumRowForKeys(dataRows, keys, {
+          id: "__TOTAL__",
+          msku: "GRAND TOTAL",
+          product_name: "GRAND TOTAL",
+          __isTotal: true,
+        });
+
+        const endingTotal = toInventoryInt(totalRow?.ending_total);
+        const soldTotalAbs = Math.abs(toInventoryInt(totalRow?.sold_total));
+
+        totalRow.inventory_coverage_ratio =
+          soldTotalAbs > 0 ? endingTotal / soldTotalAbs : 0;
+
+        return [...sortedDataRows, totalRow];
+      })();
+
+    let serial = 0;
+
+    return exportRows.map((row) => {
+      const out: Record<string, any> = {};
+      const rowIndex =
+        row?.__isTotal || isTotalRow(row) ? undefined : serial++;
+
+      for (const col of cols) {
+        out[col.header] = sanitizeExportValue(
+          getReconExportValue(row, col.key, rowIndex)
+        );
+      }
+
+      return out;
+    });
+  };
+
+  const buildLostCompExportRows = () => {
+    const sourceRows = isNA ? DUMMY_LOST_COMP_ROWS : effectiveLostCompRows;
+
+    if (!sourceRows?.length) return [];
+
+    const totalRow = sourceRows.find((row) => row?.__isTotal);
+    const dataRows = sourceRows.filter((row) => !row?.__isTotal);
+
+    const sortedDataRows = [...dataRows].sort(
+      (a, b) =>
+        Math.abs(toInventoryInt(b?.total_lost_units)) -
+        Math.abs(toInventoryInt(a?.total_lost_units))
+    );
+
+    const exportRows = totalRow
+      ? [...sortedDataRows, { ...totalRow, __isTotal: true }]
+      : sortedDataRows;
+
+    const countryCurrencySuffix = countryCurrencySymbol
+      ? ` (${countryCurrencySymbol})`
+      : "";
+
+    let serial = 0;
+
+    return exportRows.map((row) => {
+      const isTotal = !!row?.__isTotal;
+
+      return {
+        "S. No.": isTotal ? "" : String(++serial),
+        "Product Name": formatReconCell(row?.product_name),
+        SKU: formatReconCell(row?.msku),
+        "Lost Units": formatReconCell(row?.lost_units),
+        "Damaged Units": formatReconCell(row?.damaged_units),
+        "Compensation Units": formatReconCell(row?.compensation_units),
+        "Remaining Compensation Units": formatReconCell(row?.net_units),
+        "Total Lost Units": formatReconCell(row?.total_lost_units),
+        [`Compensation Value Amount${countryCurrencySuffix}`]: formatReconCell(
+          row?.compensation_value
+        ),
+        [`Remaining Compensation Amount${countryCurrencySuffix}`]: formatReconCell(
+          row?.settlement_loss_event_amount
+        ),
+        [`Total Compensation Value${countryCurrencySuffix}`]: formatReconCell(
+          row?.net_value
+        ),
+        __isTotal: isTotal,
+      };
+    });
+  };
+
+  const handleReconDownloadExcel = async () => {
+    const dataRows = buildReconExportDataRows();
+
+    if (!dataRows.length) {
+      alert("No recon table data available to download.");
+      return;
+    }
+
+    const periodLabel = getReconExcelPeriodLabel();
+    const countryLabel = getReconExcelCountryLabel();
+
+    await exportInventoryReconExcel({
+      filename: `Inventory Recon - ${countryLabel} - ${periodLabel}.xlsx`,
+      titleLine: `Amazon ${countryLabel} - Inventory Recon - ${periodLabel}`,
+      countryName,
+      titleCountry: countryLabel,
+      platformLabel: "Phormula",
+      periodLabel,
+      companyName,
+      brandName,
+      dataRows,
+      includeLostCompSheet: false,
+      includeChartsSheet: false,
+    });
+  };
+
+  const handleLostCompDownloadExcel = async () => {
+    const lostCompRowsForExport = buildLostCompExportRows();
+
+    if (!lostCompRowsForExport.length) {
+      alert("No lost vs compensation data available to download.");
+      return;
+    }
+
+    const periodLabel = getReconExcelPeriodLabel();
+    const countryLabel = getReconExcelCountryLabel();
+
+    await exportInventoryReconExcel({
+      filename: `Lost vs Compensation - ${countryLabel} - ${periodLabel}.xlsx`,
+      titleLine: `Amazon ${countryLabel} - ${periodLabel}`,
+      countryName,
+      titleCountry: countryLabel,
+      platformLabel: "Phormula",
+      periodLabel,
+      companyName,
+      brandName,
+      dataRows: [],
+      lostCompRows: lostCompRowsForExport,
+      includeReconSheet: false,
+      includeChartsSheet: false,
+    });
+  };
+
   const tabOptions = useMemo(
     () => [
       { value: 'inventory-insights' as const, label: 'Inventory Insights' },
@@ -6717,6 +6977,19 @@ export default function InputCostPage({ params }: Params) {
                 allowedRanges={["monthly", "quarterly", "yearly"]}
               />
 
+              {activeTab === "recon-table" && (
+                <DownloadIconButton
+                  onClick={handleReconDownloadExcel}
+                  size="md"
+                  disabled={
+                    isNA ||
+                    reconFetching ||
+                    !reconLoadedOnce ||
+                    reconRows.length === 0
+                  }
+                />
+              )}
+
               {activeTab === "recon-table" &&
                 effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
                   <button
@@ -6734,6 +7007,14 @@ export default function InputCostPage({ params }: Params) {
                     )}
                   </button>
                 )}
+
+              {activeTab === "lost-compensation" && (
+                <DownloadIconButton
+                  onClick={handleLostCompDownloadExcel}
+                  size="md"
+                  disabled={isNA || lostCompLoading || lostCompRows.length === 0}
+                />
+              )}
 
               {activeTab === "lost-compensation" &&
                 effectiveLostCompRows.filter((r) => !r?.__isTotal).length > 9 && (

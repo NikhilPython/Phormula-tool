@@ -1203,11 +1203,14 @@ export async function exportInventoryReconExcel(params: {
   companyName: string;
   brandName: string;
 
-  dataRows: Record<string, any>[];
+  dataRows?: Record<string, any>[];
   lostCompRows?: Record<string, any>[];
 
   breakupChartBase64?: string | null;
   ageingChartBase64?: string | null;
+  includeReconSheet?: boolean;
+  includeLostCompSheet?: boolean;
+  includeChartsSheet?: boolean;
 }) {
   const {
     filename,
@@ -1217,13 +1220,20 @@ export async function exportInventoryReconExcel(params: {
     periodLabel,
     companyName,
     brandName,
-    dataRows,
+    dataRows = [],
     lostCompRows = [],
     breakupChartBase64 = null,
     ageingChartBase64 = null,
+    includeReconSheet = true,
+    includeLostCompSheet = true,
+    includeChartsSheet = true,
   } = params;
 
-  if (!dataRows?.length) return;
+  const shouldExportReconSheet = includeReconSheet && dataRows.length > 0;
+  const shouldExportLostCompSheet =
+    includeLostCompSheet && lostCompRows.length > 0;
+
+  if (!shouldExportReconSheet && !shouldExportLostCompSheet) return;
 
   const headers = Object.keys(dataRows[0] || {});
   const headerCount = headers.length || 1;
@@ -1336,172 +1346,178 @@ const getSignFontColor = (sign: string) => {
   /* =========================
      Sheet 1: Inventory Recon
   ========================= */
-  const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
-  });
+  if (shouldExportReconSheet) {
+    const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
+      views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
+    });
 
-  ws1.mergeCells(1, 1, 1, headerCount);
-  ws1.getCell(1, 1).value = titleLine || "";
-  ws1.getCell(1, 1).font = { bold: false };
-  ws1.getCell(1, 1).alignment = {
-    horizontal: "left",
-    vertical: "middle",
-  };
+    ws1.mergeCells(1, 1, 1, headerCount);
+    ws1.getCell(1, 1).value = titleLine || "";
+    ws1.getCell(1, 1).font = { bold: false };
+    ws1.getCell(1, 1).alignment = {
+      horizontal: "left",
+      vertical: "middle",
+    };
 
-  ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
-  ws1.getCell(2, 1).alignment = { horizontal: "left" };
+    ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+    ws1.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws1.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws1.getCell(2, headerCount).font = { bold: true };
+    ws1.getCell(2, headerCount).value = `${brandName || ""}`;
+    ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
+    ws1.getCell(2, headerCount).font = { bold: true };
 
-  ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
-  ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
-  ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
+    ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
+    ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
+    ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
 
-  const groupHeaderRowNumber = 7;
-  const subHeaderRowNumber = 8;
-  const signRowNumber = 9;
+    const groupHeaderRowNumber = 7;
+    const subHeaderRowNumber = 8;
+    const signRowNumber = 9;
 
-  const groupHeaderRow = ws1.getRow(groupHeaderRowNumber);
-  const subHeaderRow = ws1.getRow(subHeaderRowNumber);
-  const signRow = ws1.getRow(signRowNumber);
+    const groupHeaderRow = ws1.getRow(groupHeaderRowNumber);
+    const subHeaderRow = ws1.getRow(subHeaderRowNumber);
+    const signRow = ws1.getRow(signRowNumber);
 
-  groupHeaderRow.height = 30;
-  subHeaderRow.height = 42;
-  signRow.height = 22;
+    groupHeaderRow.height = 30;
+    subHeaderRow.height = 42;
+    signRow.height = 22;
 
-  for (let c = 1; c <= headerCount; c++) {
-    const meta = headerMeta[c - 1];
-    const sign = getSignForExportHeader(meta.raw);
+    for (let c = 1; c <= headerCount; c++) {
+      const meta = headerMeta[c - 1];
+      const sign = getSignForExportHeader(meta.raw);
 
-    const groupCell = groupHeaderRow.getCell(c);
-    const subCell = subHeaderRow.getCell(c);
-    const signCell = signRow.getCell(c);
+      const groupCell = groupHeaderRow.getCell(c);
+      const subCell = subHeaderRow.getCell(c);
+      const signCell = signRow.getCell(c);
 
-    groupCell.value = meta.group;
-    subCell.value = meta.isGrouped ? meta.subHeader : "";
-    signCell.value = sign;
+      groupCell.value = meta.group;
+      subCell.value = meta.isGrouped ? meta.subHeader : "";
+      signCell.value = sign;
 
-    styleHeaderCell(groupCell);
-    styleHeaderCell(subCell);
-    styleSignCell(signCell, sign);
-  }
-
-  // Merge headers to match UI grouped header/sub-header layout
-  let c = 1;
-
-  while (c <= headerCount) {
-    const meta = headerMeta[c - 1];
-
-    if (!meta.isGrouped) {
-      ws1.mergeCells(groupHeaderRowNumber, c, subHeaderRowNumber, c);
-      c++;
-      continue;
+      styleHeaderCell(groupCell);
+      styleHeaderCell(subCell);
+      styleSignCell(signCell, sign);
     }
 
-    let end = c;
+    // Merge headers to match UI grouped header/sub-header layout
+    let c = 1;
 
-    while (
-      end + 1 <= headerCount &&
-      headerMeta[end]?.isGrouped &&
-      headerMeta[end]?.group === meta.group
-    ) {
-      end++;
+    while (c <= headerCount) {
+      const meta = headerMeta[c - 1];
+
+      if (!meta.isGrouped) {
+        ws1.mergeCells(groupHeaderRowNumber, c, subHeaderRowNumber, c);
+        c++;
+        continue;
+      }
+
+      let end = c;
+
+      while (
+        end + 1 <= headerCount &&
+        headerMeta[end]?.isGrouped &&
+        headerMeta[end]?.group === meta.group
+      ) {
+        end++;
+      }
+
+      if (end > c) {
+        ws1.mergeCells(groupHeaderRowNumber, c, groupHeaderRowNumber, end);
+      }
+
+      c = end + 1;
     }
 
-    if (end > c) {
-      ws1.mergeCells(groupHeaderRowNumber, c, groupHeaderRowNumber, end);
-    }
+    const startDataRow = signRowNumber + 1;
 
-    c = end + 1;
-  }
+    dataRows.forEach((r, idx) => {
+      const row = ws1.getRow(startDataRow + idx);
 
-  const startDataRow = signRowNumber + 1;
+      headers.forEach((h, c0) => {
+        const cell = row.getCell(c0 + 1);
+        const v = r?.[h] ?? "";
 
-  dataRows.forEach((r, idx) => {
-    const row = ws1.getRow(startDataRow + idx);
-
-    headers.forEach((h, c0) => {
-      const cell = row.getCell(c0 + 1);
-      const v = r?.[h] ?? "";
-
-      if (c0 === snoCol0) {
-        cell.value = v === null || v === undefined ? "" : String(v);
-        cell.numFmt = "@";
-        cell.alignment = {
-          horizontal: "center",
-          vertical: "middle",
-        };
-      } else {
-        const n = toNumberLoose(v);
-
-        if (n !== null) {
-          cell.value = Math.trunc(n);
-          cell.numFmt = "#,##0";
+        if (c0 === snoCol0) {
+          cell.value = v === null || v === undefined ? "" : String(v);
+          cell.numFmt = "@";
           cell.alignment = {
             horizontal: "center",
             vertical: "middle",
           };
         } else {
-          cell.value = v;
-          cell.alignment = {
-            horizontal: c0 === productNameCol0 ? "left" : "center",
-            vertical: "middle",
-          };
+          const n = toNumberLoose(v);
+
+          if (n !== null) {
+            const isCoverageRatioColumn = String(h)
+              .toLowerCase()
+              .includes("inventory coverage ratio");
+
+            cell.value = isCoverageRatioColumn ? Number(n.toFixed(2)) : Math.trunc(n);
+            cell.numFmt = isCoverageRatioColumn ? "0.00" : "#,##0";
+            cell.alignment = {
+              horizontal: "center",
+              vertical: "middle",
+            };
+          } else {
+            cell.value = v;
+            cell.alignment = {
+              horizontal: c0 === productNameCol0 ? "left" : "center",
+              vertical: "middle",
+            };
+          }
         }
-      }
 
-      cell.font = {
-        size: 11,
-        color: { argb: "FF000000" },
-      };
-      cell.fill = whiteFill;
-      cell.border = tableBorder;
+        cell.font = {
+          size: 11,
+          color: { argb: "FF000000" },
+        };
+        cell.fill = whiteFill;
+        cell.border = tableBorder;
+      });
     });
-  });
 
-  ws1.views = [{ state: "frozen", xSplit: 0, ySplit: signRowNumber }];
+    ws1.views = [{ state: "frozen", xSplit: 0, ySplit: signRowNumber }];
 
-  ws1.columns = headers.map((h) => {
-    const meta = parseHeaderMeta(h);
-    const label = meta.subHeader || meta.group || String(h);
+    ws1.columns = headers.map((h) => {
+      const meta = parseHeaderMeta(h);
+      const label = meta.subHeader || meta.group || String(h);
 
-    if (label.toLowerCase().includes("product name")) return { width: 18 };
-    if (label.toLowerCase() === "sku") return { width: 16 };
-    if (label.toLowerCase().includes("inventory coverage")) return { width: 18 };
-    if (label.toLowerCase().includes("transit")) return { width: 16 };
+      if (label.toLowerCase().includes("product name")) return { width: 18 };
+      if (label.toLowerCase() === "sku") return { width: 16 };
+      if (label.toLowerCase().includes("inventory coverage")) return { width: 18 };
+      if (label.toLowerCase().includes("transit")) return { width: 16 };
 
-    return {
-      width: Math.min(Math.max(String(label).length + 3, 11), 22),
-    };
-  });
+      return {
+        width: Math.min(Math.max(String(label).length + 3, 11), 22),
+      };
+    });
 
-  if (productNameCol0 >= 0) {
-    const totalCandidates = new Set(["total", "grand total"]);
+    if (productNameCol0 >= 0) {
+      const totalCandidates = new Set(["total", "grand total"]);
 
-    for (let i = 0; i < dataRows.length; i++) {
-      const rowNum = startDataRow + i;
-      const cellVal = String(
-        ws1.getCell(rowNum, productNameCol0 + 1).value ?? ""
-      )
-        .trim()
-        .toLowerCase();
+      for (let i = 0; i < dataRows.length; i++) {
+        const rowNum = startDataRow + i;
+        const cellVal = String(
+          ws1.getCell(rowNum, productNameCol0 + 1).value ?? ""
+        )
+          .trim()
+          .toLowerCase();
 
-      if (totalCandidates.has(cellVal)) {
-        const row = ws1.getRow(rowNum);
+        if (totalCandidates.has(cellVal)) {
+          const row = ws1.getRow(rowNum);
 
-        for (let col = 1; col <= headerCount; col++) {
-          const cell = row.getCell(col);
+          for (let col = 1; col <= headerCount; col++) {
+            const cell = row.getCell(col);
 
-          cell.font = {
-            ...(cell.font || {}),
-            bold: true,
-            size: 11,
-            color: { argb: "FF000000" },
-          };
-          cell.fill = totalFill;
-          cell.border = tableBorder;
+            cell.font = {
+              ...(cell.font || {}),
+              bold: true,
+              size: 11,
+              color: { argb: "FF000000" },
+            };
+            cell.fill = totalFill;
+            cell.border = tableBorder;
+          }
         }
       }
     }
@@ -1510,7 +1526,7 @@ const getSignFontColor = (sign: string) => {
   /* =========================
      Sheet 2: Lost vs Compensation
   ========================= */
-  if (lostCompRows?.length) {
+  if (shouldExportLostCompSheet) {
     const lostHeaders = Object.keys(lostCompRows[0] || {}).filter(
       (h) => h !== "__isTotal"
     );
@@ -1653,60 +1669,62 @@ const getSignFontColor = (sign: string) => {
   /* =========================
      Sheet 3: Inventory Charts
   ========================= */
-  const ws2 = wb.addWorksheet(safeSheetName("Inventory Charts"));
+  if (includeChartsSheet) {
+    const ws2 = wb.addWorksheet(safeSheetName("Inventory Charts"));
 
-  ws2.getCell("A1").value = titleLine || "";
-  ws2.getCell("A1").font = { bold: false };
+    ws2.getCell("A1").value = titleLine || "";
+    ws2.getCell("A1").font = { bold: false };
 
-  ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
-  ws2.getCell("N2").value = `${brandName || ""}`;
-  ws2.getCell("N2").alignment = { horizontal: "right" };
-  ws2.getCell("N2").font = { bold: true };
+    ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
+    ws2.getCell("N2").value = `${brandName || ""}`;
+    ws2.getCell("N2").alignment = { horizontal: "right" };
+    ws2.getCell("N2").font = { bold: true };
 
-  ws2.getCell("A3").value = `Country : ${titleCountry}`;
-  ws2.getCell("A4").value = `Platform : ${platformLabel}`;
-  ws2.getCell("A5").value = `Period : ${periodLabel}`;
+    ws2.getCell("A3").value = `Country : ${titleCountry}`;
+    ws2.getCell("A4").value = `Platform : ${platformLabel}`;
+    ws2.getCell("A5").value = `Period : ${periodLabel}`;
 
-  const breakupImg = parseBase64(breakupChartBase64);
-  const ageingImg = parseBase64(ageingChartBase64);
+    const breakupImg = parseBase64(breakupChartBase64);
+    const ageingImg = parseBase64(ageingChartBase64);
 
-  let rowCursor = 7;
+    let rowCursor = 7;
 
-  const addImageBlock = (
-    label: string,
-    img: { mime: string; base64: string } | null
-  ) => {
-    ws2.getCell(`A${rowCursor}`).value = label;
-    ws2.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
+    const addImageBlock = (
+      label: string,
+      img: { mime: string; base64: string } | null
+    ) => {
+      ws2.getCell(`A${rowCursor}`).value = label;
+      ws2.getCell(`A${rowCursor}`).font = { bold: true, size: 12 };
 
-    rowCursor += 1;
+      rowCursor += 1;
 
-    if (!img) {
-      ws2.getCell(`A${rowCursor}`).value = `No chart image available: ${label}`;
-      rowCursor += 3;
-      return;
-    }
+      if (!img) {
+        ws2.getCell(`A${rowCursor}`).value = `No chart image available: ${label}`;
+        rowCursor += 3;
+        return;
+      }
 
-    const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
+      const ext = img.mime.toLowerCase().includes("jpeg") ? "jpeg" : "png";
 
-    const imageId = wb.addImage({
-      base64: `data:${img.mime};base64,${img.base64}`,
-      extension: ext as "png" | "jpeg",
-    });
+      const imageId = wb.addImage({
+        base64: `data:${img.mime};base64,${img.base64}`,
+        extension: ext as "png" | "jpeg",
+      });
 
-    ws2.addImage(imageId, {
-      tl: { col: 0, row: rowCursor - 1 },
-      ext: { width: 1400, height: 520 },
-    });
+      ws2.addImage(imageId, {
+        tl: { col: 0, row: rowCursor - 1 },
+        ext: { width: 1400, height: 520 },
+      });
 
-    rowCursor += 26;
-  };
+      rowCursor += 26;
+    };
 
-  addImageBlock("Inventory Breakup", breakupImg);
+    addImageBlock("Inventory Breakup", breakupImg);
 
-  rowCursor += 2;
+    rowCursor += 2;
 
-  addImageBlock("Inventory Ageing", ageingImg);
+    addImageBlock("Inventory Ageing", ageingImg);
+  }
 
   const buf = await wb.xlsx.writeBuffer();
 
