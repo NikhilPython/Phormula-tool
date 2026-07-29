@@ -695,15 +695,27 @@ export default function GroupedCollapsibleTable<RowT>({
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
       boxShadow: stickyDividers.join(", "),
-      borderRightColor: "transparent",
-      borderBottomColor: "transparent",
-      ...(colIndex > 0 ? { borderLeftColor: "transparent" } : {}),
+      borderColor: "transparent",
       transform: shouldHideStickyLeftDrawer
         ? `translateX(-${stickyLeftDrawerWidth}px)`
         : "translateX(0)",
       transition: "transform 180ms ease",
       willChange: "transform",
     };
+  };
+
+  const getStickyBoundaryNeighborStyle = (
+    colIndex: number
+  ): React.CSSProperties | undefined => {
+    if (
+      stickyLeftCount === 0 ||
+      colIndex !== stickyLeftCount ||
+      shouldHideStickyLeftDrawer
+    ) {
+      return undefined;
+    }
+
+    return { borderLeftColor: "transparent" };
   };
 
   const getStickyLeftClassName = (
@@ -797,7 +809,7 @@ export default function GroupedCollapsibleTable<RowT>({
           </th>
         ))}
 
-        {resolvedLayout.map((item) => {
+        {resolvedLayout.map((item, itemIndex) => {
           if (item.type === "group") {
             const g = groupMap.get(item.id);
             if (!g) return null;
@@ -818,6 +830,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 key={g.id}
                 colSpan={cols.length}
                 rowSpan={groupRowSpan}
+                style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
                 className={`${thBase} text-center ${g.headerClassName || ""}`}
               >
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
@@ -893,6 +906,7 @@ export default function GroupedCollapsibleTable<RowT>({
             <th
               key={c.key}
               rowSpan={anyGroupExpanded ? 2 : 1}
+              style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
                 }`}
             >
@@ -912,9 +926,10 @@ export default function GroupedCollapsibleTable<RowT>({
       {/* -------- Header Row 2 -------- */}
       {anyGroupExpanded && (
         <tr className={headerRow2ClassName}>
-          {row2Cells.map((c) => (
+          {row2Cells.map((c, colIndex) => (
             <th
               key={c.key}
+              style={colIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
               className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
             >
               {renderHeaderContent(c)}
@@ -934,7 +949,7 @@ export default function GroupedCollapsibleTable<RowT>({
           return (
             <td
               key={c.key}
-              style={getStickyLeftStyle(colIndex, "sign")}
+              style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={`border ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
@@ -959,7 +974,7 @@ export default function GroupedCollapsibleTable<RowT>({
           {visibleLeafCols.map((c, colIndex) => (
             <td
               key={c.key}
-              style={getStickyLeftStyle(colIndex, "body")}
+              style={getStickyLeftStyle(colIndex, "body") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={[
                 "border",
                 cellPadding,
