@@ -4573,20 +4573,42 @@ def save_live_dashboard_data():
         end_day=end_day,
     )
 
-    select_sql = f"""
-    SELECT id, user_id, country, platform, region, start_day, end_day,
-           cache_key, saved_at, payload, created_at, updated_at
-    FROM public.{table_name}
-    WHERE cache_key = :cache_key
-    LIMIT 1
-    """
+    # When the UI does not pass a range, do not read the old na:na row.
+    # Return the most recently saved cache for this dashboard instead.
+    if start_day is None and end_day is None:
+        select_sql = f"""
+        SELECT id, user_id, country, platform, region, start_day, end_day,
+               cache_key, saved_at, payload, created_at, updated_at
+        FROM public.{table_name}
+        WHERE user_id = :user_id
+          AND country = :country
+          AND platform = :platform
+          AND region = :region
+        ORDER BY saved_at DESC NULLS LAST, updated_at DESC, id DESC
+        LIMIT 1
+        """
+        select_params = {
+            "user_id": user_id,
+            "country": country,
+            "platform": platform,
+            "region": region,
+        }
+    else:
+        select_sql = f"""
+        SELECT id, user_id, country, platform, region, start_day, end_day,
+               cache_key, saved_at, payload, created_at, updated_at
+        FROM public.{table_name}
+        WHERE cache_key = :cache_key
+        LIMIT 1
+        """
+        select_params = {"cache_key": cache_key}
 
     try:
         with PHORMULA_ENGINE.begin() as conn:
             conn.execute(text(create_sql))
             row = conn.execute(
                 text(select_sql),
-                {"cache_key": cache_key},
+                select_params,
             ).mappings().first()
 
         if not row:
