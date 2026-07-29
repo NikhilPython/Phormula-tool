@@ -38,6 +38,11 @@ ROLLING_HISTORY_MONTHS = 4  # 👈 compare last 4 months of actuals in ChatGPT/l
 ASP_ELASTICITY = -0.5
 ASP_ADJUSTMENT_MIN = 0.80
 ASP_ADJUSTMENT_MAX = 1.20
+FLAT_FORECAST_REL_TOL = 0.01
+FLAT_FORECAST_ABS_TOL = 2.0
+FLAT_GUARD_MIN_TREND = 0.02
+FLAT_GUARD_MAX_TREND = 0.08
+_GPT_ADJUDICATOR_RATE_LIMITED = False
 
 # ============================== SESSIONS & MAPS ==============================
 def create_user_session_phormula(db_url):
@@ -272,6 +277,169 @@ def _compute_growth_from_history(recent_hist):
         return max(float(g), 0.0)
 
     return max(float(g1), 0.0)
+
+
+def _finite_float_values(values):
+    out = []
+    for x in values:
+        try:
+            val = float(x)
+        except Exception:
+            continue
+        if np.isnan(val) or np.isinf(val):
+            continue
+        out.append(val)
+    return out
+
+
+def _values_are_nearly_flat(values) -> bool:
+    vals = np.asarray(_finite_float_values(values), dtype=float)
+    if len(vals) < 2:
+        return False
+
+    spread = float(vals.max() - vals.min())
+    scale = max(abs(float(vals.mean())), 1.0)
+    return spread <= max(FLAT_FORECAST_ABS_TOL, scale * FLAT_FORECAST_REL_TOL)
+
+
+def _history_has_movement(values) -> bool:
+    vals = np.asarray(_finite_float_values(values), dtype=float)
+    if len(vals) < 2:
+        return False
+
+    spread = float(vals.max() - vals.min())
+    scale = max(abs(float(vals.mean())), 1.0)
+    return spread > max(FLAT_FORECAST_ABS_TOL, scale * FLAT_FORECAST_REL_TOL)
+
+
+def _compute_signed_trend_from_history(recent_hist) -> float:
+    vals = np.asarray(_finite_float_values(recent_hist), dtype=float)
+    vals = vals[-ROLLING_HISTORY_MONTHS:]
+
+    if len(vals) < 2 or float(vals.max()) <= 0.0:
+        return 0.0
+
+    scale = max(float(np.mean(np.abs(vals))), 1.0)
+    slope_pct = _slope(vals) / scale if len(vals) >= 3 else (vals[-1] - vals[-2]) / scale
+
+    mom = []
+    for prev, cur in zip(vals[:-1], vals[1:]):
+        if prev > 0:
+            mom.append((cur / prev) - 1.0)
+
+    mom_typical = float(np.median(mom)) if mom else 0.0
+    mom_typical = float(np.clip(mom_typical, -FLAT_GUARD_MAX_TREND, FLAT_GUARD_MAX_TREND))
+    trend = (0.70 * float(slope_pct)) + (0.30 * mom_typical)
+
+    if _history_has_movement(vals) and abs(trend) < FLAT_GUARD_MIN_TREND:
+        direction_seed = slope_pct if abs(slope_pct) > 1e-6 else vals[-1] - vals[0]
+        if abs(direction_seed) > 1e-6:
+            trend = FLAT_GUARD_MIN_TREND if direction_seed > 0 else -FLAT_GUARD_MIN_TREND
+
+    if np.isnan(trend) or np.isinf(trend):
+        return 0.0
+
+    return float(np.clip(trend, -FLAT_GUARD_MAX_TREND, FLAT_GUARD_MAX_TREND))
+
+
+def _round_to_target_total(values, target_total):
+    arr = np.asarray(values, dtype=float)
+    arr = np.clip(arr, 0, None)
+
+    if len(arr) == 0:
+        return np.asarray([], dtype=int)
+
+    target = int(max(0, np.rint(target_total)))
+    floored = np.floor(arr).astype(int)
+    remainder = target - int(floored.sum())
+
+    if remainder > 0:
+        fractions = arr - np.floor(arr)
+        order = np.argsort(-fractions)
+        for i in range(remainder):
+            floored[order[i % len(order)]] += 1
+    elif remainder < 0:
+        for _ in range(abs(remainder)):
+            candidates = np.where(floored > 0)[0]
+            if len(candidates) == 0:
+                break
+            idx = candidates[np.argmax(floored[candidates])]
+            floored[idx] -= 1
+
+    return floored.astype(int)
+
+
+def _apply_flat_forecast_guard(chosen_df: pd.DataFrame, lastN_daily: pd.Series, sku: str) -> pd.DataFrame:
+    out = chosen_df.copy()
+    forecasts = pd.to_numeric(out.get("Forecast"), errors="coerce").fillna(0).astype(float).to_numpy()
+
+    if len(forecasts) < 2 or float(forecasts.sum()) <= 0.0:
+        return out
+
+    if not _values_are_nearly_flat(forecasts):
+        return out
+
+    if lastN_daily is None or lastN_daily.empty:
+        return out
+
+    history_months = _mk_monthly(lastN_daily).tail(ROLLING_HISTORY_MONTHS)
+    trend = _compute_signed_trend_from_history(history_months.tolist())
+
+    if abs(trend) < 1e-9:
+        return out
+
+    weights = np.power(1.0 + trend, np.arange(len(forecasts), dtype=float))
+    if not np.isfinite(weights).all() or float(weights.sum()) <= 0.0:
+        return out
+
+    total = float(forecasts.sum())
+    reshaped = total * weights / float(weights.sum())
+    rounded = _round_to_target_total(reshaped, total)
+
+    if _values_are_nearly_flat(rounded) and total >= len(forecasts):
+        direction = 1.0 if trend > 0 else -1.0
+        centered_offsets = (np.arange(len(forecasts), dtype=float) - ((len(forecasts) - 1) / 2.0)) * direction
+        reshaped = (total / len(forecasts)) + centered_offsets
+        rounded = _round_to_target_total(reshaped, total)
+
+    old_ints = np.rint(forecasts).astype(int)
+    if not np.array_equal(old_ints, rounded):
+        out["Forecast"] = rounded
+        print(
+            f"[FORECAST][FLAT_GUARD] SKU={sku} trend={trend:.3f} "
+            f"old={old_ints.tolist()} new={rounded.tolist()}"
+        )
+
+    return out
+
+
+def _prefer_nonflat_candidate(winner: str, lastN_daily: pd.Series, arima_monthly: pd.Series, hybrid_monthly: pd.Series) -> str:
+    if winner != "ARIMA":
+        return winner
+
+    if not _values_are_nearly_flat(arima_monthly.values):
+        return winner
+
+    if _values_are_nearly_flat(hybrid_monthly.values):
+        return winner
+
+    history_months = _mk_monthly(lastN_daily).tail(ROLLING_HISTORY_MONTHS)
+    if not _history_has_movement(history_months.values):
+        return winner
+
+    score_a = _expert_score(history_months, arima_monthly)
+    score_h = _expert_score(history_months, hybrid_monthly)
+    if not np.isfinite(score_h):
+        return winner
+    if np.isfinite(score_a) and score_h > max(score_a * 1.25, score_a + 0.05):
+        return winner
+
+    return "HYBRID"
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return ("429" in msg) or ("too many requests" in msg) or ("rate limit" in msg)
 
 # ============================== REMAINING MONTHS (per-SKU base) ==============================
 def calculate_remaining_months_v2(
@@ -1161,8 +1329,13 @@ def call_chatgpt_adjudicator(
     Uses ChatGPT to pick ARIMA vs HYBRID. Returns 'ARIMA' or 'HYBRID'.
     Falls back to local expert if key/lib not available or any error occurs.
     """
+    global _GPT_ADJUDICATOR_RATE_LIMITED
+
     if not OPENAI_API_KEY:
         return None  # no key => signal caller to fallback
+
+    if _GPT_ADJUDICATOR_RATE_LIMITED:
+        return None
 
     try:
         # prefer official SDK if available
@@ -1201,7 +1374,12 @@ def call_chatgpt_adjudicator(
                 max_tokens=5,
             )
             text = resp.choices[0].message.content.strip().upper()
-        except Exception:
+        except Exception as sdk_error:
+            if _is_rate_limit_error(sdk_error):
+                _GPT_ADJUDICATOR_RATE_LIMITED = True
+                print("[GPT ADJUDICATOR] rate limited; using local adjudicator for remaining SKUs.")
+                return None
+
             # HTTP fallback if SDK isn't available
             import requests
             url = "https://api.openai.com/v1/chat/completions"
@@ -1240,7 +1418,14 @@ def call_chatgpt_adjudicator(
                 ]
             }
             r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=15)
-            r.raise_for_status()
+            try:
+                r.raise_for_status()
+            except Exception as http_error:
+                if _is_rate_limit_error(http_error):
+                    _GPT_ADJUDICATOR_RATE_LIMITED = True
+                    print("[GPT ADJUDICATOR] rate limited; using local adjudicator for remaining SKUs.")
+                    return None
+                raise
             text = r.json()["choices"][0]["message"]["content"].strip().upper()
 
         if "HYBRID" in text:
@@ -1977,6 +2162,11 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             else:
                 winner = _adjudicate_by_history_trend(lastN_daily, arima_series, hybrid_series)
 
+            guarded_winner = _prefer_nonflat_candidate(winner, lastN_daily, arima_series, hybrid_series)
+            if guarded_winner != winner:
+                print(f"[FORECAST][FLAT_GUARD] SKU={sku} switched {winner} -> {guarded_winner} to avoid flat ARIMA.")
+                winner = guarded_winner
+
             model_winner[sku] = winner
             chosen_df = h_monthly_df if winner == "HYBRID" else a_monthly_df
 
@@ -1997,6 +2187,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             sku=sku,
             asp_change_map=asp_change_map,
         )
+        chosen_df = _apply_flat_forecast_guard(chosen_df, lastN_daily, sku)
 
         # attach price
         try:

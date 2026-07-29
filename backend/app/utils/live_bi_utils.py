@@ -3732,6 +3732,76 @@ def fetch_skuwisemonthly_ads_cm2_current_month(
         month=month,
     )
 
+
+def _current_inventory_column_lookup(df: pd.DataFrame) -> dict[str, str]:
+    if df is None or df.empty:
+        return {}
+
+    def _norm(value):
+        return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+
+    return {
+        _norm(col): col
+        for col in df.columns
+    }
+
+
+def _find_current_inventory_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    lookup = _current_inventory_column_lookup(df)
+
+    def _norm(value):
+        return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+
+    for candidate in candidates:
+        col = lookup.get(_norm(candidate))
+        if col is not None:
+            return col
+
+    return None
+
+
+def _current_inventory_text_series(
+    df: pd.DataFrame,
+    candidates: list[str],
+    default: str = "",
+) -> pd.Series:
+    col = _find_current_inventory_column(df, candidates)
+    if col is None:
+        return pd.Series(default, index=df.index, dtype="object")
+
+    return df[col].fillna(default).astype(str)
+
+
+def _current_inventory_num_series(
+    df: pd.DataFrame,
+    candidates: list[str],
+    default: float = 0.0,
+) -> pd.Series:
+    col = _find_current_inventory_column(df, candidates)
+    if col is None:
+        return pd.Series(default, index=df.index, dtype="float64")
+
+    return safe_num(df[col])
+
+
+def _weighted_coverage_by_inventory(df: pd.DataFrame) -> tuple[float, float]:
+    if df is None or df.empty:
+        return 0.0, 0.0
+
+    available = safe_num(df.get("available", 0.0))
+    coverage = safe_num(df.get("coverage_ratio_months", 0.0))
+
+    valid = (available > 0) & (coverage > 0)
+    available_total = float(available.sum() or 0.0)
+
+    if not bool(valid.any()):
+        return available_total, 0.0
+
+    weighted_coverage = float(
+        (coverage[valid] * available[valid]).sum() / available[valid].sum()
+    )
+    return available_total, weighted_coverage
+
 def fetch_current_inventory_snapshot(
     user_id: int,
     country: str,
@@ -3749,8 +3819,10 @@ def fetch_current_inventory_snapshot(
       currentinventory_{user_id}_uk_{month}{year}_table
       currentinventory_{user_id}_us_{month}{year}_table
 
-    This is NOT for AI.
-    This is only for frontend payload enrichment.
+    The saved currentinventory schema has changed over time, so this reader
+    normalizes old and new column names into current_inventory and
+    coverage_ratio_months for the dashboard cards and deterministic inventory
+    recommendations.
     """
 
     country_key = str(country or "uk").strip().lower()
@@ -3784,36 +3856,84 @@ def fetch_current_inventory_snapshot(
         try:
             with engine_hist.connect() as conn:
                 df = pd.read_sql(
-                    text(f'''
-                        SELECT
-                            "SKU" AS sku,
-                            "Product Name" AS product_name,
-                            "available" AS available,
-                            "Coverage Ratio (In Months)" AS coverage_ratio_months
-                        FROM "{table}"
-                    '''),
+                    text(f'SELECT * FROM "{table}"'),
                     conn,
                 )
         except Exception as e:
             print(f"[WARN] Could not read frontend inventory table {table}: {e}")
             continue
 
-        if df is None or df.empty or "sku" not in df.columns:
+        if df is None or df.empty:
             continue
 
         source_tables.append(table)
 
-        df = df.copy()
+        raw_df = df.copy()
 
-        df["sku"] = df["sku"].astype(str).str.strip()
+        df = pd.DataFrame(index=raw_df.index)
+        df["sku"] = _current_inventory_text_series(
+            raw_df,
+            ["SKU", "sku", "Seller SKU", "seller_sku"],
+        ).str.strip()
+        df["product_name"] = _current_inventory_text_series(
+            raw_df,
+            ["Product Name", "product_name", "Product", "Title", "item_name"],
+        ).str.strip()
 
-        if "product_name" not in df.columns:
-            df["product_name"] = ""
+        # Current inventory should match the stock used for current stock cover.
+        # New currentinventory tables calculate stock cover from total_stock.
+        df["available"] = _current_inventory_num_series(
+            raw_df,
+            [
+                "total_stock",
+                "Total Stock",
+                "current_inventory",
+                "Current Inventory",
+                "Inventory at the end of the month",
+                "available",
+                "Available",
+                "Sellable Units",
+                "available_inventory",
+                "available_total",
+            ],
+        )
+
+        coverage_col = _find_current_inventory_column(
+            raw_df,
+            [
+                "Coverage Ratio (In Months)",
+                "Coverage Ratio (Current Inventory)",
+                "coverage_ratio_months",
+                "inventory_coverage_ratio",
+                "Stock Cover",
+                "Stock Cover (Months)",
+                "Coverage Ratio (Current + Intransit)",
+            ],
+        )
+
+        if coverage_col is not None:
+            df["coverage_ratio_months"] = safe_num(raw_df[coverage_col])
         else:
-            df["product_name"] = df["product_name"].astype(str).str.strip()
+            sales_last_30_days = _current_inventory_num_series(
+                raw_df,
+                [
+                    "Sales Last 30 Days",
+                    "sales_last_30_days",
+                    "Sales Last 30",
+                    "last_30_days_units",
+                ],
+            )
+            denominator = sales_last_30_days.replace(0, np.nan)
+            df["coverage_ratio_months"] = (
+                df["available"] / denominator
+            ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
-        df["available"] = safe_num(df.get("available", 0.0))
-        df["coverage_ratio_months"] = safe_num(df.get("coverage_ratio_months", 0.0))
+        invalid_sku_values = ["", "none", "nan", "null", "total"]
+        sku_df = df[
+            df["sku"].notna()
+            & ~df["sku"].str.lower().isin(invalid_sku_values)
+            & ~df["product_name"].str.lower().isin(["total"])
+        ].copy()
 
         # -------------------------------------------------
         # TOTAL row for country-level portfolio coverage
@@ -3823,26 +3943,25 @@ def fetch_current_inventory_snapshot(
             | df["product_name"].fillna("").str.lower().eq("total")
         ].copy()
 
+        sku_available_total, sku_weighted_coverage = _weighted_coverage_by_inventory(sku_df)
+
         if not total_row_df.empty:
             country_available = float(total_row_df["available"].iloc[0] or 0.0)
             country_coverage = float(total_row_df["coverage_ratio_months"].iloc[0] or 0.0)
         else:
-            country_available = 0.0
-            country_coverage = 0.0
+            country_available = sku_available_total
+            country_coverage = sku_weighted_coverage
+
+        if country_available <= 0 and sku_available_total > 0:
+            country_available = sku_available_total
+
+        if country_coverage <= 0 and sku_weighted_coverage > 0:
+            country_coverage = sku_weighted_coverage
 
         total_available_sum += country_available
 
         if country_available > 0 and country_coverage > 0:
             weighted_coverage_sum += country_coverage * country_available
-
-        # -------------------------------------------------
-        # SKU map should exclude Total row
-        # -------------------------------------------------
-        sku_df = df[
-            df["sku"].notna()
-            & ~df["sku"].str.lower().isin(["", "none", "nan", "null", "total"])
-            & ~df["product_name"].str.lower().isin(["total"])
-        ].copy()
 
         for _, r in sku_df.iterrows():
             sku = str(r.get("sku") or "").strip()
@@ -3850,12 +3969,18 @@ def fetch_current_inventory_snapshot(
                 continue
 
             map_key = sku if country_key != "global" else f"{child_country}:{sku}"
+            current_inventory = round(float(r.get("available") or 0.0), 2)
+            coverage_ratio = round(float(r.get("coverage_ratio_months") or 0.0), 2)
 
             all_sku_maps[map_key] = {
                 "sku": sku,
                 "country_key": child_country,
-                "current_inventory": round(float(r.get("available") or 0.0), 2),
-                "coverage_ratio_months": round(float(r.get("coverage_ratio_months") or 0.0), 2),
+                "current_inventory": current_inventory,
+                "available": current_inventory,
+                "total_stock": current_inventory,
+                "coverage_ratio_months": coverage_ratio,
+                "inventory_coverage_ratio": coverage_ratio,
+                "selected_period_coverage_ratio": coverage_ratio,
             }
 
     if not source_tables:
@@ -4036,7 +4161,7 @@ def build_remaining_skus_aggregate(top_80_skus: list, focus_skus: list):
     curr_ppu = curr_profit / curr_qty if curr_qty else None
 
     cm2_profit_growth_pct = (
-        round(((curr_cm2_profit - prev_cm2_profit) / prev_cm2_profit) * 100.0, 2)
+        round(((curr_cm2_profit - prev_cm2_profit) / abs(prev_cm2_profit)) * 100.0, 2)
         if prev_cm2_profit
         else 0.0
     )
@@ -4226,8 +4351,8 @@ def build_ai_summary(
 
     # =========================================================
     # ✅ SKU-Level Ads + CM2 Enrichment
-    # Current month = current skuwisemonthly full table
-    # Previous month = previous skuwisemonthly full table
+    # Product-card CM2 is MTD:
+    #   CM1 profit - adsdaily ads_spend_total
     # IMPORTANT:
     # This must happen BEFORE focus_skus / Remaining SKUs are built,
     # so Remaining SKUs can aggregate cm2_profit_prev/curr.
@@ -4269,7 +4394,7 @@ def build_ai_summary(
     current_year = int(current_year)
     current_month = int(current_month)
 
-    # Previous month for full-month skuwisemonthly CM2
+    # Previous month fallback for legacy monthly ads/CM2 totals.
     previous_year = current_year
     previous_month = current_month - 1
 
@@ -4296,7 +4421,7 @@ def build_ai_summary(
 
     if user_id:
         try:
-            # Current CM2 from current month's skuwisemonthly table
+            # Legacy fallback/totals only. Product-card CM2 uses MTD rows below.
             curr_ads_sku_map, curr_ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_by_month(
                 user_id=int(user_id),
                 country=resolved_country,
@@ -4304,8 +4429,7 @@ def build_ai_summary(
                 month=int(current_month),
             )
 
-            # Previous CM2 from previous month's skuwisemonthly table
-            # No date filtering because skuwisemonthly has no date/time column
+            # No date filtering because skuwisemonthly has no date/time column.
             prev_ads_sku_map, prev_ads_monthly_totals = fetch_skuwisemonthly_ads_cm2_by_month(
                 user_id=int(user_id),
                 country=resolved_country,
@@ -4332,7 +4456,51 @@ def build_ai_summary(
                 "source_table": None,
             }
 
-    # Attach previous + current ads/CM2 data to each SKU row
+    def _first_numeric_value(*values, default=0.0):
+        for value in values:
+            parsed = safe_float_local(value)
+            if parsed is not None:
+                return float(parsed)
+        return float(default)
+
+    def _row_ads_spend_for_period(row: dict, period_key: str, fallback=None) -> float:
+        flat_key = f"ads_spend_{period_key}"
+        nested_key = f"mtd_ads_{period_key}"
+
+        if flat_key in row:
+            parsed = safe_float_local(row.get(flat_key))
+            if parsed is not None:
+                return float(parsed)
+
+        nested_ads = row.get(nested_key)
+        if isinstance(nested_ads, dict) and "ads_spend" in nested_ads:
+            parsed = safe_float_local(nested_ads.get("ads_spend"))
+            if parsed is not None:
+                return float(parsed)
+
+        return _first_numeric_value(fallback)
+
+    def _row_profit_for_period(row: dict, period_key: str) -> float:
+        period_profit_key = f"profit_{period_key}"
+
+        if period_profit_key in row:
+            parsed = safe_float_local(row.get(period_profit_key))
+            if parsed is not None:
+                return float(parsed)
+
+        if period_key == "curr":
+            return _first_numeric_value(row.get("profit"))
+
+        return 0.0
+
+    def _cm2_growth_pct(prev_value: float, curr_value: float) -> float:
+        if not prev_value:
+            return 0.0
+        return round(((curr_value - prev_value) / abs(prev_value)) * 100.0, 2)
+
+    # Attach previous + current MTD ads/CM2 data to each SKU row.
+    # Productwise CM2 for live cards is:
+    #   MTD CM1 profit - MTD adsdaily ads_spend_total
     for row in (top_80_skus or []):
         sku = safe_strip(row.get("sku"), default="")
         if not sku:
@@ -4344,11 +4512,22 @@ def build_ai_summary(
         curr_ads_data = (curr_ads_sku_map or {}).get(sku_key, {})
         prev_ads_data = (prev_ads_sku_map or {}).get(sku_key, {})
 
-        ads_spend_curr = float(curr_ads_data.get("ads_spend", 0.0) or 0.0)
-        cm2_profit_curr = float(curr_ads_data.get("cm2_profit", 0.0) or 0.0)
+        ads_spend_curr = _row_ads_spend_for_period(
+            row,
+            "curr",
+            fallback=curr_ads_data.get("ads_spend"),
+        )
+        ads_spend_prev = _row_ads_spend_for_period(
+            row,
+            "prev",
+            fallback=prev_ads_data.get("ads_spend"),
+        )
 
-        ads_spend_prev = float(prev_ads_data.get("ads_spend", 0.0) or 0.0)
-        cm2_profit_prev = float(prev_ads_data.get("cm2_profit", 0.0) or 0.0)
+        profit_curr = _row_profit_for_period(row, "curr")
+        profit_prev = _row_profit_for_period(row, "prev")
+
+        cm2_profit_curr = profit_curr - ads_spend_curr
+        cm2_profit_prev = profit_prev - ads_spend_prev
 
        
 
@@ -4385,9 +4564,7 @@ def build_ai_summary(
         )
 
         cm2_profit_growth_pct = (
-            round(((cm2_profit_curr - cm2_profit_prev) / cm2_profit_prev) * 100.0, 2)
-            if cm2_profit_prev
-            else 0.0
+            _cm2_growth_pct(cm2_profit_prev, cm2_profit_curr)
         )
 
         row["ads_spend_prev"] = round(ads_spend_prev, 2)
@@ -4419,6 +4596,7 @@ def build_ai_summary(
         row["cm2_margin_curr"] = cm2_margin_curr
 
         row["cm2_profit_growth_pct"] = cm2_profit_growth_pct
+        row["cm2_profit_source"] = "mtd_cm1_profit_minus_adsdaily_ads"
 
     # ✅ Build focus_skus from filtered and CM2-enriched top_80_skus
     # Logic:
@@ -4570,6 +4748,8 @@ def build_ai_summary(
             float(inv.get("coverage_ratio_months", 0.0) or 0.0),
             2,
         )
+        row["inventory_coverage_ratio"] = row["coverage_ratio_months"]
+        row["selected_period_coverage_ratio"] = row["coverage_ratio_months"]
 
         return row
 
@@ -4638,6 +4818,8 @@ def build_ai_summary(
                 "product_name": product_name,
                 "current_inventory": round(current_inventory, 2),
                 "coverage_ratio_months": round(coverage_ratio, 2),
+                "inventory_coverage_ratio": round(coverage_ratio, 2),
+                "selected_period_coverage_ratio": round(coverage_ratio, 2),
             })
 
         remaining_row["current_inventory"] = round(total_inventory, 2)
@@ -4646,6 +4828,8 @@ def build_ai_summary(
             if weighted_coverage_den
             else 0.0
         )
+        remaining_row["inventory_coverage_ratio"] = remaining_row["coverage_ratio_months"]
+        remaining_row["selected_period_coverage_ratio"] = remaining_row["coverage_ratio_months"]
 
         remaining_row["included_products"] = included_products
         remaining_row["included_product_count"] = len(included_products)
@@ -5090,28 +5274,10 @@ def generate_sku_inventory_flags(
     if high_alert_threshold is None:
         high_alert_threshold = 2.0
 
-    # -------------------------------------------------
-    # 1. Build coverage map
-    # -------------------------------------------------
-    coverage_df = compute_inventory_coverage_ratio(user_id, country)
-
     coverage_map: dict[str, float | None] = {}
 
-    if coverage_df is not None and not coverage_df.empty:
-        for _, r in coverage_df.iterrows():
-            sku = str(r.get("sku") or "").strip()
-            if not sku:
-                continue
-
-            cov = pd.to_numeric(
-                r.get("inventory_coverage_ratio"),
-                errors="coerce",
-            )
-
-            coverage_map[sku.upper()] = float(cov) if pd.notna(cov) else None
-
     # -------------------------------------------------
-    # 2. Override coverage from route/card rows if supplied
+    # 1. Current-inventory coverage is the source of truth when supplied.
     # -------------------------------------------------
     for sku, cov in (coverage_override_by_sku or {}).items():
         sku_key = str(sku or "").strip().upper()
@@ -5122,6 +5288,28 @@ def generate_sku_inventory_flags(
 
         if pd.notna(cov_num):
             coverage_map[sku_key] = float(cov_num)
+
+    # -------------------------------------------------
+    # 2. Fallback to legacy inventory_aged / last-30-days coverage.
+    # -------------------------------------------------
+    coverage_df = compute_inventory_coverage_ratio(user_id, country)
+
+    if coverage_df is not None and not coverage_df.empty:
+        for _, r in coverage_df.iterrows():
+            sku = str(r.get("sku") or "").strip()
+            if not sku:
+                continue
+
+            sku_key = sku.upper()
+            if sku_key in coverage_map:
+                continue
+
+            cov = pd.to_numeric(
+                r.get("inventory_coverage_ratio"),
+                errors="coerce",
+            )
+
+            coverage_map[sku_key] = float(cov) if pd.notna(cov) else None
 
     # -------------------------------------------------
     # 3. Fetch inventory aged
