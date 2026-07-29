@@ -127,7 +127,7 @@ export default function BeforeAfterSection() {
     2xl:!text-[54px]
   "
 >
-  Move From Manual Chaos to Clear Business Control
+  Move From <span className="text-[#5EA68E]">Manual Chaos</span> to <span className="text-[#5EA68E]">Clear Business Control</span>
 </h2>
 
         <div

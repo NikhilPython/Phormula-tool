@@ -1,145 +1,204 @@
-import React from "react";
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  containerClass,
-  Eyebrow,
-  SectionCopy,
-} from "./shared";
+  Link2,
+  ChartNoAxesCombined,
+  Sparkles,
+  ArrowRight,
+  ArrowDown,
+} from "lucide-react";
+
+import { containerClass, SectionCopy } from "./shared";
 
 const steps = [
   {
-    title: "Connect your business data",
+    title: "Connect your Business Data",
     text: "Bring sales, fees, ads, inventory, expenses, purchase orders, and cash-flow inputs into one system.",
-    accent: "#5EA68E",
-    soft: "rgba(94,166,142,0.13)",
-    delay: "0s",
+    icon: Link2,
+    iconColor: "#E0A800",
+    iconBackground: "#FFF8D9",
+    delay: 0,
   },
   {
-    title: "Reconcile and visualize",
+    title: "Reconcile and Visualize",
     text: "Phormula turns scattered inputs into dashboards for revenue, CM2 profit, cash flow, inventory, and performance.",
-    accent: "#6175A6",
-    soft: "rgba(97,117,166,0.13)",
-    delay: "0.3s",
+    icon: ChartNoAxesCombined,
+    iconColor: "#6959C9",
+    iconBackground: "#F0EDFF",
+    delay: 0.55,
   },
   {
-    title: "Act on AI recommendations",
+    title: "Act on AI Recommendations",
     text: "Get clear alerts and next steps when inventory, fees, margin, or cash flow needs attention.",
-    accent: "#C5984D",
-    soft: "rgba(197,152,77,0.13)",
-    delay: "0.6s",
+    icon: Sparkles,
+    iconColor: "#288F7A",
+    iconBackground: "#E9F8F3",
+    delay: 1.1,
   },
 ] as const;
 
-function StepArrow() {
+function DesktopConnector({
+  delay,
+  reduceMotion,
+}: {
+  delay: number;
+  reduceMotion: boolean | null;
+}) {
   return (
-    <div
-      className="
-        relative flex items-center justify-center
-        max-md:h-10
-      "
-    >
-      {/* Desktop line */}
-      <span
+    <div className="relative hidden min-w-0 items-center md:flex">
+      <div className="relative h-[2px] w-full overflow-hidden rounded-full bg-[#DCE1E8]">
+        <motion.div
+          className="absolute inset-y-0 left-0 w-full origin-left rounded-full bg-[#7AAE9D]"
+          initial={reduceMotion ? false : { scaleX: 0 }}
+          whileInView={{ scaleX: 1 }}
+          viewport={{ once: true, amount: 0.7 }}
+          transition={{
+            duration: reduceMotion ? 0 : 0.45,
+            delay: reduceMotion ? 0 : delay,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        />
+      </div>
+
+      <motion.div
         className="
-          absolute left-0 right-0 top-1/2
-          h-px -translate-y-1/2
-          bg-[linear-gradient(90deg,transparent,rgba(55,69,95,0.2),transparent)]
-
-          max-md:bottom-0
-          max-md:left-1/2
-          max-md:right-auto
-          max-md:top-0
-          max-md:h-auto
-          max-md:w-px
-          max-md:-translate-x-1/2
-          max-md:translate-y-0
-          max-md:bg-[linear-gradient(180deg,transparent,rgba(55,69,95,0.2),transparent)]
+          absolute right-[-7px] top-1/2 z-10
+          grid h-7 w-7 -translate-y-1/2 place-items-center
+          rounded-full border border-[#DDE3E8]
+          bg-white text-[#6A7A8C]
+          shadow-[0_5px_14px_rgba(38,54,83,0.10)]
         "
-      />
-
-      <span
-        className="
-          workflow-arrow relative z-[2]
-          grid h-9 w-9 place-items-center
-          rounded-full
-          border border-[#37455F]/10
-          bg-white text-[#53617a]
-          shadow-[0_7px_20px_rgba(55,69,95,0.12)]
-
-          max-md:rotate-90
-        "
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.5, x: -8 }}
+        whileInView={{ opacity: 1, scale: 1, x: 0 }}
+        viewport={{ once: true, amount: 0.7 }}
+        transition={{
+          duration: reduceMotion ? 0 : 0.3,
+          delay: reduceMotion ? 0 : delay + 0.28,
+          ease: "easeOut",
+        }}
       >
-        <svg
-          className="h-[17px] w-[17px]"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="M5 12h13M14 8l4 4-4 4"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </span>
+        <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
+      </motion.div>
+    </div>
+  );
+}
+
+function MobileConnector({
+  delay,
+  reduceMotion,
+}: {
+  delay: number;
+  reduceMotion: boolean | null;
+}) {
+  return (
+    <div className="relative flex h-[54px] justify-center md:hidden">
+      <div className="relative h-full w-[2px] overflow-hidden rounded-full bg-[#DCE1E8]">
+        <motion.div
+          className="absolute inset-x-0 top-0 h-full origin-top rounded-full bg-[#7AAE9D]"
+          initial={reduceMotion ? false : { scaleY: 0 }}
+          whileInView={{ scaleY: 1 }}
+          viewport={{ once: true, amount: 0.7 }}
+          transition={{
+            duration: reduceMotion ? 0 : 0.4,
+            delay: reduceMotion ? 0 : delay,
+            ease: [0.22, 1, 0.36, 1],
+          }}
+        />
+      </div>
+
+      <motion.div
+        className="
+          absolute bottom-[-2px] left-1/2 z-10
+          grid h-7 w-7 -translate-x-1/2 place-items-center
+          rounded-full border border-[#DDE3E8]
+          bg-white text-[#6A7A8C]
+          shadow-[0_5px_14px_rgba(38,54,83,0.10)]
+        "
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.5, y: -8 }}
+        whileInView={{ opacity: 1, scale: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.7 }}
+        transition={{
+          duration: reduceMotion ? 0 : 0.3,
+          delay: reduceMotion ? 0 : delay + 0.25,
+          ease: "easeOut",
+        }}
+      >
+        <ArrowDown className="h-3.5 w-3.5" strokeWidth={2} />
+      </motion.div>
     </div>
   );
 }
 
 export default function WorkflowSection() {
+  const reduceMotion = useReducedMotion();
+
   return (
     <section
       id="workflow"
       className="
         relative overflow-hidden
-        bg-[radial-gradient(circle_at_15%_10%,rgba(94,166,142,0.12),transparent_32%),radial-gradient(circle_at_88%_75%,rgba(97,117,166,0.10),transparent_30%),#F5EFE0]
+        bg-[#F8F8F6]
         py-[72px]
-
         lg:py-20
         xl:py-[88px]
         2xl:py-24
-
-        before:pointer-events-none
-        before:absolute
-        before:-right-32
-        before:top-14
-        before:h-[310px]
-        before:w-[310px]
-        before:rounded-full
-        before:border
-        before:border-[#5EA68E]/10
-        before:content-['']
-
-        after:pointer-events-none
-        after:absolute
-        after:-bottom-36
-        after:-left-28
-        after:h-[280px]
-        after:w-[280px]
-        after:rounded-full
-        after:border
-        after:border-[#6175A6]/10
-        after:content-['']
       "
     >
-      <div className={`${containerClass} relative z-[1] text-center`}>
-        <div className="mx-auto max-w-[780px]">
-          <div
-              className="
-                inline-flex items-center gap-[7px]
-                rounded-full border border-[#269770]/20
-                bg-[#ebf7f1]/80
-                px-[13px] py-[7px]
-                text-[10px] font-extrabold uppercase
-                leading-none tracking-[0.12em]
-                text-[#277d64]
-              "
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-[#36a47d] shadow-[0_0_0_4px_rgba(54,164,125,0.12)]" />
-              How it Works
-            </div>
+      <div className={`${containerClass} relative z-10 text-center`}>
+        {/* Heading section */}
+        <div className="mx-auto max-w-[790px]">
+          <motion.div
+            initial={
+              reduceMotion
+                ? false
+                : {
+                    opacity: 0,
+                    y: 12,
+                  }
+            }
+            whileInView={{
+              opacity: 1,
+              y: 0,
+            }}
+            viewport={{ once: true, amount: 0.7 }}
+            transition={{
+              duration: reduceMotion ? 0 : 0.45,
+              ease: "easeOut",
+            }}
+            className="
+              inline-flex items-center
+              rounded-full
+              border border-[#269770]/20
+              bg-[#EBF7F1]
+              px-[13px] py-[7px]
+              text-[10px] font-extrabold uppercase
+              leading-none tracking-[0.1em]
+              text-[#277D64]
+            "
+          >
+            How It Works
+          </motion.div>
 
-          <h2
+          <motion.h2
+            initial={
+              reduceMotion
+                ? false
+                : {
+                    opacity: 0,
+                    y: 16,
+                  }
+            }
+            whileInView={{
+              opacity: 1,
+              y: 0,
+            }}
+            viewport={{ once: true, amount: 0.7 }}
+            transition={{
+              duration: reduceMotion ? 0 : 0.5,
+              delay: reduceMotion ? 0 : 0.08,
+              ease: "easeOut",
+            }}
             className="
               mt-[18px]
               font-[var(--font-dm-serif)]
@@ -151,242 +210,316 @@ export default function WorkflowSection() {
               sm:text-[38px]
               lg:text-[42px]
               xl:text-[42px]
-
               2xl:text-[54px]
             "
           >
-            From raw data to{" "}
-            <span className="text-[#40577d]">
-              founder-ready decisions.
+            From Raw Data to{" "}
+            <span className="text-[#5EA68E]">
+              Founder-Ready Decisions.
             </span>
-          </h2>
+          </motion.h2>
 
-          <SectionCopy>
-            Phormula helps teams move from manual reporting to an operating
-            rhythm built around clean numbers and clear actions.
-          </SectionCopy>
+          <motion.div
+            initial={
+              reduceMotion
+                ? false
+                : {
+                    opacity: 0,
+                    y: 14,
+                  }
+            }
+            whileInView={{
+              opacity: 1,
+              y: 0,
+            }}
+            viewport={{ once: true, amount: 0.7 }}
+            transition={{
+              duration: reduceMotion ? 0 : 0.5,
+              delay: reduceMotion ? 0 : 0.15,
+              ease: "easeOut",
+            }}
+          >
+            <SectionCopy>
+              Phormula helps teams move from manual reporting to an operating
+              rhythm built around clean numbers and clear actions.
+            </SectionCopy>
+          </motion.div>
         </div>
 
+        {/* Workflow cards */}
         <div
           className="
-            mt-10 grid items-stretch
-            grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)_48px_minmax(0,1fr)]
-            text-left
+            mx-auto mt-10
+            grid max-w-[1260px]
+            grid-cols-1
+            items-center
 
-            max-md:flex
-            max-md:flex-col
-            max-md:gap-0
+            md:grid-cols-[minmax(0,1fr)_54px_minmax(0,1fr)_54px_minmax(0,1fr)]
 
             lg:mt-11
+            lg:grid-cols-[minmax(0,1fr)_66px_minmax(0,1fr)_66px_minmax(0,1fr)]
+
             xl:mt-12
+            xl:grid-cols-[minmax(0,1fr)_78px_minmax(0,1fr)_78px_minmax(0,1fr)]
 
             2xl:mt-[52px]
-            2xl:grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)_58px_minmax(0,1fr)]
+            2xl:grid-cols-[minmax(0,1fr)_90px_minmax(0,1fr)_90px_minmax(0,1fr)]
           "
         >
-          {steps.map((step, index) => (
-            <React.Fragment key={step.title}>
-              <article
-                className="
-                  group relative
-                  flex min-h-[240px] flex-col
-                  overflow-hidden
-                  rounded-[20px]
-                  border border-[#37455F]/[0.08]
-                  bg-white/90
-                  px-5 py-6
-                  shadow-[0_10px_30px_rgba(55,69,95,0.08),0_2px_7px_rgba(55,69,95,0.03)]
-                  backdrop-blur-xl
-                  transition-all duration-500 ease-out
+          {steps.map((step, index) => {
+            const Icon = step.icon;
 
-                  hover:-translate-y-2
-                  hover:border-[#37455F]/15
-                  hover:shadow-[0_24px_55px_rgba(55,69,95,0.14),0_4px_12px_rgba(55,69,95,0.04)]
-
-                  sm:px-6
-
-                  lg:min-h-[248px]
-                  lg:px-5
-                  lg:py-6
-
-                  xl:min-h-[258px]
-                  xl:px-6
-                  xl:py-7
-
-                  2xl:min-h-[280px]
-                  2xl:rounded-[26px]
-                  2xl:p-[30px]
-                "
+            return (
+              <div
+                key={step.title}
+                className="contents"
               >
-                {/* Top accent */}
-                <span
+                <motion.article
+                  initial={
+                    reduceMotion
+                      ? false
+                      : {
+                          opacity: 0,
+                          y: 34,
+                          scale: 0.96,
+                        }
+                  }
+                  whileInView={{
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                  }}
+                  viewport={{
+                    once: true,
+                    amount: 0.45,
+                  }}
+                  transition={{
+                    duration: reduceMotion ? 0 : 0.55,
+                    delay: reduceMotion ? 0 : step.delay,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  whileHover={
+                    reduceMotion
+                      ? undefined
+                      : {
+                          y: -7,
+                          transition: {
+                            duration: 0.25,
+                            ease: "easeOut",
+                          },
+                        }
+                  }
                   className="
-                    absolute left-5 right-5 top-0
-                    h-[3px] origin-left
-                    scale-x-[0.24] rounded-b-full
-                    transition-transform duration-500
-                    group-hover:scale-x-100
+                    group relative
+                    flex min-h-[220px]
+                    flex-col items-center justify-center
+                    overflow-hidden
+                    rounded-[15px]
+                    border border-[#273653]/[0.035]
+                    bg-white
+                    px-6 py-8
+                    text-center
 
-                    2xl:left-[30px]
-                    2xl:right-[30px]
+                    shadow-[0_8px_28px_rgba(38,54,83,0.035)]
+                    transition-shadow duration-300
+
+                    hover:shadow-[0_18px_45px_rgba(38,54,83,0.10)]
+
+                    sm:min-h-[225px]
+                    sm:px-7
+
+                    md:min-h-[235px]
+                    md:px-4
+                    md:py-7
+
+                    lg:min-h-[225px]
+                    lg:px-6
+
+                    xl:min-h-[230px]
+                    xl:px-8
+
+                    2xl:min-h-[250px]
+                    2xl:rounded-[18px]
+                    2xl:px-9
+                    2xl:py-9
                   "
-                  style={{ backgroundColor: step.accent }}
-                />
-
-                {/* Decorative glow */}
-                <span
-                  className="
-                    pointer-events-none absolute
-                    -right-14 -top-14
-                    h-36 w-36 rounded-full
-                    opacity-70 blur-[1px]
-                    transition-all duration-500
-
-                    group-hover:-right-9
-                    group-hover:-top-9
-                    group-hover:scale-110
-                  "
-                  style={{ backgroundColor: step.soft }}
-                />
-
-                <div className="relative z-[1] flex items-start justify-between">
-                  <div
+                >
+                  {/* Animated active border */}
+                  <motion.span
                     className="
-                      workflow-step-number
-                      grid h-11 w-11
-                      shrink-0 place-items-center
-                      rounded-full
-                      text-[14px] font-black text-white
-                      shadow-[0_10px_24px_rgba(55,69,95,0.16)]
+                      absolute inset-x-0 top-0
+                      h-[3px] origin-left
+                      rounded-t-[15px]
+                      bg-[#5EA68E]
+                    "
+                    initial={reduceMotion ? false : { scaleX: 0 }}
+                    whileInView={{ scaleX: 1 }}
+                    viewport={{ once: true, amount: 0.5 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.55,
+                      delay: reduceMotion ? 0 : step.delay + 0.18,
+                      ease: "easeOut",
+                    }}
+                  />
 
-                      2xl:h-[48px]
-                      2xl:w-[48px]
-                      2xl:text-[15px]
+                  {/* Step number */}
+                  <motion.span
+                    initial={
+                      reduceMotion
+                        ? false
+                        : {
+                            opacity: 0,
+                            scale: 0.6,
+                          }
+                    }
+                    whileInView={{
+                      opacity: 1,
+                      scale: 1,
+                    }}
+                    viewport={{ once: true, amount: 0.5 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.3,
+                      delay: reduceMotion ? 0 : step.delay + 0.2,
+                    }}
+                    className="
+                      absolute right-4 top-4
+                      grid h-6 w-6 place-items-center
+                      rounded-full
+                      bg-[#EFF6F3]
+                      text-[10px] font-extrabold
+                      text-[#4D8D78]
+                    "
+                  >
+                    {index + 1}
+                  </motion.span>
+
+                  {/* Icon */}
+                  <motion.div
+                    initial={
+                      reduceMotion
+                        ? false
+                        : {
+                            opacity: 0,
+                            rotate: -12,
+                            scale: 0.65,
+                          }
+                    }
+                    whileInView={{
+                      opacity: 1,
+                      rotate: 0,
+                      scale: 1,
+                    }}
+                    viewport={{ once: true, amount: 0.5 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.45,
+                      delay: reduceMotion ? 0 : step.delay + 0.12,
+                      type: "spring",
+                      stiffness: 170,
+                      damping: 15,
+                    }}
+                    className="
+                      mb-5 grid h-[46px] w-[46px]
+                      place-items-center rounded-[13px]
+
+                      transition-transform duration-300
+                      group-hover:scale-110
+
+                      2xl:mb-6
+                      2xl:h-[52px]
+                      2xl:w-[52px]
+                      2xl:rounded-[15px]
                     "
                     style={{
-                      backgroundColor: step.accent,
-                      animationDelay: step.delay,
+                      color: step.iconColor,
+                      backgroundColor: step.iconBackground,
                     }}
                   >
-                    {String(index + 1).padStart(2, "0")}
-                  </div>
+                    <Icon
+                      className="
+                        h-[24px] w-[24px]
+                        2xl:h-[27px] 2xl:w-[27px]
+                      "
+                      strokeWidth={2}
+                    />
+                  </motion.div>
 
-                  <span
-                    className="
-                      text-[11px] font-extrabold uppercase
-                      tracking-[0.12em]
-                      opacity-50
-                    "
-                    style={{ color: step.accent }}
-                  >
-                    Step {index + 1}
-                  </span>
-                </div>
-
-                <div className="relative z-[1] mt-8 2xl:mt-9">
                   <h3
                     className="
-                      max-w-[270px]
-                      text-[17px] font-bold
+                      text-[15px] font-bold
                       leading-[1.35]
-                      tracking-[-0.02em]
-                      text-[#37455F]
+                      tracking-[-0.015em]
+                      text-[#34425E]
 
-                      xl:text-[18px]
-                      2xl:text-[1.16rem]
+                      lg:text-[15px]
+                      xl:text-[16px]
+                      2xl:text-[17px]
                     "
                   >
                     {step.title}
                   </h3>
 
-                  <span
-                    className="
-                      my-3 block h-0.5 w-8
-                      rounded-full
-                      transition-all duration-500
-                      group-hover:w-14
-                    "
-                    style={{ backgroundColor: step.accent }}
-                  />
-
                   <p
                     className="
-                      text-[13px]
-                      leading-[1.65]
-                      text-[#5A6272]
+                      mt-3 max-w-[330px]
+                      text-[12px]
+                      leading-[1.45]
+                      text-[#555B68]
 
-                      xl:text-[14px]
+                      lg:text-[12px]
+                      xl:text-[13px]
+                      xl:leading-[1.5]
 
-                      2xl:text-[0.94rem]
-                      2xl:leading-[1.7]
+                      2xl:mt-3.5
+                      2xl:text-[14px]
+                      text-left!
                     "
                   >
                     {step.text}
                   </p>
-                </div>
 
-                <div
-                  className="
-                    relative z-[1] mt-auto
-                    flex items-center gap-2
-                    pt-5
-                    text-[11px] font-bold
-                    uppercase tracking-[0.08em]
-                    opacity-0
-                    transition-all duration-300
-                    group-hover:translate-x-1
-                    group-hover:opacity-100
-                  "
-                  style={{ color: step.accent }}
-                >
-                  Continue
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                  >
-                    <path
-                      d="M5 12h13M14 8l4 4-4 4"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
+                  {/* Bottom progress dot */}
+                  <motion.span
+                    initial={
+                      reduceMotion
+                        ? false
+                        : {
+                            opacity: 0,
+                            scale: 0,
+                          }
+                    }
+                    whileInView={{
+                      opacity: 1,
+                      scale: 1,
+                    }}
+                    viewport={{ once: true, amount: 0.5 }}
+                    transition={{
+                      duration: reduceMotion ? 0 : 0.25,
+                      delay: reduceMotion ? 0 : step.delay + 0.42,
+                    }}
+                    className="
+                      absolute bottom-3
+                      h-1.5 w-1.5
+                      rounded-full bg-[#5EA68E]
+                    "
+                  />
+                </motion.article>
+
+                {index < steps.length - 1 && (
+                  <>
+                    <DesktopConnector
+                      delay={step.delay + 0.45}
+                      reduceMotion={reduceMotion}
                     />
-                  </svg>
-                </div>
-              </article>
 
-              {index < steps.length - 1 && <StepArrow />}
-            </React.Fragment>
-          ))}
-        </div>
-
-        <div
-          className="
-            mx-auto mt-8
-            flex w-fit max-w-[650px]
-            items-center justify-center gap-3
-            rounded-full
-            border border-[#37455F]/[0.08]
-            bg-white/55
-            px-5 py-3
-            shadow-[0_10px_30px_rgba(55,69,95,0.06)]
-            backdrop-blur-lg
-
-            max-sm:rounded-[16px]
-            max-sm:text-left
-
-            2xl:mt-10
-          "
-        >
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#5EA68E] opacity-40" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#5EA68E]" />
-          </span>
-
-          <p className="text-[12px] font-semibold leading-5 text-[#4e5c72]">
-            One connected workflow from business data to confident action.
-          </p>
+                    <MobileConnector
+                      delay={step.delay + 0.45}
+                      reduceMotion={reduceMotion}
+                    />
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>

@@ -19,11 +19,9 @@
   padding: 104px 24px 76px;
   color: var(--foreground);
   background:
-    radial-gradient(
-      circle at 50% -10%,
+    radial-gradient(circle at 50% -10%,
       rgba(79, 142, 247, 0.17),
-      transparent 34%
-    ),
+      transparent 34%),
     linear-gradient(180deg, #080a0e 0%, #080a0e 52%, #06080b 100%);
 }
 
@@ -50,54 +48,44 @@
   position: absolute;
   inset: -20%;
   opacity: 0.28;
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 62%,
-    transparent 94%
-  );
+  mask-image: linear-gradient(to bottom,
+      #000 0%,
+      #000 62%,
+      transparent 94%);
 }
 
 .background span:nth-child(1) {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 79px,
-    rgba(255, 255, 255, 0.055) 80px
-  );
+  background-image: repeating-linear-gradient(to bottom,
+      transparent 0,
+      transparent 79px,
+      rgba(255, 255, 255, 0.055) 80px);
   animation: moveVertical 18s linear infinite;
 }
 
 .background span:nth-child(2) {
-  background-image: repeating-linear-gradient(
-    to right,
-    transparent 0,
-    transparent 119px,
-    rgba(79, 142, 247, 0.055) 120px
-  );
+  background-image: repeating-linear-gradient(to right,
+      transparent 0,
+      transparent 119px,
+      rgba(79, 142, 247, 0.055) 120px);
   animation: moveHorizontal 24s linear infinite;
 }
 
 .background span:nth-child(3) {
   opacity: 0.12;
-  background-image: repeating-linear-gradient(
-    125deg,
-    transparent 0,
-    transparent 139px,
-    rgba(255, 255, 255, 0.08) 140px
-  );
+  background-image: repeating-linear-gradient(125deg,
+      transparent 0,
+      transparent 139px,
+      rgba(255, 255, 255, 0.08) 140px);
   animation: moveDiagonal 34s linear infinite;
 }
 
 .vignette {
   z-index: 1;
   background:
-    radial-gradient(
-      circle at center,
+    radial-gradient(circle at center,
       transparent 22%,
       rgba(7, 9, 13, 0.18) 58%,
-      rgba(7, 9, 13, 0.88) 100%
-    ),
+      rgba(7, 9, 13, 0.88) 100%),
     linear-gradient(to bottom, transparent 62%, #07090d 100%);
 }
 
@@ -127,7 +115,7 @@
   animation-delay: 0.6s;
 }
 
-.content > div:first-child {
+.content>div:first-child {
   text-align: center;
 }
 
@@ -167,12 +155,10 @@
 
 .title span {
   color: transparent;
-  background: linear-gradient(
-    90deg,
-    #8bb7ff,
-    #c8b6ff 48%,
-    #7ee8c8 100%
-  );
+  background: linear-gradient(90deg,
+      #8bb7ff,
+      #c8b6ff 48%,
+      #7ee8c8 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
@@ -618,7 +604,7 @@
   min-height: 0;
   overflow: hidden;
   padding-top: 3px;
-   font-size: 10px;
+  font-size: 10px;
 }
 
 .sidebarItem {
@@ -671,11 +657,9 @@
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(
-      circle at 50% 30%,
+    radial-gradient(circle at 50% 30%,
       rgba(79, 142, 247, 0.08),
-      transparent 40%
-    ),
+      transparent 40%),
     #0a0d12;
 }
 
@@ -702,11 +686,9 @@
   padding: 24px;
   text-align: center;
   background:
-    radial-gradient(
-      circle at center,
+    radial-gradient(circle at center,
       rgba(79, 142, 247, 0.14),
-      transparent 42%
-    ),
+      transparent 42%),
     linear-gradient(145deg, #10141c, #090b10);
 }
 
@@ -767,6 +749,7 @@
 }
 
 @keyframes pulse {
+
   0%,
   100% {
     opacity: 0.7;
@@ -943,6 +926,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .enter,
   .title span,
   .badge i,

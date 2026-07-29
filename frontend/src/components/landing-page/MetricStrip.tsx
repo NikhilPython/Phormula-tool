@@ -36,7 +36,7 @@ const items = [
 
 export default function MetricStrip() {
   return (
-    <section className="bg-[#f7f3ea] py-6 lg:py-8 2xl:py-[42px]">
+    <section className="bg-[#FAFAF7] py-6 lg:py-8 2xl:py-[42px]">
       <div className={containerClass}>
         <div
           className="
