@@ -163,7 +163,7 @@ export default function GroupedCollapsibleTable<RowT>({
   preserveColumnWidths = false,
   stickyLeftCols = true,
   hideStickyLeftColsWhileScrolling = true,
-  stickyLeftBorderMode = "transparent",
+  stickyLeftBorderMode = "shadow-only",
   stickyLeftDividerMode = "trailing",
   stickyLeftWidthMode = "fallback",
   showStickyLeftOuterBorder = false,
@@ -755,23 +755,24 @@ export default function GroupedCollapsibleTable<RowT>({
 
     const dividerColor =
       surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
+    const verticalDividerColor = dividerColor;
     const outerLeftDivider =
       showStickyLeftOuterBorder && colIndex === 0
-        ? `inset 1px 0 0 ${dividerColor}`
+        ? `inset 1px 0 0 ${verticalDividerColor}`
         : "";
     const stickyDividers =
       stickyLeftDividerMode === "leading"
         ? [
           outerLeftDivider,
-          colIndex > 0 ? `inset 1px 0 0 ${dividerColor}` : "",
+          colIndex > 0 ? `inset 1px 0 0 ${verticalDividerColor}` : "",
           colIndex === stickyLeftCount - 1
-            ? `inset -1px 0 0 ${dividerColor}`
+            ? `inset -1px 0 0 ${verticalDividerColor}`
             : "",
           `inset 0 -1px 0 ${dividerColor}`,
         ].filter(Boolean)
         : [
           outerLeftDivider,
-          `inset -1px 0 0 ${dividerColor}`,
+          `inset -1px 0 0 ${verticalDividerColor}`,
           `inset 0 -1px 0 ${dividerColor}`,
         ].filter(Boolean);
 
@@ -800,7 +801,9 @@ export default function GroupedCollapsibleTable<RowT>({
       return undefined;
     }
 
-    return { borderLeftColor: "transparent" };
+    return stickyLeftBorderMode === "shadow-only"
+      ? { borderLeftWidth: 0 }
+      : { borderLeftColor: "transparent" };
   };
 
   const getStickyLeftClassName = (
