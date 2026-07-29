@@ -347,3 +347,91 @@ def send_report_email():
 #         "alerts_sent": len(alerts),
 #     }), 200 if sent else 500
 
+
+
+def _clean_demo_field(value, max_length):
+    """Normalize a demo-form value and cap its size."""
+    return str(value or "").strip()[:max_length]
+
+
+@email_bp.route("/demo-request", methods=["POST", "OPTIONS"])
+def submit_demo_request():
+    """Receive the public website demo form and email it to the Phormula team."""
+    if request.method == "OPTIONS":
+        return "", 204
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        # Honeypot field: real users never fill this field.
+        if _clean_demo_field(data.get("website"), 200):
+            return jsonify({
+                "success": True,
+                "message": "Demo request received successfully.",
+            }), 200
+
+        full_name = _clean_demo_field(data.get("full_name"), 120)
+        work_email = _clean_demo_field(data.get("work_email"), 254).lower()
+        company_name = _clean_demo_field(data.get("company_name"), 160)
+        monthly_revenue = _clean_demo_field(data.get("monthly_revenue"), 80)
+        manual_tracking = _clean_demo_field(data.get("manual_tracking"), 2000)
+
+        if not full_name or not work_email:
+            return jsonify({
+                "success": False,
+                "error": "Full name and work email are required.",
+            }), 400
+
+        email_pattern = r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"
+        if not re.fullmatch(email_pattern, work_email):
+            return jsonify({
+                "success": False,
+                "error": "Please enter a valid work email.",
+            }), 400
+
+        recipients = Config.DEMO_FORM_RECIPIENTS
+        if not recipients:
+            return jsonify({
+                "success": False,
+                "error": "Demo form recipient is not configured.",
+            }), 500
+
+        from flask_mail import Message
+        from app import mail
+
+        subject_company = company_name or "Company not provided"
+        subject = f"New Phormula demo request - {subject_company}"
+
+        text_body = "\n".join([
+            "A new demo request was submitted on the Phormula website.",
+            "",
+            f"Full name: {full_name}",
+            f"Work email: {work_email}",
+            f"Company: {company_name or 'Not provided'}",
+            f"Monthly revenue range: {monthly_revenue or 'Not provided'}",
+            "",
+            "Currently tracking manually:",
+            manual_tracking or "Not provided",
+            "",
+            f"Submitted at (UTC): {datetime.utcnow().isoformat(timespec='seconds')}Z",
+        ])
+
+        message = Message(
+            subject=subject,
+            recipients=recipients,
+            body=text_body,
+            reply_to=work_email,
+        )
+        mail.send(message)
+
+        return jsonify({
+            "success": True,
+            "message": "Thank you. Your demo request has been sent to our team.",
+        }), 200
+
+    except Exception as exc:
+        print(f"[ERROR] /demo-request failed: {exc}")
+        return jsonify({
+            "success": False,
+            "error": "Unable to submit the demo request right now.",
+        }), 500
