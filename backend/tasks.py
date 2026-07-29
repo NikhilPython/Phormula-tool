@@ -833,13 +833,18 @@ def _post_live_dashboard_cache(
     today = date.today()
     meta = _country_dashboard_meta(country)
 
+    saved_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
     cache_payload = {
         "data": mtd_payload,
         "liveBiPayload": live_bi_payload,
         "monthlySpPayload": ads_payload,
         "biStatus": "ready" if live_bi_payload else "idle",
         "liveBiReady": bool(live_bi_payload),
-        "savedAt": int(datetime.utcnow().timestamp() * 1000),
+        # This is the actual cache refresh time. The frontend should use this
+        # for "Last updated", not the last transaction date in biDailySeries.
+        "savedAt": saved_at_ms,
+        "lastUpdatedAt": datetime.now(timezone.utc).isoformat(),
         "source": "celery_refresh_dashboard_daily",
     }
 
@@ -849,7 +854,7 @@ def _post_live_dashboard_cache(
         "region": meta["region"],
         "startDay": 1,
         "endDay": today.day,
-        "savedAt": int(datetime.utcnow().timestamp() * 1000),
+        "savedAt": saved_at_ms,
         "cachePayload": cache_payload,
     }
 
