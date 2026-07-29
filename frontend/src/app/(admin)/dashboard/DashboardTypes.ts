@@ -135,6 +135,7 @@ export type FetchLiveBiPayloadArgs = {
 
     // ✅ ADD THIS
     manualAiRefresh?: boolean;
+    signal?: AbortSignal;
 };
 
 export type ProductwiseMoneyKey =

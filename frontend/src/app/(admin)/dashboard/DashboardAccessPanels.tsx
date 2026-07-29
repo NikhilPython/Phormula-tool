@@ -98,6 +98,7 @@ const DASHBOARD_STEP_FALLBACK_SECONDS = 20;
 const MAX_DASHBOARD_ETA_HISTORY_SAMPLES = 20;
 const MIN_ACTIVE_DASHBOARD_ETA_SECONDS = 8;
 const MAX_DASHBOARD_STEP_ETA_SECONDS = 30 * 60;
+const SHORT_DISPLAY_DASHBOARD_STEP_NUMS = new Set([3]);
 
 const clampDashboardEtaSeconds = (seconds: number) => {
     if (!Number.isFinite(seconds)) return DASHBOARD_STEP_FALLBACK_SECONDS;
@@ -136,6 +137,10 @@ const getStoredDashboardEtaSeconds = (
     step: { num: number; label: string },
     fallbackSeconds: number
 ) => {
+    if (SHORT_DISPLAY_DASHBOARD_STEP_NUMS.has(step.num)) {
+        return clampDashboardEtaSeconds(fallbackSeconds);
+    }
+
     const history = readDashboardEtaHistory();
     const saved = history[getDashboardEtaKey(step)]?.avgSeconds;
 
@@ -147,6 +152,7 @@ const updateStoredDashboardEtaSeconds = (
     actualSeconds: number
 ) => {
     if (typeof window === "undefined") return;
+    if (SHORT_DISPLAY_DASHBOARD_STEP_NUMS.has(step.num)) return;
 
     const history = readDashboardEtaHistory();
     const key = getDashboardEtaKey(step);
@@ -217,6 +223,7 @@ export const DashboardLoaderModal = React.memo(function DashboardLoaderModal({
     stepProgress,
     loadingStartedAt,
     estimatedSecondsMap,
+    onCancel,
 }: {
     pageLoading: boolean;
     shouldShowDummyUi: boolean;
@@ -231,6 +238,7 @@ export const DashboardLoaderModal = React.memo(function DashboardLoaderModal({
     };
     loadingStartedAt: number | null;
     estimatedSecondsMap: Record<number, number>;
+    onCancel?: () => void;
 }) {
     const [timerNow, setTimerNow] = useState(Date.now());
     const [dynamicProgress, setDynamicProgress] = useState(0);
@@ -332,6 +340,11 @@ export const DashboardLoaderModal = React.memo(function DashboardLoaderModal({
 
             const elapsed = Math.max((timerNow - step.startedAt) / 1000, 0);
 
+            if (SHORT_DISPLAY_DASHBOARD_STEP_NUMS.has(step.num)) {
+                const shortRemaining = step.estimatedSeconds - elapsed;
+                return total + Math.max(1, Math.min(step.estimatedSeconds, shortRemaining));
+            }
+
             if (elapsed < step.estimatedSeconds) {
                 return total + (step.estimatedSeconds - elapsed);
             }
@@ -360,6 +373,7 @@ export const DashboardLoaderModal = React.memo(function DashboardLoaderModal({
             if (!step.startedAt || step.completedAt || completedSteps.has(step.num)) {
                 return false;
             }
+            if (SHORT_DISPLAY_DASHBOARD_STEP_NUMS.has(step.num)) return false;
 
             const elapsed = Math.max((timerNow - step.startedAt) / 1000, 0);
             return elapsed >= step.estimatedSeconds;
@@ -581,21 +595,33 @@ export const DashboardLoaderModal = React.memo(function DashboardLoaderModal({
                     })}
                 </div>
 
-                <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 items-center">
-                    <p className="text-xs text-slate-400 truncate justify-self-start">
+                <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:items-center">
+                    <p className="text-xs text-slate-400 truncate justify-self-start w-full sm:w-auto">
                         {stepProgress.detail || "Initialising dashboard…"}
                     </p>
 
-                    <div className="justify-self-center flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full mx-3 whitespace-nowrap">
+                    <div className="justify-self-start sm:justify-self-center flex items-center gap-1 px-2 py-1 bg-slate-100 rounded-full sm:mx-3 whitespace-nowrap">
                         <span className="text-xs text-slate-400">Estimated Time:</span>
                         <span className="text-xs font-medium text-slate-600 tabular-nums min-w-[72px] text-right">
                             {estimatedTime}
                         </span>
                     </div>
 
-                    <span className="text-xs text-slate-400 shrink-0 justify-self-end">
-                        Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
-                    </span>
+                    <div className="justify-self-start sm:justify-self-end flex items-center">
+                        <span className="text-xs text-slate-400 shrink-0">
+                            Step {Math.min(currentStep, dashboardSteps.length)} of {dashboardSteps.length}
+                        </span>
+                    </div>
+
+                    <div className="sm:col-span-3 flex justify-center">
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="rounded-md border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-[#37455F] shadow-sm transition hover:border-[#5EA68E] hover:bg-[#E8F5F0] hover:text-[#2f6f5f] focus:outline-none focus:ring-2 focus:ring-[#5EA68E]/30"
+                        >
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

@@ -14,6 +14,7 @@ type FetchArgs = {
   month: string;   // "february" etc
   year: string;    // "2026" etc
   marketplaceIds?: string | string[];
+  signal?: AbortSignal;
   XLSX?: any;      // no longer required for new response, kept to avoid caller changes
 };
 
@@ -22,6 +23,18 @@ const DEFAULT_MARKETPLACE_IDS: Record<string, string> = {
   us: "ATVPDKIKX0DER",
   ca: "A2EUQ1WTGCTBG2",
 };
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (!signal?.aborted) return;
+
+  if (signal.reason instanceof Error) {
+    throw signal.reason;
+  }
+
+  const error = new Error("Inventory fetch cancelled");
+  error.name = "AbortError";
+  throw error;
+}
 
 function getInventoryMarketplaceIds(
   country: string,
@@ -62,7 +75,8 @@ function buildInventorySyncUrl(baseURL: string, path: string, marketplaceId?: st
 async function hitAgedInventoryOnce(
   baseURL: string,
   jwtToken: string,
-  marketplaceId?: string
+  marketplaceId?: string,
+  signal?: AbortSignal
 ) {
   const res = await fetch(
     buildInventorySyncUrl(baseURL, "/amazon_api/inventory/aged", marketplaceId),
@@ -72,6 +86,7 @@ async function hitAgedInventoryOnce(
         Authorization: `Bearer ${jwtToken}`,
         "Content-Type": "application/json",
       },
+      signal,
     }
   );
 
@@ -90,7 +105,8 @@ async function hitAgedInventoryOnce(
 async function hitAwdInventory(
   baseURL: string,
   jwtToken: string,
-  marketplaceId?: string
+  marketplaceId?: string,
+  signal?: AbortSignal
 ) {
   const url = buildInventorySyncUrl(baseURL, "/amazon_api/inventory/awd", marketplaceId);
   const awdUrl = new URL(url);
@@ -102,6 +118,7 @@ async function hitAwdInventory(
       Authorization: `Bearer ${jwtToken}`,
       "Content-Type": "application/json",
     },
+    signal,
   });
 
   const json = await res.json().catch(() => ({}));
@@ -282,14 +299,18 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
   warnings?: string[];
   meta?: any;
 }> {
-  const { baseURL, token, country, month, year, marketplaceIds } = args;
+  const { baseURL, token, country, month, year, marketplaceIds, signal } = args;
 
   const syncMarketplaceIds = getInventoryMarketplaceIds(country, marketplaceIds);
 
   for (const marketplaceId of syncMarketplaceIds) {
-    await hitAgedInventoryOnce(baseURL, token, marketplaceId);
-    await hitAwdInventory(baseURL, token, marketplaceId);
+    throwIfAborted(signal);
+    await hitAgedInventoryOnce(baseURL, token, marketplaceId, signal);
+    throwIfAborted(signal);
+    await hitAwdInventory(baseURL, token, marketplaceId, signal);
   }
+
+  throwIfAborted(signal);
 
   const res = await fetch(getCurrentInventoryEndpoint(baseURL), {
     method: "POST",
@@ -298,7 +319,10 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ month, year, country }),
+    signal,
   });
+
+  throwIfAborted(signal);
 
   if (!res.ok) {
     const errJson = await res.json().catch(() => ({}));

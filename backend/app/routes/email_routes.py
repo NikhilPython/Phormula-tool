@@ -13,7 +13,11 @@ from flask import Blueprint, jsonify, request, make_response
 from config import Config
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.email_utils import send_email_with_attachment, get_user_email_and_name_by_id, get_user_email_and_name_by_id
-
+# from app.utils.email_utils import (
+#     send_daily_inventory_alert_email,
+#     get_user_email_and_name_by_id,
+# )
+# from app.models.user_models import Notification
 load_dotenv()
 
 db_url = os.getenv("DATABASE_URL")
@@ -202,4 +206,144 @@ def send_report_email():
         response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
         return response, 500 
     
+
+# @email_bp.route("/test-inventory-alert-email", methods=["POST"])
+# def test_inventory_alert_email():
+#     auth_header = request.headers.get("Authorization")
+
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({
+#             "success": False,
+#             "error": "Authorization token is missing or invalid",
+#         }), 401
+
+#     token = auth_header.split(" ")[1]
+
+#     try:
+#         payload, user_id, member_id = (
+#             get_effective_user_id_from_token(token)
+#         )
+#         user_id = payload["user_id"]
+
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({"error": "Token has expired"}), 401
+
+#     except jwt.InvalidTokenError:
+#         return jsonify({"error": "Invalid token"}), 401
+
+#     data = request.get_json(silent=True) or {}
+
+#     country = str(
+#         data.get("country") or "us"
+#     ).strip().lower()
+
+#     if country not in ["us", "uk"]:
+#         return jsonify({
+#             "success": False,
+#             "error": "country must be us or uk",
+#         }), 400
+
+#     to_email, user_name = get_user_email_and_name_by_id(
+#         user_id
+#     )
+
+#     if not to_email:
+#         return jsonify({
+#             "success": False,
+#             "error": "User email not found",
+#         }), 404
+
+#     notification_row = Notification.query.filter_by(
+#         user_id=user_id,
+#         country=country,
+#     ).first()
+
+#     if not notification_row:
+#         return jsonify({
+#             "success": False,
+#             "error": (
+#                 "Notification data not found. "
+#                 "Call /notification first."
+#             ),
+#         }), 404
+
+#     notification_data = notification_row.data or {}
+
+#     alerts = []
+
+#     for product_name, item in notification_data.items():
+#         if not isinstance(item, dict):
+#             continue
+
+#         if (
+#             str(item.get("alert") or "")
+#             .strip()
+#             .lower()
+#             != "high alert"
+#         ):
+#             continue
+
+#         alerts.append({
+#             "sku": item.get("sku"),
+#             "product_name": (
+#                 item.get("product_name")
+#                 or product_name
+#             ),
+#             "alert": item.get("alert"),
+#             "alert_type": item.get("alert_type"),
+
+#             "inventory_coverage_ratio": (
+#                 item.get("inventory_coverage_ratio")
+#             ),
+#             "future_coverage_ratio": (
+#                 item.get("future_coverage_ratio")
+#             ),
+
+#             "current_inventory": (
+#                 item.get("current_inventory", 0)
+#             ),
+#             "in_transit": (
+#                 item.get("in_transit", 0)
+#             ),
+#             "inbound_quantity": (
+#                 item.get("inbound_quantity", 0)
+#             ),
+#             "sales_last_30_days": (
+#                 item.get("sales_last_30_days", 0)
+#             ),
+
+#             "ship_time_weeks": (
+#                 item.get("ship_time_weeks")
+#             ),
+#             "air_time_weeks": (
+#                 item.get("air_time_weeks")
+#             ),
+#             "stock_unit_weeks": (
+#                 item.get("stock_unit_weeks")
+#             ),
+
+#             "recommendation": (
+#                 item.get("recommendation")
+#             ),
+#             "air_units_required": (
+#                 item.get("air_units_required", 0)
+#             ),
+#             "sea_units_required": (
+#                 item.get("sea_units_required", 0)
+#             ),
+#         })
+
+#     sent = send_daily_inventory_alert_email(
+#         to_email=to_email,
+#         user_name=user_name,
+#         country=country,
+#         alerts=alerts,
+#     )
+
+#     return jsonify({
+#         "success": bool(sent),
+#         "sent_to": to_email,
+#         "country": country,
+#         "alerts_sent": len(alerts),
+#     }), 200 if sent else 500
 
