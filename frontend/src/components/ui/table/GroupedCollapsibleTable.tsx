@@ -759,11 +759,11 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const getSummaryValueStyle = (
     backgroundColor: string,
-    rightOffsetPx = 0,
+    rightOffset: number | string = 0,
     showRightDivider = false
   ): React.CSSProperties => ({
     position: "sticky",
-    right: `${rightOffsetPx}px`,
+    right: typeof rightOffset === "number" ? `${rightOffset}px` : rightOffset,
     zIndex: 14,
     backgroundColor,
     borderLeftColor: "transparent",
@@ -1053,10 +1053,15 @@ export default function GroupedCollapsibleTable<RowT>({
 
     const boldSectionsByDefault = summary?.boldSectionsByDefault ?? true;
     const summaryLabelColSpan = labelColSpan + midColSpan;
-    const summaryEndValueWidth =
-      visibleLeafCols[visibleCount - 1]
-        ? getMinWidthForCol(visibleLeafCols[visibleCount - 1])
-        : 0;
+    const summaryEndCol = visibleLeafCols[visibleCount - 1];
+    const summaryEndValueOffset =
+      summaryEndCol && !shouldPreserveColumnWidths && summaryEndCol.width
+        ? typeof summaryEndCol.width === "number"
+          ? `${summaryEndCol.width}px`
+          : summaryEndCol.width
+        : summaryEndCol
+          ? getMinWidthForCol(summaryEndCol)
+          : 0;
 
     return (
       <tfoot>
@@ -1120,7 +1125,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
                       <td
                         colSpan={midColSpan}
-                        style={getSummaryValueStyle("#ffffff", summaryEndValueWidth, true)}
+                        style={getSummaryValueStyle("#ffffff", summaryEndValueOffset, true)}
                         className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
                       >
                         {ch.midValue ?? ""}
