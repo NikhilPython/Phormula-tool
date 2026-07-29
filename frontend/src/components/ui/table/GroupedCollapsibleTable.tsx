@@ -697,9 +697,10 @@ export default function GroupedCollapsibleTable<RowT>({
 
     const measureSummaryEndColumn = () => {
       const endCell =
+        table.querySelector<HTMLElement>("[data-summary-main-value-cell='true']") ??
+        table.querySelector<HTMLElement>("tfoot tr td:last-child") ??
         table.querySelector<HTMLElement>("tbody tr td:last-child") ??
-        table.querySelector<HTMLElement>("thead tr:last-child th:last-child") ??
-        table.querySelector<HTMLElement>("tfoot tr td:last-child");
+        table.querySelector<HTMLElement>("thead tr:last-child th:last-child");
       const measuredWidth = endCell?.getBoundingClientRect().width;
 
       if (!measuredWidth || measuredWidth <= 0) return;
@@ -707,7 +708,7 @@ export default function GroupedCollapsibleTable<RowT>({
       const roundedWidth = Math.round(measuredWidth * 100) / 100;
 
       setSummaryEndColumnWidth((currentWidth) =>
-        currentWidth !== null && Math.abs(currentWidth - roundedWidth) < 0.5
+        currentWidth !== null && Math.abs(currentWidth - roundedWidth) < 0.1
           ? currentWidth
           : roundedWidth
       );
@@ -854,8 +855,8 @@ export default function GroupedCollapsibleTable<RowT>({
     right: typeof rightOffset === "number" ? `${rightOffset}px` : rightOffset,
     zIndex: 14,
     backgroundColor,
-    borderLeftColor: "transparent",
-    borderRightColor: showRightDivider ? "transparent" : undefined,
+    borderLeftWidth: 0,
+    borderRightWidth: showRightDivider ? 0 : undefined,
     boxShadow: [
       "inset 1px 0 0 rgb(209 213 219)",
       showRightDivider ? "inset -1px 0 0 rgb(209 213 219)" : "",
@@ -863,11 +864,11 @@ export default function GroupedCollapsibleTable<RowT>({
   });
 
   const summaryBeforeValueCellStyle: React.CSSProperties = {
-    borderRightColor: "transparent",
+    borderRightWidth: 0,
   };
 
   const summaryAfterChildValueCellStyle: React.CSSProperties = {
-    borderLeftColor: "transparent",
+    borderLeftWidth: 0,
   };
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
@@ -1152,6 +1153,10 @@ export default function GroupedCollapsibleTable<RowT>({
           : 0;
     const summaryEndValueOffset =
       summaryEndColumnWidth ?? fallbackSummaryEndValueOffset;
+    const summaryChildValueRightOffset =
+      typeof summaryEndValueOffset === "number"
+        ? Math.max(summaryEndValueOffset - 1, 0)
+        : `calc(${summaryEndValueOffset} - 1px)`;
 
     return (
       <tfoot>
@@ -1189,6 +1194,7 @@ export default function GroupedCollapsibleTable<RowT>({
                   </td>
 
                   <td
+                    data-summary-main-value-cell="true"
                     colSpan={endColSpan}
                     style={getSummaryValueStyle("#ffffff")}
                     className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
@@ -1215,7 +1221,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
                       <td
                         colSpan={midColSpan}
-                        style={getSummaryValueStyle("#ffffff", summaryEndValueOffset, true)}
+                        style={getSummaryValueStyle("#ffffff", summaryChildValueRightOffset, true)}
                         className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
                       >
                         {ch.midValue ?? ""}
@@ -1251,6 +1257,7 @@ export default function GroupedCollapsibleTable<RowT>({
               </td>
 
               <td
+                data-summary-main-value-cell="true"
                 colSpan={endColSpan}
                 style={getSummaryValueStyle("#ffffff")}
                 className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
