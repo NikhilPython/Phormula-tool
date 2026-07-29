@@ -2641,17 +2641,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
         children: [
           {
             id: "short_term_storage_fee",
-            label: <span className="pl-6">Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            label: <>Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
             midValue: formatValue(totals.short_term_storage_fee, "short_term_storage_fee"),
           },
           {
             id: "long_term_storage_fee",
-            label: <span className="pl-6">Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            label: <>Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
             midValue: formatValue(totals.long_term_storage_fee, "long_term_storage_fee"),
           },
           {
             id: "fba_disposal",
-            label: <span className="pl-6">FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></span>,
+            label: <>FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></>,
             midValue: formatValue(totals.fba_disposal, "fba_disposal"),
           },
           {
