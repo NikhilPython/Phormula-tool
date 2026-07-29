@@ -52,7 +52,7 @@ export function PhormulaBeamHero({
     <section
       id="features"
       className={cn(
-        "relative w-full overflow-hidden bg-white",
+        "relative w-full overflow-hidden bg-[#FAFAF7]",
         "py-16 sm:py-20 lg:py-28 lg:pt-60  xl:pt-40 2xl:py-28",
         className
       )}
@@ -96,7 +96,7 @@ export function PhormulaBeamHero({
               "2xl:max-w-[1000px] 2xl:text-[54px]"
             )}
           >
-            One connected system for your Amazon business
+            One <span className="text-[#5EA68E]">Connected System</span> connected system for your Amazon business
           </h2>
 
           <p

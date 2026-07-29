@@ -11,6 +11,7 @@ import MetricStrip from "@/components/landing-page/MetricStrip";
 import PricingSection from "@/components/landing-page/PricingSection";
 import ProblemSolutionSection from "@/components/landing-page/ProblemSolutionSection";
 import WorkflowSection from "@/components/landing-page/WorkflowSection";
+import PlatformDashboardSection from "@/components/landing-page/PlatformDashboardSection";
 
 export const metadata = {
   title: "Phormula — AI Financial Intelligence for D2C & Amazon Sellers",
@@ -23,6 +24,7 @@ export default function LandingPage() {
       <LandingNavbar />
       <main className="flex-1">
         <AnimatedHeroSection />
+        <PlatformDashboardSection/>
         <MetricStrip />
         <ProblemSolutionSection />
         <BeforeAfterSection />

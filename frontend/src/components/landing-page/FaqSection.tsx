@@ -7,7 +7,7 @@ export default function FaqSection() {
       id="faq"
       className="
         relative overflow-hidden
-        bg-[radial-gradient(circle_at_12%_12%,rgba(94,166,142,0.10),transparent_30%),linear-gradient(180deg,#f8f4eb_0%,#f5eee2_100%)]
+        bg-[#FAFAF7]
 
         py-[72px]
         lg:py-20

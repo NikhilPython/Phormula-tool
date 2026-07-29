@@ -1,318 +1,265 @@
 import { containerClass } from "./shared";
 
-type Card = {
-  index: string;
-  title: string;
-  text: string;
-  type: "problem" | "solution";
-  icon: "file" | "dashboard" | "clock" | "idea";
+type FileCardProps = {
+  fileName: string;
+  rows: string[];
+  className?: string;
+  rotation?: string;
 };
 
-const cards: Card[] = [
-  {
-    index: "01",
-    title: "Scattered Sheets",
-    text: "Sales, fees, inventory, ads and expenses live across disconnected files and reports.",
-    type: "problem",
-    icon: "file",
-  },
-  {
-    index: "01",
-    title: "One Live Dashboard",
-    text: "Finance, inventory, advertising and leadership stay aligned inside one centralized workspace.",
-    type: "solution",
-    icon: "dashboard",
-  },
-  {
-    index: "02",
-    title: "Delayed Decisions",
-    text: "By the time reports are cleaned, the opportunity to protect margin may already be gone.",
-    type: "problem",
-    icon: "clock",
-  },
-  {
-    index: "02",
-    title: "Actionable Insights",
-    text: "AI explains what changed, why it matters and what action can improve performance.",
-    type: "solution",
-    icon: "idea",
-  },
-];
-
-function Icon({ name }: { name: Card["icon"] }) {
-  const iconClass =
-    "h-[23px] w-[23px] xl:h-[25px] xl:w-[25px] 2xl:h-[27px] 2xl:w-[27px]";
-
-  if (name === "file") {
-    return (
-      <svg className={iconClass} viewBox="0 0 24 24" fill="none">
-        <path
-          d="M7 3.75h7.5L19 8.25v12H7v-16.5Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M14.5 3.75v4.5H19M10 12h6M10 15h6"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
-  if (name === "dashboard") {
-    return (
-      <svg className={iconClass} viewBox="0 0 24 24" fill="none">
-        <rect
-          x="3.5"
-          y="4.5"
-          width="17"
-          height="11"
-          rx="1.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M8 19.5h8M12 15.5v4"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
-  if (name === "clock") {
-    return (
-      <svg className={iconClass} viewBox="0 0 24 24" fill="none">
-        <circle
-          cx="12"
-          cy="13"
-          r="7"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M12 9v4l2.5 1.5M9 3h6M12 3v3"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </svg>
-    );
-  }
-
+function FileCard({
+  fileName,
+  rows,
+  className = "",
+  rotation = "",
+}: FileCardProps) {
   return (
-    <svg className={iconClass} viewBox="0 0 24 24" fill="none">
-      <path
-        d="M9 18h6M10 21h4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M8.2 14.5A6 6 0 1 1 15.8 14.5c-.95.7-1.55 1.48-1.8 2.5h-4c-.25-1.02-.85-1.8-1.8-2.5Z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <path
-        d="m10 11 1.3 1.3L14.5 9"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function CardView({ card }: { card: Card }) {
-  const isSolution = card.type === "solution";
-
-  return (
-    <article
+    <div
       className={`
-        group relative flex min-h-[142px] items-start
-        gap-4 rounded-[16px] border bg-white/90
-        px-5 py-5 text-left
-        shadow-[0_15px_40px_rgba(56,48,38,0.07),0_2px_8px_rgba(56,48,38,0.03)]
-        backdrop-blur-xl
+        absolute
+        w-[175px]
+        rounded-[10px]
+        border border-[#37455F]/[0.08]
+        bg-white
+        px-4 py-3
+        text-left
+        shadow-[0_14px_32px_rgba(55,69,95,0.11)]
         transition duration-300
-
         hover:-translate-y-1
-        hover:shadow-[0_22px_50px_rgba(56,48,38,0.11),0_4px_12px_rgba(56,48,38,0.04)]
+        hover:shadow-[0_18px_42px_rgba(55,69,95,0.15)]
 
-        sm:min-h-[148px]
-        sm:px-6
-        sm:py-[22px]
+        lg:w-[190px]
+        xl:w-[205px]
 
-        lg:min-h-[150px]
-        lg:gap-4
-        lg:px-5
-        lg:py-5
-
-        xl:min-h-[156px]
-        xl:gap-[17px]
-        xl:px-6
-        xl:py-6
-
-        2xl:min-h-[164px]
-        2xl:gap-[18px]
-        2xl:rounded-[18px]
-        2xl:px-7
-        2xl:py-[26px]
-
-        ${
-          isSolution
-            ? "border-[#39a67e]/20 border-r-4 border-r-[#39a67e]"
-            : "border-[#d84c55]/10 hover:border-[#d84c55]/20"
-        }
+        ${rotation}
+        ${className}
       `}
     >
-      <div
-        className={`
-          grid h-12 w-12 shrink-0 place-items-center
-          rounded-[14px]
-          transition duration-300
+      <div className="mb-3 flex items-center gap-1.5">
+        <span className="h-[5px] w-[5px] rounded-full bg-[#DF7C68]" />
 
-          group-hover:-translate-y-[3px]
-          group-hover:-rotate-3
-          group-hover:scale-[1.04]
-
-          xl:h-[54px]
-          xl:w-[54px]
-          xl:rounded-[15px]
-
-          2xl:h-[58px]
-          2xl:w-[58px]
-          2xl:rounded-2xl
-
-          ${
-            isSolution
-              ? "bg-[linear-gradient(145deg,rgba(229,246,238,0.98),rgba(218,239,229,0.86))] text-[#2c9571] group-hover:shadow-[0_12px_28px_rgba(44,149,113,0.16)]"
-              : "bg-[linear-gradient(145deg,rgba(255,238,238,0.98),rgba(252,229,229,0.82))] text-[#cc5960] group-hover:shadow-[0_12px_28px_rgba(204,89,96,0.14)]"
-          }
-        `}
-      >
-        <Icon name={card.icon} />
-      </div>
-
-      <div className="relative min-w-0 flex-1 pt-px">
         <span
           className="
-            absolute -top-1.5 right-0
-            text-[25px] font-extrabold leading-none
-            tracking-[-0.05em] text-[#293653]/10
+            overflow-hidden text-ellipsis whitespace-nowrap
+            font-mono text-[9px] font-medium
+            text-[#C66D61]
 
-            xl:text-[28px]
-            2xl:-top-2.5
-            2xl:text-[30px]
+            lg:text-[10px]
           "
         >
-          {card.index}
+          {fileName}
         </span>
-
-        <h3
-          className="
-            relative z-[1]
-            pr-8
-            text-[17px] font-semibold leading-[1.3]
-            tracking-[-0.02em] text-[#30415f]
-
-            xl:text-[18px]
-            2xl:pr-[35px]
-            2xl:text-[19px]
-          "
-        >
-          {card.title}
-        </h3>
-
-        <span
-          className={`
-            my-2.5 block h-0.5 w-[28px] rounded-full
-            transition-all duration-300
-            group-hover:w-[48px]
-
-            2xl:mb-3
-            2xl:w-[30px]
-            2xl:group-hover:w-[52px]
-
-            ${isSolution ? "bg-[#45aa84]" : "bg-[#e76870]"}
-          `}
-        />
-
-        <p
-          className="
-            max-w-full
-            text-[12.5px] leading-[1.65]
-            text-[#647087]
-
-            sm:text-[13px]
-            xl:max-w-[390px]
-            2xl:leading-[1.7]
-          "
-        >
-          {card.text}
-        </p>
       </div>
-    </article>
+
+      <div className="grid gap-[7px]">
+        {rows.map((row, index) => (
+          <div
+            key={`${row}-${index}`}
+            className="flex items-center justify-between gap-3"
+          >
+            <span className="text-[9px] font-medium text-[#617088] lg:text-[10px]">
+              {row}
+            </span>
+
+            <span
+              className="
+                h-px rounded-full bg-[#D8DDE4]
+              "
+              style={{
+                width: index % 2 === 0 ? "42px" : "30px",
+              }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function Connector() {
+function MetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div
       className="
-        relative flex items-center justify-center
+        rounded-[8px]
+        bg-[#F0F1EF]
+        px-3 py-3
+        text-left
 
-        max-md:h-[38px]
-        md:min-h-[142px]
-        lg:min-h-[150px]
-        xl:min-h-[156px]
-        2xl:min-h-[164px]
+        lg:px-4
+        lg:py-[14px]
+      "
+    >
+      <p
+        className="
+          text-[8px] font-semibold
+          uppercase tracking-[0.04em]
+          text-[#7A8596]
+
+          lg:text-[9px]
+        "
+      >
+        {label}
+      </p>
+
+      <p
+        className="
+          mt-1
+          font-mono text-[14px] font-medium
+          tracking-[-0.02em]
+          text-[#45536B]
+
+          lg:text-[16px]
+        "
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function WorkspaceCard() {
+  return (
+    <div
+      className="
+        relative
+        w-full max-w-[390px]
+        rounded-[12px]
+        border border-[#37455F]/[0.08]
+        bg-white
+        p-5
+        text-left
+        shadow-[0_18px_44px_rgba(55,69,95,0.13)]
+
+        sm:p-6
+        lg:max-w-[430px]
+        lg:p-7
       "
     >
       <span
         className="
-          absolute inset-x-0 h-px bg-[#366f5d]/15
-
-          max-md:inset-y-0
-          max-md:left-1/2
-          max-md:right-auto
-          max-md:h-auto
-          max-md:w-px
+          absolute inset-y-0 left-0
+          w-[3px]
+          rounded-l-[12px]
+          bg-[#58A78C]
         "
       />
 
+      <div className="flex items-center justify-between gap-4">
+        <h3
+          className="
+            font-[var(--font-dm-serif)]
+            text-[17px]
+            font-semibold
+            text-[#49546A]
+
+            lg:text-[19px]
+          "
+        >
+          Phormula workspace
+        </h3>
+
+        <span
+          className="
+            inline-flex items-center gap-1.5
+            rounded-full
+            bg-[#E7F3EC]
+            px-2.5 py-1
+            text-[8px]
+            font-bold
+            text-[#5B9A82]
+
+            lg:text-[9px]
+          "
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[#63A98E]" />
+          Live
+        </span>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-2.5">
+        <MetricCard label="Net Sales" value="£41,452" />
+        <MetricCard label="CM2 Profit" value="£12,840" />
+        <MetricCard label="Ad Spend" value="£6,120" />
+        <MetricCard label="Stock Risk" value="2 SKUs" />
+      </div>
+
+      <div className="mt-5 border-t border-[#37455F]/[0.08] pt-4">
+        <p className="text-[9px] leading-[1.65] text-[#707B8D] lg:text-[10px]">
+          One workspace, always current.{" "}
+          <span className="font-bold text-[#4B566C]">
+            No exports. No manual joins. No guessing.
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ReconciledArrow() {
+  return (
+    <div
+      className="
+        flex w-full items-center justify-center
+        gap-2
+
+        lg:flex-col
+        lg:gap-2.5
+      "
+    >
       <span
         className="
-          relative z-[2]
-          grid h-9 w-9 place-items-center
-          rounded-full border border-[#2c455b]/10
-          bg-white/95 text-[#5d6c82]
-          shadow-[0_8px_24px_rgba(44,57,76,0.1),0_1px_4px_rgba(44,57,76,0.05)]
-
-          max-md:rotate-90
-
-          2xl:h-[38px]
-          2xl:w-[38px]
+          text-[8px]
+          font-extrabold
+          uppercase
+          tracking-[0.12em]
+          text-[#8290A1]
         "
       >
-        <svg
-          className="h-[18px] w-[18px] 2xl:h-[19px] 2xl:w-[19px]"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="M5 12h13M14 8l4 4-4 4"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        Reconciled
       </span>
+
+      <div
+        className="
+          flex w-full max-w-[150px]
+          items-center
+
+          lg:max-w-[95px]
+        "
+      >
+        <span className="h-px flex-1 bg-[#68A58F]/40" />
+
+        <span
+          className="
+            grid h-5 w-5 shrink-0
+            place-items-center
+            rounded-full
+            bg-[#5EA68E]
+            text-white
+            shadow-[0_5px_14px_rgba(94,166,142,0.25)]
+          "
+        >
+          <svg
+            className="h-3 w-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 12h13M14 8l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      </div>
     </div>
   );
 }
@@ -322,153 +269,229 @@ export default function ProblemSolutionSection() {
     <section
       id="platform"
       className="
-        bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.95)_0%,rgba(255,255,255,0)_36%),linear-gradient(180deg,#f7f1e6_0%,#f4ecdf_100%)]
+        relative overflow-hidden
+        bg-[#FCFCFA]
         py-[72px]
 
-        lg:py-20
-        xl:py-[88px]
-        2xl:py-24
+        md:py-[84px]
+        lg:py-[96px]
+        xl:py-[108px]
       "
     >
-      <div className={`${containerClass} text-center`}>
-        <div className="mx-auto w-full max-w-[1100px] 2xl:max-w-[1160px]">
-          <div
-            className="
-              mx-auto mb-10 max-w-[720px]
-
-              md:mb-11
-              lg:mb-12
-              2xl:mb-[54px]
-              2xl:max-w-[760px]
-            "
-          >
+      <div className={containerClass}>
+        <div className="mx-auto max-w-[1180px] text-center">
+          {/* Heading */}
+          <div className="mx-auto max-w-[780px]">
             <div
               className="
-                inline-flex items-center gap-[7px]
-                rounded-full border border-[#269770]/20
-                bg-[#ebf7f1]/80
-                px-[13px] py-[7px]
-                text-[10px] font-extrabold uppercase
-                leading-none tracking-[0.12em]
-                text-[#277d64]
+                inline-flex items-center gap-2
+                rounded-full
+                border border-[#5EA68E]/35
+                bg-[#E9F4EF]
+                px-4 py-2
+                text-[10px]
+                font-extrabold
+                uppercase
+                tracking-[0.07em]
+                text-[#5A9D85]
+
+                sm:text-[11px]
               "
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-[#36a47d] shadow-[0_0_0_4px_rgba(54,164,125,0.12)]" />
-              The Problem
+              <span className="h-1.5 w-1.5 rounded-full bg-[#5EA68E]" />
+              The Problem &amp; The Fix
             </div>
 
             <h2
               className="
-                mt-[18px]
+                mt-7
                 font-[var(--font-dm-serif)]
-                text-[30px]
-                leading-[1.08]
+                text-[34px]
+                leading-[1.04]
                 tracking-[-0.035em]
-                text-[#263653]
+                text-[#37455F]
 
-                sm:text-[38px]
-                lg:text-[42px]
-                xl:text-[42px]
-                2xl:mt-[19px]
-                2xl:text-[54px]
+                sm:text-[42px]
+                lg:text-[50px]
+                xl:text-[54px]
               "
             >
-              From scattered sheets to{" "}
-              <span className="text-[#30456e]">
-                one source of truth
-              </span>
+              From{" "}
+              <span className="text-[#5EA68E]">Scattered Sheets</span> to
+              <br className="hidden sm:block" /> One Source of Truth
             </h2>
 
             <p
               className="
-                mx-auto mt-4 max-w-[590px]
-                text-[14px] leading-[1.7]
-                text-[#68748a]
+                mx-auto mt-5
+                max-w-[620px]
+                text-[14px]
+                leading-[1.65]
+                text-[#5F6878]
 
-                md:text-[15px]
-                2xl:mt-[18px]
-                2xl:max-w-[610px]
-                2xl:leading-[1.75]
+                sm:text-[15px]
               "
             >
-              Phormula replaces fragmented reporting and manual follow-ups with
-              one live, intelligent workspace for your business.
+              Phormula replaces disjointed spreadsheets and disconnected tools
+              with one live dashboard built for your business.
             </p>
           </div>
 
+          {/* Main visual */}
           <div
             className="
-              mb-4 grid
-              grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)]
+              relative mt-14
 
-              max-md:hidden
-
-              lg:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]
-              xl:grid-cols-[minmax(0,1fr)_70px_minmax(0,1fr)]
-              2xl:mb-5
-              2xl:grid-cols-[minmax(0,1fr)_76px_minmax(0,1fr)]
+              lg:mt-[72px]
             "
           >
-            <div className="justify-self-center rounded-full border border-[#d84c55]/20 bg-[#fff1f1]/90 px-[17px] py-2 text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#d84c55]">
-              The Problem
-            </div>
+            <div
+              className="
+                absolute left-1/2 top-1/2
+                h-[330px] w-[92%]
+                -translate-x-1/2 -translate-y-1/2
+                rounded-full
+                bg-[radial-gradient(circle,rgba(94,166,142,0.08)_0%,rgba(94,166,142,0.03)_35%,transparent_70%)]
+                blur-2xl
+              "
+            />
 
-            <div />
+            <div
+              className="
+                relative z-[2]
+                grid items-center gap-10
 
-            <div className="justify-self-center rounded-full border border-[#288466]/20 bg-[#e9f7f1]/90 px-[17px] py-2 text-[10px] font-extrabold uppercase tracking-[0.1em] text-[#288466]">
-              The Solution
+                lg:grid-cols-[1fr_130px_1fr]
+                lg:gap-4
+
+                xl:grid-cols-[1fr_150px_1fr]
+              "
+            >
+              {/* Scattered spreadsheet files */}
+              <div
+                className="
+                  relative mx-auto
+                  h-[310px]
+                  w-full max-w-[440px]
+
+                  sm:h-[330px]
+                  lg:h-[345px]
+                  lg:max-w-[460px]
+                "
+              >
+                <FileCard
+                  fileName="sales_Q2.xlsx"
+                  rows={["Revenue", "Returns"]}
+                  rotation="-rotate-[5deg]"
+                  className="
+                    left-[5%] top-[15px]
+                    sm:left-[8%]
+                    lg:left-[2%]
+                  "
+                />
+
+                <FileCard
+                  fileName="ad_spend.csv"
+                  rows={["Meta", "Amazon PPC"]}
+                  rotation="rotate-[4deg]"
+                  className="
+                    right-[3%] top-[72px]
+                    sm:right-[6%]
+                    lg:right-[2%]
+                  "
+                />
+
+                <FileCard
+                  fileName="fees_export.pdf"
+                  rows={["FBA fees", "Referral"]}
+                  rotation="rotate-[2deg]"
+                  className="
+                    left-[1%] bottom-[58px]
+                    sm:left-[5%]
+                    lg:left-0
+                  "
+                />
+
+                <FileCard
+                  fileName="inventory_v3.xlsx"
+                  rows={["SKU", "Reorder"]}
+                  rotation="-rotate-[4deg]"
+                  className="
+                    right-[1%] bottom-[18px]
+                    sm:right-[5%]
+                    lg:right-[1%]
+                  "
+                />
+
+                <p
+                  className="
+                    absolute bottom-0 left-1/2
+                    -translate-x-1/2
+                    whitespace-nowrap
+                    text-[9px]
+                    text-[#98A1AF]
+
+                    sm:text-[10px]
+                  "
+                >
+                  Four files. Four versions of the truth.
+                </p>
+              </div>
+
+              {/* Arrow */}
+              <ReconciledArrow />
+
+              {/* Phormula workspace */}
+              <div className="flex justify-center lg:justify-start">
+                <WorkspaceCard />
+              </div>
             </div>
           </div>
 
+          {/* Bottom statement */}
           <div
             className="
-              grid
-              grid-cols-[minmax(0,1fr)_58px_minmax(0,1fr)]
-              gap-y-4
+              relative z-[2]
+              mx-auto mt-12
+              flex w-fit max-w-[720px]
+              items-center gap-3
+              rounded-full
+              border border-[#37455F]/[0.09]
+              bg-white
+              px-5 py-3
+              shadow-[0_12px_34px_rgba(55,69,95,0.08)]
 
-              max-md:flex
-              max-md:flex-col
-              max-md:gap-3
+              sm:px-7
+              sm:py-3.5
 
-              lg:grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]
-              xl:grid-cols-[minmax(0,1fr)_70px_minmax(0,1fr)]
-              2xl:grid-cols-[minmax(0,1fr)_76px_minmax(0,1fr)]
-              2xl:gap-y-[18px]
+              max-sm:rounded-[18px]
+              max-sm:text-left
             "
           >
-            <CardView card={cards[0]} />
-            <Connector />
-            <CardView card={cards[1]} />
-
-            <CardView card={cards[2]} />
-            <Connector />
-            <CardView card={cards[3]} />
-          </div>
-
-          <div
-            className="
-              mx-auto mt-7 flex w-fit max-w-[680px]
-              items-center justify-center gap-[10px]
-              rounded-[14px]
-              border border-[#334157]/[0.08]
-              bg-white/60
-              px-4 py-3
-              shadow-[0_12px_34px_rgba(51,46,37,0.06)]
-              backdrop-blur-xl
-
-              sm:px-5
-              2xl:mt-9
-              2xl:gap-[11px]
-              2xl:py-[13px]
-
-              max-sm:items-start
-            "
-          >
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[#315f74] shadow-[0_5px_16px_rgba(49,95,116,0.12)]">
+            <span
+              className="
+                grid h-7 w-7 shrink-0
+                place-items-center
+                rounded-full
+                bg-[#377E66]
+                text-[11px]
+                text-white
+                shadow-[0_5px_14px_rgba(55,126,102,0.22)]
+              "
+            >
               ✦
             </span>
 
-            <p className="text-left text-xs font-semibold leading-6 text-[#34435f]">
+            <p
+              className="
+                text-[11px]
+                font-semibold
+                leading-[1.5]
+                text-[#435068]
+
+                sm:text-[12px]
+              "
+            >
               Phormula turns operational chaos into clarity, so every decision
               is faster and better informed.
             </p>

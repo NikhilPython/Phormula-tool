@@ -365,7 +365,7 @@ export default function PricingSection() {
       id="pricing"
       className="
         relative overflow-hidden
-        bg-[radial-gradient(circle_at_10%_10%,rgba(94,166,142,0.13),transparent_30%),radial-gradient(circle_at_88%_15%,rgba(253,211,111,0.16),transparent_28%),linear-gradient(180deg,#f7f1e6_0%,#f2eadc_100%)]
+        bg-[#FAFAF7]
 
         py-[72px]
         lg:py-20
