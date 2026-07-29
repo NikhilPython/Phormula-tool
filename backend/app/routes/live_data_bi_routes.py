@@ -3,6 +3,7 @@ import jwt
 import os
 import numpy as np
 from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
 from dotenv import load_dotenv
 from config import Config
 from calendar import month_abbr, monthrange
@@ -41,10 +42,35 @@ db_url = os.getenv("DATABASE_URL")
 db_url2 = os.getenv("DATABASE_AMAZON_URL")
 db_url1 = os.getenv('DATABASE_ADMIN_URL') or db_url  # fallback
 
-ADMIN_ENGINE = create_engine(db_url1, pool_pre_ping=True)
+def build_db_engine(database_url, *, pool_size=3, max_overflow=1):
+    if not database_url:
+        raise RuntimeError("Database URL is missing")
 
-engine_hist = create_engine(db_url)
-engine_live = create_engine(db_url2)
+    return create_engine(
+        database_url,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
+        pool_timeout=30,
+        pool_recycle=300,
+        pool_pre_ping=True,
+        pool_use_lifo=True,
+    )
+
+
+# Create only one pool for each unique database URL.
+engine_hist = build_db_engine(db_url)
+engine_live = (
+    engine_hist
+    if db_url2 == db_url
+    else build_db_engine(db_url2)
+)
+ADMIN_ENGINE = (
+    engine_hist
+    if db_url1 == db_url
+    else engine_live
+    if db_url1 == db_url2
+    else build_db_engine(db_url1)
+)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 oa_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -6581,14 +6607,22 @@ def fetch_conversion_rate(
         "selected_currency": (selected_currency or "").strip(),
     }
 
-    with ADMIN_ENGINE.connect() as conn:
-        row = conn.execute(sql, params).fetchone()
-
-    if not row or row[0] is None:
-        print("MISSING CONVERSION RATE:", params)
+    try:
+        with ADMIN_ENGINE.connect() as conn:
+            rate = conn.execute(sql, params).scalar_one_or_none()
+    except SQLAlchemyError as exc:
+        # Conversion rate should not make the complete Live BI endpoint fail.
+        current_app.logger.exception(
+            "Failed to fetch conversion rate; using 1.0 fallback: %s",
+            exc,
+        )
         return 1.0
 
-    return float(row[0])
+    if rate is None:
+        current_app.logger.warning("Missing conversion rate: %s", params)
+        return 1.0
+
+    return float(rate)
 
 
 def _safe_float(v):
