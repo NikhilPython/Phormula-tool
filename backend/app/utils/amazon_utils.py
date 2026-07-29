@@ -2979,7 +2979,31 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # -------------------------
     # Totals (NOT day-wise)
     # -------------------------
-    quantity_total = float(safe_num(df.get("quantity", 0.0)).sum())
+    # quantity means gross sold units only. Do not include refund/return rows.
+    for col in ["type", "transaction_type", "description"]:
+        if col not in df.columns:
+            df[col] = ""
+
+    refund_mask = (
+        df["type"].fillna("").astype(str).str.contains(
+            "refund|return", case=False, na=False, regex=True
+        )
+        | df["transaction_type"].fillna("").astype(str).str.contains(
+            "refund|return", case=False, na=False, regex=True
+        )
+        | df["description"].fillna("").astype(str).str.contains(
+            "refund|return", case=False, na=False, regex=True
+        )
+    )
+
+    raw_quantity = safe_num(df.get("quantity", 0.0)).abs()
+    sales_quantity = raw_quantity.where(~refund_mask, 0.0)
+    return_quantity = raw_quantity.where(refund_mask, 0.0)
+    quantity_total = float(sales_quantity.sum())
+    total_quantity = max(
+        quantity_total - float(return_quantity.sum()),
+        0.0,
+    )
 
     # Build series (your existing logic)
     ps   = safe_num(df.get("product_sales", 0.0))
@@ -2996,15 +3020,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # Gross Sales business rule: product_sales only.
     gross_sales_total = float(ps.sum())
 
-    # Refund sales are identified from refund/return transaction rows.
-    for col in ["type", "transaction_type", "description"]:
-        if col not in df.columns:
-            df[col] = ""
-    refund_mask = (
-        df["type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
-        | df["transaction_type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
-        | df["description"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
-    )
+    # Refund sales use the same refund/return mask created above.
     refund_sales_total = float(ps.loc[refund_mask].abs().sum())
 
     promotional_rebates_total = float(pr.sum())
@@ -3020,7 +3036,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # Profit total from sku_metrics (keeps your current logic)
     profit_total = sum(float(x.get("profit", 0.0) or 0.0) for x in sku_metrics)
 
-    asp = (net_sales_total / quantity_total) if quantity_total else 0.0
+    asp = (net_sales_total / total_quantity) if total_quantity else 0.0
 
     # -------------------------
     # ✅ NEW: COGS (cost_of_unit_sold * quantity)
@@ -3083,6 +3099,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
     prev_totals = {
         "quantity": round(quantity_total, 2),
+        "return_quantity": round(float(return_quantity.sum()), 2),
+        "total_quantity": round(total_quantity, 2),
         "gross_sales": round(gross_sales_total, 2),
         "net_sales": round(net_sales_total, 2),
         "profit": round(profit_total, 2),
@@ -3113,7 +3131,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         tmp = df.copy()
         tmp["date_only"] = pd.to_datetime(tmp[date_col], errors="coerce").dt.date
 
-        tmp["quantity"] = safe_num(tmp.get("quantity", 0.0))
+        tmp["quantity"] = safe_num(tmp.get("quantity", 0.0)).abs()
         tmp["product_sales"] = safe_num(tmp.get("product_sales", 0.0))
         tmp["promotional_rebates"] = safe_num(tmp.get("promotional_rebates", 0.0))
         for col in ["type", "transaction_type", "description"]:
@@ -3124,6 +3142,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             | tmp["transaction_type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
             | tmp["description"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
         )
+        tmp["sales_quantity"] = tmp["quantity"].where(~tmp_refund_mask, 0.0)
         tmp["refund_sales"] = tmp["product_sales"].where(tmp_refund_mask, 0.0).abs()
         tmp["gross_sales"] = tmp["product_sales"]
         tmp["net_sales"] = (
@@ -3133,7 +3152,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         )
 
         g = tmp.groupby("date_only", as_index=False).agg(
-            quantity=("quantity", "sum"),
+            quantity=("sales_quantity", "sum"),
             net_sales=("net_sales", "sum"),
         )
 
