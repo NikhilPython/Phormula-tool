@@ -2254,15 +2254,23 @@ export default function LiveBusinessClient({
     return parseRecommendedAction(String(text || ""));
   };
 
+  // const cleanInventoryCardPoint = (point: string) => {
+  //   return String(point || "")
+  //     .replace(/^[-•]\s*/, "")
+  //     .replace(/^inventory\s*action\s*:\s*/i, "")
+  //     .replace(/^inventory\s*:\s*/i, "")
+  //     .replace(/^your coverage ratio is\s*[\d.]+\s*months\.?\s*/i, "")
+  //     .replace(/^and\s+/i, "")
+  //     .trim();
+  // };
+
   const cleanInventoryCardPoint = (point: string) => {
-    return String(point || "")
-      .replace(/^[-•]\s*/, "")
-      .replace(/^inventory\s*action\s*:\s*/i, "")
-      .replace(/^inventory\s*:\s*/i, "")
-      .replace(/^your coverage ratio is\s*[\d.]+\s*months\.?\s*/i, "")
-      .replace(/^and\s+/i, "")
-      .trim();
-  };
+  return String(point || "")
+    .replace(/^[-•]\s*/, "")
+    .replace(/^inventory\s*action\s*:\s*/i, "")
+    .replace(/^inventory\s*:\s*/i, "")
+    .trim();
+};
 
 
 
