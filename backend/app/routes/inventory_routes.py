@@ -2750,6 +2750,59 @@ def _aggregate_from_monthwise_inventory(conn, user_id: int, mp: str, start_date:
     return [dict(r) for r in rows]
 
 
+def _attach_awd_quantities_to_rows(
+    conn,
+    items: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> None:
+    """Attach the latest AWD inventory values to monthly SKU summary rows.
+
+    Values come from public.inventory_awd and are matched by:
+      user_id + marketplace_id + normalized SKU.
+    Missing AWD SKUs receive zero values.
+    """
+    if not items:
+        return
+
+    awd_rows = conn.execute(text("""
+        SELECT DISTINCT ON (UPPER(TRIM(COALESCE(sku, ''))))
+            UPPER(TRIM(COALESCE(sku, ''))) AS normalized_sku,
+            COALESCE(total_onhand_quantity, 0) AS total_onhand_quantity,
+            COALESCE(total_inbound_quantity, 0) AS total_inbound_quantity,
+            COALESCE(available_distributable_quantity, 0) AS available_distributable_quantity,
+            COALESCE(reserved_distributable_quantity, 0) AS reserved_distributable_quantity,
+            COALESCE(replenishment_quantity, 0) AS replenishment_quantity
+        FROM public.inventory_awd
+        WHERE user_id = :user_id
+          AND marketplace_id = :marketplace_id
+          AND TRIM(COALESCE(sku, '')) <> ''
+        ORDER BY
+            UPPER(TRIM(COALESCE(sku, ''))),
+            synced_at DESC NULLS LAST,
+            updated_at DESC NULLS LAST,
+            id DESC
+    """), {
+        "user_id": int(user_id),
+        "marketplace_id": marketplace_id,
+    }).mappings().all()
+
+    awd_by_sku = {
+        str(row["normalized_sku"]): row
+        for row in awd_rows
+        if row.get("normalized_sku")
+    }
+
+    for item in items:
+        sku = str(item.get("msku") or "").strip().upper()
+        awd = awd_by_sku.get(sku, {})
+        item["total_onhand_quantity"] = int(awd.get("total_onhand_quantity") or 0)
+        item["total_inbound_quantity"] = int(awd.get("total_inbound_quantity") or 0)
+        item["available_distributable_quantity"] = int(awd.get("available_distributable_quantity") or 0)
+        item["reserved_distributable_quantity"] = int(awd.get("reserved_distributable_quantity") or 0)
+        item["replenishment_quantity"] = int(awd.get("replenishment_quantity") or 0)
+
+
 def _compute_grand_total(items: list[dict]) -> dict:
     gt = {
         "msku": "Grand Total",
@@ -2789,6 +2842,13 @@ def _compute_grand_total(items: list[dict]) -> dict:
         "difference_total": 0,
         "inventory_coverage_ratio": 0.0,
 
+        # AWD inventory snapshot values
+        "total_onhand_quantity": 0,
+        "total_inbound_quantity": 0,
+        "available_distributable_quantity": 0,
+        "reserved_distributable_quantity": 0,
+        "replenishment_quantity": 0,
+
 
     }
     for r in items:
@@ -2823,6 +2883,11 @@ def _compute_grand_total(items: list[dict]) -> dict:
         gt["sold_total"] += int(r.get("sold_total") or 0)
         gt["ending_total"] += int(r.get("ending_total") or 0)
         gt["difference_total"] += int(r.get("difference_total") or 0)
+        gt["total_onhand_quantity"] += int(r.get("total_onhand_quantity") or 0)
+        gt["total_inbound_quantity"] += int(r.get("total_inbound_quantity") or 0)
+        gt["available_distributable_quantity"] += int(r.get("available_distributable_quantity") or 0)
+        gt["reserved_distributable_quantity"] += int(r.get("reserved_distributable_quantity") or 0)
+        gt["replenishment_quantity"] += int(r.get("replenishment_quantity") or 0)
         gt["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(gt["ending_total"], gt["sold_total"])
 
 
@@ -2878,6 +2943,13 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             difference_total BIGINT DEFAULT 0,
             inventory_coverage_ratio DOUBLE PRECISION,
 
+            -- AWD inventory snapshot values
+            total_onhand_quantity BIGINT DEFAULT 0,
+            total_inbound_quantity BIGINT DEFAULT 0,
+            available_distributable_quantity BIGINT DEFAULT 0,
+            reserved_distributable_quantity BIGINT DEFAULT 0,
+            replenishment_quantity BIGINT DEFAULT 0,
+
             computed_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
         );
     """))
@@ -2911,7 +2983,13 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             ADD COLUMN IF NOT EXISTS sold_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS ending_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS inventory_coverage_ratio DOUBLE PRECISION,
-            ADD COLUMN IF NOT EXISTS difference_total BIGINT DEFAULT 0;
+            ADD COLUMN IF NOT EXISTS difference_total BIGINT DEFAULT 0,
+
+            ADD COLUMN IF NOT EXISTS total_onhand_quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS total_inbound_quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS available_distributable_quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS reserved_distributable_quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS replenishment_quantity BIGINT DEFAULT 0;
     """))
 
 def _compute_inventory_coverage_ratio(ending_total, sold_total):
@@ -2966,6 +3044,11 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             ending_total,
             difference_total,
             inventory_coverage_ratio,
+            total_onhand_quantity,
+            total_inbound_quantity,
+            available_distributable_quantity,
+            reserved_distributable_quantity,
+            replenishment_quantity,
             computed_at
         )
         VALUES (
@@ -3005,6 +3088,11 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             :ending_total,
             :difference_total,
             :inventory_coverage_ratio,
+            :total_onhand_quantity,
+            :total_inbound_quantity,
+            :available_distributable_quantity,
+            :reserved_distributable_quantity,
+            :replenishment_quantity,
             NOW()
         )
         ON CONFLICT (msku) DO UPDATE SET
@@ -3043,6 +3131,11 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             ending_total = EXCLUDED.ending_total,
             difference_total = EXCLUDED.difference_total,
             inventory_coverage_ratio = EXCLUDED.inventory_coverage_ratio,
+            total_onhand_quantity = EXCLUDED.total_onhand_quantity,
+            total_inbound_quantity = EXCLUDED.total_inbound_quantity,
+            available_distributable_quantity = EXCLUDED.available_distributable_quantity,
+            reserved_distributable_quantity = EXCLUDED.reserved_distributable_quantity,
+            replenishment_quantity = EXCLUDED.replenishment_quantity,
             computed_at = NOW();
     """)
 
@@ -3084,6 +3177,11 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             "ending_total": int(r.get("ending_total") or 0),
             "difference_total": int(r.get("difference_total") or 0),
             "inventory_coverage_ratio": float(r.get("inventory_coverage_ratio") or 0.0),
+            "total_onhand_quantity": int(r.get("total_onhand_quantity") or 0),
+            "total_inbound_quantity": int(r.get("total_inbound_quantity") or 0),
+            "available_distributable_quantity": int(r.get("available_distributable_quantity") or 0),
+            "reserved_distributable_quantity": int(r.get("reserved_distributable_quantity") or 0),
+            "replenishment_quantity": int(r.get("replenishment_quantity") or 0),
 
         })
 
@@ -3145,6 +3243,14 @@ def _create_inventorymonthly_after_fetch(
                 items,
                 user_id,
                 country=country,
+                marketplace_id=mp,
+            )
+
+            # Add the latest AWD inventory values by matching inventory_awd.sku to msku.
+            _attach_awd_quantities_to_rows(
+                conn=conn,
+                items=items,
+                user_id=user_id,
                 marketplace_id=mp,
             )
 
@@ -3286,6 +3392,17 @@ def inventory_ledger_summary_store_month():
                 items,
                 user_id,
                 country=country,
+                marketplace_id=mp,
+            )
+
+            # Attach AWD quantities before calculating the Grand Total and
+            # before upserting the rebuilt inventorymonthly table. Both
+            # inventory_awd and inventorymonthly_* use DATABASE_AMAZON_URL,
+            # and this route already runs inside amazon_conn().
+            _attach_awd_quantities_to_rows(
+                conn=conn,
+                items=items,
+                user_id=user_id,
                 marketplace_id=mp,
             )
 
