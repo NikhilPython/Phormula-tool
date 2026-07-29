@@ -1,12 +1,13 @@
-'use client';
+"use client";
 
-import Image from 'next/image';
-import styles from './style.module.scss';
+import Image from "next/image";
+import styles from "./style.module.scss";
 import {
-  useTransform,
   motion,
+  useTransform,
   type MotionStyle,
-} from 'framer-motion';
+  type MotionValue,
+} from "framer-motion";
 
 interface CardProps {
   i: number;
@@ -16,70 +17,108 @@ interface CardProps {
     description: string;
     image: string;
   }>;
-  highlighterImage: string;
-  progress: any;
+  highlighterImage?: string;
+  progress: MotionValue<number>;
   range: [number, number];
   targetScale: number;
 }
 
 type CardMotionStyle = MotionStyle & {
-  '--card-index': number;
+  "--card-index": number;
 };
 
 const Card: React.FC<CardProps> = ({
   i,
   title,
   items,
-  highlighterImage,
   progress,
   range,
   targetScale,
 }) => {
   const scale = useTransform(progress, range, [1, targetScale]);
 
+  const renderHighlightedTitle = (heading: string) => {
+    switch (heading) {
+      case "Real-Time Financial Analysis":
+        return (
+          <>
+            Real-Time{" "}
+            <span className={styles.highlightedTitle}>
+              Financial Analysis
+            </span>
+          </>
+        );
+
+      case "Inventory Forecasting":
+        return (
+          <>
+            Inventory{" "}
+            <span className={styles.highlightedTitle}>
+              Forecasting
+            </span>
+          </>
+        );
+
+      case "Expense, Fee & Cash-Flow Visibility":
+        return (
+          <>
+            Expense, Fee & Cash-Flow{" "}
+            <span className={styles.highlightedTitle}>
+              Visibility
+            </span>
+          </>
+        );
+
+      case "AI Business Insights":
+        return (
+          <>
+            <span className={styles.highlightedTitle}>AI</span>{" "}
+            Business Insights
+          </>
+        );
+
+      default:
+        return heading;
+    }
+  };
+
   return (
     <div className={styles.cardContainer}>
-      <motion.div
-  style={
-    {
-      scale,
-      '--card-index': i,
-    } as CardMotionStyle
-  }
-  className={styles.card}
->
-        <Image
-          src={highlighterImage}
-          alt="highlighter"
-          width={220}
-          height={220}
-          className={`absolute bottom-0 pointer-events-none ${
-            i % 2 === 0 ? 'right-0' : 'left-0'
-          }`}
-        />
-
-        <h2 className="text-start text-2xl font-bold text-primary-300 relative z-10">
-          {title}
+      <motion.article
+        style={
+          {
+            scale,
+            "--card-index": i,
+          } as CardMotionStyle
+        }
+        className={styles.card}
+      >
+        <h2 className={styles.cardTitle}>
+          {renderHighlightedTitle(title)}
         </h2>
 
         <div className={styles.body}>
           <div className={styles.itemsWrap}>
-            {items.map((item, index) => (
-              <div key={index} className={styles.itemCard}>
-                <Image
-                  src={item.image}
-                  alt={item.title}
-                  width={220}
-                  height={220}
-                />
+            {items.map((item) => (
+              <div key={item.title} className={styles.itemCard}>
+                <div className={styles.iconWrap}>
+                  <Image
+                    src={item.image}
+                    alt={item.title}
+                    width={140}
+                    height={140}
+                    className={styles.icon}
+                  />
+                </div>
 
                 <h3>{item.title}</h3>
-                <p>{item.description}</p>
+
+                <p className="text-left!">{item.description}</p>
               </div>
             ))}
           </div>
         </div>
-      </motion.div>
+      </motion.article>
     </div>
   );
 };

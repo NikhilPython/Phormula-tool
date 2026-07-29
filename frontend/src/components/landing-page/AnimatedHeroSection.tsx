@@ -89,7 +89,7 @@ export default function AnimatedHeroSection() {
     sm:!pt-[132px]
     lg:!pb-16
     lg:!pt-[126px]
-    xl:!pt-[108px]
+    xl:!pt-[96px]
     2xl:!pb-20
     2xl:!pt-[132px]
   "
@@ -192,13 +192,12 @@ export default function AnimatedHeroSection() {
 
        <p
   className="
-    hero-copy
     !mt-4
     !max-w-[480px]
-    !text-[13px]
+    !text-[12px]
     !leading-5
-    xl:!text-[14px]
-    2xl:!text-[17px]
+    xl:!text-sm
+    2xl:!text-base
     2xl:!leading-7
   "
 >
@@ -246,11 +245,11 @@ export default function AnimatedHeroSection() {
     hero-note
     !mt-4
     !max-w-[480px]
-    !text-[11px]
+    !text-[12px]
     !leading-[18px]
-    xl:!text-[12px]
+    xl:!text-sm
     2xl:!mt-5
-    2xl:!text-[15px]
+    2xl:!text-base
     2xl:!leading-6
   "
 >

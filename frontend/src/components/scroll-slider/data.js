@@ -6,17 +6,18 @@ export const projects = [
         title: "Sales & Fee Tracking",
         description:
           "See reconciled sales, Amazon fees, settlements, deductions, and charges in one clear financial view.",
-        image: "/features/financial-analysis.svg",
+        image: "/hero/sales.png",
       },
       {
         title: "Profit Drivers",
         description:
           "Understand what sold, what was deducted, and which products or costs are actually driving profit.",
-        image: "/features/dashboard.svg",
+        image: "/hero/profit.png",
       },
     ],
-    highlighterImage: "/highlighters/highlighter-step-1.svg",
+    highlighterImage: "",
   },
+
   {
     title: "Inventory Forecasting",
     items: [
@@ -24,35 +25,18 @@ export const projects = [
         title: "Stock Planning",
         description:
           "Predict stock needs and plan replenishment before inventory gaps affect sales.",
-        image: "/features/inventory-forecasting.svg",
+        image: "/hero/stock-planning.png",
       },
       {
         title: "Avoid Overstock",
         description:
           "Reduce stockouts, avoid overstocking, and make better purchase decisions using forecasted demand.",
-        image: "/features/forecasting.svg",
+        image: "/hero/avoid-stock.png",
       },
     ],
-    highlighterImage: "/highlighters/highlighter-step-2.svg",
+    highlighterImage: "",
   },
-  {
-    title: "AI Business Insights",
-    items: [
-      {
-        title: "What Changed",
-        description:
-          "Get AI-powered insights that explain what changed across sales, fees, inventory, ads, and cash flow.",
-        image: "/features/ai-insights.svg",
-      },
-      {
-        title: "What To Do Next",
-        description:
-          "Receive clear next-step recommendations based on your business data and goals.",
-        image: "/features/recommendations.svg",
-      },
-    ],
-    highlighterImage: "/highlighters/highlighter-step-3.svg",
-  },
+
   {
     title: "Expense, Fee & Cash-Flow Visibility",
     items: [
@@ -60,33 +44,34 @@ export const projects = [
         title: "Fee Reconciliation",
         description:
           "Track Amazon fees, operating expenses, deductions, settlements, inventory costs, and true impact.",
-        image: "/features/fee-reconciliation.svg",
+        image: "/hero/fee.png",
       },
       {
         title: "Cash-Flow View",
         description:
           "Understand available cash, upcoming costs, purchase orders, dispatches, and financial pressure points.",
-        image: "/features/cash-flow.svg",
+        image: "/hero/cashflow.png",
       },
     ],
-    highlighterImage: "/highlighters/highlighter-step-4.svg",
+    highlighterImage: "",
   },
+
   {
-    title: "CM2 Profit & Objective-Based Recommendations",
+    title: "AI Business Insights",
     items: [
       {
-        title: "CM2 Profit Visibility",
+        title: "What Changed",
         description:
-          "Move beyond revenue and see contribution-margin-level profit after fees, ads, COGS, and costs.",
-        image: "/features/profit-visibility.svg",
+          "Get AI-powered insights that explain what changed across sales, fees, inventory, ads, and cash flow.",
+        image: "/hero/changed.png",
       },
       {
-        title: "Goal-Based Actions",
+        title: "What To Do Next",
         description:
-          "Choose goals like improving cash flow, protecting margin, or reducing stockouts, and get focused actions.",
-        image: "/features/recommendations.svg",
+          "Receive clear next-step recommendations based on your business data and goals.",
+        image: "/hero/next.png",
       },
     ],
-    highlighterImage: "/highlighters/highlighter-step-5.svg",
+    highlighterImage: "",
   },
 ];
