@@ -764,8 +764,7 @@ export default function GroupedCollapsibleTable<RowT>({
         ? `inset 1px 0 0 ${verticalDividerColor}`
         : "";
     const horizontalDivider =
-      stickyLeftHorizontalBorderMode === "shadow" ||
-        stickyLeftHorizontalBorderMode === "border"
+      stickyLeftHorizontalBorderMode === "shadow"
         ? `inset 0 -1px 0 ${dividerColor}`
         : "";
     const stickyDividers =
@@ -826,6 +825,37 @@ export default function GroupedCollapsibleTable<RowT>({
     ]
       .filter(Boolean)
       .join(" ");
+  };
+
+  const renderStickyLeftHorizontalDivider = (
+    colIndex: number,
+    surface: "header" | "body" | "sign" = "body"
+  ) => {
+    if (
+      colIndex >= stickyLeftCount ||
+      stickyLeftHorizontalBorderMode !== "border"
+    ) {
+      return null;
+    }
+
+    const dividerColor =
+      surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
+
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 1,
+          backgroundColor: dividerColor,
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
+    );
   };
 
   const getStickyBodyBackgroundClassName = (rowClassName?: string) => {
@@ -943,6 +973,7 @@ export default function GroupedCollapsibleTable<RowT>({
               }`}
           >
             {renderHeaderContent(c)}
+            {renderStickyLeftHorizontalDivider(colIndex, "header")}
           </th>
         ))}
 
@@ -1090,6 +1121,7 @@ export default function GroupedCollapsibleTable<RowT>({
               className={`border ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
+              {renderStickyLeftHorizontalDivider(colIndex, "sign")}
             </td>
           );
         })}
@@ -1123,6 +1155,7 @@ export default function GroupedCollapsibleTable<RowT>({
               ].join(" ")}
             >
               {getValue(row, c.key, realIndex)}
+              {renderStickyLeftHorizontalDivider(colIndex, "body")}
             </td>
           ))}
         </tr>
