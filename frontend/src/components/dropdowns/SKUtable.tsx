@@ -2837,6 +2837,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 preserveColumnWidths="responsive"
                 stickyLeftBorderMode="shadow-only"
                 stickyLeftDividerMode="leading"
+                stickyLeftHorizontalBorderMode="border"
                 onSortChange={setTableSort}
                 getSortValue={(row, colKey) => {
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);

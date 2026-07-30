@@ -662,6 +662,7 @@ export default function DashboardProductwisePnlSection({
                                             preserveColumnWidths="responsive"
                                             stickyLeftBorderMode="shadow-only"
                                             stickyLeftDividerMode="leading"
+                                            stickyLeftHorizontalBorderMode="border"
                                             isTotalRow={(row) => {
                                                 const name = String(row?.product_name || "").trim().toLowerCase();
                                                 const sku = String(row?.sku || "").trim().toUpperCase();
