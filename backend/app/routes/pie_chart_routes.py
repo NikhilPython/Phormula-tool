@@ -2,6 +2,8 @@ from flask import request, jsonify, send_file, Blueprint
 import os
 import psycopg2
 from psycopg2 import sql
+from psycopg2.pool import ThreadedConnectionPool
+from threading import Lock
 import pandas as pd
 import matplotlib.pyplot as plt
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -15,6 +17,11 @@ from config import Config
 SECRET_KEY = Config.SECRET_KEY
 
 db_url = os.getenv('DATABASE_URL')
+
+_db_pool = None
+_db_pool_lock = Lock()
+DB_POOL_MIN = int(os.getenv('PIE_CHART_DB_POOL_MIN', '1'))
+DB_POOL_MAX = int(os.getenv('PIE_CHART_DB_POOL_MAX', '5'))
 
 pie_chart_bp = Blueprint('pie_chart_bp', __name__)
 
@@ -67,14 +74,57 @@ def is_quarter_format(param):
     return param.upper().strip() in QUARTER_MAPPING
 
 
+def _get_db_pool():
+    """Create one thread-safe PostgreSQL pool per Gunicorn worker process."""
+    global _db_pool
+
+    if _db_pool is None:
+        with _db_pool_lock:
+            if _db_pool is None:
+                if not db_url:
+                    raise RuntimeError("DATABASE_URL is not configured")
+
+                _db_pool = ThreadedConnectionPool(
+                    minconn=DB_POOL_MIN,
+                    maxconn=DB_POOL_MAX,
+                    dsn=db_url,
+                    connect_timeout=10,
+                    application_name="pie_chart_api",
+                )
+
+    return _db_pool
+
+
 def get_db_connection():
-    """Establish database connection"""
+    """Borrow a database connection from the bounded worker-local pool."""
     try:
-        conn = psycopg2.connect(db_url)
+        conn = _get_db_pool().getconn()
+        conn.autocommit = True
         return conn
     except Exception as e:
         print(f"Error connecting to database: {e}")
         return None
+
+
+def release_db_connection(conn, close=False):
+    """Return a borrowed connection to the pool instead of leaking/closing it."""
+    if conn is None:
+        return
+
+    try:
+        if not conn.closed and not conn.autocommit:
+            conn.rollback()
+    except Exception:
+        close = True
+
+    try:
+        _get_db_pool().putconn(conn, close=close or bool(conn.closed))
+    except Exception as e:
+        print(f"Error releasing database connection: {e}")
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def generate_table_names(user_id, country, month=None, year=None, quarter=None, range_type=None):
@@ -301,8 +351,11 @@ def fetch_cm2_profit_from_monthly_table(ads_table_name, profit_table_name):
         return None
 
     finally:
-        if conn:
-            conn.close()
+        try:
+            if 'cursor' in locals() and cursor:
+                cursor.close()
+        finally:
+            release_db_connection(conn)
 
 def fetch_data_from_table(table_name):
     """Fetch product data from specified table"""
@@ -356,8 +409,11 @@ def fetch_data_from_table(table_name):
         print(f"Error fetching data from {table_name}: {e}")
         return None
     finally:
-        if conn:
-            conn.close()
+        try:
+            if 'cursor' in locals() and cursor:
+                cursor.close()
+        finally:
+            release_db_connection(conn)
 
 
 def get_yearly_months_to_process(year):
