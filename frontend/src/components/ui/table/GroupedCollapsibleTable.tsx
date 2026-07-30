@@ -1352,7 +1352,6 @@ export default function GroupedCollapsibleTable<RowT>({
           className="w-full overflow-auto"
           style={{
             maxHeight: `${bodyMaxHeight}px`,
-            scrollbarGutter: "stable",
           }}
         >
           <table ref={tableRef} className={tableClassName} style={tableStyle}>
