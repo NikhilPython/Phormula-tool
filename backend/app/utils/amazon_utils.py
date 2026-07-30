@@ -2984,26 +2984,25 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         if col not in df.columns:
             df[col] = ""
 
-    refund_mask = (
-        df["type"].fillna("").astype(str).str.contains(
-            "refund|return", case=False, na=False, regex=True
-        )
-        | df["transaction_type"].fillna("").astype(str).str.contains(
-            "refund|return", case=False, na=False, regex=True
-        )
-        | df["description"].fillna("").astype(str).str.contains(
-            "refund|return", case=False, na=False, regex=True
-        )
+    type_normalized = (
+        df["type"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.lower()
     )
 
+    # Previous-period dashboard Units must show gross Shipment units only.
+    # Do not subtract Refund units and do not include reimbursement/other rows.
+    shipment_mask = type_normalized.eq("shipment")
+    refund_mask = type_normalized.eq("refund")
+
     raw_quantity = safe_num(df.get("quantity", 0.0)).abs()
-    sales_quantity = raw_quantity.where(~refund_mask, 0.0)
+    sales_quantity = raw_quantity.where(shipment_mask, 0.0)
     return_quantity = raw_quantity.where(refund_mask, 0.0)
+
     quantity_total = float(sales_quantity.sum())
-    total_quantity = max(
-        quantity_total - float(return_quantity.sum()),
-        0.0,
-    )
+    total_quantity = quantity_total
 
     # Build series (your existing logic)
     ps   = safe_num(df.get("product_sales", 0.0))
@@ -3137,12 +3136,16 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         for col in ["type", "transaction_type", "description"]:
             if col not in tmp.columns:
                 tmp[col] = ""
-        tmp_refund_mask = (
-            tmp["type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
-            | tmp["transaction_type"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
-            | tmp["description"].fillna("").astype(str).str.contains("refund|return", case=False, na=False, regex=True)
+        tmp_type_normalized = (
+            tmp["type"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
         )
-        tmp["sales_quantity"] = tmp["quantity"].where(~tmp_refund_mask, 0.0)
+        tmp_refund_mask = tmp_type_normalized.eq("refund")
+        tmp_shipment_mask = tmp_type_normalized.eq("shipment")
+        tmp["sales_quantity"] = tmp["quantity"].where(tmp_shipment_mask, 0.0)
         tmp["refund_sales"] = tmp["product_sales"].where(tmp_refund_mask, 0.0).abs()
         tmp["gross_sales"] = tmp["product_sales"]
         tmp["net_sales"] = (
