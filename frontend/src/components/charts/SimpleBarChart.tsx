@@ -36,6 +36,8 @@ type SimpleBarChartProps = {
   showPrev?: boolean;
 };
 
+const LONG_LABELS_QUERY = "(min-width: 1700px)";
+
 const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   labels,
   values,
@@ -49,10 +51,10 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   showPrev = false,
 }) => {
   const chartRef = useRef<any>(null);
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [showLongLabels, setShowLongLabels] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1280px)") as MediaQueryList & {
+    const mq = window.matchMedia(LONG_LABELS_QUERY) as MediaQueryList & {
       addListener?: (
         callback: (e: MediaQueryListEvent | MediaQueryList) => void
       ) => void;
@@ -62,10 +64,10 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
     };
 
     const onChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      setIsSmallScreen(e.matches);
+      setShowLongLabels(e.matches);
     };
 
-    setIsSmallScreen(mq.matches);
+    setShowLongLabels(mq.matches);
 
     if ("addEventListener" in mq) {
       mq.addEventListener("change", onChange as any);
@@ -211,7 +213,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
           callback: (_value, index) => {
             const label = labels[index] ?? "";
 
-            if (isSmallScreen) {
+            if (!showLongLabels) {
               const finalLabel = shortLabel(label);
 
               if (finalLabel.length > 8) {
@@ -262,7 +264,7 @@ const SimpleBarChart: React.FC<SimpleBarChartProps> = ({
   return (
     <div className="relative w-full h-full">
       <Bar
-        key={isSmallScreen ? "small" : "large"}
+        key={showLongLabels ? "long-labels" : "short-labels"}
         ref={chartRef}
         data={data}
         options={options}
