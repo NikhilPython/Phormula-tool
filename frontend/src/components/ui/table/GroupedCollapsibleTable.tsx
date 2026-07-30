@@ -625,31 +625,13 @@ export default function GroupedCollapsibleTable<RowT>({
   }, [visibleLeafCols.length, onVisibleColCountChange]);
 
 
-  // const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  // const [scrollbarWidth, setScrollbarWidth] = useState(0);
-
-  // useEffect(() => {
-  //   if (!bodyMaxHeight) return;
-
-  //   const measure = () => {
-  //     const el = scrollContainerRef.current;
-  //     if (!el) return;
-
-  //     const width = el.offsetWidth - el.clientWidth;
-  //     setScrollbarWidth(width > 0 ? width : 0);
-  //   };
-
-  //   measure();
-
-  //   window.addEventListener("resize", measure);
-  //   return () => window.removeEventListener("resize", measure);
-  // }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
-
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const summaryScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
   const scrollStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScrollLeftRef = useRef(0);
   const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
+  const [scrollbarWidth, setScrollbarWidth] = useState(0);
   const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
 
   useEffect(() => {
@@ -659,6 +641,36 @@ export default function GroupedCollapsibleTable<RowT>({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!bodyMaxHeight) return;
+
+    const measureScrollbarWidth = () => {
+      const el = scrollContainerRef.current;
+      if (!el) return;
+
+      const width = el.offsetWidth - el.clientWidth;
+      setScrollbarWidth(width > 0 ? width : 0);
+    };
+
+    measureScrollbarWidth();
+
+    const el = scrollContainerRef.current;
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined" && el
+        ? new ResizeObserver(measureScrollbarWidth)
+        : null;
+
+    if (resizeObserver && el) {
+      resizeObserver.observe(el);
+    }
+    window.addEventListener("resize", measureScrollbarWidth);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measureScrollbarWidth);
+    };
+  }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   /* ---------------- Row 2 Headers ---------------- */
   type Row2Cell<RowT> =
@@ -909,14 +921,21 @@ export default function GroupedCollapsibleTable<RowT>({
   };
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    if (!hideStickyLeftColsWhileScrolling || stickyLeftCount === 0) return;
-
     const nextScrollLeft = event.currentTarget.scrollLeft;
+
+    if (
+      summaryScrollContainerRef.current &&
+      Math.abs(summaryScrollContainerRef.current.scrollLeft - nextScrollLeft) > 0.5
+    ) {
+      summaryScrollContainerRef.current.scrollLeft = nextScrollLeft;
+    }
+
     const didScrollHorizontally =
       Math.abs(nextScrollLeft - lastScrollLeftRef.current) > 0.5;
 
     lastScrollLeftRef.current = nextScrollLeft;
 
+    if (!hideStickyLeftColsWhileScrolling || stickyLeftCount === 0) return;
     if (!didScrollHorizontally) return;
 
     if (scrollStopTimeoutRef.current) {
@@ -1313,36 +1332,57 @@ export default function GroupedCollapsibleTable<RowT>({
 
   /**
    * Scroll mode:
-   * - Header + product rows scroll
-   * - Total row + summary rows stay visible
+   * - Header, product rows, and total row share the visible horizontal scrollbar
+   * - Summary rows render below that scrollbar without adding another one
    */
   if (bodyMaxHeight) {
+    const summaryFooter = renderSummaryFooter();
+    const summaryScrollbarCompensationStyle: React.CSSProperties = scrollbarWidth
+      ? {
+        paddingRight: `${scrollbarWidth}px`,
+        boxSizing: "border-box",
+      }
+      : {};
+
     return (
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className="w-full overflow-auto"
-        style={{
-          maxHeight: `${bodyMaxHeight}px`,
-          scrollbarGutter: "stable",
-        }}
-      >
-        <table ref={tableRef} className={tableClassName} style={tableStyle}>
-          {renderColGroup()}
+      <div className="w-full">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="w-full overflow-auto"
+          style={{
+            maxHeight: `${bodyMaxHeight}px`,
+            scrollbarGutter: "stable",
+          }}
+        >
+          <table ref={tableRef} className={tableClassName} style={tableStyle}>
+            {renderColGroup()}
 
-          <thead className="sticky top-0 z-20 font-bold">
-            {renderTableHead().props.children}
-          </thead>
+            <thead className="sticky top-0 z-20 font-bold">
+              {renderTableHead().props.children}
+            </thead>
 
-          <tbody>
-            {renderSignRow()}
-            {renderBodyRows(scrollRows)}
-            {pinnedRows.length > 0 &&
-              renderBodyRows(pinnedRows, scrollRows.length)}
-          </tbody>
+            <tbody>
+              {renderSignRow()}
+              {renderBodyRows(scrollRows)}
+              {pinnedRows.length > 0 &&
+                renderBodyRows(pinnedRows, scrollRows.length)}
+            </tbody>
+          </table>
+        </div>
 
-          {renderSummaryFooter()}
-        </table>
+        {summaryFooter && (
+          <div
+            ref={summaryScrollContainerRef}
+            className="w-full overflow-x-hidden"
+            style={summaryScrollbarCompensationStyle}
+          >
+            <table className={tableClassName} style={tableStyle}>
+              {renderColGroup()}
+              {summaryFooter}
+            </table>
+          </div>
+        )}
       </div>
     );
   }
