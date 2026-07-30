@@ -33,16 +33,16 @@ db_url1 = os.getenv('DATABASE_ADMIN_URL')
 user_engine = create_engine(
     db_url,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=3,
+    max_overflow=2,
     pool_recycle=1800,
 )
 
 admin_engine = create_engine(
     db_url1,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
+    pool_size=3,
+    max_overflow=2,
     pool_recycle=1800,
 )
 
@@ -1439,6 +1439,30 @@ def skutableprofit():
 
         inspector = inspect(engine)
         existing_tables = set(inspector.get_table_names(schema="public"))
+
+        # The frontend can request every month in the selected year.
+        # Future or not-yet-generated monthly tables are valid "no data" cases,
+        # not server errors. Return a stable empty response instead of 500.
+        if table_name not in existing_tables:
+            prev_month, prev_year = get_previous_month(month, year)
+            previous_table_name = (
+                build_skuwise_table_name(user_id, country, prev_month, prev_year)
+                if prev_month and prev_year
+                else None
+            )
+
+            return jsonify({
+                "success": True,
+                "available": False,
+                "message": "No SKU profit data is available for the selected month.",
+                "current_table_name": table_name,
+                "current_ads_table_name": None,
+                "requested_ads_table_name": requested_ads_table_name,
+                "current_data": [],
+                "previous_table_name": previous_table_name,
+                "previous_ads_table_name": None,
+                "previous_data": []
+            }), 200
 
         ads_table_name = requested_ads_table_name if requested_ads_table_name in existing_tables else None
 

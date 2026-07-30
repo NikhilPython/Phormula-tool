@@ -1,11 +1,15 @@
 from datetime import datetime
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 import jwt
 from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.exc import OperationalError, TimeoutError as SQLAlchemyTimeoutError
 import os
 import base64
 from config import Config
 import json
+import time
+import traceback
+from contextlib import contextmanager
 from openai import OpenAI
 from dotenv import load_dotenv
 from app.routes.business_intelligence import get_sku_monthly_history
@@ -32,42 +36,110 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 skuwise_bp = Blueprint('skuwise_bp', __name__)
 
-# Create engines once only
+# Create engines once only.
+# The product page calls several APIs concurrently, so a pool of only one
+# connection caused intermittent QueuePool timeouts and HTTP 500 responses.
+_COMMON_ENGINE_OPTIONS = {
+    "pool_pre_ping": True,
+    "pool_recycle": 900,
+    "pool_timeout": 60,
+    "pool_use_lifo": True,
+}
+
 user_engine = create_engine(
     db_url,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    pool_size=1,
-    max_overflow=1,
-    pool_timeout=30,
+    pool_size=2,
+    max_overflow=2,
+    **_COMMON_ENGINE_OPTIONS,
 )
 
 admin_engine = create_engine(
     db_url1,
-    pool_pre_ping=True,
-    pool_recycle=1800,
     pool_size=1,
-    max_overflow=0,
-    pool_timeout=30,
+    max_overflow=1,
+    **_COMMON_ENGINE_OPTIONS,
 )
 
 amazon_engine = create_engine(
     db_url2,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    pool_size=1,
+    pool_size=2,
     max_overflow=1,
-    pool_timeout=30,
+    **_COMMON_ENGINE_OPTIONS,
 )
 
 chatbot_engine = create_engine(
     db_url_chatbot,
-    pool_pre_ping=True,
-    pool_recycle=1800,
     pool_size=1,
     max_overflow=1,
-    pool_timeout=30,
+    **_COMMON_ENGINE_OPTIONS,
 )
+
+
+@contextmanager
+def db_connect(engine, attempts=3, delay_seconds=0.25):
+    """Acquire a SQLAlchemy connection with a short retry for transient errors."""
+    conn = None
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = engine.connect()
+            break
+        except (OperationalError, SQLAlchemyTimeoutError) as exc:
+            last_error = exc
+            if attempt == attempts:
+                raise
+            time.sleep(delay_seconds * attempt)
+
+    if conn is None:
+        raise last_error or RuntimeError("Unable to acquire database connection")
+
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def db_begin(engine, attempts=3, delay_seconds=0.25):
+    """Open a transaction with retry while acquiring the connection."""
+    conn = None
+    transaction = None
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            conn = engine.connect()
+            transaction = conn.begin()
+            break
+        except (OperationalError, SQLAlchemyTimeoutError) as exc:
+            last_error = exc
+            if conn is not None:
+                conn.close()
+                conn = None
+            if attempt == attempts:
+                raise
+            time.sleep(delay_seconds * attempt)
+
+    if conn is None or transaction is None:
+        raise last_error or RuntimeError("Unable to start database transaction")
+
+    try:
+        yield conn
+        transaction.commit()
+    except Exception:
+        transaction.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def log_route_exception(route_name, exc):
+    """Write the complete traceback to Gunicorn/Flask logs."""
+    try:
+        current_app.logger.exception("%s failed: %s", route_name, exc)
+    except Exception:
+        traceback.print_exc()
 
 def encode_file_to_base64(file_path):
     with open(file_path, 'rb') as file:
@@ -192,7 +264,7 @@ def get_monthly_inventory_units(
     inventory_map = {}
 
     try:
-        with amazon_engine.connect() as conn:
+        with db_connect(amazon_engine) as conn:
             for month_num in month_numbers:
                 query = text("""
                     WITH last_date AS (
@@ -533,7 +605,7 @@ def get_exact_other_skus_month_row(
             target_currency = (home_currency or "").lower()
 
             if source_currency and target_currency:
-                with admin_engine.connect() as conn1:
+                with db_connect(admin_engine) as conn1:
                     conversion_rate = get_conversion_rate(
                         conn1,
                         source_currency,
@@ -697,7 +769,7 @@ def productwise_performance():
         result_data = {}
         other_skus_graph_data = {}
 
-        with user_engine.connect() as conn:
+        with db_connect(user_engine) as conn:
             inspector = inspect(conn)
             all_tables = inspector.get_table_names()
 
@@ -845,7 +917,7 @@ def productwise_performance():
                                 target_currency = home_currency.lower()
 
                                 if source_currency and target_currency:
-                                    with admin_engine.connect() as conn1:
+                                    with db_connect(admin_engine) as conn1:
                                         conversion_rate = get_conversion_rate(
                                             conn1,
                                             source_currency,
@@ -1091,7 +1163,13 @@ def productwise_performance():
         })
 
     except Exception as e:
-        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+        log_route_exception('ProductwisePerformance', e)
+        status_code = 503 if isinstance(e, (OperationalError, SQLAlchemyTimeoutError)) else 500
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}',
+            'retryable': status_code == 503
+        }), status_code
 
 
 @skuwise_bp.route('/Product_search', methods=['GET'])
@@ -1115,7 +1193,7 @@ def product_search():
     try:
         table_name = f"sku_{user_id}_data_table"
 
-        with user_engine.connect() as conn:
+        with db_connect(user_engine) as conn:
             inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
@@ -1157,7 +1235,7 @@ def product_names():
     try:
         table_name = f"sku_{user_id}_data_table"
 
-        with user_engine.connect() as conn:
+        with db_connect(user_engine) as conn:
             inspector = inspect(conn)
 
             if not inspector.has_table(table_name):
@@ -1388,7 +1466,7 @@ def productwise_growth_ai():
                     LIMIT 1
                 """)
 
-                with user_engine.connect() as conn:
+                with db_connect(user_engine) as conn:
                     result = conn.execute(
                         resolve_query,
                         {"product_name": product_name}
@@ -1524,7 +1602,7 @@ def productwise_growth_ai():
         history_24m = []
 
         try:
-            with user_engine.connect() as conn:
+            with db_connect(user_engine) as conn:
                 inspector = inspect(conn)
                 all_tables = inspector.get_table_names()
 
@@ -1639,7 +1717,7 @@ def product_best_performance():
 
         monthly_rows = []
 
-        with user_engine.connect() as conn:
+        with db_connect(user_engine) as conn:
             inspector = inspect(conn)
             all_tables = inspector.get_table_names()
 
@@ -1738,7 +1816,7 @@ def product_best_performance():
                     conversion_rate = 1.0
 
                     if source_currency and target_currency:
-                        with admin_engine.connect() as conn1:
+                        with db_connect(admin_engine) as conn1:
                             conversion_rate = get_conversion_rate(
                                 conn1,
                                 source_currency,
@@ -1816,7 +1894,13 @@ def product_best_performance():
         }), 200
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        log_route_exception('ProductBestPerformance', e)
+        status_code = 503 if isinstance(e, (OperationalError, SQLAlchemyTimeoutError)) else 500
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'retryable': status_code == 503
+        }), status_code
 
 
 ############################################# Product Summary ########################################################################
@@ -1907,7 +1991,7 @@ def get_current_quarter_saved_product_summary(
         LIMIT 1
     """)
 
-    with chatbot_engine.connect() as conn:
+    with db_connect(chatbot_engine) as conn:
         row = conn.execute(query, {
             "user_id": int(user_id),
             "product_name": product_name,
@@ -1954,7 +2038,7 @@ def get_latest_saved_product_summary_any_quarter(
         LIMIT 1
     """)
 
-    with chatbot_engine.connect() as conn:
+    with db_connect(chatbot_engine) as conn:
         row = conn.execute(query, {
             "user_id": int(user_id),
             "product_name": product_name,
@@ -2032,7 +2116,7 @@ def save_product_ai_summary(
         RETURNING id, generated_at
     """)
 
-    with chatbot_engine.begin() as conn:
+    with db_begin(chatbot_engine) as conn:
         row = conn.execute(query, {
             "user_id": int(user_id),
             "product_name": product_name,
@@ -2270,7 +2354,7 @@ def fetch_month_end_inventory_lookup(user_id, country, sku_list):
     lookup = {}
 
     try:
-        with amazon_engine.connect() as conn:
+        with db_connect(amazon_engine) as conn:
             rows = conn.execute(query, params).fetchall()
 
         for row in rows:
@@ -2425,7 +2509,7 @@ def fetch_product_summary_history_for_country(
                 target_currency = home_currency.lower()
 
                 if source_currency and target_currency:
-                    with admin_engine.connect() as admin_conn:
+                    with db_connect(admin_engine) as admin_conn:
                         conversion_rate = get_conversion_rate(
                             admin_conn,
                             source_currency,
@@ -2606,7 +2690,7 @@ def build_product_summary_payload(user_id, product_name, country, home_currency)
     else:
         countries_to_fetch = [normalized_country]
 
-    with user_engine.connect() as conn:
+    with db_connect(user_engine) as conn:
         inspector = inspect(conn)
         all_tables = inspector.get_table_names()
 
@@ -2798,8 +2882,11 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
         payload=payload
     )
 
-    try:
-        response = client.chat.completions.create(
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {
@@ -2825,10 +2912,15 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
             max_tokens=1000
         )
 
-        return response.choices[0].message.content.strip()
+            return response.choices[0].message.content.strip()
 
-    except Exception as e:
-        return None
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                time.sleep(0.5)
+
+    log_route_exception("generate_product_ai_summary", last_error)
+    return None
 
 
 @skuwise_bp.route('/ProductSummaryAI', methods=['POST'])
@@ -2990,6 +3082,10 @@ def product_summary_ai():
         }), 200
 
     except Exception as e:
+        log_route_exception("ProductSummaryAI", e)
+        status_code = 503 if isinstance(e, (OperationalError, SQLAlchemyTimeoutError)) else 500
         return jsonify({
-            "error": str(e)
-        }), 500
+            "success": False,
+            "error": str(e),
+            "retryable": status_code == 503
+        }), status_code
