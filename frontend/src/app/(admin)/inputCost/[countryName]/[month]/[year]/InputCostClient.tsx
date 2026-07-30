@@ -7248,7 +7248,7 @@ export default function InputCostPage({ params }: Params) {
           {activeTab === 'recon-table' && (
             <div
               className={[
-                "mt-5 w-full rounded-xl border border-gray-200 bg-white",
+                "relative z-0 mt-10 w-full rounded-xl border border-gray-200 bg-white",
                 "overflow-x-auto",
                 "[-webkit-overflow-scrolling:touch]",
               ].join(" ")}
@@ -7285,9 +7285,10 @@ export default function InputCostPage({ params }: Params) {
                   }
                   // headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
                   // headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  preserveColumnWidths
                   stickyLeftBorderMode="shadow-only"
                   stickyLeftDividerMode="leading"
-                  stickyLeftWidthMode="declared"
+                  stickyLeftWidthMode="fallback"
                   showSignRowInBody
                   getSignForCol={getSignForCol}
                 />
