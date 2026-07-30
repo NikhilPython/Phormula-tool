@@ -5893,12 +5893,17 @@ export default function InputCostPage({ params }: Params) {
     return "Inventory at year end";
   }, [range]);
 
+  const isUsReconCountry = useMemo(
+    () => ["us", "usa", "united states"].includes(countryName),
+    [countryName]
+  );
+
   const leftCols: LeafCol<AnyRow>[] = [
     { key: '__sno', label: 'S. No.', width: 70, align: 'center' },
     { key: 'product_name', label: 'Product Name', width: 120, align: 'left' },
   ];
 
-  const groups: ColGroup<AnyRow>[] = useMemo(
+  const groups = useMemo<ColGroup<AnyRow>[]>(
     () => [
       {
         id: 'beginning',
@@ -5908,10 +5913,10 @@ export default function InputCostPage({ params }: Params) {
           { key: '__beginning_total', label: 'Total', width: 140, align: 'center' },
         ],
         expandedCols: [
-          { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
+          { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          { key: 'sum_in_transit_between_warehouses', label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)', width: 110, align: 'center' },
           { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
           { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
-          { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
@@ -5923,8 +5928,14 @@ export default function InputCostPage({ params }: Params) {
           { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
         ],
         expandedCols: [
-          { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
-          { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
+          { key: 'sum_receipts', label: isUsReconCountry ? 'FBA' : 'Delivered', width: 110, align: 'center' },
+          { key: 'transit_total', label: isUsReconCountry ? 'AWD' : 'In Transit', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
+              { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
+            ]
+            : []),
           { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
@@ -5981,15 +5992,15 @@ export default function InputCostPage({ params }: Params) {
           { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
         ],
         expandedCols: [
-          { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
+          { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          { key: '__ending_transit_placeholder', label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)', width: 110, align: 'center' },
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
-          { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
     ],
-    [beginningInventoryLabel, endingInventoryLabel]
+    [beginningInventoryLabel, endingInventoryLabel, isUsReconCountry]
   );
 
   const singleCols: LeafCol<AnyRow>[] = useMemo(
