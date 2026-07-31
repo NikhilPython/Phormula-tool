@@ -1215,8 +1215,19 @@ def process_skuwise_data(user_id, country, month, year):
         # SHARED UK formulas for Net Sales / Net Taxes / net_credits / Fees / Profit
         # ---------------------------------------------------------------------
         
-        sales_total, sales_by_sku, _ = uk_sales(df)
-        fee_total,   fees_by_sku,  _ = uk_amazon_fee(df_base)
+        # sales_total, sales_by_sku, _ = uk_sales(df)
+        # fee_total,   fees_by_sku,  _ = uk_amazon_fee(df_base)
+
+        sales_total, sales_by_sku, _ = uk_sales(
+            df,
+            country=country,
+        )
+
+        fee_total, fees_by_sku, _ = uk_amazon_fee(
+            df,
+            country=country,
+        )
+
         # TAX ONLY (needed everywhere later)
         df_tax = df_base.copy()
         df_tax["type"] = df_tax.get("type", "").astype(str)

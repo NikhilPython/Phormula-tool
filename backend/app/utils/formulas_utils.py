@@ -537,66 +537,348 @@ def uk_cogs(
     return total, per_sku, ["cogs"]
 
 
-####################################################################
-def uk_amazon_fee(df: pd.DataFrame, *, country: str | None = None,
-                  want_breakdown: bool | None = None, **kwargs) -> Tuple[float, pd.DataFrame, List[str]]:
-    """
-    Amazon fee logic identical to process_skuwise_data:
+# ####################################################################
+# def uk_amazon_fee(df: pd.DataFrame, *, country: str | None = None,
+#                   want_breakdown: bool | None = None, **kwargs) -> Tuple[float, pd.DataFrame, List[str]]:
+#     """
+#     Amazon fee logic identical to process_skuwise_data:
 
-      - Ignore `other_transaction_fees` entirely.
-      - Exclude SKUs that are blank, '0', 'none', 'null', 'nan' (via sku_mask).
-      - Adjust selling fees for refunds:
-          selling_fees_adj = selling_fees_total_per_sku - 2 * refund_selling_fees_per_sku
-      - Amazon fee = |FBA fees| + |selling_fees_adj|
+#       - Ignore `other_transaction_fees` entirely.
+#       - Exclude SKUs that are blank, '0', 'none', 'null', 'nan' (via sku_mask).
+#       - Adjust selling fees for refunds:
+#           selling_fees_adj = selling_fees_total_per_sku - 2 * refund_selling_fees_per_sku
+#       - Amazon fee = |FBA fees| + |selling_fees_adj|
+#     """
+#     w = df.copy()
+
+#     # Coerce numeric columns (safer than ad-hoc string munging)
+#     for col in ["fba_fees", "selling_fees"]:
+#         w[col] = safe_num(w.get(col, 0.0))
+
+#     # --- Filter out invalid SKUs using the same rule as other helpers ---
+#     if "sku" in w.columns:
+#         w["sku"] = w["sku"].astype(str).str.strip()
+#         w = w.loc[sku_mask(w)]
+#     else:
+#         comps = ["fba_abs", "selling_adj_abs"]
+#         return 0.0, pd.DataFrame(columns=["sku", "__metric__", *comps, "selling_raw_abs", "refund_selling_fees"]), comps
+
+#     # --- Refund selling fees (case-insensitive 'refund') ---
+#     refund_selling = pd.DataFrame(columns=["sku", "refund_selling_fees"])
+#     if "type" in w.columns:
+#         refund_mask = w["type"].astype(str).str.casefold().eq("refund")
+#         if refund_mask.any():
+#             refund_selling = (
+#                 w.loc[refund_mask]
+#                  .groupby("sku", as_index=False)["selling_fees"]
+#                  .sum()
+#                  .rename(columns={"selling_fees": "refund_selling_fees"})
+#             )
+
+#     # --- Aggregate base fees per SKU ---
+#     by = w.groupby("sku", as_index=False)[["fba_fees", "selling_fees"]].sum()
+
+#     # --- Join refund info & adjust ---
+#     by = by.merge(refund_selling, on="sku", how="left")
+#     by["refund_selling_fees"] = safe_num(by["refund_selling_fees"])
+#     by["selling_fees_adj"] = by["selling_fees"] - 2.0 * by["refund_selling_fees"]
+
+#     # --- Absolute components and final metric ---
+#     by["fba_abs"]         = by["fba_fees"].abs()
+#     by["selling_raw_abs"] = by["selling_fees"].abs()
+#     by["selling_adj_abs"] = by["selling_fees_adj"].abs()
+#     by["__metric__"]      = by["fba_abs"] + by["selling_adj_abs"]
+
+#     per_sku = by[["sku", "__metric__", "fba_abs", "selling_adj_abs", "selling_raw_abs", "refund_selling_fees"]].copy()
+#     total = float(per_sku["__metric__"].sum())
+#     comps = ["fba_abs", "selling_adj_abs"]
+
+#     return total, per_sku, comps
+
+def uk_amazon_fee(
+    df: pd.DataFrame,
+    *,
+    country: str | None = None,
+    want_breakdown: bool | None = None,
+    **kwargs,
+) -> Tuple[float, pd.DataFrame, List[str]]:
     """
+    Standard UK Amazon fee calculation.
+
+    Rules:
+      - Ignore other_transaction_fees.
+      - Exclude invalid SKUs.
+      - Exclude lost/damaged inventory rows.
+      - Exclude DebtRecovery rows.
+      - Keep Refund rows for the selling-fee refund adjustment.
+      - Amazon fee:
+            abs(fba_fees)
+            + abs(selling_fees - 2 * refund_selling_fees)
+    """
+
+    comps = ["fba_abs", "selling_adj_abs"]
+
+    empty_result = pd.DataFrame(
+        columns=[
+            "sku",
+            "__metric__",
+            "fba_abs",
+            "selling_adj_abs",
+            "selling_raw_abs",
+            "refund_selling_fees",
+        ]
+    )
+
+    if df is None or df.empty:
+        return 0.0, empty_result, comps
+
     w = df.copy()
 
-    # Coerce numeric columns (safer than ad-hoc string munging)
+    # Required SKU column
+    if "sku" not in w.columns:
+        return 0.0, empty_result, comps
+
+    # Required numeric columns
     for col in ["fba_fees", "selling_fees"]:
-        w[col] = safe_num(w.get(col, 0.0))
+        if col not in w.columns:
+            w[col] = 0.0
 
-    # --- Filter out invalid SKUs using the same rule as other helpers ---
-    if "sku" in w.columns:
-        w["sku"] = w["sku"].astype(str).str.strip()
-        w = w.loc[sku_mask(w)]
-    else:
-        comps = ["fba_abs", "selling_adj_abs"]
-        return 0.0, pd.DataFrame(columns=["sku", "__metric__", *comps, "selling_raw_abs", "refund_selling_fees"]), comps
+        w[col] = safe_num(w[col])
 
-    # --- Refund selling fees (case-insensitive 'refund') ---
-    refund_selling = pd.DataFrame(columns=["sku", "refund_selling_fees"])
-    if "type" in w.columns:
-        refund_mask = w["type"].astype(str).str.casefold().eq("refund")
-        if refund_mask.any():
-            refund_selling = (
-                w.loc[refund_mask]
-                 .groupby("sku", as_index=False)["selling_fees"]
-                 .sum()
-                 .rename(columns={"selling_fees": "refund_selling_fees"})
-            )
+    # Required text columns
+    if "type" not in w.columns:
+        w["type"] = ""
 
-    # --- Aggregate base fees per SKU ---
-    by = w.groupby("sku", as_index=False)[["fba_fees", "selling_fees"]].sum()
+    if "description" not in w.columns:
+        w["description"] = ""
 
-    # --- Join refund info & adjust ---
-    by = by.merge(refund_selling, on="sku", how="left")
-    by["refund_selling_fees"] = safe_num(by["refund_selling_fees"])
-    by["selling_fees_adj"] = by["selling_fees"] - 2.0 * by["refund_selling_fees"]
+    w["sku"] = (
+        w["sku"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
 
-    # --- Absolute components and final metric ---
-    by["fba_abs"]         = by["fba_fees"].abs()
+    w["type"] = (
+        w["type"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    w["description"] = (
+        w["description"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    # Remove blank/0/none/null/nan SKU rows
+    w = w.loc[sku_mask(w)].copy()
+
+    if w.empty:
+        return 0.0, empty_result, comps
+
+    lost_descriptions = {
+        "REVERSAL_REIMBURSEMENT",
+        "WAREHOUSE_LOST",
+        "WAREHOUSE_DAMAGE",
+        "MISSING_FROM_INBOUND",
+        "MISSING_FROM_INBOUND_CLAWBACK",
+        "COMPENSATED_CLAWBACK",
+        "FREE_REPLACEMENT_REFUND_ITEMS",
+    }
+
+    description_key = w["description"].str.casefold()
+
+    lost_description_keys = {
+        value.casefold()
+        for value in lost_descriptions
+    }
+
+    is_lost = description_key.isin(
+        lost_description_keys
+    )
+
+    is_debt_recovery = (
+        w["type"]
+        .str.casefold()
+        .eq("debtrecovery")
+    )
+
+    # Important: do not remove Refund rows here.
+    # Refund selling fees are required for the adjustment.
+    w = w.loc[
+        ~is_lost
+        & ~is_debt_recovery
+    ].copy()
+
+    if w.empty:
+        return 0.0, empty_result, comps
+
+    # Use contains instead of exact equality so values such as
+    # "Refund", "RefundEvent", etc. are handled consistently.
+    refund_mask = (
+        w["type"]
+        .str.contains(
+            "refund",
+            case=False,
+            na=False,
+            regex=False,
+        )
+    )
+
+    refund_selling = (
+        w.loc[refund_mask]
+        .groupby(
+            "sku",
+            as_index=False,
+        )["selling_fees"]
+        .sum()
+        .rename(
+            columns={
+                "selling_fees": "refund_selling_fees"
+            }
+        )
+    )
+
+    by = (
+        w.groupby(
+            "sku",
+            as_index=False,
+        )[["fba_fees", "selling_fees"]]
+        .sum()
+    )
+
+    by = by.merge(
+        refund_selling,
+        on="sku",
+        how="left",
+    )
+
+    by["refund_selling_fees"] = safe_num(
+        by.get("refund_selling_fees", 0.0)
+    )
+
+    by["selling_fees_adj"] = (
+        by["selling_fees"]
+        - 2.0 * by["refund_selling_fees"]
+    )
+
+    by["fba_abs"] = by["fba_fees"].abs()
     by["selling_raw_abs"] = by["selling_fees"].abs()
     by["selling_adj_abs"] = by["selling_fees_adj"].abs()
-    by["__metric__"]      = by["fba_abs"] + by["selling_adj_abs"]
 
-    per_sku = by[["sku", "__metric__", "fba_abs", "selling_adj_abs", "selling_raw_abs", "refund_selling_fees"]].copy()
-    total = float(per_sku["__metric__"].sum())
-    comps = ["fba_abs", "selling_adj_abs"]
+    by["__metric__"] = (
+        by["fba_abs"]
+        + by["selling_adj_abs"]
+    )
+
+    per_sku = by[
+        [
+            "sku",
+            "__metric__",
+            "fba_abs",
+            "selling_adj_abs",
+            "selling_raw_abs",
+            "refund_selling_fees",
+        ]
+    ].copy()
+
+    total = float(
+        per_sku["__metric__"].sum()
+    )
 
     return total, per_sku, comps
 
 
 
+
+# # Profit (UK) = sales + credits - taxes - amazon_fee - cost_of_unit_sold
+# def uk_profit(
+#     df: pd.DataFrame,
+#     *,
+#     country: str | None = None,
+#     want_breakdown: bool | None = None,
+#     debug: bool = True,
+#     **kwargs
+# ) -> tuple[float, pd.DataFrame, list[str]]:
+#     """
+#     FINAL UK PROFIT (Dashboard & Excel Aligned)
+
+#     Formula (SOURCE OF TRUTH):
+#         profit = sales
+#                - cogs
+#                - amazon_fee
+#                - net_taxes
+#                + net_credits
+#     """
+
+#     # -----------------------------
+#     # BASE COMPONENTS
+#     # -----------------------------
+#     sales_total,  sales_by,  _ = uk_sales(df, country=country)
+#     cogs_total,   cogs_by,   _ = uk_cogs(df, country=country)
+#     fee_total,    fee_by,    _ = uk_amazon_fee(df, country=country)
+#     tax_total,    tax_by,    _ = uk_tax(df, country=country)
+#     credit_total, credit_by, _ = uk_credits(df, country=country)
+
+#     # -----------------------------
+#     # MERGE PER-SKU
+#     # -----------------------------
+#     per = (
+#         sales_by[["sku", "__metric__"]]
+#         .rename(columns={"__metric__": "sales"})
+#         .merge(
+#             cogs_by[["sku", "__metric__"]].rename(columns={"__metric__": "cogs"}),
+#             on="sku", how="outer"
+#         )
+#         .merge(
+#             fee_by[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}),
+#             on="sku", how="outer"
+#         )
+#         .merge(
+#             tax_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}),
+#             on="sku", how="outer"
+#         )
+#         .merge(
+#             credit_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}),
+#             on="sku", how="outer"
+#         )
+#         .fillna(0.0)
+#     )
+
+#     # -----------------------------
+#     # NUMERIC SAFETY
+#     # -----------------------------
+#     for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
+#         per[c] = safe_num(per[c])
+
+#     # -----------------------------
+#     # PROFIT (PER SKU)
+#     # -----------------------------
+#     per["__metric__"] = (
+#         per["sales"].abs()
+#         - per["cogs"]
+#         - per["amazon_fee"]
+#         - per["net_taxes"]
+#         + per["net_credits"]
+#     )
+
+#     total = float(per["__metric__"].sum())
+
+    
+#     comps = [
+#         "sales",
+#         "cogs",
+#         "amazon_fee",
+#         "net_taxes",
+#         "net_credits",
+#     ]
+
+#     return total, per[["sku", "__metric__", *comps]], comps
+
+# Profit (UK) = sales + credits - taxes - amazon_fee - cost_of_unit_sold
 # Profit (UK) = sales + credits - taxes - amazon_fee - cost_of_unit_sold
 def uk_profit(
     df: pd.DataFrame,
@@ -609,8 +891,8 @@ def uk_profit(
     """
     FINAL UK PROFIT (Dashboard & Excel Aligned)
 
-    Formula (SOURCE OF TRUTH):
-        profit = sales
+    Formula:
+        profit = abs(sales)
                - cogs
                - amazon_fee
                - net_taxes
@@ -620,10 +902,10 @@ def uk_profit(
     # -----------------------------
     # BASE COMPONENTS
     # -----------------------------
-    sales_total,  sales_by,  _ = uk_sales(df, country=country)
-    cogs_total,   cogs_by,   _ = uk_cogs(df, country=country)
-    fee_total,    fee_by,    _ = uk_amazon_fee(df, country=country)
-    tax_total,    tax_by,    _ = uk_tax(df, country=country)
+    sales_total, sales_by, _ = uk_sales(df, country=country)
+    cogs_total, cogs_by, _ = uk_cogs(df, country=country)
+    fee_total, fee_by, _ = uk_amazon_fee(df, country=country)
+    tax_total, tax_by, _ = uk_tax(df, country=country)
     credit_total, credit_by, _ = uk_credits(df, country=country)
 
     # -----------------------------
@@ -633,20 +915,28 @@ def uk_profit(
         sales_by[["sku", "__metric__"]]
         .rename(columns={"__metric__": "sales"})
         .merge(
-            cogs_by[["sku", "__metric__"]].rename(columns={"__metric__": "cogs"}),
-            on="sku", how="outer"
+            cogs_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "cogs"}),
+            on="sku",
+            how="outer",
         )
         .merge(
-            fee_by[["sku", "__metric__"]].rename(columns={"__metric__": "amazon_fee"}),
-            on="sku", how="outer"
+            fee_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "amazon_fee"}),
+            on="sku",
+            how="outer",
         )
         .merge(
-            tax_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"}),
-            on="sku", how="outer"
+            tax_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "net_taxes"}),
+            on="sku",
+            how="outer",
         )
         .merge(
-            credit_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}),
-            on="sku", how="outer"
+            credit_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "net_credits"}),
+            on="sku",
+            how="outer",
         )
         .fillna(0.0)
     )
@@ -654,7 +944,13 @@ def uk_profit(
     # -----------------------------
     # NUMERIC SAFETY
     # -----------------------------
-    for c in ("sales", "cogs", "amazon_fee", "net_taxes", "net_credits"):
+    for c in (
+        "sales",
+        "cogs",
+        "amazon_fee",
+        "net_taxes",
+        "net_credits",
+    ):
         per[c] = safe_num(per[c])
 
     # -----------------------------
@@ -670,7 +966,6 @@ def uk_profit(
 
     total = float(per["__metric__"].sum())
 
-    
     comps = [
         "sales",
         "cogs",
@@ -680,6 +975,7 @@ def uk_profit(
     ]
 
     return total, per[["sku", "__metric__", *comps]], comps
+
 
 
 def uk_platform_fee(
@@ -1405,6 +1701,85 @@ def us_advertising(
     return uk_advertising(df, country=country, want_breakdown=want_breakdown, **kwargs)
 
 
+# def us_profit(
+#     df: pd.DataFrame,
+#     *,
+#     country: Optional[str] = "us",
+#     want_breakdown: Optional[bool] = None,
+#     debug: bool = True,
+#     **kwargs
+# ) -> Tuple[float, pd.DataFrame, List[str]]:
+
+#     sales_total, sales_by, _ = us_sales(df, country=country)
+#     cogs_total, cogs_by, _ = us_cogs(df, country=country)
+#     fee_total, fee_by, _ = us_amazon_fee(df, country=country)
+#     tax_total, tax_by, _ = us_tax(df, country=country)
+#     credits_total, credits_by, _ = us_credits(df, country=country)
+
+#     per = (
+#         sales_by[["sku", "__metric__"]]
+#         .rename(columns={"__metric__": "sales"})
+#         .merge(
+#             cogs_by[["sku", "__metric__"]]
+#             .rename(columns={"__metric__": "cogs"}),
+#             on="sku",
+#             how="outer"
+#         )
+#         .merge(
+#             fee_by[["sku", "__metric__"]]
+#             .rename(columns={"__metric__": "amazon_fee"}),
+#             on="sku",
+#             how="outer"
+#         )
+#         .merge(
+#             tax_by[["sku", "__metric__"]]
+#             .rename(columns={"__metric__": "net_taxes"}),
+#             on="sku",
+#             how="outer"
+#         )
+#         .merge(
+#             credits_by[["sku", "__metric__"]]
+#             .rename(columns={"__metric__": "net_credits"}),
+#             on="sku",
+#             how="outer"
+#         )
+#         .fillna(0.0)
+#     )
+
+#     for col in (
+#         "sales",
+#         "cogs",
+#         "amazon_fee",
+#         "net_taxes",
+#         "net_credits",
+#     ):
+#         per[col] = safe_num(per[col])
+
+#     per["__metric__"] = (
+#         per["sales"]
+#         - per["cogs"].abs()
+#         - per["amazon_fee"].abs()
+#         - per["net_taxes"].abs()
+#         + per["net_credits"]
+#     )
+
+#     comps = [
+#         "sales",
+#         "cogs",
+#         "amazon_fee",
+#         "net_taxes",
+#         "net_credits",
+#     ]
+
+#     total = float(per["__metric__"].sum())
+
+#     return (
+#         total,
+#         per[["sku", "__metric__", *comps]],
+#         comps,
+#     )
+
+
 def us_profit(
     df: pd.DataFrame,
     *,
@@ -1417,11 +1792,8 @@ def us_profit(
     sales_total, sales_by, _ = us_sales(df, country=country)
     cogs_total, cogs_by, _ = us_cogs(df, country=country)
     fee_total, fee_by, _ = us_amazon_fee(df, country=country)
-
-    tax_credit_total, tax_credit_by, _ = us_tax_and_credits(
-        df,
-        country=country
-    )
+    tax_total, tax_by, _ = us_tax(df, country=country)
+    credits_total, credits_by, _ = us_credits(df, country=country)
 
     per = (
         sales_by[["sku", "__metric__"]]
@@ -1430,19 +1802,25 @@ def us_profit(
             cogs_by[["sku", "__metric__"]]
             .rename(columns={"__metric__": "cogs"}),
             on="sku",
-            how="outer"
+            how="outer",
         )
         .merge(
             fee_by[["sku", "__metric__"]]
             .rename(columns={"__metric__": "amazon_fee"}),
             on="sku",
-            how="outer"
+            how="outer",
         )
         .merge(
-            tax_credit_by[["sku", "__metric__"]]
-            .rename(columns={"__metric__": "tex_and_credits"}),
+            tax_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "net_taxes"}),
             on="sku",
-            how="outer"
+            how="outer",
+        )
+        .merge(
+            credits_by[["sku", "__metric__"]]
+            .rename(columns={"__metric__": "net_credits"}),
+            on="sku",
+            how="outer",
         )
         .fillna(0.0)
     )
@@ -1451,22 +1829,28 @@ def us_profit(
         "sales",
         "cogs",
         "amazon_fee",
-        "tex_and_credits",
+        "net_taxes",
+        "net_credits",
     ):
         per[col] = safe_num(per[col])
 
+    # Profit formula:
+    # Sales - absolute COGS - absolute Amazon fees
+    #       - absolute taxes + credits
     per["__metric__"] = (
         per["sales"]
         - per["cogs"].abs()
         - per["amazon_fee"].abs()
-        + per["tex_and_credits"].abs()
+        - per["net_taxes"].abs()
+        + per["net_credits"]
     )
 
     comps = [
         "sales",
         "cogs",
         "amazon_fee",
-        "tex_and_credits",
+        "net_taxes",
+        "net_credits",
     ]
 
     total = float(per["__metric__"].sum())
@@ -1476,6 +1860,7 @@ def us_profit(
         per[["sku", "__metric__", *comps]],
         comps,
     )
+
 
 
 def us_all(df: pd.DataFrame) -> dict:

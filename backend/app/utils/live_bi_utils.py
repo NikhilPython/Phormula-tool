@@ -17,6 +17,9 @@ from app.utils.formulas_utils import (
     uk_sales,
     uk_credits,
     uk_profit,
+    us_sales,
+    us_profit,
+    us_tax_and_credits,
     sku_mask,
     safe_num,
     uk_platform_fee,
@@ -1145,7 +1148,35 @@ def attach_adsdaily_mtd_ads_to_growth_rows(
 
 
 
-def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
+def _normalise_formula_country(country: str | None) -> str:
+    country_key = str(country or "uk").strip().lower()
+    aliases = {
+        "usa": "us",
+        "united states": "us",
+        "united states of america": "us",
+        "gb": "uk",
+        "great britain": "uk",
+        "united kingdom": "uk",
+    }
+    return aliases.get(country_key, country_key)
+
+
+def _shipment_type_mask(df: pd.DataFrame) -> pd.Series:
+    if df is None:
+        return pd.Series(dtype=bool)
+
+    if df.empty or "type" not in df.columns:
+        return pd.Series(False, index=df.index)
+
+    return (
+        df["type"]
+        .fillna("")
+        .astype(str)
+        .str.contains("shipment", case=False, na=False, regex=False)
+    )
+
+
+def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") -> list:
     """
     Given a raw settlement-style DataFrame with columns like:
       sku, quantity, product_sales, taxes, credits, rebates, etc.
@@ -1202,11 +1233,15 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
 
     # ---- quantity per SKU ----
     if "quantity" in df.columns:
-        qty_df = (
-            df.assign(quantity=safe_num(df["quantity"]))
-              .groupby("sku", as_index=False)["quantity"]
-              .sum()
+        base_qty_df = df[["sku"]].drop_duplicates()
+        shipment_qty_df = (
+            df.loc[_shipment_type_mask(df)]
+            .assign(quantity=lambda x: safe_num(x["quantity"]))
+            .groupby("sku", as_index=False)["quantity"]
+            .sum()
         )
+        qty_df = base_qty_df.merge(shipment_qty_df, on="sku", how="left")
+        qty_df["quantity"] = safe_num(qty_df.get("quantity", 0.0))
     else:
         qty_df = pd.DataFrame(columns=["sku", "quantity"])
 
@@ -1256,27 +1291,55 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     else:
         name_df = pd.DataFrame(columns=["sku", "product_name"])
 
-    # ---- sales, credits, profit per SKU via formula_utils ----
-    # ---- net_sales per SKU: product_sales + promotional_rebates ----
-    df["net_sales"] = (
-        safe_num(df.get("product_sales", 0.0))
-        + safe_num(df.get("promotional_rebates", 0.0))
-    )
+    country_key = _normalise_formula_country(country)
 
-    sales_by = (
-        df.groupby("sku", as_index=False)["net_sales"]
-        .sum()
-        .rename(columns={"net_sales": "sales_metric"})
-    )
+    if country_key == "us":
+        _, sales_by, _ = us_sales(df, country=country_key)
+        _, tax_credit_by, _ = us_tax_and_credits(df, country=country_key)
+        _, profit_by, _ = us_profit(df, country=country_key)
 
-    # ---- credits, profit per SKU via formula_utils ----
-    _, credits_by, _ = uk_credits(df)
-    _, profit_by, _ = uk_profit(df)
+        if sales_by is not None and not sales_by.empty:
+            sales_by = sales_by.rename(columns={"__metric__": "sales_metric"})
+        else:
+            sales_by = pd.DataFrame(columns=["sku", "sales_metric"])
 
-    if credits_by is not None and not credits_by.empty:
-        credits_by = credits_by.rename(columns={"__metric__": "credits_metric"})
+        if tax_credit_by is not None and not tax_credit_by.empty:
+            tax_credit_by = tax_credit_by.rename(columns={"__metric__": "tax_credit_metric"})
+        else:
+            tax_credit_by = pd.DataFrame(columns=["sku", "tax_credit_metric"])
     else:
-        credits_by = pd.DataFrame(columns=["sku", "credits_metric"])
+        # Keep the established UK previous-period behavior unchanged.
+        df["net_sales"] = (
+            safe_num(df.get("product_sales", 0.0))
+            + safe_num(df.get("promotional_rebates", 0.0))
+        )
+
+        sales_by = (
+            df.groupby("sku", as_index=False)["net_sales"]
+            .sum()
+            .rename(columns={"net_sales": "sales_metric"})
+        )
+
+        # _, tax_credit_by, _ = uk_credits(df)
+        # _, profit_by, _ = uk_profit(df)
+
+        _, tax_credit_by, _ = uk_credits(
+            df,
+            country=country_key,
+        )
+
+        _, profit_by, _ = uk_profit(
+            df,
+            country=country_key,
+            debug=False,
+        )
+
+
+
+        if tax_credit_by is not None and not tax_credit_by.empty:
+            tax_credit_by = tax_credit_by.rename(columns={"__metric__": "tax_credit_metric"})
+        else:
+            tax_credit_by = pd.DataFrame(columns=["sku", "tax_credit_metric"])
 
     if profit_by is not None and not profit_by.empty:
         profit_by = profit_by.rename(columns={"__metric__": "profit_metric"})
@@ -1292,7 +1355,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
         .merge(gross_sales_df, on="sku", how="left")  # ✅ NEW
         .merge(amazon_fees_df, on="sku", how="left")  # ✅ NEW
         .merge(sales_by[["sku", "sales_metric"]], on="sku", how="left")
-        .merge(credits_by[["sku", "credits_metric"]], on="sku", how="left")
+        .merge(tax_credit_by[["sku", "tax_credit_metric"]], on="sku", how="left")
         .merge(profit_by[["sku", "profit_metric"]], on="sku", how="left")
     )
 
@@ -1305,11 +1368,10 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
     metrics["selling_fees"] = safe_num(metrics.get("selling_fees", 0.0))
     metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
     metrics["sales_metric"] = safe_num(metrics.get("sales_metric", 0.0))
-    metrics["credits_metric"] = safe_num(metrics.get("credits_metric", 0.0))
+    metrics["tax_credit_metric"] = safe_num(metrics.get("tax_credit_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
 
-    # ✅ tax_and_credits comes from uk_credits()
-    metrics["tax_and_credits"] = metrics["credits_metric"]
+    metrics["tax_and_credits"] = metrics["tax_credit_metric"]
 
     metrics["net_sales"] = metrics["sales_metric"]
     metrics["profit"] = metrics["profit_metric"]
@@ -1361,9 +1423,11 @@ def compute_sku_metrics_from_df(df: pd.DataFrame) -> list:
 
 
 def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date):
+    country_key = _normalise_formula_country(country)
+
     table_name = construct_prev_table_name(
         user_id=user_id,
-        country=country,
+        country=country_key,
         month=prev_start.month,
         year=prev_start.year,
     )
@@ -1394,7 +1458,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         df = pd.DataFrame(rows, columns=result.keys())
 
     # 1) per-SKU metrics (now includes gross_sales if you updated compute_sku_metrics_from_df)
-    sku_metrics = compute_sku_metrics_from_df(df)
+    sku_metrics = compute_sku_metrics_from_df(df, country=country_key)
 
     # ------------------------------------------------------------
     # ✅ Fee extraction for PREVIOUS PERIOD (robust, like liveorders)
@@ -1490,8 +1554,9 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         for d in sorted(tmp_all["date_only"].unique()):
             day_all = tmp_all[tmp_all["date_only"] == d]
             day_sku = tmp_sku[tmp_sku["date_only"] == d]
+            day_sku_shipments = day_sku.loc[_shipment_type_mask(day_sku)]
 
-            quantity = float(safe_num(day_sku.get("quantity", 0)).sum()) if len(day_sku) else 0.0
+            quantity = float(safe_num(day_sku_shipments.get("quantity", 0)).sum()) if len(day_sku_shipments) else 0.0
             product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
             cogs = float(
                 safe_num(day_sku.get("cost_of_unit_sold", 0)).sum()
@@ -1516,16 +1581,26 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 - safe_num(day_sku.get("promotional_rebates_tax", 0.0)).abs()
             ).sum()) if len(day_sku) else 0.0
 
-            # sales/profit based on SKU rows (keeps your earlier behavior)
-            # ✅ net_sales same as other route: product_sales + promotional_rebates
+            # sales/profit based on SKU rows (keeps your earlier behavior for UK)
             sales_df = day_sku if len(day_sku) else day_all
 
-            net_sales = float((
-                safe_num(sales_df.get("product_sales", 0.0))
-                + safe_num(sales_df.get("promotional_rebates", 0.0))
-            ).sum())
+            if country_key == "us":
+                net_sales, _, _ = us_sales(sales_df, country=country_key)
+                profit, _, _ = us_profit(sales_df, country=country_key)
+            else:
+                net_sales = float((
+                    safe_num(sales_df.get("product_sales", 0.0))
+                    + safe_num(sales_df.get("promotional_rebates", 0.0))
+                ).sum())
 
-            profit, _, _ = uk_profit(sales_df)
+                # profit, _, _ = uk_profit(sales_df)
+
+                profit, _, _ = uk_profit(
+                    sales_df,
+                    country=country_key,
+                    debug=False,
+                )
+
 
             # ✅ FIXED: fees computed on ALL rows using hist classifier (NOT uk_platform_fee/uk_advertising)
             platform_fee_total, advertising_total = _calc_fees_from_hist(day_all)
