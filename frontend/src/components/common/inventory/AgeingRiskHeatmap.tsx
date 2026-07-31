@@ -59,6 +59,7 @@ export type AgeingRiskHeatmapRow = {
     isOthersRow?: boolean;
     isTotalRow?: boolean;
     isPercentageRow?: boolean;
+    isDummyRow?: boolean;
 
     [bucketKey: string]: string | number | boolean | undefined;
 };
@@ -618,7 +619,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 productName !== "grand total" &&
                 sku !== "total" &&
                 sku !== "grand total" &&
-                hasAnyDisplayBucketValue(row)
+                (row.isDummyRow === true || hasAnyDisplayBucketValue(row))
             );
         });
 

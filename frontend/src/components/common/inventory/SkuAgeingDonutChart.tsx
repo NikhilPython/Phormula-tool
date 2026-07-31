@@ -217,7 +217,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                     {finalTotal.toLocaleString()}
                                 </td>
                                 <td className="border-t border-slate-300 px-2 py-1.5 text-center">
-                                    100%
+                                    {finalTotal > 0 ? "100%" : "0.00%"}
                                 </td>
                             </tr>
                         </tbody>
