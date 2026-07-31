@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os, re, io, csv, time, gzip, logging , jwt, calendar, requests
+import os, re, io, csv, time, gzip, logging, json, jwt, calendar, requests
 from datetime import datetime, date, timezone
 from typing import Optional
 from dotenv import find_dotenv, load_dotenv
@@ -5502,7 +5502,19 @@ def fetch_aged_inventory_surcharge():
 #         if _awd_iso_year(shipment.get("createdAt")) == requested_year
 #     ]
 
-#     export_format = (request.args.get("format") or "json").strip().lower()
+#     db_result = {"saved_rows": 0, "table": "public.inventory_awd_inbound_shipments"}
+    if store_in_db and complete_items:
+        try:
+            db_result["saved_rows"] = _save_awd_inbound_shipments(
+                complete_items=complete_items,
+                user_id=user_id,
+                marketplace_id=mp,
+            )
+        except Exception as exc:
+            logger.exception("Failed to save AWD inbound shipments")
+            db_result["error"] = str(exc)
+
+    export_format = (request.args.get("format") or "json").strip().lower()
 #     include_details = (request.args.get("include_details") or "true").strip().lower() != "false"
 
 #     if export_format == "excel":
@@ -5950,6 +5962,259 @@ def _build_awd_complete_shipments_excel(
     return stream
 
 
+
+
+def _ensure_awd_inbound_shipments_table(conn) -> None:
+    """Create/upgrade SKU-level AWD inbound shipment table in DATABASE_AMAZON_URL."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS public.inventory_awd_inbound_shipments (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            marketplace_id TEXT NOT NULL,
+            shipment_id TEXT NOT NULL,
+            order_id TEXT,
+            external_reference_id TEXT,
+            shipment_status TEXT,
+            warehouse_reference_id TEXT,
+            carrier_code_type TEXT,
+            carrier_code_value TEXT,
+            sku TEXT,
+            asin TEXT,
+            expected_case_quantity BIGINT NOT NULL DEFAULT 0,
+            received_case_quantity BIGINT NOT NULL DEFAULT 0,
+            case_difference BIGINT NOT NULL DEFAULT 0,
+            units_per_case BIGINT NOT NULL DEFAULT 0,
+            expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
+            received_unit_quantity BIGINT NOT NULL DEFAULT 0,
+            expiration_date TEXT,
+            lot_code TEXT,
+            prep_category TEXT,
+            prep_owner TEXT,
+            label_owner TEXT,
+            created_at TIMESTAMPTZ,
+            updated_at TIMESTAMPTZ,
+            ship_by TIMESTAMPTZ,
+            origin_address JSONB NOT NULL DEFAULT '{}'::jsonb,
+            destination_address JSONB NOT NULL DEFAULT '{}'::jsonb,
+            sku_quantity_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            container_product_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            shipment_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    conn.execute(text("""
+        ALTER TABLE public.inventory_awd_inbound_shipments
+            ADD COLUMN IF NOT EXISTS sku TEXT,
+            ADD COLUMN IF NOT EXISTS asin TEXT,
+            ADD COLUMN IF NOT EXISTS expected_case_quantity BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS received_case_quantity BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS case_difference BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS units_per_case BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS received_unit_quantity BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS expiration_date TEXT,
+            ADD COLUMN IF NOT EXISTS lot_code TEXT,
+            ADD COLUMN IF NOT EXISTS prep_category TEXT,
+            ADD COLUMN IF NOT EXISTS prep_owner TEXT,
+            ADD COLUMN IF NOT EXISTS label_owner TEXT,
+            ADD COLUMN IF NOT EXISTS sku_quantity_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS container_product_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS origin_address JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS destination_address JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS shipment_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+            ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """))
+
+    # Remove the old one-row-per-shipment uniqueness rule, then create SKU-level uniqueness.
+    conn.execute(text("""
+        ALTER TABLE public.inventory_awd_inbound_shipments
+        DROP CONSTRAINT IF EXISTS uq_inventory_awd_inbound_shipment
+    """))
+    conn.execute(text("""
+        DROP INDEX IF EXISTS public.uq_inventory_awd_inbound_shipment_idx
+    """))
+    conn.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_awd_inbound_shipment_sku_idx
+        ON public.inventory_awd_inbound_shipments
+            (user_id, marketplace_id, shipment_id, sku)
+        WHERE sku IS NOT NULL AND TRIM(sku) <> ''
+    """))
+
+
+def _save_awd_inbound_shipments(
+    complete_items: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> int:
+    """Replace current marketplace data with one DB row per shipment SKU."""
+    if not complete_items:
+        return 0
+
+    insert_sql = text("""
+        INSERT INTO public.inventory_awd_inbound_shipments (
+            user_id, marketplace_id, shipment_id, order_id,
+            external_reference_id, shipment_status, warehouse_reference_id,
+            carrier_code_type, carrier_code_value,
+            sku, asin,
+            expected_case_quantity, received_case_quantity, case_difference,
+            units_per_case, expected_unit_quantity, received_unit_quantity,
+            expiration_date, lot_code, prep_category, prep_owner, label_owner,
+            created_at, updated_at, ship_by,
+            origin_address, destination_address,
+            sku_quantity_json, container_product_json,
+            summary_json, shipment_json, synced_at
+        ) VALUES (
+            :user_id, :marketplace_id, :shipment_id, :order_id,
+            :external_reference_id, :shipment_status, :warehouse_reference_id,
+            :carrier_code_type, :carrier_code_value,
+            :sku, :asin,
+            :expected_case_quantity, :received_case_quantity, :case_difference,
+            :units_per_case, :expected_unit_quantity, :received_unit_quantity,
+            :expiration_date, :lot_code, :prep_category, :prep_owner, :label_owner,
+            CAST(:created_at AS TIMESTAMPTZ), CAST(:updated_at AS TIMESTAMPTZ),
+            CAST(:ship_by AS TIMESTAMPTZ),
+            CAST(:origin_address AS JSONB), CAST(:destination_address AS JSONB),
+            CAST(:sku_quantity_json AS JSONB), CAST(:container_product_json AS JSONB),
+            CAST(:summary_json AS JSONB), CAST(:shipment_json AS JSONB), NOW()
+        )
+        ON CONFLICT (user_id, marketplace_id, shipment_id, sku)
+        WHERE sku IS NOT NULL AND TRIM(sku) <> ''
+        DO UPDATE SET
+            order_id = EXCLUDED.order_id,
+            external_reference_id = EXCLUDED.external_reference_id,
+            shipment_status = EXCLUDED.shipment_status,
+            warehouse_reference_id = EXCLUDED.warehouse_reference_id,
+            carrier_code_type = EXCLUDED.carrier_code_type,
+            carrier_code_value = EXCLUDED.carrier_code_value,
+            asin = EXCLUDED.asin,
+            expected_case_quantity = EXCLUDED.expected_case_quantity,
+            received_case_quantity = EXCLUDED.received_case_quantity,
+            case_difference = EXCLUDED.case_difference,
+            units_per_case = EXCLUDED.units_per_case,
+            expected_unit_quantity = EXCLUDED.expected_unit_quantity,
+            received_unit_quantity = EXCLUDED.received_unit_quantity,
+            expiration_date = EXCLUDED.expiration_date,
+            lot_code = EXCLUDED.lot_code,
+            prep_category = EXCLUDED.prep_category,
+            prep_owner = EXCLUDED.prep_owner,
+            label_owner = EXCLUDED.label_owner,
+            created_at = EXCLUDED.created_at,
+            updated_at = EXCLUDED.updated_at,
+            ship_by = EXCLUDED.ship_by,
+            origin_address = EXCLUDED.origin_address,
+            destination_address = EXCLUDED.destination_address,
+            sku_quantity_json = EXCLUDED.sku_quantity_json,
+            container_product_json = EXCLUDED.container_product_json,
+            summary_json = EXCLUDED.summary_json,
+            shipment_json = EXCLUDED.shipment_json,
+            synced_at = NOW()
+    """)
+
+    saved = 0
+    with amazon_conn() as conn:
+        _ensure_awd_inbound_shipments_table(conn)
+
+        # Clear old shipment-level rows and stale SKU rows for this user/marketplace.
+        conn.execute(text("""
+            DELETE FROM public.inventory_awd_inbound_shipments
+            WHERE user_id = :user_id AND marketplace_id = :marketplace_id
+        """), {"user_id": int(user_id), "marketplace_id": marketplace_id})
+
+        for item in complete_items:
+            summary = item.get("summary") or {}
+            shipment = item.get("shipment") or {}
+            shipment_id = str(
+                item.get("shipment_id")
+                or shipment.get("shipmentId")
+                or summary.get("shipmentId")
+                or ""
+            ).strip()
+            if not shipment_id:
+                continue
+
+            carrier = shipment.get("carrierCode") or summary.get("carrierCode") or {}
+            sku_rows = shipment.get("shipmentSkuQuantities") or []
+
+            # Container details provide ASIN, units/case, expiration and prep fields.
+            container_by_sku: dict[str, dict] = {}
+            for container in shipment.get("shipmentContainerQuantities") or []:
+                if not isinstance(container, dict):
+                    continue
+                package = container.get("distributionPackage") or {}
+                products = ((package.get("contents") or {}).get("products") or [])
+                for product in products:
+                    if not isinstance(product, dict):
+                        continue
+                    sku_key = str(product.get("sku") or "").strip()
+                    if not sku_key:
+                        continue
+                    attributes = product.get("attributes") or []
+                    asin = next((a.get("value") for a in attributes if isinstance(a, dict) and a.get("name") == "asin"), None)
+                    prep = product.get("prepDetails") or {}
+                    container_by_sku[sku_key] = {
+                        "asin": asin,
+                        "units_per_case": _safe_int(product.get("quantity")),
+                        "expiration": product.get("expiration"),
+                        "lot_code": product.get("lotCode") or product.get("lot_code"),
+                        "prep_category": prep.get("prepCategory"),
+                        "prep_owner": prep.get("prepOwner"),
+                        "label_owner": prep.get("labelOwner"),
+                        "raw": product,
+                    }
+
+            for sku_row in sku_rows:
+                if not isinstance(sku_row, dict):
+                    continue
+                sku = str(sku_row.get("sku") or "").strip()
+                if not sku:
+                    continue
+
+                expected_cases = _safe_int((sku_row.get("expectedQuantity") or {}).get("quantity"))
+                received_cases = _safe_int((sku_row.get("receivedQuantity") or {}).get("quantity"))
+                extra = container_by_sku.get(sku, {})
+                units_per_case = _safe_int(extra.get("units_per_case"))
+
+                conn.execute(insert_sql, {
+                    "user_id": int(user_id),
+                    "marketplace_id": marketplace_id,
+                    "shipment_id": shipment_id,
+                    "order_id": shipment.get("orderId") or summary.get("orderId"),
+                    "external_reference_id": shipment.get("externalReferenceId") or summary.get("externalReferenceId"),
+                    "shipment_status": shipment.get("shipmentStatus") or summary.get("shipmentStatus") or shipment.get("status") or summary.get("status"),
+                    "warehouse_reference_id": shipment.get("warehouseReferenceId") or summary.get("warehouseReferenceId"),
+                    "carrier_code_type": carrier.get("carrierCodeType") if isinstance(carrier, dict) else None,
+                    "carrier_code_value": carrier.get("carrierCodeValue") if isinstance(carrier, dict) else None,
+                    "sku": sku,
+                    "asin": extra.get("asin"),
+                    "expected_case_quantity": expected_cases,
+                    "received_case_quantity": received_cases,
+                    "case_difference": expected_cases - received_cases,
+                    "units_per_case": units_per_case,
+                    "expected_unit_quantity": expected_cases * units_per_case,
+                    "received_unit_quantity": received_cases * units_per_case,
+                    "expiration_date": extra.get("expiration"),
+                    "lot_code": extra.get("lot_code"),
+                    "prep_category": extra.get("prep_category"),
+                    "prep_owner": extra.get("prep_owner"),
+                    "label_owner": extra.get("label_owner"),
+                    "created_at": shipment.get("createdAt") or summary.get("createdAt"),
+                    "updated_at": shipment.get("updatedAt") or summary.get("updatedAt"),
+                    "ship_by": shipment.get("shipBy") or summary.get("shipBy"),
+                    "origin_address": json.dumps(shipment.get("originAddress") or {}, default=str),
+                    "destination_address": json.dumps(shipment.get("destinationAddress") or {}, default=str),
+                    "sku_quantity_json": json.dumps(sku_row, default=str),
+                    "container_product_json": json.dumps(extra.get("raw") or {}, default=str),
+                    "summary_json": json.dumps(summary, default=str),
+                    "shipment_json": json.dumps(shipment, default=str),
+                })
+                saved += 1
+
+    return saved
+
+
 @inventory_bp.route("/amazon_api/awd/inbound-shipments-complete", methods=["GET"])
 def get_all_awd_inbound_shipments_complete():
     """
@@ -6060,6 +6325,7 @@ def get_all_awd_inbound_shipments_complete():
         }), 400
 
     supplied_next_token = (request.args.get("next_token") or "").strip()
+    store_in_db = request.args.get("store_in_db", "true").strip().lower() != "false"
 
     base_params = {"maxResults": max_results}
     if shipment_status:
@@ -6196,6 +6462,23 @@ def get_all_awd_inbound_shipments_complete():
             "shipment": shipment_detail,
         })
 
+    # ---------------- STORE COMPLETE SHIPMENT DATA ----------------
+    db_result = {
+        "table": "public.inventory_awd_inbound_shipments",
+        "saved_rows": 0,
+    }
+
+    if store_in_db and complete_items:
+        try:
+            db_result["saved_rows"] = _save_awd_inbound_shipments(
+                complete_items=complete_items,
+                user_id=int(user_id),
+                marketplace_id=mp,
+            )
+        except Exception as exc:
+            logger.exception("Failed to save AWD inbound shipments")
+            db_result["error"] = str(exc)
+
     export_format = (request.args.get("format") or "json").strip().lower()
 
     if export_format == "excel":
@@ -6229,6 +6512,8 @@ def get_all_awd_inbound_shipments_complete():
         "shipment_count": len(deduped_shipments),
         "detail_count": len(complete_items),
         "detail_error_count": len(detail_errors),
+        "store_in_db": store_in_db,
+        "db": db_result,
         "next_token": next_token,
         "items": complete_items,
         "detail_errors": detail_errors,
