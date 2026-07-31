@@ -517,9 +517,14 @@ def upload():
 
     
     # Calculate cost_of_unit_sold where both values are not null
-    df['cost_of_unit_sold'] = df.apply(lambda row: row['price_in_gbp'] * row['quantity'] 
-                                      if pd.notnull(row['price_in_gbp']) and pd.notnull(row['quantity']) 
-                                      else None, axis=1)
+    df['cost_of_unit_sold'] = df.apply(
+        lambda row: row['price_in_gbp'] * row['quantity']
+        if str(row.get('type', '')).strip().lower() == 'shipment'
+        and pd.notnull(row['price_in_gbp'])
+        and pd.notnull(row['quantity'])
+        else 0.0,
+        axis=1
+    )
 
     df.drop(columns=['price'], inplace=True)
 
@@ -902,9 +907,14 @@ def upload():
                 df['price_in_gbp'] = None  # Or handle fallback logic if conversion rate not found
 
             # Calculate cost_of_unit_sold where both values are not null
-            df['cost_of_unit_sold'] = df.apply(lambda row: row['price_in_gbp'] * row['quantity'] 
-                                          if pd.notnull(row['price_in_gbp']) and pd.notnull(row['quantity']) 
-                                          else None, axis=1)
+            df['cost_of_unit_sold'] = df.apply(
+                lambda row: row['price_in_gbp'] * row['quantity']
+                if str(row.get('type', '')).strip().lower() == 'shipment'
+                and pd.notnull(row['price_in_gbp'])
+                and pd.notnull(row['quantity'])
+                else 0.0,
+                axis=1
+            )
 
             df.drop(columns=['price'], inplace=True)
 
@@ -937,6 +947,30 @@ def upload():
 
             if referral_fees is not None:
                 df_modified = apply_modifications(df, country)
+
+                # IMPORTANT: apply_modifications may recalculate COGS for every row.
+                # Re-apply shipment-only COGS so Refund/FBA reimbursement/other rows stay zero.
+                type_normalized = (
+                    df_modified['type']
+                    .fillna('')
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                )
+                shipment_mask = type_normalized.eq('shipment')
+
+                df_modified['price_in_gbp'] = pd.to_numeric(
+                    df_modified['price_in_gbp'], errors='coerce'
+                )
+                df_modified['quantity'] = pd.to_numeric(
+                    df_modified['quantity'], errors='coerce'
+                )
+
+                df_modified['cost_of_unit_sold'] = 0.0
+                df_modified.loc[shipment_mask, 'cost_of_unit_sold'] = (
+                    df_modified.loc[shipment_mask, 'price_in_gbp'].fillna(0.0)
+                    * df_modified.loc[shipment_mask, 'quantity'].fillna(0.0)
+                )
                 
                 # Ensure numeric columns are properly converted before saving to database
                 for col in numeric_columns:

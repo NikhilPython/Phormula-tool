@@ -1263,10 +1263,16 @@ def run_upload_pipeline_from_df(
     df["quantity"] = pd.to_numeric(df.get("quantity"), errors="coerce")
 
     df["cost_of_unit_sold"] = df.apply(
-        lambda row: row["price_in_gbp"] * row["quantity"]
-        if pd.notnull(row.get("price_in_gbp")) and pd.notnull(row.get("quantity"))
-        else None,
-        axis=1
+        lambda row: (
+            row["price_in_gbp"] * abs(float(row["quantity"]))
+            if (
+                str(row.get("type", "")).strip().lower() == "shipment"
+                and pd.notnull(row.get("price_in_gbp"))
+                and pd.notnull(row.get("quantity"))
+            )
+            else 0.0
+        ),
+        axis=1,
     )
 
     if "price" in df.columns:
@@ -1387,6 +1393,21 @@ def run_upload_pipeline_from_df(
 
     # apply modifications
     df_modified = apply_modifications_fatch(df_cons, country)
+
+    # Force Shipment-only COGS after apply_modifications_fatch()
+    if "price_in_gbp" in df_modified.columns:
+        df_modified["cost_of_unit_sold"] = df_modified.apply(
+            lambda row: (
+                row["price_in_gbp"] * abs(float(row["quantity"]))
+                if (
+                    str(row.get("type", "")).strip().lower() == "shipment"
+                    and pd.notnull(row.get("price_in_gbp"))
+                    and pd.notnull(row.get("quantity"))
+                )
+                else 0.0
+            ),
+            axis=1,
+        )
 
     if "selling_fees" in df_modified.columns:
         df_modified["selling_fees"] = -pd.to_numeric(
@@ -2974,7 +2995,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     # -------------------------
     # Per-SKU metrics (existing)
     # -------------------------
-    sku_metrics = compute_sku_metrics_from_df(df) or []
+    sku_metrics = compute_sku_metrics_from_df(df, country=country) or []
 
     # -------------------------
     # Totals (NOT day-wise)

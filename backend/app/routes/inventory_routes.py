@@ -5779,6 +5779,177 @@ def _awd_combined_error_response(response: dict, default_message: str):
     }), status_code
 
 
+
+
+def _build_awd_complete_shipments_excel(
+    complete_items: list[dict],
+    marketplace_id: str,
+    detail_errors: list[dict] | None = None,
+) -> io.BytesIO:
+    """Create an Excel workbook for complete AWD inbound shipment data."""
+    wb = Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "Shipments"
+
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    thin = Side(style="thin", color="D9E1F2")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    def style_sheet(ws):
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = border
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.border = border
+                cell.alignment = Alignment(vertical="top", wrap_text=True)
+        for column_cells in ws.columns:
+            letter = get_column_letter(column_cells[0].column)
+            max_len = max(len(str(c.value or "")) for c in column_cells)
+            ws.column_dimensions[letter].width = min(max(max_len + 2, 12), 45)
+
+    shipment_headers = [
+        "Marketplace ID", "Shipment ID", "Order ID", "External Reference ID",
+        "Shipment Status", "Warehouse Reference ID", "Carrier Code Type",
+        "Carrier Code Value", "Created At", "Updated At", "Ship By",
+        "Expected Cases", "Received Cases", "Case Difference",
+        "Origin Name", "Origin Address", "Destination Name", "Destination Address",
+    ]
+    ws_summary.append(shipment_headers)
+
+    ws_skus = wb.create_sheet("SKU Quantities")
+    ws_skus.append([
+        "Marketplace ID", "Shipment ID", "Order ID", "Shipment Status",
+        "SKU", "ASIN", "Expected Cases", "Received Cases", "Case Difference",
+        "Units Per Case", "Expected Units", "Received Units", "Expiration",
+        "Prep Category", "Prep Owner", "Label Owner",
+    ])
+
+    ws_containers = wb.create_sheet("Containers")
+    ws_containers.append([
+        "Marketplace ID", "Shipment ID", "Order ID", "Shipment Status",
+        "SKU", "ASIN", "Container Count", "Package Type", "Units Per Case",
+        "Total Units", "Expiration", "Length", "Width", "Height",
+        "Dimension Unit", "Weight", "Weight Unit", "Prep Category",
+    ])
+
+    def address_text(addr):
+        if not isinstance(addr, dict):
+            return ""
+        parts = [
+            addr.get("addressLine1"), addr.get("addressLine2"), addr.get("addressLine3"),
+            addr.get("city"), addr.get("district"), addr.get("stateOrRegion"),
+            addr.get("postalCode"), addr.get("countryCode"),
+        ]
+        return ", ".join(str(x).strip() for x in parts if str(x or "").strip())
+
+    for item in complete_items or []:
+        summary = item.get("summary") or {}
+        shipment = item.get("shipment") or {}
+        shipment_id = item.get("shipment_id") or shipment.get("shipmentId") or summary.get("shipmentId")
+        order_id = shipment.get("orderId") or summary.get("orderId")
+        status = shipment.get("shipmentStatus") or summary.get("shipmentStatus")
+        carrier = shipment.get("carrierCode") or {}
+        received_total = sum(
+            _safe_int(x.get("quantity"))
+            for x in (shipment.get("receivedQuantity") or [])
+            if isinstance(x, dict)
+        )
+        sku_quantities = shipment.get("shipmentSkuQuantities") or []
+        expected_total = sum(
+            _safe_int((x.get("expectedQuantity") or {}).get("quantity"))
+            for x in sku_quantities if isinstance(x, dict)
+        )
+        origin = shipment.get("originAddress") or {}
+        destination = shipment.get("destinationAddress") or {}
+
+        ws_summary.append([
+            marketplace_id, shipment_id, order_id,
+            shipment.get("externalReferenceId") or summary.get("externalReferenceId"),
+            status, shipment.get("warehouseReferenceId"),
+            carrier.get("carrierCodeType"), carrier.get("carrierCodeValue"),
+            shipment.get("createdAt") or summary.get("createdAt"),
+            shipment.get("updatedAt") or summary.get("updatedAt"),
+            shipment.get("shipBy"), expected_total, received_total,
+            expected_total - received_total, origin.get("name"), address_text(origin),
+            destination.get("name"), address_text(destination),
+        ])
+
+        container_by_sku = {}
+        for container in shipment.get("shipmentContainerQuantities") or []:
+            if not isinstance(container, dict):
+                continue
+            count = _safe_int(container.get("count"))
+            package = container.get("distributionPackage") or {}
+            measurements = package.get("measurements") or {}
+            dimensions = measurements.get("dimensions") or {}
+            weight = measurements.get("weight") or {}
+            products = ((package.get("contents") or {}).get("products") or [])
+            for product in products:
+                if not isinstance(product, dict):
+                    continue
+                sku = product.get("sku")
+                attributes = product.get("attributes") or []
+                asin = next((a.get("value") for a in attributes if isinstance(a, dict) and a.get("name") == "asin"), None)
+                units_per_case = _safe_int(product.get("quantity"))
+                prep = product.get("prepDetails") or {}
+                container_by_sku[str(sku or "").strip()] = {
+                    "asin": asin, "units_per_case": units_per_case,
+                    "expiration": product.get("expiration"),
+                    "prep_category": prep.get("prepCategory"),
+                    "prep_owner": prep.get("prepOwner"),
+                    "label_owner": prep.get("labelOwner"),
+                }
+                ws_containers.append([
+                    marketplace_id, shipment_id, order_id, status, sku, asin, count,
+                    package.get("type"), units_per_case, count * units_per_case,
+                    product.get("expiration"), dimensions.get("length"), dimensions.get("width"),
+                    dimensions.get("height"), dimensions.get("unitOfMeasurement"),
+                    weight.get("weight"), weight.get("unitOfMeasurement"),
+                    prep.get("prepCategory"),
+                ])
+
+        for sku_row in sku_quantities:
+            if not isinstance(sku_row, dict):
+                continue
+            sku = sku_row.get("sku")
+            expected = _safe_int((sku_row.get("expectedQuantity") or {}).get("quantity"))
+            received = _safe_int((sku_row.get("receivedQuantity") or {}).get("quantity"))
+            extra = container_by_sku.get(str(sku or "").strip(), {})
+            units_per_case = _safe_int(extra.get("units_per_case"))
+            ws_skus.append([
+                marketplace_id, shipment_id, order_id, status, sku, extra.get("asin"),
+                expected, received, expected - received, units_per_case,
+                expected * units_per_case, received * units_per_case,
+                extra.get("expiration"), extra.get("prep_category"),
+                extra.get("prep_owner"), extra.get("label_owner"),
+            ])
+
+    if detail_errors:
+        ws_errors = wb.create_sheet("Detail Errors")
+        ws_errors.append(["Shipment ID", "Error", "Amazon Status Code", "Amazon Request ID", "Amazon Errors"])
+        for error in detail_errors:
+            ws_errors.append([
+                error.get("shipment_id"), error.get("error"),
+                error.get("amazon_status_code"), error.get("amazon_request_id"),
+                str(error.get("amazon_errors") or ""),
+            ])
+        style_sheet(ws_errors)
+
+    for ws in (ws_summary, ws_skus, ws_containers):
+        style_sheet(ws)
+
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return stream
+
+
 @inventory_bp.route("/amazon_api/awd/inbound-shipments-complete", methods=["GET"])
 def get_all_awd_inbound_shipments_complete():
     """
@@ -6024,6 +6195,30 @@ def get_all_awd_inbound_shipments_complete():
             "summary": shipment_summary,
             "shipment": shipment_detail,
         })
+
+    export_format = (request.args.get("format") or "json").strip().lower()
+
+    if export_format == "excel":
+        excel_stream = _build_awd_complete_shipments_excel(
+            complete_items=complete_items,
+            marketplace_id=mp,
+            detail_errors=detail_errors,
+        )
+        status_suffix = f"_{shipment_status}" if shipment_status else ""
+        filename = f"AWD_Inbound_Shipments_Complete_{mp}{status_suffix}.xlsx"
+        return send_file(
+            excel_stream,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            max_age=0,
+        )
+
+    if export_format not in {"json", ""}:
+        return jsonify({
+            "success": False,
+            "error": "format must be json or excel",
+        }), 400
 
     return jsonify({
         "success": True,
