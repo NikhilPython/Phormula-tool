@@ -5,7 +5,7 @@ from datetime import datetime, date, timezone
 from typing import Optional
 from dotenv import find_dotenv, load_dotenv
 from sqlalchemy.orm import load_only
-from flask import request, jsonify, Blueprint
+from flask import request, jsonify, Blueprint, send_file
 from sqlalchemy.dialects.postgresql import insert, insert as pg_insert
 from sqlalchemy.exc import SQLAlchemyError
 from app import db
@@ -17,6 +17,9 @@ from app.utils.live_bi_utils import generate_inventory_alerts_for_all_skus
 from config import Config
 from contextlib import contextmanager
 from sqlalchemy import create_engine, text
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # ---------------------------------------------------------------------------
 # basic config
@@ -4876,4 +4879,869 @@ def fetch_aged_inventory_surcharge():
     }), 200
 
 
+
+
+# # =============================================================================
+# # AWD EXCEL EXPORT HELPERS
+# # =============================================================================
+
+# _AWD_XLSX_MIMETYPE = (
+#     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+# )
+# _AWD_HEADER_FILL = PatternFill(fill_type="solid", fgColor="1F4E78")
+# _AWD_HEADER_FONT = Font(color="FFFFFF", bold=True)
+# _AWD_TOTAL_FILL = PatternFill(fill_type="solid", fgColor="D9EAF7")
+# _AWD_ROW_BORDER = Border(bottom=Side(style="thin", color="D9E1F2"))
+
+
+# def _awd_quantity_value(value) -> float:
+#     if isinstance(value, dict):
+#         value = value.get("quantity")
+#     try:
+#         return float(value or 0)
+#     except (TypeError, ValueError):
+#         return 0.0
+
+
+# def _awd_quantity_unit(value) -> str:
+#     if not isinstance(value, dict):
+#         return ""
+#     return str(value.get("unitOfMeasurement") or "")
+
+
+# def _awd_product_attribute(product: dict, name: str):
+#     for attribute in product.get("attributes") or []:
+#         if str(attribute.get("name") or "").strip().lower() == name.lower():
+#             return attribute.get("value")
+#     return None
+
+
+# def _awd_style_sheet(ws, freeze_panes: str = "A2") -> None:
+#     ws.sheet_view.showGridLines = False
+#     ws.freeze_panes = freeze_panes
+
+#     if ws.max_row >= 1 and ws.max_column >= 1:
+#         ws.auto_filter.ref = ws.dimensions
+
+#     for cell in ws[1]:
+#         cell.fill = _AWD_HEADER_FILL
+#         cell.font = _AWD_HEADER_FONT
+#         cell.alignment = Alignment(
+#             horizontal="center",
+#             vertical="center",
+#             wrap_text=True,
+#         )
+
+#     ws.row_dimensions[1].height = 30
+
+#     for row in ws.iter_rows(min_row=2):
+#         for cell in row:
+#             cell.alignment = Alignment(vertical="top", wrap_text=True)
+#             cell.border = _AWD_ROW_BORDER
+
+#     for column_cells in ws.columns:
+#         letter = get_column_letter(column_cells[0].column)
+#         max_length = 0
+#         for cell in column_cells:
+#             if cell.value is not None:
+#                 max_length = max(max_length, len(str(cell.value)))
+#         ws.column_dimensions[letter].width = min(max(max_length + 2, 12), 45)
+
+
+# def _awd_workbook_stream(workbook: Workbook) -> io.BytesIO:
+#     output = io.BytesIO()
+#     workbook.save(output)
+#     output.seek(0)
+#     return output
+
+
+# def _build_awd_shipment_list_excel(shipments: list[dict], marketplace_id: str) -> io.BytesIO:
+#     workbook = Workbook()
+#     ws = workbook.active
+#     ws.title = "Inbound Shipments"
+#     ws.append([
+#         "Marketplace ID",
+#         "Shipment ID",
+#         "Order ID",
+#         "External Reference ID",
+#         "Shipment Status",
+#         "Created At",
+#         "Updated At",
+#     ])
+
+#     for shipment in shipments:
+#         ws.append([
+#             marketplace_id,
+#             shipment.get("shipmentId"),
+#             shipment.get("orderId"),
+#             shipment.get("externalReferenceId"),
+#             shipment.get("shipmentStatus"),
+#             shipment.get("createdAt"),
+#             shipment.get("updatedAt"),
+#         ])
+
+#     _awd_style_sheet(ws)
+
+#     summary_ws = workbook.create_sheet("Summary")
+#     summary_ws.append(["Field", "Value"])
+#     summary_ws.append(["Marketplace ID", marketplace_id])
+#     summary_ws.append(["Total Shipments", len(shipments)])
+
+#     status_counts: dict[str, int] = {}
+#     for shipment in shipments:
+#         status = str(shipment.get("shipmentStatus") or "UNKNOWN")
+#         status_counts[status] = status_counts.get(status, 0) + 1
+
+#     for status, count in sorted(status_counts.items()):
+#         summary_ws.append([f"{status} Shipments", count])
+
+#     _awd_style_sheet(summary_ws)
+#     return _awd_workbook_stream(workbook)
+
+
+# def _build_awd_shipment_detail_excel(shipment: dict, marketplace_id: str) -> io.BytesIO:
+#     workbook = Workbook()
+
+#     summary_ws = workbook.active
+#     summary_ws.title = "Shipment Summary"
+#     summary_ws.append(["Field", "Value"])
+
+#     carrier = shipment.get("carrierCode") or {}
+#     received_quantities = shipment.get("receivedQuantity") or []
+#     total_received = sum(_awd_quantity_value(item) for item in received_quantities)
+#     received_unit = _awd_quantity_unit(received_quantities[0]) if received_quantities else ""
+
+#     summary_rows = [
+#         ("Marketplace ID", marketplace_id),
+#         ("Shipment ID", shipment.get("shipmentId")),
+#         ("Order ID", shipment.get("orderId")),
+#         ("External Reference ID", shipment.get("externalReferenceId")),
+#         ("Warehouse Reference ID", shipment.get("warehouseReferenceId")),
+#         ("Shipment Status", shipment.get("shipmentStatus")),
+#         ("Created At", shipment.get("createdAt")),
+#         ("Updated At", shipment.get("updatedAt")),
+#         ("Ship By", shipment.get("shipBy")),
+#         ("Tracking ID", shipment.get("trackingId")),
+#         ("Destination Region", shipment.get("destinationRegion")),
+#         ("Carrier Code Type", carrier.get("carrierCodeType")),
+#         ("Carrier Code Value", carrier.get("carrierCodeValue")),
+#         ("Total Received Quantity", total_received),
+#         ("Received Unit", received_unit),
+#     ]
+#     for label, value in summary_rows:
+#         summary_ws.append([label, "" if value is None else value])
+#     _awd_style_sheet(summary_ws)
+
+#     sku_ws = workbook.create_sheet("SKU Quantities")
+#     sku_ws.append([
+#         "Marketplace ID",
+#         "Shipment ID",
+#         "SKU",
+#         "Expected Quantity",
+#         "Expected Unit",
+#         "Received Quantity",
+#         "Received Unit",
+#         "Difference",
+#         "Receipt Percentage",
+#     ])
+
+#     sku_rows = shipment.get("shipmentSkuQuantities") or []
+#     for item in sku_rows:
+#         expected_obj = item.get("expectedQuantity") or {}
+#         received_obj = item.get("receivedQuantity") or {}
+#         expected = _awd_quantity_value(expected_obj)
+#         received = _awd_quantity_value(received_obj)
+#         receipt_percentage = (received / expected) if expected else None
+#         sku_ws.append([
+#             marketplace_id,
+#             shipment.get("shipmentId"),
+#             item.get("sku"),
+#             expected,
+#             _awd_quantity_unit(expected_obj),
+#             received,
+#             _awd_quantity_unit(received_obj),
+#             received - expected,
+#             receipt_percentage,
+#         ])
+
+#     if sku_rows:
+#         total_row = sku_ws.max_row + 2
+#         sku_ws.cell(total_row, 3, "Total")
+#         sku_ws.cell(total_row, 4, f"=SUM(D2:D{sku_ws.max_row})")
+#         sku_ws.cell(total_row, 6, f"=SUM(F2:F{sku_ws.max_row})")
+#         sku_ws.cell(total_row, 8, f"=SUM(H2:H{sku_ws.max_row})")
+#         for cell in sku_ws[total_row]:
+#             cell.font = Font(bold=True)
+#             cell.fill = _AWD_TOTAL_FILL
+
+#     for cell in sku_ws["I"][1:]:
+#         cell.number_format = "0.0%"
+#     _awd_style_sheet(sku_ws)
+
+#     container_ws = workbook.create_sheet("Container Details")
+#     container_ws.append([
+#         "Shipment ID",
+#         "SKU",
+#         "ASIN",
+#         "Product Group",
+#         "Container Type",
+#         "Case Count",
+#         "Units Per Case",
+#         "Expected Product Units",
+#         "Expiration",
+#         "Prep Category",
+#         "Prep Owner",
+#         "Label Owner",
+#         "Prep Instructions",
+#         "Length",
+#         "Width",
+#         "Height",
+#         "Dimension Unit",
+#         "Weight",
+#         "Weight Unit",
+#     ])
+
+#     for container in shipment.get("shipmentContainerQuantities") or []:
+#         distribution_package = container.get("distributionPackage") or {}
+#         contents = distribution_package.get("contents") or {}
+#         products = contents.get("products") or []
+#         measurements = distribution_package.get("measurements") or {}
+#         dimensions = measurements.get("dimensions") or {}
+#         weight = measurements.get("weight") or {}
+#         case_count = _awd_quantity_value(container.get("count"))
+
+#         if not products:
+#             products = [{}]
+
+#         for product in products:
+#             units_per_case = _awd_quantity_value(product.get("quantity"))
+#             prep = product.get("prepDetails") or {}
+#             prep_text = ", ".join(
+#                 str(instruction.get("prepType"))
+#                 for instruction in prep.get("prepInstructions") or []
+#                 if instruction.get("prepType")
+#             )
+#             container_ws.append([
+#                 shipment.get("shipmentId"),
+#                 product.get("sku"),
+#                 _awd_product_attribute(product, "asin"),
+#                 _awd_product_attribute(product, "glProductGroupType"),
+#                 distribution_package.get("type"),
+#                 case_count,
+#                 units_per_case,
+#                 case_count * units_per_case,
+#                 product.get("expiration"),
+#                 prep.get("prepCategory"),
+#                 prep.get("prepOwner"),
+#                 prep.get("labelOwner"),
+#                 prep_text,
+#                 dimensions.get("length"),
+#                 dimensions.get("width"),
+#                 dimensions.get("height"),
+#                 dimensions.get("unitOfMeasurement"),
+#                 weight.get("weight"),
+#                 weight.get("unitOfMeasurement"),
+#             ])
+#     _awd_style_sheet(container_ws)
+
+#     address_ws = workbook.create_sheet("Addresses")
+#     address_ws.append([
+#         "Address Type",
+#         "Name",
+#         "Address Line 1",
+#         "Address Line 2",
+#         "Address Line 3",
+#         "City",
+#         "District",
+#         "County",
+#         "State / Region",
+#         "Postal Code",
+#         "Country Code",
+#         "Phone Number",
+#     ])
+#     for address_type, address in (
+#         ("Origin", shipment.get("originAddress") or {}),
+#         ("Destination", shipment.get("destinationAddress") or {}),
+#     ):
+#         address_ws.append([
+#             address_type,
+#             address.get("name"),
+#             address.get("addressLine1"),
+#             address.get("addressLine2"),
+#             address.get("addressLine3"),
+#             address.get("city"),
+#             address.get("district"),
+#             address.get("county"),
+#             address.get("stateOrRegion"),
+#             address.get("postalCode"),
+#             address.get("countryCode"),
+#             address.get("phoneNumber"),
+#         ])
+#     _awd_style_sheet(address_ws)
+
+#     return _awd_workbook_stream(workbook)
+
+
+# def _awd_extract_shipments(payload: dict) -> list[dict]:
+#     payload = payload or {}
+#     shipments = payload.get("shipments") or payload.get("inboundShipments") or payload.get("items") or []
+#     return shipments if isinstance(shipments, list) else []
+
+
+# def _awd_extract_next_token(payload: dict):
+#     payload = payload or {}
+#     pagination = payload.get("pagination") or {}
+#     return pagination.get("nextToken") or payload.get("nextToken")
+
+
+# def _awd_iso_year(value) -> int | None:
+#     if not value:
+#         return None
+#     try:
+#         return int(str(value)[:4])
+#     except (TypeError, ValueError):
+#         return None
+
+
+# def _fetch_all_awd_inbound_shipments(params: dict) -> tuple[list[dict], int]:
+#     """Fetch every AWD inbound-shipment page returned by Amazon."""
+#     endpoint = "/awd/2024-05-09/inboundShipments"
+#     request_params = dict(params or {})
+#     all_shipments: list[dict] = []
+#     pages_fetched = 0
+#     seen_tokens: set[str] = set()
+
+#     while True:
+#         response = amazon_client.make_api_call(endpoint, "GET", request_params)
+#         pages_fetched += 1
+
+#         if not response:
+#             raise RuntimeError("Amazon returned an empty response")
+#         if response.get("error"):
+#             error = RuntimeError(str(response.get("error") or "Amazon AWD request failed"))
+#             error.amazon_response = response
+#             raise error
+
+#         payload = response.get("payload") or response
+#         all_shipments.extend(_awd_extract_shipments(payload))
+
+#         next_token = _awd_extract_next_token(payload)
+#         if not next_token:
+#             break
+#         if str(next_token) in seen_tokens:
+#             logger.warning("Stopping AWD shipment pagination because nextToken repeated")
+#             break
+
+#         seen_tokens.add(str(next_token))
+#         request_params = dict(params or {})
+#         request_params["nextToken"] = next_token
+
+#     # Deduplicate defensively by shipmentId.
+#     deduped: dict[str, dict] = {}
+#     no_id_rows: list[dict] = []
+#     for shipment in all_shipments:
+#         shipment_id = str(shipment.get("shipmentId") or "").strip()
+#         if shipment_id:
+#             deduped[shipment_id] = shipment
+#         else:
+#             no_id_rows.append(shipment)
+
+#     rows = list(deduped.values()) + no_id_rows
+#     rows.sort(key=lambda item: str(item.get("createdAt") or ""), reverse=True)
+#     return rows, pages_fetched
+
+
+# def _fetch_awd_shipment_detail_for_export(shipment_id: str) -> dict:
+#     response = amazon_client.make_api_call(
+#         f"/awd/2024-05-09/inboundShipments/{shipment_id}",
+#         "GET",
+#         {"skuQuantities": "SHOW"},
+#     )
+#     if not response:
+#         raise RuntimeError("Empty detail response")
+#     if response.get("error"):
+#         raise RuntimeError(str(response.get("error") or "Shipment detail request failed"))
+#     return response.get("payload") or response
+
+
+# def _build_awd_complete_year_excel(
+#     shipments: list[dict],
+#     shipment_details: list[dict],
+#     marketplace_id: str,
+#     requested_year: int,
+#     detail_errors: list[dict],
+# ) -> io.BytesIO:
+#     """Build one workbook containing list rows and complete details for all shipments."""
+#     workbook = Workbook()
+
+#     list_ws = workbook.active
+#     list_ws.title = "Inbound Shipments"
+#     list_ws.append([
+#         "Marketplace ID", "Shipment ID", "Order ID", "External Reference ID",
+#         "Shipment Status", "Created At", "Updated At",
+#     ])
+#     for shipment in shipments:
+#         list_ws.append([
+#             marketplace_id, shipment.get("shipmentId"), shipment.get("orderId"),
+#             shipment.get("externalReferenceId"), shipment.get("shipmentStatus"),
+#             shipment.get("createdAt"), shipment.get("updatedAt"),
+#         ])
+#     _awd_style_sheet(list_ws)
+
+#     summary_ws = workbook.create_sheet("Summary")
+#     summary_ws.append(["Field", "Value"])
+#     summary_ws.append(["Marketplace ID", marketplace_id])
+#     summary_ws.append(["Requested Year", requested_year])
+#     summary_ws.append(["Shipment Count", len(shipments)])
+#     summary_ws.append(["Detail Records Loaded", len(shipment_details)])
+#     summary_ws.append(["Detail Errors", len(detail_errors)])
+#     for status in sorted({str(x.get("shipmentStatus") or "UNKNOWN") for x in shipments}):
+#         summary_ws.append([
+#             f"{status} Shipments",
+#             sum(1 for x in shipments if str(x.get("shipmentStatus") or "UNKNOWN") == status),
+#         ])
+#     _awd_style_sheet(summary_ws)
+
+#     sku_ws = workbook.create_sheet("SKU Quantities")
+#     sku_ws.append([
+#         "Marketplace ID", "Shipment ID", "Order ID", "Shipment Status", "Created At",
+#         "SKU", "Expected Quantity", "Expected Unit", "Received Quantity",
+#         "Received Unit", "Difference", "Receipt Percentage",
+#     ])
+
+#     container_ws = workbook.create_sheet("Container Details")
+#     container_ws.append([
+#         "Marketplace ID", "Shipment ID", "Order ID", "Shipment Status", "SKU", "ASIN",
+#         "Product Group", "Container Type", "Case Count", "Units Per Case",
+#         "Expected Product Units", "Expiration", "Prep Category", "Prep Owner",
+#         "Label Owner", "Prep Instructions", "Length", "Width", "Height",
+#         "Dimension Unit", "Weight", "Weight Unit",
+#     ])
+
+#     address_ws = workbook.create_sheet("Addresses")
+#     address_ws.append([
+#         "Marketplace ID", "Shipment ID", "Address Type", "Name", "Address Line 1",
+#         "Address Line 2", "Address Line 3", "City", "District", "County",
+#         "State / Region", "Postal Code", "Country Code", "Phone Number",
+#     ])
+
+#     detail_ws = workbook.create_sheet("Shipment Details")
+#     detail_ws.append([
+#         "Marketplace ID", "Shipment ID", "Order ID", "External Reference ID",
+#         "Warehouse Reference ID", "Shipment Status", "Created At", "Updated At",
+#         "Ship By", "Tracking ID", "Destination Region", "Carrier Code Type",
+#         "Carrier Code Value", "Total Received Quantity", "Received Unit",
+#     ])
+
+#     for shipment in shipment_details:
+#         carrier = shipment.get("carrierCode") or {}
+#         received_quantities = shipment.get("receivedQuantity") or []
+#         total_received = sum(_awd_quantity_value(x) for x in received_quantities)
+#         received_unit = _awd_quantity_unit(received_quantities[0]) if received_quantities else ""
+#         detail_ws.append([
+#             marketplace_id, shipment.get("shipmentId"), shipment.get("orderId"),
+#             shipment.get("externalReferenceId"), shipment.get("warehouseReferenceId"),
+#             shipment.get("shipmentStatus"), shipment.get("createdAt"), shipment.get("updatedAt"),
+#             shipment.get("shipBy"), shipment.get("trackingId"), shipment.get("destinationRegion"),
+#             carrier.get("carrierCodeType"), carrier.get("carrierCodeValue"), total_received, received_unit,
+#         ])
+
+#         for item in shipment.get("shipmentSkuQuantities") or []:
+#             expected_obj = item.get("expectedQuantity") or {}
+#             received_obj = item.get("receivedQuantity") or {}
+#             expected = _awd_quantity_value(expected_obj)
+#             received = _awd_quantity_value(received_obj)
+#             sku_ws.append([
+#                 marketplace_id, shipment.get("shipmentId"), shipment.get("orderId"),
+#                 shipment.get("shipmentStatus"), shipment.get("createdAt"), item.get("sku"),
+#                 expected, _awd_quantity_unit(expected_obj), received,
+#                 _awd_quantity_unit(received_obj), received - expected,
+#                 (received / expected) if expected else None,
+#             ])
+
+#         for container in shipment.get("shipmentContainerQuantities") or []:
+#             package = container.get("distributionPackage") or {}
+#             contents = package.get("contents") or {}
+#             products = contents.get("products") or [{}]
+#             measurements = package.get("measurements") or {}
+#             dimensions = measurements.get("dimensions") or {}
+#             weight = measurements.get("weight") or {}
+#             case_count = _awd_quantity_value(container.get("count"))
+#             for product in products:
+#                 units_per_case = _awd_quantity_value(product.get("quantity"))
+#                 prep = product.get("prepDetails") or {}
+#                 prep_text = ", ".join(
+#                     str(i.get("prepType")) for i in prep.get("prepInstructions") or [] if i.get("prepType")
+#                 )
+#                 container_ws.append([
+#                     marketplace_id, shipment.get("shipmentId"), shipment.get("orderId"),
+#                     shipment.get("shipmentStatus"), product.get("sku"),
+#                     _awd_product_attribute(product, "asin"),
+#                     _awd_product_attribute(product, "glProductGroupType"), package.get("type"),
+#                     case_count, units_per_case, case_count * units_per_case,
+#                     product.get("expiration"), prep.get("prepCategory"), prep.get("prepOwner"),
+#                     prep.get("labelOwner"), prep_text, dimensions.get("length"),
+#                     dimensions.get("width"), dimensions.get("height"),
+#                     dimensions.get("unitOfMeasurement"), weight.get("weight"),
+#                     weight.get("unitOfMeasurement"),
+#                 ])
+
+#         for address_type, address in (
+#             ("Origin", shipment.get("originAddress") or {}),
+#             ("Destination", shipment.get("destinationAddress") or {}),
+#         ):
+#             address_ws.append([
+#                 marketplace_id, shipment.get("shipmentId"), address_type, address.get("name"),
+#                 address.get("addressLine1"), address.get("addressLine2"), address.get("addressLine3"),
+#                 address.get("city"), address.get("district"), address.get("county"),
+#                 address.get("stateOrRegion"), address.get("postalCode"), address.get("countryCode"),
+#                 address.get("phoneNumber"),
+#             ])
+
+#     if detail_errors:
+#         error_ws = workbook.create_sheet("Detail Errors")
+#         error_ws.append(["Shipment ID", "Error"])
+#         for item in detail_errors:
+#             error_ws.append([item.get("shipment_id"), item.get("error")])
+#         _awd_style_sheet(error_ws)
+
+#     for ws in (sku_ws, container_ws, address_ws, detail_ws):
+#         _awd_style_sheet(ws)
+#     for cell in sku_ws["L"][1:]:
+#         cell.number_format = "0.0%"
+
+#     return _awd_workbook_stream(workbook)
+
+
+# @inventory_bp.route("/amazon_api/awd/inbound-shipments", methods=["GET"])
+# def list_awd_inbound_shipments():
+#     """
+#     List all AWD inbound shipments, with automatic pagination.
+
+#     Excel example for the complete 2026 data available from Amazon:
+#       /amazon_api/awd/inbound-shipments
+#         ?marketplace_id=ATVPDKIKX0DER
+#         &year=2026
+#         &format=excel
+#         &include_details=true
+#     """
+#     auth_header = request.headers.get("Authorization")
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+#     token = auth_header.split(" ", 1)[1].strip()
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         user_id = payload.get("user_id")
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({"success": False, "error": "Token has expired"}), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({"success": False, "error": "Invalid token"}), 401
+
+#     if not user_id:
+#         return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+#     _apply_region_and_marketplace_from_request()
+#     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+#     if mp not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({
+#             "success": False,
+#             "error": "Unsupported marketplace",
+#             "marketplace_id": mp,
+#         }), 400
+
+#     shipment_status = (
+#         request.args.get("shipment_status") or request.args.get("status") or ""
+#     ).strip().upper()
+#     allowed_statuses = {
+#         "CREATED", "SHIPPED", "IN_TRANSIT", "RECEIVING",
+#         "DELIVERED", "CLOSED", "CANCELLED",
+#     }
+#     if shipment_status and shipment_status not in allowed_statuses:
+#         return jsonify({
+#             "success": False,
+#             "error": "Invalid shipment_status",
+#             "allowed_statuses": sorted(allowed_statuses),
+#         }), 400
+
+#     try:
+#         requested_year = int(request.args.get("year") or datetime.utcnow().year)
+#         if requested_year < 2000 or requested_year > 2100:
+#             raise ValueError
+#     except ValueError:
+#         return jsonify({"success": False, "error": "year must be between 2000 and 2100"}), 400
+
+#     try:
+#         page_size = int(request.args.get("max_results") or 100)
+#         if page_size < 1:
+#             raise ValueError
+#         page_size = min(page_size, 100)
+#     except ValueError:
+#         return jsonify({"success": False, "error": "max_results must be a positive integer"}), 400
+
+#     params = {"maxResults": page_size}
+#     if shipment_status:
+#         params["shipmentStatus"] = shipment_status
+
+#     try:
+#         shipments, pages_fetched = _fetch_all_awd_inbound_shipments(params)
+#     except Exception as exc:
+#         logger.exception("AWD listInboundShipments request failed")
+#         amazon_response = getattr(exc, "amazon_response", None) or {}
+#         status_code = int(amazon_response.get("status_code") or 502)
+#         return jsonify({
+#             "success": False,
+#             "error": "Failed to list AWD inbound shipments",
+#             "detail": str(exc),
+#             "amazon_errors": (amazon_response.get("response_json") or {}).get("errors", []),
+#         }), status_code
+
+#     # Amazon's list operation does not guarantee a year filter, so filter locally.
+#     shipments = [
+#         shipment for shipment in shipments
+#         if _awd_iso_year(shipment.get("createdAt")) == requested_year
+#     ]
+
+#     export_format = (request.args.get("format") or "json").strip().lower()
+#     include_details = (request.args.get("include_details") or "true").strip().lower() != "false"
+
+#     if export_format == "excel":
+#         details: list[dict] = []
+#         detail_errors: list[dict] = []
+
+#         if include_details:
+#             for shipment in shipments:
+#                 shipment_id = str(shipment.get("shipmentId") or "").strip()
+#                 if not shipment_id:
+#                     continue
+#                 try:
+#                     details.append(_fetch_awd_shipment_detail_for_export(shipment_id))
+#                 except Exception as exc:
+#                     logger.exception("Could not fetch AWD detail for %s", shipment_id)
+#                     detail_errors.append({"shipment_id": shipment_id, "error": str(exc)})
+#         else:
+#             details = shipments
+
+#         excel_stream = _build_awd_complete_year_excel(
+#             shipments=shipments,
+#             shipment_details=details,
+#             marketplace_id=mp,
+#             requested_year=requested_year,
+#             detail_errors=detail_errors,
+#         )
+#         return send_file(
+#             excel_stream,
+#             as_attachment=True,
+#             download_name=f"AWD_Inbound_Shipments_{mp}_{requested_year}_Complete.xlsx",
+#             mimetype=_AWD_XLSX_MIMETYPE,
+#             max_age=0,
+#         )
+
+#     if export_format not in {"json", ""}:
+#         return jsonify({"success": False, "error": "format must be json or excel"}), 400
+
+#     return jsonify({
+#         "success": True,
+#         "marketplace_id": mp,
+#         "year": requested_year,
+#         "pages_fetched": pages_fetched,
+#         "count": len(shipments),
+#         "next_token": None,
+#         "items": shipments,
+#     }), 200
+
+# @inventory_bp.route(
+#     "/amazon_api/awd/inbound-shipment/<string:shipment_id>",
+#     methods=["GET"],
+# )
+# def get_awd_inbound_shipment(shipment_id):
+#     """
+#     Fetch one AWD inbound shipment using a real shipment ID.
+
+#     Example:
+#     GET /amazon_api/awd/inbound-shipment/<REAL_ID>
+#         ?marketplace_id=ATVPDKIKX0DER
+#         &sku_quantities=SHOW
+#     """
+
+#     # ---------------- AUTH ----------------
+#     auth_header = request.headers.get("Authorization")
+
+#     if not auth_header or not auth_header.startswith("Bearer "):
+#         return jsonify({
+#             "success": False,
+#             "error": "Missing Authorization header",
+#         }), 401
+
+#     token = auth_header.split(" ", 1)[1].strip()
+
+#     try:
+#         payload, user_id, member_id = get_effective_user_id_from_token(token)
+#         user_id = payload.get("user_id")
+#     except jwt.ExpiredSignatureError:
+#         return jsonify({
+#             "success": False,
+#             "error": "Token has expired",
+#         }), 401
+#     except jwt.InvalidTokenError:
+#         return jsonify({
+#             "success": False,
+#             "error": "Invalid token",
+#         }), 401
+
+#     if not user_id:
+#         return jsonify({
+#             "success": False,
+#             "error": "Invalid token payload",
+#         }), 401
+
+#     shipment_id = (shipment_id or "").strip()
+
+#     if not shipment_id:
+#         return jsonify({
+#             "success": False,
+#             "error": "shipment_id is required",
+#         }), 400
+
+#     if shipment_id.upper() in {
+#         "SHIPMENT_ID",
+#         "{SHIPMENTID}",
+#         "{SHIPMENT_ID}",
+#     }:
+#         return jsonify({
+#             "success": False,
+#             "error": (
+#                 "Replace SHIPMENT_ID with a real AWD shipment ID returned "
+#                 "by /amazon_api/awd/inbound-shipments."
+#             ),
+#         }), 400
+
+#     # ---------------- MARKETPLACE / REGION ----------------
+#     _apply_region_and_marketplace_from_request()
+
+#     mp = request.args.get(
+#         "marketplace_id",
+#         amazon_client.marketplace_id,
+#     )
+
+#     if mp not in amazon_client.ALLOWED_MARKETPLACES:
+#         return jsonify({
+#             "success": False,
+#             "error": "Unsupported marketplace",
+#             "marketplace_id": mp,
+#         }), 400
+
+#     sku_quantities = (
+#         request.args.get("sku_quantities", "SHOW")
+#         .strip()
+#         .upper()
+#     )
+
+#     if sku_quantities not in {"SHOW", "HIDE"}:
+#         return jsonify({
+#             "success": False,
+#             "error": "sku_quantities must be SHOW or HIDE",
+#         }), 400
+
+#     endpoint = (
+#         f"/awd/2024-05-09/inboundShipments/{shipment_id}"
+#     )
+
+#     params = {
+#         "skuQuantities": sku_quantities,
+#     }
+
+#     try:
+#         amazon_response = amazon_client.make_api_call(
+#             endpoint,
+#             "GET",
+#             params,
+#         )
+#     except Exception as exc:
+#         logger.exception(
+#             "Failed to fetch AWD inbound shipment %s",
+#             shipment_id,
+#         )
+
+#         return jsonify({
+#             "success": False,
+#             "shipment_id": shipment_id,
+#             "error": "AWD inbound shipment request failed",
+#             "detail": str(exc),
+#         }), 500
+
+#     if not amazon_response:
+#         return jsonify({
+#             "success": False,
+#             "shipment_id": shipment_id,
+#             "error": "Amazon returned an empty response",
+#         }), 502
+
+#     if amazon_response.get("error"):
+#         upstream_status = int(
+#             amazon_response.get("status_code") or 502
+#         )
+
+#         amazon_errors = (
+#             amazon_response
+#             .get("response_json", {})
+#             .get("errors", [])
+#         )
+
+#         message = "Amazon could not fetch the AWD shipment."
+
+#         if upstream_status == 404:
+#             message = (
+#                 "The AWD shipment was not found, or the connected "
+#                 "seller account does not have access to it."
+#             )
+#         elif upstream_status == 403:
+#             message = (
+#                 "Amazon denied access. Confirm the connected seller "
+#                 "account has AWD API permissions."
+#             )
+#         elif upstream_status == 429:
+#             message = (
+#                 "Amazon rate limit exceeded. Try again later."
+#             )
+
+#         return jsonify({
+#             "success": False,
+#             "shipment_id": shipment_id,
+#             "marketplace_id": mp,
+#             "error": message,
+#             "amazon_status_code": upstream_status,
+#             "amazon_request_id": amazon_response.get("amzn_request_id"),
+#             "amazon_errors": amazon_errors,
+#         }), upstream_status
+
+#     shipment = amazon_response.get("payload") or amazon_response
+#     export_format = (request.args.get("format") or "json").strip().lower()
+
+#     if export_format == "excel":
+#         excel_stream = _build_awd_shipment_detail_excel(
+#             shipment=shipment,
+#             marketplace_id=mp,
+#         )
+#         safe_shipment_id = re.sub(r"[^A-Za-z0-9_-]+", "_", shipment_id)
+#         return send_file(
+#             excel_stream,
+#             as_attachment=True,
+#             download_name=f"AWD_Inbound_Shipment_{safe_shipment_id}.xlsx",
+#             mimetype=_AWD_XLSX_MIMETYPE,
+#             max_age=0,
+#         )
+
+#     if export_format not in {"json", ""}:
+#         return jsonify({
+#             "success": False,
+#             "error": "format must be json or excel",
+#         }), 400
+
+#     return jsonify({
+#         "success": True,
+#         "marketplace_id": mp,
+#         "shipment_id": shipment_id,
+#         "shipment": shipment,
+#     }), 200
 

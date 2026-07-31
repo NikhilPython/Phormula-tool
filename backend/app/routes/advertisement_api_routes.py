@@ -1304,93 +1304,336 @@ def monthly_sp_sd_to_db():
                 month_name = calendar.month_name[month].lower()
                 skuwise_table_name = _safe_ident(f"skuwisemonthly_{user_id}_{country.lower()}_{month_name}{year}")
 
-                # Check which columns exist in skuwise table
-                skuwise_columns = db.session.execute(text("""
-                    SELECT column_name
+                # ---------------------------------------------------------
+                # Sync monthly ads values into skuwisemonthly table
+                # Columns filled on every route hit:
+                # product_spend, display_spend, brand_spend, ad_type,
+                # sp_ads_sales, sd_ads_sales, sb_ads_sales
+                # ---------------------------------------------------------
+                skuwise_table_exists = db.session.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.tables
+                        WHERE table_schema = 'public'
+                          AND table_name = :table_name
+                    )
+                """), {"table_name": skuwise_table_name}).scalar()
+
+                if not skuwise_table_exists:
+                    raise RuntimeError(
+                        f"SKU-wise monthly table public.{skuwise_table_name} does not exist"
+                    )
+
+                # Add all required columns safely when an older SKU-wise table is used.
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS product_spend DOUBLE PRECISION DEFAULT 0;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS display_spend DOUBLE PRECISION DEFAULT 0;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS brand_spend DOUBLE PRECISION DEFAULT 0;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS ad_type TEXT;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS sp_ads_sales DOUBLE PRECISION DEFAULT 0;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS sd_ads_sales DOUBLE PRECISION DEFAULT 0;'
+                ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'
+                ))
+
+                # Refresh actual SKU-wise columns after ALTER statements.
+                skuwise_columns = set(db.session.execute(text("""
+                    SELECT LOWER(column_name)
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                    AND table_name = :table_name
-                """), {"table_name": skuwise_table_name}).scalars().all()
-
-                skuwise_columns = set(str(c).lower() for c in skuwise_columns)
-
-                # Add the 3 new columns
-                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sp_ads_sales DOUBLE PRECISION DEFAULT 0;'))
-                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sd_ads_sales DOUBLE PRECISION DEFAULT 0;'))
-                db.session.execute(text(f'ALTER TABLE public.{skuwise_table_name} ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'))
-
-                # Refresh column list after ALTER
-                skuwise_columns.update({
-                    "sp_ads_sales",
-                    "sd_ads_sales",
-                    "sb_ads_sales",
-                })
-
-                join_conditions = []
-
-                if "sku" in skuwise_columns:
-                    join_conditions.append("""
-                        COALESCE(NULLIF(TRIM(s.sku::text), ''), '') =
-                        COALESCE(NULLIF(TRIM(a.products::text), ''), '')
-                    """)
-
-                if "asin" in skuwise_columns:
-                    join_conditions.append("""
-                        COALESCE(NULLIF(TRIM(s.asin::text), ''), '') =
-                        COALESCE(NULLIF(TRIM(a.asin::text), ''), '')
-                    """)
+                      AND table_name = :table_name
+                """), {"table_name": skuwise_table_name}).scalars().all())
 
                 total_conditions = []
-
                 if "sku" in skuwise_columns:
                     total_conditions.append("""
-                        UPPER(COALESCE(sku::text, '')) IN ('GRAND_TOTAL', 'TOTAL')
+                        UPPER(TRIM(COALESCE(sku::text, ''))) IN
+                        ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
                     """)
-
                 if "product_name" in skuwise_columns:
                     total_conditions.append("""
-                        LOWER(COALESCE(product_name::text, '')) IN ('grand total', 'total')
+                        UPPER(TRIM(COALESCE(product_name::text, ''))) IN
+                        ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
                     """)
 
                 total_where_sql = " OR ".join(total_conditions) if total_conditions else "FALSE"
 
-                if join_conditions:
-                    join_sql = " OR ".join(join_conditions)
+                # Reset all non-total rows first so stale ads values cannot remain.
+                db.session.execute(text(f"""
+                    UPDATE public.{skuwise_table_name}
+                    SET
+                        product_spend = 0,
+                        display_spend = 0,
+                        brand_spend = 0,
+                        ad_type = NULL,
+                        sp_ads_sales = 0,
+                        sd_ads_sales = 0,
+                        sb_ads_sales = 0
+                    WHERE NOT ({total_where_sql})
+                """))
 
-                    # Reset body rows only
+                # Build one deterministic ads source row per normalized SKU.
+                # Blank SKUs (normally unmapped Sponsored Brands rows) are excluded
+                # from product rows and remain represented in the Grand Total only.
+                if "sku" in skuwise_columns:
                     db.session.execute(text(f"""
-                        UPDATE public.{skuwise_table_name}
+                        WITH ads_by_sku AS (
+                            SELECT
+                                UPPER(TRIM(products::text)) AS join_sku,
+                                SUM(COALESCE(product_spend, 0)) AS product_spend,
+                                SUM(COALESCE(display_spend, 0)) AS display_spend,
+                                SUM(COALESCE(brand_spend, 0)) AS brand_spend,
+                                SUM(COALESCE(sp_ads_sales, 0)) AS sp_ads_sales,
+                                SUM(COALESCE(sd_ads_sales, 0)) AS sd_ads_sales,
+                                SUM(COALESCE(sb_ads_sales, 0)) AS sb_ads_sales,
+                                STRING_AGG(DISTINCT NULLIF(TRIM(ad_type), ''), ', ')
+                                    FILTER (WHERE NULLIF(TRIM(ad_type), '') IS NOT NULL) AS ad_type
+                            FROM public.{table_name}
+                            WHERE products IS NOT NULL
+                              AND TRIM(products::text) <> ''
+                              AND UPPER(TRIM(products::text)) NOT IN
+                                  ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                            GROUP BY UPPER(TRIM(products::text))
+                        )
+                        UPDATE public.{skuwise_table_name} AS s
                         SET
-                            sp_ads_sales = 0,
-                            sd_ads_sales = 0,
-                            sb_ads_sales = 0
-                        WHERE NOT ({total_where_sql})
+                            product_spend = a.product_spend,
+                            display_spend = a.display_spend,
+                            brand_spend = a.brand_spend,
+                            ad_type = a.ad_type,
+                            sp_ads_sales = a.sp_ads_sales,
+                            sd_ads_sales = a.sd_ads_sales,
+                            sb_ads_sales = a.sb_ads_sales
+                        FROM ads_by_sku AS a
+                        WHERE UPPER(TRIM(COALESCE(s.sku::text, ''))) = a.join_sku
+                          AND NOT ({total_where_sql})
                     """))
 
-                    # Update matched SKU-wise rows from adsmonthly
+                # ASIN fallback is used only for still-unmatched rows and only when
+                # the SKU-wise table actually contains an ASIN column.
+                if "asin" in skuwise_columns:
                     db.session.execute(text(f"""
-                        UPDATE public.{skuwise_table_name} s
+                        WITH ads_by_asin AS (
+                            SELECT
+                                UPPER(TRIM(asin::text)) AS join_asin,
+                                SUM(COALESCE(product_spend, 0)) AS product_spend,
+                                SUM(COALESCE(display_spend, 0)) AS display_spend,
+                                SUM(COALESCE(brand_spend, 0)) AS brand_spend,
+                                SUM(COALESCE(sp_ads_sales, 0)) AS sp_ads_sales,
+                                SUM(COALESCE(sd_ads_sales, 0)) AS sd_ads_sales,
+                                SUM(COALESCE(sb_ads_sales, 0)) AS sb_ads_sales,
+                                STRING_AGG(DISTINCT NULLIF(TRIM(ad_type), ''), ', ')
+                                    FILTER (WHERE NULLIF(TRIM(ad_type), '') IS NOT NULL) AS ad_type
+                            FROM public.{table_name}
+                            WHERE asin IS NOT NULL
+                              AND TRIM(asin::text) <> ''
+                              AND UPPER(TRIM(COALESCE(products::text, ''))) NOT IN
+                                  ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                            GROUP BY UPPER(TRIM(asin::text))
+                        )
+                        UPDATE public.{skuwise_table_name} AS s
                         SET
-                            sp_ads_sales = COALESCE(a.sp_ads_sales, 0),
-                            sd_ads_sales = COALESCE(a.sd_ads_sales, 0),
-                            sb_ads_sales = COALESCE(a.sb_ads_sales, 0)
-                        FROM public.{table_name} a
-                        WHERE
-                            a.products IS NOT NULL
-                            AND a.products <> 'Grand Total'
-                            AND ({join_sql})
+                            product_spend = a.product_spend,
+                            display_spend = a.display_spend,
+                            brand_spend = a.brand_spend,
+                            ad_type = a.ad_type,
+                            sp_ads_sales = a.sp_ads_sales,
+                            sd_ads_sales = a.sd_ads_sales,
+                            sb_ads_sales = a.sb_ads_sales
+                        FROM ads_by_asin AS a
+                        WHERE UPPER(TRIM(COALESCE(s.asin::text, ''))) = a.join_asin
+                          AND NULLIF(TRIM(COALESCE(s.ad_type, '')), '') IS NULL
+                          AND NOT ({total_where_sql})
                     """))
 
-                # Grand Total row
+                # Fill the SKU-wise Grand Total from the adsmonthly Grand Total.
+                # This preserves unmapped Sponsored Brands spend/sales in totals.
                 if total_conditions:
                     db.session.execute(text(f"""
+                        WITH ads_total AS (
+                            SELECT
+                                COALESCE(SUM(product_spend), 0) AS product_spend,
+                                COALESCE(SUM(display_spend), 0) AS display_spend,
+                                COALESCE(SUM(brand_spend), 0) AS brand_spend,
+                                COALESCE(SUM(sp_ads_sales), 0) AS sp_ads_sales,
+                                COALESCE(SUM(sd_ads_sales), 0) AS sd_ads_sales,
+                                COALESCE(SUM(sb_ads_sales), 0) AS sb_ads_sales
+                            FROM public.{table_name}
+                            WHERE UPPER(TRIM(COALESCE(products::text, ''))) NOT IN
+                                  ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                        )
                         UPDATE public.{skuwise_table_name}
                         SET
-                            sp_ads_sales = COALESCE((SELECT SUM(sp_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0),
-                            sd_ads_sales = COALESCE((SELECT SUM(sd_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0),
-                            sb_ads_sales = COALESCE((SELECT SUM(sb_ads_sales) FROM public.{table_name} WHERE products != 'Grand Total'), 0)
+                            product_spend = t.product_spend,
+                            display_spend = t.display_spend,
+                            brand_spend = t.brand_spend,
+                            ad_type = CASE
+                                WHEN t.product_spend <> 0
+                                 AND t.display_spend <> 0
+                                 AND t.brand_spend <> 0
+                                    THEN 'sponsored_product, sponsored_display, sponsored_brands'
+                                WHEN t.product_spend <> 0 AND t.display_spend <> 0
+                                    THEN 'sponsored_product, sponsored_display'
+                                WHEN t.product_spend <> 0 AND t.brand_spend <> 0
+                                    THEN 'sponsored_product, sponsored_brands'
+                                WHEN t.display_spend <> 0 AND t.brand_spend <> 0
+                                    THEN 'sponsored_display, sponsored_brands'
+                                WHEN t.product_spend <> 0 THEN 'sponsored_product'
+                                WHEN t.display_spend <> 0 THEN 'sponsored_display'
+                                WHEN t.brand_spend <> 0 THEN 'sponsored_brands'
+                                ELSE NULL
+                            END,
+                            sp_ads_sales = t.sp_ads_sales,
+                            sd_ads_sales = t.sd_ads_sales,
+                            sb_ads_sales = t.sb_ads_sales
+                        FROM ads_total AS t
                         WHERE {total_where_sql}
                     """))
+
+
+                # ---------------------------------------------------------
+                # Recalculate CM2 and total advertising profitability fields
+                # using the same formulas as amazon_api_routes.
+                #
+                # Product-level formulas:
+                #   ads_spend = product_spend + display_spend
+                #   cm2_profit = profit - ads_spend
+                #   cm2 margin = cm2_profit / net_sales * 100
+                #
+                # Total profitability formulas:
+                #   total_ads = product_spend + display_spend
+                #               + brand_spend + dealsvouchar_ads
+                #   total_cm2_profit = cm2_profit - brand_spend
+                #                      - dealsvouchar_ads
+                #                      - abs(platform_fee)
+                #                      - abs(shipment_fees)
+                # ---------------------------------------------------------
+                for target_column in [
+                    "cm2_profit",
+                    "cm2_profit_percentage",
+                    "cm2_margins",
+                    "cm2_profit_per_unit",
+                    "total_ads",
+                    "total_cm2_profit",
+                    "total_cm2_margins",
+                    "tacos_total_advertising_cost_of_sale",
+                ]:
+                    db.session.execute(text(
+                        f'ALTER TABLE public.{skuwise_table_name} '
+                        f'ADD COLUMN IF NOT EXISTS {target_column} DOUBLE PRECISION DEFAULT 0;'
+                    ))
+
+                # Keep ads_spend synchronized too when that existing Amazon
+                # calculation column is available in the SKU-wise table.
+                skuwise_columns = set(db.session.execute(text("""
+                    SELECT LOWER(column_name)
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = :table_name
+                """), {"table_name": skuwise_table_name}).scalars().all())
+
+                def _numeric_sql(column_name, *, absolute=False):
+                    if column_name not in skuwise_columns:
+                        return "0.0"
+                    expression = f"COALESCE({column_name}, 0.0)"
+                    return f"ABS({expression})" if absolute else expression
+
+                profit_expr = _numeric_sql("profit")
+                net_sales_expr = _numeric_sql("net_sales")
+                product_spend_expr = _numeric_sql("product_spend", absolute=True)
+                display_spend_expr = _numeric_sql("display_spend", absolute=True)
+                brand_spend_expr = _numeric_sql("brand_spend", absolute=True)
+                deals_ads_expr = _numeric_sql("dealsvouchar_ads", absolute=True)
+                platform_fee_expr = _numeric_sql("platform_fee", absolute=True)
+                shipment_fees_expr = _numeric_sql("shipment_fees", absolute=True)
+
+                # Amazon route primarily uses total_quantity. Fall back to
+                # quantity - return_quantity for older monthly tables.
+                if "total_quantity" in skuwise_columns:
+                    units_expr = "ABS(COALESCE(total_quantity, 0.0))"
+                elif "quantity" in skuwise_columns and "return_quantity" in skuwise_columns:
+                    units_expr = (
+                        "GREATEST(COALESCE(quantity, 0.0) "
+                        "- COALESCE(return_quantity, 0.0), 0.0)"
+                    )
+                elif "quantity" in skuwise_columns:
+                    units_expr = "ABS(COALESCE(quantity, 0.0))"
+                else:
+                    units_expr = "0.0"
+
+                product_ads_expr = f"({product_spend_expr} + {display_spend_expr})"
+                total_ads_expr = (
+                    f"({product_spend_expr} + {display_spend_expr} "
+                    f"+ {brand_spend_expr} + {deals_ads_expr})"
+                )
+                cm2_profit_expr = f"({profit_expr} - {product_ads_expr})"
+                total_cm2_profit_expr = (
+                    f"({cm2_profit_expr} - {brand_spend_expr} - {deals_ads_expr} "
+                    f"- {platform_fee_expr} - {shipment_fees_expr})"
+                )
+
+                set_clauses = []
+                if "ads_spend" in skuwise_columns:
+                    set_clauses.append(f"ads_spend = ROUND(({product_ads_expr})::numeric, 2)")
+
+                set_clauses.extend([
+                    f"cm2_profit = ROUND(({cm2_profit_expr})::numeric, 2)",
+                    (
+                        "cm2_profit_percentage = ROUND((CASE "
+                        f"WHEN {net_sales_expr} <> 0 THEN "
+                        f"({cm2_profit_expr} / {net_sales_expr}) * 100.0 "
+                        "ELSE 0.0 END)::numeric, 2)"
+                    ),
+                    (
+                        "cm2_margins = ROUND((CASE "
+                        f"WHEN {net_sales_expr} <> 0 THEN "
+                        f"({cm2_profit_expr} / {net_sales_expr}) * 100.0 "
+                        "ELSE 0.0 END)::numeric, 2)"
+                    ),
+                    (
+                        "cm2_profit_per_unit = ROUND((CASE "
+                        f"WHEN {units_expr} <> 0 THEN "
+                        f"({cm2_profit_expr} / {units_expr}) "
+                        "ELSE 0.0 END)::numeric, 2)"
+                    ),
+                    f"total_ads = ROUND(({total_ads_expr})::numeric, 2)",
+                    f"total_cm2_profit = ROUND(({total_cm2_profit_expr})::numeric, 2)",
+                    (
+                        "total_cm2_margins = ROUND((CASE "
+                        f"WHEN {net_sales_expr} <> 0 THEN "
+                        f"({total_cm2_profit_expr} / {net_sales_expr}) * 100.0 "
+                        "ELSE 0.0 END)::numeric, 2)"
+                    ),
+                    (
+                        "tacos_total_advertising_cost_of_sale = ROUND((CASE "
+                        f"WHEN {net_sales_expr} <> 0 THEN "
+                        f"({total_ads_expr} / {net_sales_expr}) * 100.0 "
+                        "ELSE 0.0 END)::numeric, 2)"
+                    ),
+                ])
+
+                db.session.execute(text(f"""
+                    UPDATE public.{skuwise_table_name}
+                    SET {", ".join(set_clauses)}
+                """))
 
             db.session.commit()
 
