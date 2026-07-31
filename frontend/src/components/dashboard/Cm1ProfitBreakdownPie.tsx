@@ -70,24 +70,31 @@ export default function Cm1ProfitBreakdownPie({
 
   const [profitPieType, setProfitPieType] = useState<ProfitPieType>("net_sales");
 
+  const hasCm2Data = useMemo(() => {
+    return (cm2Data || []).some((item) => {
+      const value = Number(item?.chartValue ?? item?.value ?? 0);
+      return Number.isFinite(value) && value !== 0;
+    });
+  }, [cm2Data]);
+
   const toggleOptions = useMemo(() => {
     const options: Array<{ value: ProfitPieType; label: string }> = [
       { value: "net_sales", label: "Net Sales" },
       { value: "cm1", label: "CM1" },
     ];
 
-    if (cm2Data?.length > 0) {
+    if (hasCm2Data) {
       options.push({ value: "cm2", label: "CM2" });
     }
 
     return options;
-  }, [cm2Data]);
+  }, [hasCm2Data]);
 
   useEffect(() => {
-    if (profitPieType === "cm2" && !cm2Data?.length) {
+    if (profitPieType === "cm2" && !hasCm2Data) {
       setProfitPieType("net_sales");
     }
-  }, [cm2Data, profitPieType]);
+  }, [hasCm2Data, profitPieType]);
 
   const activeData =
     profitPieType === "net_sales"

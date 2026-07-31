@@ -32,7 +32,7 @@ type CmChartOfSkuProps = {
   disableInternalFade?: boolean;
   metric?: CmMetric;
   // Whether CM2 chart data exists for this period.
-  // Tabs remain visible; this only controls CM2 empty state.
+  // When false, the CM2 segmented toggle option is hidden.
   showCm2Toggle?: boolean;
 };
 
@@ -209,7 +209,28 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   const [isLaptop, setIsLaptop] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
-  const [activeMetric, setActiveMetric] = useState<CmMetric>(metric);
+  const [activeMetric, setActiveMetric] = useState<CmMetric>(
+    metric === "cm2" && !showCm2Toggle ? "net_sales" : metric
+  );
+  const toggleOptions = useMemo(() => {
+    const options: Array<{ value: CmMetric; label: string }> = [
+      { value: "net_sales", label: "Net Sales" },
+      { value: "cm1", label: "CM1" },
+    ];
+
+    if (showCm2Toggle) {
+      options.push({ value: "cm2", label: "CM2" });
+    }
+
+    return options;
+  }, [showCm2Toggle]);
+
+  useEffect(() => {
+    if (activeMetric === "cm2" && !showCm2Toggle) {
+      setActiveMetric("net_sales");
+    }
+  }, [activeMetric, showCm2Toggle]);
+
   const isCm2Unavailable = activeMetric === "cm2" && !showCm2Toggle;
   const activeTitle =
     activeMetric === "net_sales" ? "Net Sales Breakdown" : "Profit Breakdown";
@@ -810,11 +831,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
         <SegmentedToggle<CmMetric>
           value={activeMetric}
           onChange={setActiveMetric}
-          options={[
-            { value: "net_sales", label: "Net Sales" },
-            { value: "cm1", label: "CM1" },
-            { value: "cm2", label: "CM2" },
-          ]}
+          options={toggleOptions}
           textSizeClass="text-xs 2xl:text-sm"
           compact
         />
