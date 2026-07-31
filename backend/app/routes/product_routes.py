@@ -1435,7 +1435,7 @@ def skutableprofit():
         table_name = build_skuwise_table_name(user_id, country, month, year)
 
         # Ads table:
-        requested_ads_table_name = f"skuwisemonthly_{user_id}_{country}_{month}_{year}".lower()
+        requested_ads_table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
 
         inspector = inspect(engine)
         existing_tables = set(inspector.get_table_names(schema="public"))

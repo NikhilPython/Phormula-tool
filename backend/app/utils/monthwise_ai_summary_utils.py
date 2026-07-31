@@ -346,12 +346,12 @@ def build_table_name(user_id: int, country: str, period: str, timeline: str, yea
 def build_ads_table_name(user_id: int, country: str, timeline: str, year: int) -> str:
     """
     Ads table naming pattern used by skutableprofit:
-    skuwisemonthly_{user_id}_{country}_{month}_{year}
+    skuwisemonthly_{user_id}_{country}_{month}{year}
     Example:
     skuwisemonthly_2_uk_may_2026
     """
     mn = month_name_from_timeline(timeline)
-    return f"skuwisemonthly_{user_id}_{str(country).lower()}_{mn}_{year}".lower()
+    return f"skuwisemonthly_{user_id}_{str(country).lower()}_{mn}{year}".lower()
 
 
 def fetch_precalc_table(user_id: int, country: str, period: str, timeline: str, year: int) -> pd.DataFrame:
