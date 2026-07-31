@@ -129,6 +129,7 @@ const prevColors = useMemo(() => {
               prevLabel="Previous MTD"
               yTitle={`Amount (${currencySymbol})`}
               showPrev={expanded}
+              showDeltaInTooltip
             />
           )}
         </div>
