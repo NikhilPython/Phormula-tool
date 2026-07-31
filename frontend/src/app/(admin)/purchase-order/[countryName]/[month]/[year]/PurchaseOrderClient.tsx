@@ -772,8 +772,9 @@ export default function PurchaseOrderPage({
   const getTableRowClassName = useCallback((row: Row) => {
     if (row.__isSignRow) return 'bg-white'
     if (row.__isTotalRow) return 'bg-[#EFEFEF] font-semibold'
+    if (row.__isOthersRow) return showAllPoRows ? 'bg-white' : 'bg-white cursor-pointer'
     return 'bg-white'
-  }, [])
+  }, [showAllPoRows])
 
   useEffect(() => {
     if (!embedded || typeof window === 'undefined') return;
@@ -1017,6 +1018,11 @@ export default function PurchaseOrderPage({
           maxHeight="none"
           emptyMessage="No Data Available for selected period"
           rowClassName={getTableRowClassName}
+          onRowClick={(row) => {
+            if (!showAllPoRows && row.__isOthersRow) {
+              setShowAllPoRows(true);
+            }
+          }}
           isTotalRow={(row) => !!row.__isTotalRow}
           bodyMaxHeight={
             showAllPoRows &&

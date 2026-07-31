@@ -2918,9 +2918,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (!showAllRows && name === "others") return "";
+                  if (!showAllRows && name === "others") return "cursor-pointer";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                }}
+                onRowClick={(row) => {
+                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+                  if (!showAllRows && (name === "others" || sku === "others")) {
+                    setShowAllRows(true);
+                  }
                 }}
                 getValue={(row, colKey, rowIndex) => {
                   // const name = String((row as any)?.product_name || "").trim().toLowerCase();

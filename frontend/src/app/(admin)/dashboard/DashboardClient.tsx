@@ -175,6 +175,9 @@ const MANUAL_LAST_MONTH_USD_CA = Number(
     process.env.NEXT_PUBLIC_MANUAL_LAST_MONTH_USD_CA || "0"
 );
 const LAST_REFRESH_KEY = "live-dashboard-last-refresh";
+const DASHBOARD_LOAD_CANCELLED_ERROR = "__dashboard_load_cancelled__";
+const isDashboardLoadCancelledError = (error: unknown) =>
+    error instanceof Error && error.message === DASHBOARD_LOAD_CANCELLED_ERROR;
 
 
 
@@ -2381,6 +2384,8 @@ export default function DashboardPage() {
 
     const [dashboardBusy, setDashboardBusy] = useState(false);
     const [showDashboardStepLoader, setShowDashboardStepLoader] = useState(false);
+    const dashboardLoadCancelledRef = useRef(false);
+    const dashboardLoadRunIdRef = useRef(0);
 
     const [currentStep, setCurrentStep] = useState<number>(0); // 0 = idle
     const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
@@ -2427,6 +2432,27 @@ export default function DashboardPage() {
             detail: "",
         });
     };
+
+    const handleDashboardLoadCancel = useCallback(() => {
+        dashboardLoadCancelledRef.current = true;
+        dashboardLoadRunIdRef.current += 1;
+        isManualRefreshRef.current = false;
+        shouldPostCacheRef.current = false;
+
+        setDashboardBusy(false);
+        setShowDashboardStepLoader(false);
+        resetStepState();
+
+        setLoading(false);
+        setShopifyLoading(false);
+        setBiLoading(false);
+        setInvLoading(false);
+        setMonthlySpLoading(false);
+        setFxLoading(false);
+        setPreviousSkuwiseGlobalLoading(false);
+        setInventoryInsightsLoading(false);
+        setBiStatus("idle");
+    }, []);
 
     const dashboardSteps = [
         { num: 1, label: "Live MTD" },
@@ -4094,6 +4120,18 @@ export default function DashboardPage() {
             return;
         }
 
+        const runId = dashboardLoadRunIdRef.current + 1;
+        dashboardLoadRunIdRef.current = runId;
+        dashboardLoadCancelledRef.current = false;
+        const ensureDashboardLoadActive = () => {
+            if (
+                dashboardLoadCancelledRef.current ||
+                dashboardLoadRunIdRef.current !== runId
+            ) {
+                throw new Error(DASHBOARD_LOAD_CANCELLED_ERROR);
+            }
+        };
+
         setShowDashboardStepLoader(true);
         setLoadingStartedAt(Date.now());
         setDashboardBusy(true);
@@ -4119,14 +4157,18 @@ export default function DashboardPage() {
 
             setStep(1, "MTD Fetching", 10, "Fetching currency rates...");
             await fetchFxRates();
+            ensureDashboardLoadActive();
 
             setStep(1, "MTD Fetching", 15, "Fetching target summary...");
             await fetchTargetSummary();
+            ensureDashboardLoadActive();
             await fetchPrevTargetSummary();
+            ensureDashboardLoadActive();
 
             if (platform === "global") {
                 setStep(1, "MTD Fetching", 22, "Fetching SKU-wise global data...");
                 await fetchPreviousSkuwiseGlobal(selectedStartDay, selectedEndDay);
+                ensureDashboardLoadActive();
             }
 
             const jwtToken =
@@ -4141,13 +4183,16 @@ export default function DashboardPage() {
 
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
             await fetchAmazon();
+            ensureDashboardLoadActive();
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
                 setStep(1, "MTD Fetching", 90, "Fetching Shopify current month data...");
                 await fetchShopify();
+                ensureDashboardLoadActive();
 
                 setStep(1, "MTD Fetching", 96, "Fetching Shopify previous month data...");
                 await fetchShopifyPrev();
+                ensureDashboardLoadActive();
             } else {
                 setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
@@ -4157,9 +4202,11 @@ export default function DashboardPage() {
 
             setStep(2, "Inventory Fetch", 20, "Fetching aged, AWD, and current inventory...");
             await fetchInventory();
+            ensureDashboardLoadActive();
 
             setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
             await fetchInventoryInsights();
+            ensureDashboardLoadActive();
 
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
@@ -4178,23 +4225,28 @@ export default function DashboardPage() {
                     // Do not preserve stale parent AI summary here.
                     dataOnlyRefresh,
                 });
+                ensureDashboardLoadActive();
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
             }
 
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
+            ensureDashboardLoadActive();
 
             setStep(3, "Plotting Graph", 75, "Preparing charts and tables...");
             await waitForPaint();
+            ensureDashboardLoadActive();
 
             setStep(3, "Plotting Graph", 95, "Final render in progress...");
             await waitForPaint();
+            ensureDashboardLoadActive();
 
             setStep(3, "Plotting Graph", 100, "Dashboard ready");
             markStepComplete(3);
 
             await waitForPaint();
+            ensureDashboardLoadActive();
 
             setStepProgress((prev) => ({
                 ...prev,
@@ -4204,6 +4256,10 @@ export default function DashboardPage() {
             setLoadingStartedAt(null);
             setDashboardBusy(false);
         } catch (e: any) {
+            if (isDashboardLoadCancelledError(e)) {
+                throw e;
+            }
+
             console.error("runDashboardLoadWithSteps failed:", e);
             setError(e?.message || "Failed to load dashboard");
             setDashboardBusy(false);
@@ -4212,13 +4268,15 @@ export default function DashboardPage() {
                 active: false,
             }));
         } finally {
-            setDashboardBusy(false);
-            setShowDashboardStepLoader(false);
-            setStepProgress((prev) => ({
-                ...prev,
-                active: false,
-            }));
-            setLoadingStartedAt(null);
+            if (dashboardLoadRunIdRef.current === runId) {
+                setDashboardBusy(false);
+                setShowDashboardStepLoader(false);
+                setStepProgress((prev) => ({
+                    ...prev,
+                    active: false,
+                }));
+                setLoadingStartedAt(null);
+            }
         }
     }, [
         isMonthYearNA,
@@ -4955,6 +5013,12 @@ export default function DashboardPage() {
             shouldPostCacheRef.current = true;
             setCacheSaveTick((x) => x + 1);
         } catch (err) {
+            if (isDashboardLoadCancelledError(err)) {
+                isManualRefreshRef.current = false;
+                shouldPostCacheRef.current = false;
+                return;
+            }
+
             console.error("Hard refresh failed:", err);
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
@@ -5025,6 +5089,10 @@ export default function DashboardPage() {
                 shouldPostCacheRef.current = true;
                 setCacheSaveTick((x) => x + 1);
             } catch (err) {
+                if (isDashboardLoadCancelledError(err)) {
+                    return;
+                }
+
                 console.error("Dashboard bootstrap failed:", err);
 
                 didBootstrapRef.current = null;
@@ -11446,12 +11514,7 @@ export default function DashboardPage() {
     const MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT = 52;
     const MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT = 48;
 
-    const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT =
-        isUsPnlSkuLayout
-            ? 12
-            : platform === "global"
-                ? 9
-                : 8;
+    const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT = 12;
 
     const shouldScrollMtdProductwiseTable =
         mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
@@ -11485,6 +11548,7 @@ export default function DashboardPage() {
                     stepProgress={stepProgress}
                     loadingStartedAt={loadingStartedAt}
                     estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
+                    onCancel={handleDashboardLoadCancel}
                 />
             )}
 

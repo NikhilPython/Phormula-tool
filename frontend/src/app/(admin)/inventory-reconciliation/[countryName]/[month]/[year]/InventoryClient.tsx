@@ -1794,7 +1794,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
 
     if (isGrand) return 'bg-[#D9D9D9] font-semibold';
-    if (isOthers) return '';
+    if (isOthers) return showAllReconRows ? '' : 'cursor-pointer';
     return '';
   };
 
@@ -2476,6 +2476,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 singleCols={singleCols}
                 getValue={getValue}
                 getRowClassName={getRowClassName}
+                onRowClick={(row) => {
+                  if (!showAllReconRows && (row as any).__isOthers) {
+                    setShowAllReconRows(true);
+                  }
+                }}
                 onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
                 isTotalRow={isTotalRow}
                 bodyMaxHeight={
@@ -2525,9 +2530,16 @@ export default function InventoryReconciliationPage({ params }: Params) {
                   (row as any).__isTotal
                     ? "bg-[#D9D9D9] font-semibold"
                     : (row as any).__isOthers
-                      ? "font-semibold"
+                      ? showAllLostCompRows
+                        ? "font-semibold"
+                        : "font-semibold cursor-pointer"
                       : ""
                 }
+                onRowClick={(row) => {
+                  if (!showAllLostCompRows && (row as any).__isOthers) {
+                    setShowAllLostCompRows(true);
+                  }
+                }}
               />
             )}
           </div>

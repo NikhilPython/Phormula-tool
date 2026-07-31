@@ -47,6 +47,11 @@ type Props<RowT> = {
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
 
   getRowClassName?: (row: RowT, index: number) => string;
+  onRowClick?: (
+    row: RowT,
+    rowIndex: number,
+    event: React.MouseEvent<HTMLTableRowElement>
+  ) => void;
 
   // Optional: sign row not in THEAD (keeps header strictly 2 rows)
   showSignRowInBody?: boolean;
@@ -87,6 +92,7 @@ export default function GroupedCollapsibleTables<RowT>({
   onCollapsedChange,
   getValue,
   getRowClassName,
+  onRowClick,
 
   showSignRowInBody = false,
   getSignForCol,
@@ -431,7 +437,11 @@ export default function GroupedCollapsibleTables<RowT>({
       const rowClass = getRowClassName ? getRowClassName(row, realIndex) : "";
 
       return (
-        <tr key={rowKey} className={`h-[40px] ${rowClass || "bg-white"}`}>
+        <tr
+          key={rowKey}
+          onClick={(event) => onRowClick?.(row, realIndex, event)}
+          className={`h-[40px] ${rowClass || "bg-white"}`}
+        >
           {visibleLeafCols.map((c) => (
             <td
               key={c.key}

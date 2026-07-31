@@ -6123,7 +6123,7 @@ export default function InputCostPage({ params }: Params) {
     const isOthers = msku === 'OTHERS' || row?.__isOthers === true;
 
     if (isGrand) return 'bg-[#EFEFEF] font-semibold';
-    if (isOthers) return '';
+    if (isOthers) return showAllReconRows ? '' : 'cursor-pointer';
     return '';
   };
 
@@ -7282,6 +7282,11 @@ export default function InputCostPage({ params }: Params) {
                   layout={reconTableLayout}
                   getValue={getReconValue}
                   getRowClassName={getReconRowClassName}
+                  onRowClick={(row) => {
+                    if (!showAllReconRows && (row as any).__isOthers) {
+                      setShowAllReconRows(true);
+                    }
+                  }}
                   onAnyGroupExpandedChange={handleAnyGroupExpandedChange}
                   isTotalRow={isTotalRow}
                   bodyMaxHeight={
@@ -7334,9 +7339,16 @@ export default function InputCostPage({ params }: Params) {
                     (row as any).__isTotal
                       ? "bg-[#EFEFEF] font-semibold"
                       : (row as any).__isOthers
-                        ? ""
+                        ? showAllLostCompRows
+                          ? ""
+                          : "cursor-pointer"
                         : ""
                   }
+                  onRowClick={(row) => {
+                    if (!showAllLostCompRows && (row as any).__isOthers) {
+                      setShowAllLostCompRows(true);
+                    }
+                  }}
                 />
               )}
             </div>

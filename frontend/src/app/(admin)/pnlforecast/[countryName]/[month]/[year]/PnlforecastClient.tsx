@@ -1490,11 +1490,26 @@ const Pnlforecast: React.FC = () => {
                       return "bg-[#EFEFEF] font-semibold";
                     }
 
+                    if (
+                      !showAllForecastProductRows &&
+                      String(row.product_name || "").trim().toLowerCase() === "others"
+                    ) {
+                      return "bg-white cursor-pointer";
+                    }
+
                     if (summaryRows.some((s) => s.label === row.product_name)) {
                       return "bg-white";
                     }
 
                     return "bg-white";
+                  }}
+                  onRowClick={(row) => {
+                    if (
+                      !showAllForecastProductRows &&
+                      String(row.product_name || "").trim().toLowerCase() === "others"
+                    ) {
+                      setShowAllForecastProductRows(true);
+                    }
                   }}
                 />
 
