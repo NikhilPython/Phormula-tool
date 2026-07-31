@@ -64,6 +64,7 @@ import DashboardLiveSalesTab from "./DashboardLiveSalesTab";
 import DashboardProductwisePnlSection from "./DashboardProductwisePnlSection";
 import DashboardMtdPlSection from "./DashboardMtdPlSection";
 import DashboardInventoryInsightsTab from "./DashboardInventoryInsightsTab";
+import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import {
     AGEING_TREND_BUCKET_OPTIONS,
     buildAgeingTrendDataFromInventoryCurrent,
@@ -3450,6 +3451,14 @@ export default function DashboardPage() {
                     : displayCurrency === "INR"
                         ? "₹"
                         : "¤";
+
+    const displayedInventoryInsightsData = useMemo(
+        () =>
+            isMonthYearNA
+                ? createZeroInventoryInsightsData(currencySymbol)
+                : inventoryInsightsData,
+        [currencySymbol, inventoryInsightsData, isMonthYearNA]
+    );
 
     const biDailySeriesHome = useMemo<GraphDailySeries | null>(() => {
         if (!biDailySeries) return null;
@@ -11821,7 +11830,7 @@ export default function DashboardPage() {
                     <DashboardInventoryInsightsTab
                         inventoryInsightsLoading={inventoryInsightsLoading}
                         inventoryInsightsError={inventoryInsightsError}
-                        inventoryInsightsData={inventoryInsightsData}
+                        inventoryInsightsData={displayedInventoryInsightsData}
                         platform={platform}
                         selectedGlobalInventoryCountry={selectedGlobalInventoryCountry}
                         setSelectedGlobalInventoryCountry={setSelectedGlobalInventoryCountry}

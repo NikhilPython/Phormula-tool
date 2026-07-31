@@ -20,6 +20,7 @@ import {
 } from '@/lib/excel/exportCurrentInventoryExcel';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
+import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import GroupedCollapsibleTable, {
   ColGroup,
   LeafCol,
@@ -3911,6 +3912,16 @@ export default function InputCostPage({ params }: Params) {
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(null);
 
+  const displayedInventoryInsightsData = useMemo(
+    () =>
+      isNA
+        ? createZeroInventoryInsightsData(
+          getCurrencySymbol(getCurrencyForCountry(inventoryInsightsReportCountry))
+        )
+        : inventoryInsightsData,
+    [inventoryInsightsData, inventoryInsightsReportCountry, isNA]
+  );
+
   const [inventoryInsightsLoading, setInventoryInsightsLoading] = useState(true);
 
   const [inventoryInsightsError, setInventoryInsightsError] =
@@ -7123,7 +7134,7 @@ export default function InputCostPage({ params }: Params) {
 
                   <p className="text-sm text-red-600">{inventoryInsightsError}</p>
                 </div>
-              ) : inventoryInsightsData ? (
+              ) : displayedInventoryInsightsData ? (
                 <>
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <PageBreadcrumb
@@ -7150,21 +7161,21 @@ export default function InputCostPage({ params }: Params) {
                   </div>
 
                   <InventoryInsightsSection
-                    heatmapBuckets={inventoryInsightsData.heatmapBuckets}
-                    heatmapData={inventoryInsightsData.heatmapData}
-                    donutData={inventoryInsightsData.donutData}
-                    donutTotalUnits={inventoryInsightsData.donutTotalUnits}
-                    trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
-                    trendData={inventoryInsightsData.trendData}
-                    trendLineColor={inventoryInsightsData.trendLineColor}
-                    trendBucketOptions={inventoryInsightsData.trendBucketOptions}
-                    trendAllSeriesData={inventoryInsightsData.trendAllSeriesData}
+                    heatmapBuckets={displayedInventoryInsightsData.heatmapBuckets}
+                    heatmapData={displayedInventoryInsightsData.heatmapData}
+                    donutData={displayedInventoryInsightsData.donutData}
+                    donutTotalUnits={displayedInventoryInsightsData.donutTotalUnits}
+                    trendSelectedBucket={displayedInventoryInsightsData.trendSelectedBucket}
+                    trendData={displayedInventoryInsightsData.trendData}
+                    trendLineColor={displayedInventoryInsightsData.trendLineColor}
+                    trendBucketOptions={displayedInventoryInsightsData.trendBucketOptions}
+                    trendAllSeriesData={displayedInventoryInsightsData.trendAllSeriesData}
                     onTrendBucketChange={setSelectedAgeingTrendBucket}
-                    actions={inventoryInsightsData.actions}
-                    actionLogic={inventoryInsightsData.actionLogic}
+                    actions={displayedInventoryInsightsData.actions}
+                    actionLogic={displayedInventoryInsightsData.actionLogic}
                     onHeatmapProductClick={handleHeatmapProductClick}
                     showInventoryAlerts={false}
-                    inventoryAgeSummary={inventoryInsightsData.inventoryAgeSummary}
+                    inventoryAgeSummary={displayedInventoryInsightsData.inventoryAgeSummary}
                     showHeatmapExcelDownload={true}
                     heatmapExcelFilename={getInventoryInsightsFileName()}
                     heatmapExcelTitleLine="Inventory Insights Report"

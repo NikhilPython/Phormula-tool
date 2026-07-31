@@ -34,6 +34,7 @@ import { jwtDecode } from "jwt-decode";
 import AmazonAdsConnect from "@/features/integration/AmazonAdsConnectLegacy";
 import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessModal";
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
+import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 
 import type {
   AgeingBucket,
@@ -6248,28 +6249,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(
       isDemoMode
-        ? {
-          heatmapBuckets,
-          heatmapData,
-          donutSku: selectedDonutSku,
-          donutData,
-          donutTotalUnits,
-          trendSelectedBucket,
-          trendData,
-          trendLineColor,
-
-          // ✅ add this
-          trendAllSeriesData,
-
-          trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
-            label: bucket.label,
-            value: bucket.value,
-            color: bucket.color,
-          })),
-
-          actions: inventoryActions,
-          actionLogic: inventoryActionLogic,
-        }
+        ? createZeroInventoryInsightsData(currencySymbol)
         : null
     );
 
@@ -9034,30 +9014,7 @@ lines.push(
   useEffect(() => {
     if (isDemoMode) {
       setInventoryRawResponses(null);
-
-      setInventoryInsightsData({
-        heatmapBuckets,
-        heatmapData,
-        donutSku: selectedDonutSku,
-        donutData,
-        donutTotalUnits,
-
-        trendSelectedBucket: "all",
-        trendData,
-        trendLineColor: "#B75A5A",
-
-        // ✅ required by InventoryInsightsData
-        trendAllSeriesData,
-
-        trendBucketOptions: AGEING_TREND_BUCKET_OPTIONS.map((bucket) => ({
-          label: bucket.label,
-          value: bucket.value,
-          color: bucket.color,
-        })),
-
-        actions: inventoryActions,
-        actionLogic: inventoryActionLogic,
-      });
+      setInventoryInsightsData(createZeroInventoryInsightsData(currencySymbol));
 
       return;
     }
@@ -9168,6 +9125,7 @@ lines.push(
     selectedGlobalInventoryCountry,
     effectiveCountryName,
     effectiveHomeCurrency,
+    currencySymbol,
   ]);
 
 
