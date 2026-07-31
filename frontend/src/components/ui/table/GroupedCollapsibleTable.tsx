@@ -51,6 +51,11 @@ type Props<RowT> = {
   onVisibleColCountChange?: (n: number) => void;
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
   getRowClassName?: (row: RowT, index: number) => string;
+  onRowClick?: (
+    row: RowT,
+    rowIndex: number,
+    event: React.MouseEvent<HTMLTableRowElement>
+  ) => void;
   showSignRowInBody?: boolean;
   getSignForCol?: (colKey: string) => { text: string; className?: string } | null;
   toggleGroupByColKey?: Record<string, string>;
@@ -148,6 +153,7 @@ export default function GroupedCollapsibleTable<RowT>({
   onCollapsedChange,
   getValue,
   getRowClassName,
+  onRowClick,
   showSignRowInBody = false,
   getSignForCol,
   toggleGroupByColKey,
@@ -631,7 +637,6 @@ export default function GroupedCollapsibleTable<RowT>({
   const scrollStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScrollLeftRef = useRef(0);
   const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
-  const [scrollbarWidth, setScrollbarWidth] = useState(0);
   const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
 
   useEffect(() => {
@@ -641,36 +646,6 @@ export default function GroupedCollapsibleTable<RowT>({
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (!bodyMaxHeight) return;
-
-    const measureScrollbarWidth = () => {
-      const el = scrollContainerRef.current;
-      if (!el) return;
-
-      const width = el.offsetWidth - el.clientWidth;
-      setScrollbarWidth(width > 0 ? width : 0);
-    };
-
-    measureScrollbarWidth();
-
-    const el = scrollContainerRef.current;
-    const resizeObserver =
-      typeof ResizeObserver !== "undefined" && el
-        ? new ResizeObserver(measureScrollbarWidth)
-        : null;
-
-    if (resizeObserver && el) {
-      resizeObserver.observe(el);
-    }
-    window.addEventListener("resize", measureScrollbarWidth);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", measureScrollbarWidth);
-    };
-  }, [bodyMaxHeight, sortedRows.length, visibleLeafCols.length]);
 
   /* ---------------- Row 2 Headers ---------------- */
   type Row2Cell<RowT> =
@@ -1157,6 +1132,7 @@ export default function GroupedCollapsibleTable<RowT>({
       return (
         <tr
           key={getRowKey?.(row, realIndex) ?? realIndex}
+          onClick={(event) => onRowClick?.(row, realIndex, event)}
           className={rowClassName}
         >
           {visibleLeafCols.map((c, colIndex) => (
@@ -1332,27 +1308,23 @@ export default function GroupedCollapsibleTable<RowT>({
 
   /**
    * Scroll mode:
-   * - Header, product rows, and total row share the visible horizontal scrollbar
-   * - Summary rows render below that scrollbar without adding another one
+   * - Vertical scrolling wraps product rows, total row, and summary rows together
+   * - Horizontal scrolling stays between the total row and summary rows
    */
   if (bodyMaxHeight) {
     const summaryFooter = renderSummaryFooter();
-    const summaryScrollbarCompensationStyle: React.CSSProperties = scrollbarWidth
-      ? {
-        paddingRight: `${scrollbarWidth}px`,
-        boxSizing: "border-box",
-      }
-      : {};
 
     return (
-      <div className="w-full">
+      <div
+        className="w-full overflow-y-auto overflow-x-hidden"
+        style={{
+          maxHeight: `${bodyMaxHeight}px`,
+        }}
+      >
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="w-full overflow-auto"
-          style={{
-            maxHeight: `${bodyMaxHeight}px`,
-          }}
+          className="w-full overflow-x-auto overflow-y-visible"
         >
           <table ref={tableRef} className={tableClassName} style={tableStyle}>
             {renderColGroup()}
@@ -1374,7 +1346,6 @@ export default function GroupedCollapsibleTable<RowT>({
           <div
             ref={summaryScrollContainerRef}
             className="w-full overflow-x-hidden"
-            style={summaryScrollbarCompensationStyle}
           >
             <table className={tableClassName} style={tableStyle}>
               {renderColGroup()}

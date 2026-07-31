@@ -1122,8 +1122,21 @@ const SkuAnalysisSection: React.FC<Props> = ({
                         headerMaxWidth={140}
                         emptyMessage={getSkuEmptyMessage()}
                         rowClassName={(row) =>
-                            row.__isTotal ? "bg-[#EFEFEF] font-semibold" : ""
+                            row.__isTotal
+                                ? "bg-[#EFEFEF] font-semibold"
+                                : row.__isOthers && activeTab === "all_skus" && !expandAllSkusOthers
+                                    ? "cursor-pointer"
+                                    : ""
                         }
+                        onRowClick={(row) => {
+                            if (
+                                activeTab === "all_skus" &&
+                                !expandAllSkusOthers &&
+                                row.__isOthers
+                            ) {
+                                setExpandAllSkusOthers(true);
+                            }
+                        }}
                         isTotalRow={(row) => !!row.__isTotal}
                         bodyMaxHeight={
                             buildTableRows.filter((row) => !row.__isTotal).length > 15

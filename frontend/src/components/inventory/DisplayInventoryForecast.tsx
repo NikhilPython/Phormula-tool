@@ -984,37 +984,53 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                   </thead>
 
                   <tbody>
-                    {tableRows.map((row, i) => (
-                      <tr key={i} className="h-[40px] bg-white text-center transition-colors">
-                        <td className={tableBodyCell}>{row.sNo}</td>
+                    {tableRows.map((row, i) => {
+                      const isOthersRow =
+                        String(row.product || "").trim().toLowerCase() === "others";
 
-                        <td className={tableBodyTextCell}>
-                          <div className="leading-snug max-w-[260px]">
-                            {row.product}
-                          </div>
-                        </td>
+                      return (
+                        <tr
+                          key={i}
+                          onClick={() => {
+                            if (isOthersRow && !showAllForecastRows) {
+                              setShowAllForecastRows(true);
+                            }
+                          }}
+                          className={[
+                            "h-[40px] bg-white text-center transition-colors",
+                            isOthersRow && !showAllForecastRows ? "cursor-pointer" : "",
+                          ].join(" ")}
+                        >
+                          <td className={tableBodyCell}>{row.sNo}</td>
 
-                        <td className={tableSkuCell}>
-                          <div className="max-w-full whitespace-normal break-words leading-snug text-left">
-                            {String(row.sku)
-                              .split(",")
-                              .map((sku, index, arr) => (
-                                <React.Fragment key={`${sku}-${index}`}>
-                                  {sku.trim()}
-                                  {index < arr.length - 1 && ","}
-                                  {index < arr.length - 1 && <br />}
-                                </React.Fragment>
-                              ))}
-                          </div>
-                        </td>
-                        <td className={tableBodyCell}>{row.sold1}</td>
-                        <td className={tableBodyCell}>{row.sold2}</td>
-                        <td className={tableBodyCell}>{row.sold3}</td>
-                        <td className={tableBodyCell}>{row.f1}</td>
-                        <td className={tableBodyCell}>{row.f2}</td>
-                        <td className={`${tableBodyCell} border-r-0`}>{row.f3}</td>
-                      </tr>
-                    ))}
+                          <td className={tableBodyTextCell}>
+                            <div className="leading-snug max-w-[260px]">
+                              {row.product}
+                            </div>
+                          </td>
+
+                          <td className={tableSkuCell}>
+                            <div className="max-w-full whitespace-normal break-words leading-snug text-left">
+                              {String(row.sku)
+                                .split(",")
+                                .map((sku, index, arr) => (
+                                  <React.Fragment key={`${sku}-${index}`}>
+                                    {sku.trim()}
+                                    {index < arr.length - 1 && ","}
+                                    {index < arr.length - 1 && <br />}
+                                  </React.Fragment>
+                                ))}
+                            </div>
+                          </td>
+                          <td className={tableBodyCell}>{row.sold1}</td>
+                          <td className={tableBodyCell}>{row.sold2}</td>
+                          <td className={tableBodyCell}>{row.sold3}</td>
+                          <td className={tableBodyCell}>{row.f1}</td>
+                          <td className={tableBodyCell}>{row.f2}</td>
+                          <td className={`${tableBodyCell} border-r-0`}>{row.f3}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
 
                   <tfoot>

@@ -35,6 +35,11 @@ type DataTableProps<T extends Row> = {
   scrollY?: boolean;
 
   rowClassName?: (row: T, rowIndex: number) => string;
+  onRowClick?: (
+    row: T,
+    rowIndex: number,
+    event: React.MouseEvent<HTMLTableRowElement>
+  ) => void;
   onPageChange?: (page: number) => void;
   isTotalRow?: (row: T) => boolean;
   bodyMaxHeight?: number | string;
@@ -59,6 +64,7 @@ export default function DataTable<T extends Row>({
   paginate = true,
   scrollY = true,
   rowClassName,
+  onRowClick,
   isTotalRow,
   bodyMaxHeight,
   onPageChange,
@@ -362,6 +368,9 @@ export default function DataTable<T extends Row>({
                 scrollRows.map((row, ri) => (
                   <tr
                     key={ri}
+                    onClick={(event) =>
+                      onRowClick?.(row, (page - 1) * pageSize + ri, event)
+                    }
                     className={clsx(
                       rowClassName?.(row, (page - 1) * pageSize + ri),
                       "h-[40px] transition-colors"
@@ -444,6 +453,13 @@ export default function DataTable<T extends Row>({
                   return (
                     <tr
                       key={`pinned-${ri}`}
+                      onClick={(event) =>
+                        onRowClick?.(
+                          row,
+                          (page - 1) * pageSize + realIndex,
+                          event
+                        )
+                      }
                       className={clsx(
                         rowClassName?.(
                           row,

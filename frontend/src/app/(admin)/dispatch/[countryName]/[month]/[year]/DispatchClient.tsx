@@ -893,9 +893,16 @@ export default function DispatchPage({
                   row.__isTotal
                     ? "bg-[#EFEFEF] font-semibold"
                     : row.__isOthers
-                      ? ""
+                      ? showAllDispatchRows
+                        ? ""
+                        : "cursor-pointer"
                       : ""
                 }
+                onRowClick={(row: any) => {
+                  if (!showAllDispatchRows && row.__isOthers) {
+                    setShowAllDispatchRows(true);
+                  }
+                }}
                 isTotalRow={(row: any) => !!row.__isTotal}
                 bodyMaxHeight={
                   showAllDispatchRows &&

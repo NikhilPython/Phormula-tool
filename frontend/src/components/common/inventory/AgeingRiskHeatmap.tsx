@@ -1662,8 +1662,15 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                             ? "bg-[#EFEFEF] font-semibold"
                             : row.isPercentageRow
                                 ? "bg-[#F8F8F8] font-semibold"
+                                : row.isOthersRow && !isExpanded
+                                    ? "cursor-pointer"
                                 : ""
                     }
+                    onRowClick={(row) => {
+                        if (row.isOthersRow && !isExpanded) {
+                            setIsExpanded(true);
+                        }
+                    }}
                     preserveColumnWidths={
                         useCurrentInventoryTableLayout ? "responsive" : false
                     }

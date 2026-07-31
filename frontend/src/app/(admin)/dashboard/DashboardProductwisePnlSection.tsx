@@ -695,8 +695,17 @@ export default function DashboardProductwisePnlSection({
                                             // initialCollapsed={{ marketplace_fees: false }}
                                             getRowClassName={(row, index) => {
                                                 if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-                                                if (row.isOthers) return "bg-white";
+                                                if (row.isOthers) {
+                                                    return showAllMtdProductwiseRows
+                                                        ? "bg-white"
+                                                        : "bg-white cursor-pointer";
+                                                }
                                                 return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                                            }}
+                                            onRowClick={(row) => {
+                                                if (!showAllMtdProductwiseRows && row.isOthers) {
+                                                    setShowAllMtdProductwiseRows(true);
+                                                }
                                             }}
                                             getValue={(row, colKey) => {
                                                 if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
