@@ -6518,3 +6518,431 @@ def get_all_awd_inbound_shipments_complete():
         "items": complete_items,
         "detail_errors": detail_errors,
     }), 200
+
+# =============================================================================
+# FBA INBOUND SHIPMENTS + ITEM QUANTITIES (Fulfillment Inbound v0)
+# Stores one row per shipment + SKU in public.inventory_fba_inbound_shipments.
+# Default shipment statuses: WORKING and CLOSED.
+# =============================================================================
+
+def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS public.inventory_fba_inbound_shipments (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            marketplace_id TEXT NOT NULL,
+            shipment_id TEXT NOT NULL,
+            shipment_name TEXT,
+            destination_fulfillment_center_id TEXT,
+            shipment_status TEXT,
+            label_prep_type TEXT,
+            are_cases_required BOOLEAN,
+            confirmed_need_by_date DATE,
+            box_contents_source TEXT,
+
+            seller_sku TEXT NOT NULL,
+            fulfillment_network_sku TEXT,
+            quantity_shipped BIGINT NOT NULL DEFAULT 0,
+            quantity_received BIGINT NOT NULL DEFAULT 0,
+            quantity_in_case BIGINT NOT NULL DEFAULT 0,
+
+            ship_from_name TEXT,
+            ship_from_address_line1 TEXT,
+            ship_from_address_line2 TEXT,
+            ship_from_district_or_county TEXT,
+            ship_from_city TEXT,
+            ship_from_state_or_province_code TEXT,
+            ship_from_country_code TEXT,
+            ship_from_postal_code TEXT,
+
+            estimated_box_contents_total_units BIGINT DEFAULT 0,
+            fee_per_unit_currency_code TEXT,
+            fee_per_unit_value NUMERIC(18, 6),
+            total_fee_currency_code TEXT,
+            total_fee_value NUMERIC(18, 6),
+
+            shipment_json JSONB,
+            shipment_item_json JSONB,
+            synced_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+        );
+    """))
+
+    # Migrate an older shipment-header-only table without deleting its data.
+    conn.execute(text("""
+        ALTER TABLE public.inventory_fba_inbound_shipments
+            ADD COLUMN IF NOT EXISTS seller_sku TEXT,
+            ADD COLUMN IF NOT EXISTS fulfillment_network_sku TEXT,
+            ADD COLUMN IF NOT EXISTS quantity_shipped BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS quantity_received BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS quantity_in_case BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS shipment_item_json JSONB;
+    """))
+
+    # The old table used one row per shipment. Replace that unique key with
+    # shipment + SKU so every SKU quantity can be stored separately.
+    conn.execute(text("""
+        ALTER TABLE public.inventory_fba_inbound_shipments
+            DROP CONSTRAINT IF EXISTS uq_inventory_fba_inbound_shipments;
+    """))
+    conn.execute(text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_fba_inbound_shipment_sku
+        ON public.inventory_fba_inbound_shipments
+            (user_id, marketplace_id, shipment_id, seller_sku);
+    """))
+
+
+def _parse_fba_inbound_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _to_fba_decimal(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _extract_fba_shipment_items(payload_data) -> list[dict]:
+    if not isinstance(payload_data, dict):
+        return []
+    items = (
+        payload_data.get("ItemData")
+        or payload_data.get("ShipmentItemData")
+        or payload_data.get("items")
+        or []
+    )
+    return [x for x in items if isinstance(x, dict)] if isinstance(items, list) else []
+
+
+def _fetch_fba_shipment_items(*, shipment_id: str, marketplace_id: str) -> tuple[list[dict], int]:
+    endpoint = f"/fba/inbound/v0/shipments/{shipment_id}/items"
+    all_items: list[dict] = []
+    next_token = None
+    pages = 0
+    seen_tokens: set[str] = set()
+
+    while True:
+        params = {"MarketplaceId": marketplace_id}
+        if next_token:
+            params["NextToken"] = next_token
+
+        response = amazon_client.make_api_call(endpoint, "GET", params)
+        if not response:
+            raise RuntimeError(f"Amazon returned an empty item response for shipment {shipment_id}")
+        if response.get("error"):
+            raise RuntimeError(json.dumps(response, default=str))
+
+        payload_data = response.get("payload") or response
+        all_items.extend(_extract_fba_shipment_items(payload_data))
+        pages += 1
+
+        returned_next_token = payload_data.get("NextToken") if isinstance(payload_data, dict) else None
+        if not returned_next_token or str(returned_next_token) in seen_tokens:
+            break
+        seen_tokens.add(str(returned_next_token))
+        next_token = returned_next_token
+
+    return all_items, pages
+
+
+def _save_fba_inbound_shipment_items(
+    *,
+    rows: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> int:
+    if not rows:
+        return 0
+
+    upsert_sql = text("""
+        INSERT INTO public.inventory_fba_inbound_shipments (
+            user_id, marketplace_id,
+            shipment_id, shipment_name,
+            destination_fulfillment_center_id, shipment_status,
+            label_prep_type, are_cases_required,
+            confirmed_need_by_date, box_contents_source,
+            seller_sku, fulfillment_network_sku,
+            quantity_shipped, quantity_received, quantity_in_case,
+            ship_from_name, ship_from_address_line1, ship_from_address_line2,
+            ship_from_district_or_county, ship_from_city,
+            ship_from_state_or_province_code, ship_from_country_code,
+            ship_from_postal_code,
+            estimated_box_contents_total_units,
+            fee_per_unit_currency_code, fee_per_unit_value,
+            total_fee_currency_code, total_fee_value,
+            shipment_json, shipment_item_json,
+            synced_at, updated_at
+        ) VALUES (
+            :user_id, :marketplace_id,
+            :shipment_id, :shipment_name,
+            :destination_fulfillment_center_id, :shipment_status,
+            :label_prep_type, :are_cases_required,
+            :confirmed_need_by_date, :box_contents_source,
+            :seller_sku, :fulfillment_network_sku,
+            :quantity_shipped, :quantity_received, :quantity_in_case,
+            :ship_from_name, :ship_from_address_line1, :ship_from_address_line2,
+            :ship_from_district_or_county, :ship_from_city,
+            :ship_from_state_or_province_code, :ship_from_country_code,
+            :ship_from_postal_code,
+            :estimated_box_contents_total_units,
+            :fee_per_unit_currency_code, :fee_per_unit_value,
+            :total_fee_currency_code, :total_fee_value,
+            CAST(:shipment_json AS JSONB), CAST(:shipment_item_json AS JSONB),
+            NOW(), NOW()
+        )
+        ON CONFLICT (user_id, marketplace_id, shipment_id, seller_sku)
+        DO UPDATE SET
+            shipment_name = EXCLUDED.shipment_name,
+            destination_fulfillment_center_id = EXCLUDED.destination_fulfillment_center_id,
+            shipment_status = EXCLUDED.shipment_status,
+            label_prep_type = EXCLUDED.label_prep_type,
+            are_cases_required = EXCLUDED.are_cases_required,
+            confirmed_need_by_date = EXCLUDED.confirmed_need_by_date,
+            box_contents_source = EXCLUDED.box_contents_source,
+            fulfillment_network_sku = EXCLUDED.fulfillment_network_sku,
+            quantity_shipped = EXCLUDED.quantity_shipped,
+            quantity_received = EXCLUDED.quantity_received,
+            quantity_in_case = EXCLUDED.quantity_in_case,
+            ship_from_name = EXCLUDED.ship_from_name,
+            ship_from_address_line1 = EXCLUDED.ship_from_address_line1,
+            ship_from_address_line2 = EXCLUDED.ship_from_address_line2,
+            ship_from_district_or_county = EXCLUDED.ship_from_district_or_county,
+            ship_from_city = EXCLUDED.ship_from_city,
+            ship_from_state_or_province_code = EXCLUDED.ship_from_state_or_province_code,
+            ship_from_country_code = EXCLUDED.ship_from_country_code,
+            ship_from_postal_code = EXCLUDED.ship_from_postal_code,
+            estimated_box_contents_total_units = EXCLUDED.estimated_box_contents_total_units,
+            fee_per_unit_currency_code = EXCLUDED.fee_per_unit_currency_code,
+            fee_per_unit_value = EXCLUDED.fee_per_unit_value,
+            total_fee_currency_code = EXCLUDED.total_fee_currency_code,
+            total_fee_value = EXCLUDED.total_fee_value,
+            shipment_json = EXCLUDED.shipment_json,
+            shipment_item_json = EXCLUDED.shipment_item_json,
+            synced_at = NOW(),
+            updated_at = NOW();
+    """)
+
+    saved = 0
+    with amazon_conn() as conn:
+        _ensure_inventory_fba_inbound_shipments_table(conn)
+
+        for row in rows:
+            shipment = row.get("shipment") or {}
+            item = row.get("item") or {}
+            shipment_id = str(shipment.get("ShipmentId") or "").strip()
+            seller_sku = str(item.get("SellerSKU") or "").strip()
+            if not shipment_id or not seller_sku:
+                continue
+
+            address = shipment.get("ShipFromAddress") or {}
+            fee = shipment.get("EstimatedBoxContentsFee") or {}
+            fee_per_unit = fee.get("FeePerUnit") or {}
+            total_fee = fee.get("TotalFee") or {}
+
+            conn.execute(upsert_sql, {
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+                "shipment_id": shipment_id,
+                "shipment_name": shipment.get("ShipmentName"),
+                "destination_fulfillment_center_id": shipment.get("DestinationFulfillmentCenterId"),
+                "shipment_status": shipment.get("ShipmentStatus"),
+                "label_prep_type": shipment.get("LabelPrepType"),
+                "are_cases_required": shipment.get("AreCasesRequired"),
+                "confirmed_need_by_date": _parse_fba_inbound_date(shipment.get("ConfirmedNeedByDate")),
+                "box_contents_source": shipment.get("BoxContentsSource"),
+                "seller_sku": seller_sku,
+                "fulfillment_network_sku": item.get("FulfillmentNetworkSKU"),
+                "quantity_shipped": _safe_int(item.get("QuantityShipped")),
+                "quantity_received": _safe_int(item.get("QuantityReceived")),
+                "quantity_in_case": _safe_int(item.get("QuantityInCase")),
+                "ship_from_name": address.get("Name"),
+                "ship_from_address_line1": address.get("AddressLine1"),
+                "ship_from_address_line2": address.get("AddressLine2"),
+                "ship_from_district_or_county": address.get("DistrictOrCounty"),
+                "ship_from_city": address.get("City"),
+                "ship_from_state_or_province_code": address.get("StateOrProvinceCode"),
+                "ship_from_country_code": address.get("CountryCode"),
+                "ship_from_postal_code": address.get("PostalCode"),
+                "estimated_box_contents_total_units": _safe_int(fee.get("TotalUnits")),
+                "fee_per_unit_currency_code": fee_per_unit.get("CurrencyCode"),
+                "fee_per_unit_value": _to_fba_decimal(fee_per_unit.get("Value")),
+                "total_fee_currency_code": total_fee.get("CurrencyCode"),
+                "total_fee_value": _to_fba_decimal(total_fee.get("Value")),
+                "shipment_json": json.dumps(shipment, default=str),
+                "shipment_item_json": json.dumps(item, default=str),
+            })
+            saved += 1
+
+    return saved
+
+
+@inventory_bp.route("/amazon_api/fba/inbound-shipments", methods=["GET"])
+def get_fba_inbound_shipments():
+    """Fetch WORKING/CLOSED FBA shipments and their SKU quantities.
+
+    Default behavior:
+      ShipmentStatusList = WORKING,CLOSED
+      One DB row per shipment + SellerSKU
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(user_id or payload.get("user_id"))
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+    _apply_region_and_marketplace_from_request()
+    marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+    store_in_db = request.args.get("store_in_db", "true").strip().lower() != "false"
+    status_values = [
+        x.strip().upper()
+        for x in (request.args.get("shipment_statuses") or "WORKING,CLOSED").split(",")
+        if x.strip()
+    ]
+    allowed_statuses = {
+        "WORKING", "READY_TO_SHIP", "SHIPPED", "RECEIVING", "CANCELLED",
+        "DELETED", "CLOSED", "ERROR", "IN_TRANSIT", "DELIVERED", "CHECKED_IN",
+    }
+    invalid_statuses = [s for s in status_values if s not in allowed_statuses]
+    if invalid_statuses:
+        return jsonify({
+            "success": False,
+            "error": "Invalid shipment status",
+            "invalid_statuses": invalid_statuses,
+        }), 400
+
+    endpoint = "/fba/inbound/v0/shipments"
+    all_shipments: list[dict] = []
+    next_token = None
+    shipment_pages = 0
+    seen_tokens: set[str] = set()
+
+    while True:
+        params = {
+            "QueryType": "NEXT_TOKEN" if next_token else "SHIPMENT",
+            "MarketplaceId": marketplace_id,
+        }
+        if next_token:
+            params["NextToken"] = next_token
+        else:
+            params["ShipmentStatusList"] = status_values
+
+        response = amazon_client.make_api_call(endpoint, "GET", params)
+        if not response:
+            return jsonify({"success": False, "error": "Amazon returned an empty response"}), 502
+        if response.get("error"):
+            return jsonify({
+                "success": False,
+                "error": "Amazon could not fetch FBA inbound shipments",
+                "amazon_error": response,
+            }), int(response.get("status_code") or 502)
+
+        payload_data = response.get("payload") or response
+        page_shipments = payload_data.get("ShipmentData") or []
+        if isinstance(page_shipments, list):
+            all_shipments.extend(x for x in page_shipments if isinstance(x, dict))
+        shipment_pages += 1
+
+        returned_next_token = payload_data.get("NextToken")
+        if not returned_next_token or str(returned_next_token) in seen_tokens:
+            break
+        seen_tokens.add(str(returned_next_token))
+        next_token = returned_next_token
+
+    deduped_shipments = []
+    seen_ids = set()
+    for shipment in all_shipments:
+        shipment_id = str(shipment.get("ShipmentId") or "").strip()
+        if shipment_id and shipment_id not in seen_ids:
+            seen_ids.add(shipment_id)
+            deduped_shipments.append(shipment)
+
+    complete_rows: list[dict] = []
+    shipment_results: list[dict] = []
+    item_errors: list[dict] = []
+    item_pages_total = 0
+
+    for shipment in deduped_shipments:
+        shipment_id = str(shipment.get("ShipmentId") or "").strip()
+        try:
+            shipment_items, item_pages = _fetch_fba_shipment_items(
+                shipment_id=shipment_id,
+                marketplace_id=marketplace_id,
+            )
+            item_pages_total += item_pages
+        except Exception as exc:
+            logger.exception("Failed to fetch items for FBA shipment %s", shipment_id)
+            shipment_items = []
+            item_errors.append({"shipment_id": shipment_id, "error": str(exc)})
+
+        quantity_shipped_total = sum(_safe_int(x.get("QuantityShipped")) for x in shipment_items)
+        quantity_received_total = sum(_safe_int(x.get("QuantityReceived")) for x in shipment_items)
+
+        shipment_results.append({
+            **shipment,
+            "ShipmentItems": shipment_items,
+            "SkuCount": len(shipment_items),
+            "QuantityShippedTotal": quantity_shipped_total,
+            "QuantityReceivedTotal": quantity_received_total,
+        })
+
+        for item in shipment_items:
+            if str(item.get("SellerSKU") or "").strip():
+                complete_rows.append({"shipment": shipment, "item": item})
+
+    db_result = {
+        "table": "public.inventory_fba_inbound_shipments",
+        "saved_rows": 0,
+    }
+    if store_in_db and complete_rows:
+        try:
+            db_result["saved_rows"] = _save_fba_inbound_shipment_items(
+                rows=complete_rows,
+                user_id=user_id,
+                marketplace_id=marketplace_id,
+            )
+        except Exception as exc:
+            logger.exception("Failed to save FBA inbound shipment items")
+            return jsonify({
+                "success": False,
+                "error": "Amazon data was fetched but database save failed",
+                "detail": str(exc),
+                "items": shipment_results,
+                "db": db_result,
+            }), 500
+
+    return jsonify({
+        "success": True,
+        "source": "fulfillment-inbound-v0-getShipments+getShipmentItemsByShipmentId",
+        "marketplace_id": marketplace_id,
+        "shipment_statuses": status_values,
+        "shipment_pages_fetched": shipment_pages,
+        "item_pages_fetched": item_pages_total,
+        "shipment_count": len(shipment_results),
+        "sku_row_count": len(complete_rows),
+        "quantity_shipped_total": sum(x.get("QuantityShippedTotal", 0) for x in shipment_results),
+        "quantity_received_total": sum(x.get("QuantityReceivedTotal", 0) for x in shipment_results),
+        "items": shipment_results,
+        "item_errors": item_errors,
+        "db": db_result,
+    }), 200
