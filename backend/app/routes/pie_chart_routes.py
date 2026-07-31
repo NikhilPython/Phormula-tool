@@ -269,9 +269,9 @@ def build_monthly_cm2_table_name(user_id, country, month, year):
     Build table name for monthly cm2_profit lookup.
 
     Expected format:
-    skuwisemonthly_{user_id}_{country}_{month}_{year}
+    skuwisemonthly_{user_id}_{country}_{month}{year}
     """
-    return f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}_{str(year)}".lower()
+    return f"skuwisemonthly_{user_id}_{country.lower()}_{str(month).lower()}{str(year)}".lower()
 
 def fetch_cm2_profit_from_monthly_table(ads_table_name, profit_table_name):
     """
@@ -281,7 +281,7 @@ def fetch_cm2_profit_from_monthly_table(ads_table_name, profit_table_name):
         cm2_profit = profit from normal monthly table - ads_spend from underscore monthly table
 
     ads_table_name format:
-        skuwisemonthly_{user_id}_{country}_{month}_{year}
+        skuwisemonthly_{user_id}_{country}_{month}{year}
 
     profit_table_name format:
         skuwisemonthly_{user_id}_{country}_{month}{year}

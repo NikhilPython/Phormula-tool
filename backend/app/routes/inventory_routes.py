@@ -5745,3 +5745,296 @@ def fetch_aged_inventory_surcharge():
 #         "shipment": shipment,
 #     }), 200
 
+
+# =============================================================================
+# AWD INBOUND SHIPMENTS - COMBINED LIST + DETAIL ROUTE
+# =============================================================================
+
+def _awd_combined_extract_shipments(payload: dict) -> list[dict]:
+    payload = payload or {}
+    rows = (
+        payload.get("shipments")
+        or payload.get("inboundShipments")
+        or payload.get("items")
+        or []
+    )
+    return rows if isinstance(rows, list) else []
+
+
+def _awd_combined_next_token(payload: dict):
+    payload = payload or {}
+    pagination = payload.get("pagination") or {}
+    return pagination.get("nextToken") or payload.get("nextToken")
+
+
+def _awd_combined_error_response(response: dict, default_message: str):
+    status_code = int((response or {}).get("status_code") or 502)
+    errors = ((response or {}).get("response_json") or {}).get("errors", [])
+    return jsonify({
+        "success": False,
+        "error": default_message,
+        "amazon_status_code": status_code,
+        "amazon_request_id": (response or {}).get("amzn_request_id"),
+        "amazon_errors": errors,
+    }), status_code
+
+
+@inventory_bp.route("/amazon_api/awd/inbound-shipments-complete", methods=["GET"])
+def get_all_awd_inbound_shipments_complete():
+    """
+    One route that uses both Amazon operations:
+      1. listInboundShipments
+      2. getInboundShipment for every returned shipment ID
+
+    Example:
+      GET /amazon_api/awd/inbound-shipments-complete
+          ?marketplace_id=ATVPDKIKX0DER
+          &shipment_status=CLOSED
+          &sku_quantities=SHOW
+          &max_results=100
+
+    Optional:
+      shipment_status=CREATED|SHIPPED|IN_TRANSIT|RECEIVING|DELIVERED|CLOSED|CANCELLED
+      sku_quantities=SHOW|HIDE
+      max_results=1..100
+      next_token=<Amazon token>   # fetch from a specific page only
+    """
+
+    # ---------------- AUTH ----------------
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "success": False,
+            "error": "Missing Authorization header",
+        }), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = payload.get("user_id")
+    except jwt.ExpiredSignatureError:
+        return jsonify({
+            "success": False,
+            "error": "Token has expired",
+        }), 401
+    except jwt.InvalidTokenError:
+        return jsonify({
+            "success": False,
+            "error": "Invalid token",
+        }), 401
+
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "error": "Invalid token payload",
+        }), 401
+
+    # ---------------- MARKETPLACE ----------------
+    _apply_region_and_marketplace_from_request()
+    mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
+
+    if mp not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({
+            "success": False,
+            "error": "Unsupported marketplace",
+            "marketplace_id": mp,
+        }), 400
+
+    # ---------------- PARAMS ----------------
+    shipment_status = (
+        request.args.get("shipment_status")
+        or request.args.get("status")
+        or ""
+    ).strip().upper()
+
+    allowed_statuses = {
+        "CREATED",
+        "SHIPPED",
+        "IN_TRANSIT",
+        "RECEIVING",
+        "DELIVERED",
+        "CLOSED",
+        "CANCELLED",
+    }
+
+    if shipment_status and shipment_status not in allowed_statuses:
+        return jsonify({
+            "success": False,
+            "error": "Invalid shipment_status",
+            "allowed_statuses": sorted(allowed_statuses),
+        }), 400
+
+    sku_quantities = (
+        request.args.get("sku_quantities", "SHOW")
+        .strip()
+        .upper()
+    )
+
+    if sku_quantities not in {"SHOW", "HIDE"}:
+        return jsonify({
+            "success": False,
+            "error": "sku_quantities must be SHOW or HIDE",
+        }), 400
+
+    try:
+        max_results = int(request.args.get("max_results") or 100)
+        if max_results < 1:
+            raise ValueError
+        max_results = min(max_results, 100)
+    except ValueError:
+        return jsonify({
+            "success": False,
+            "error": "max_results must be a positive integer",
+        }), 400
+
+    supplied_next_token = (request.args.get("next_token") or "").strip()
+
+    base_params = {"maxResults": max_results}
+    if shipment_status:
+        base_params["shipmentStatus"] = shipment_status
+
+    # ---------------- LIST ALL PAGES ----------------
+    list_endpoint = "/awd/2024-05-09/inboundShipments"
+    shipments: list[dict] = []
+    pages_fetched = 0
+    seen_tokens: set[str] = set()
+    next_token = supplied_next_token or None
+
+    while True:
+        page_params = dict(base_params)
+        if next_token:
+            page_params["nextToken"] = next_token
+
+        try:
+            list_response = amazon_client.make_api_call(
+                list_endpoint,
+                "GET",
+                page_params,
+            )
+        except Exception as exc:
+            logger.exception("AWD listInboundShipments request failed")
+            return jsonify({
+                "success": False,
+                "error": "Failed to list AWD inbound shipments",
+                "detail": str(exc),
+            }), 500
+
+        if not list_response:
+            return jsonify({
+                "success": False,
+                "error": "Amazon returned an empty shipment-list response",
+            }), 502
+
+        if list_response.get("error"):
+            return _awd_combined_error_response(
+                list_response,
+                "Amazon could not list AWD inbound shipments",
+            )
+
+        pages_fetched += 1
+        list_payload = list_response.get("payload") or list_response
+        shipments.extend(_awd_combined_extract_shipments(list_payload))
+
+        returned_next_token = _awd_combined_next_token(list_payload)
+
+        # When caller supplied next_token, fetch only that page.
+        if supplied_next_token:
+            next_token = returned_next_token
+            break
+
+        if not returned_next_token:
+            next_token = None
+            break
+
+        token_key = str(returned_next_token)
+        if token_key in seen_tokens:
+            logger.warning("Stopping AWD pagination because nextToken repeated")
+            next_token = returned_next_token
+            break
+
+        seen_tokens.add(token_key)
+        next_token = returned_next_token
+
+    # Deduplicate by shipmentId.
+    deduped_shipments: list[dict] = []
+    seen_shipment_ids: set[str] = set()
+
+    for shipment in shipments:
+        shipment_id = str(shipment.get("shipmentId") or "").strip()
+        if shipment_id and shipment_id in seen_shipment_ids:
+            continue
+        if shipment_id:
+            seen_shipment_ids.add(shipment_id)
+        deduped_shipments.append(shipment)
+
+    # ---------------- FETCH EACH SHIPMENT DETAIL ----------------
+    complete_items: list[dict] = []
+    detail_errors: list[dict] = []
+
+    for shipment_summary in deduped_shipments:
+        shipment_id = str(shipment_summary.get("shipmentId") or "").strip()
+
+        if not shipment_id:
+            detail_errors.append({
+                "shipment_id": None,
+                "error": "Shipment list row does not contain shipmentId",
+                "summary": shipment_summary,
+            })
+            continue
+
+        detail_endpoint = f"/awd/2024-05-09/inboundShipments/{shipment_id}"
+
+        try:
+            detail_response = amazon_client.make_api_call(
+                detail_endpoint,
+                "GET",
+                {"skuQuantities": sku_quantities},
+            )
+        except Exception as exc:
+            logger.exception("Failed to fetch AWD shipment detail %s", shipment_id)
+            detail_errors.append({
+                "shipment_id": shipment_id,
+                "error": str(exc),
+            })
+            continue
+
+        if not detail_response:
+            detail_errors.append({
+                "shipment_id": shipment_id,
+                "error": "Amazon returned an empty shipment-detail response",
+            })
+            continue
+
+        if detail_response.get("error"):
+            detail_errors.append({
+                "shipment_id": shipment_id,
+                "amazon_status_code": detail_response.get("status_code"),
+                "amazon_request_id": detail_response.get("amzn_request_id"),
+                "amazon_errors": (
+                    (detail_response.get("response_json") or {}).get("errors", [])
+                ),
+            })
+            continue
+
+        shipment_detail = detail_response.get("payload") or detail_response
+
+        complete_items.append({
+            "shipment_id": shipment_id,
+            "summary": shipment_summary,
+            "shipment": shipment_detail,
+        })
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": mp,
+        "shipment_status_filter": shipment_status or None,
+        "sku_quantities": sku_quantities,
+        "pages_fetched": pages_fetched,
+        "shipment_count": len(deduped_shipments),
+        "detail_count": len(complete_items),
+        "detail_error_count": len(detail_errors),
+        "next_token": next_token,
+        "items": complete_items,
+        "detail_errors": detail_errors,
+    }), 200
