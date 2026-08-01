@@ -897,7 +897,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     }));
 
     const cm2PercentageDatasets = activeCountries.map((country) => ({
-      label: `${formatCountry(country)} CM2 Profit %`,
+      label: `${formatCountry(country)} CM2 Profit Mix`,
       data: labels.map((label) => {
         const found = journeyData[country]?.find((d) => d.month === label);
         return found ? found.cm2_profit_percentage : 0;
@@ -1170,7 +1170,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                       options={[
                         { value: "sales_cm1", label: "Sales, CM1 & CM2 Profit" },
                         { value: "units_asp", label: "Units, ASP, CM1 & CM2 Profit/Unit" },
-                        { value: "mix", label: "Sales Mix, CM1 Mix & CM2 %" },
+                        { value: "mix", label: "Sales Mix, CM1 & CM2 Profit Mix" },
                         { value: "inventory_units", label: "Inventory Units & Unit Sales" },
                       ]}
                     />
@@ -1254,7 +1254,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-0 w-9 border-t-2 border-[#D98B5F]" />
-                    <span>CM2 Profit %</span>
+                    <span>CM2 Profit Mix</span>
                   </div>
                 </>
               )}
