@@ -40,9 +40,14 @@ type SkuWiseTable = {
 
 type CountryProfileRow = {
   id: number | string;
+  user_id?: number | string;
   country: string;
-  stock_unit: string | number;
-  transit_time: string | number;
+  marketplace?: string;
+  ship_time_weeks: string | number;
+  air_time_weeks: string | number;
+  stock_unit_weeks: string | number;
+  ship_alert_threshold_weeks: string | number;
+  air_alert_threshold_weeks: string | number;
   target_sales?: string | number | null;
 };
 
@@ -572,15 +577,35 @@ export default function ViewUserPage() {
       ),
     },
     {
-      key: "stock_unit",
-      label: "Stock Unit",
-      render: (p) => p.stock_unit ?? "-",
+      key: "marketplace",
+      label: "Marketplace",
+      render: (p) => p.marketplace || "-",
     },
     {
-      key: "transit_time",
-      label: "Transit Time",
-      render: (p) => p.transit_time ?? "-",
+      key: "ship_time_weeks",
+      label: "Ship Time (Weeks)",
+      render: (p) => p.ship_time_weeks ?? "-",
     },
+    {
+      key: "air_time_weeks",
+      label: "Air Time (Weeks)",
+      render: (p) => p.air_time_weeks ?? "-",
+    },
+    {
+      key: "stock_unit_weeks",
+      label: "Stock Unit (Weeks)",
+      render: (p) => p.stock_unit_weeks ?? "-",
+    },
+    // {
+    //   key: "ship_alert_threshold_weeks",
+    //   label: "Ship Alert Threshold",
+    //   render: (p) => p.ship_alert_threshold_weeks ?? "-",
+    // },
+    // {
+    //   key: "air_alert_threshold_weeks",
+    //   label: "Air Alert Threshold",
+    //   render: (p) => p.air_alert_threshold_weeks ?? "-",
+    // },
     {
       key: "target",
       label: "Target",
@@ -824,7 +849,7 @@ export default function ViewUserPage() {
         {data?.related_country_profiles?.length ? (
           <section className="space-y-3">
             <PageBreadcrumb
-              pageTitle="Stock, Transit & Targets"
+              pageTitle="Stock, Transit & Alert Thresholds"
               variant="superadmin"
               align="left"
               textSize="2xl"
@@ -834,9 +859,9 @@ export default function ViewUserPage() {
               <SuperAdminUsersTable
                 columns={countryProfileColumns}
                 data={data.related_country_profiles}
-                minWidth="700px"
+                minWidth="1200px"
                 emptyTitle="No country profiles found"
-                emptyDescription="Stock, transit, and target settings will appear here."
+                emptyDescription="Ship time, air time, stock units, and alert thresholds will appear here."
               />
             </AdminSectionCard>
           </section>

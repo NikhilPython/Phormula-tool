@@ -310,14 +310,29 @@ def get_superadmin_dashboard():
             "profitability_table": profitability_table,
 
             "related_country_profiles": [
-                {
-                    "user_id": cp.user_id,
-                    "country": cp.country,
-                    "stock_unit": cp.stock_unit,
-                    "transit_time": cp.transit_time,
-                }
-                for cp in related_profiles
-            ],
+    {
+        "id": cp.id,
+        "user_id": cp.user_id,
+        "country": cp.country,
+        "marketplace": cp.marketplace,
+
+        # Individual configuration values
+        "ship_time_weeks": cp.ship_time_weeks,
+        "air_time_weeks": cp.air_time_weeks,
+        "stock_unit_weeks": cp.stock_unit_weeks,
+
+        # Calculated alert thresholds
+        "ship_alert_threshold_weeks": (
+            int(cp.ship_time_weeks or 0)
+            + int(cp.stock_unit_weeks or 0)
+        ),
+        "air_alert_threshold_weeks": (
+            int(cp.air_time_weeks or 0)
+            + int(cp.stock_unit_weeks or 0)
+        ),
+    }
+    for cp in related_profiles
+],
             "ai_business_journey": latest_objective.ai_business_journey if latest_objective else None,
             "sku_table_name": sku_table_name,
             "sku_table_exists": sku_table_exists,
