@@ -12138,6 +12138,10 @@ export default function DashboardPage() {
                                             dataOnlyRefresh: false,
                                         });
 
+                                        if (freshPayload) {
+                                            triggerCachePost();
+                                        }
+
                                         return freshPayload;
                                     }}
                                 />
