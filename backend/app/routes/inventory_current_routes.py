@@ -946,6 +946,24 @@ def get_inventory_current_candidate_months(range_type, month_name=None, quarter=
         return [calendar_month_name[prev_month_num].lower()]
 
     if month_name:
+        requested_month_number = MONTH_NAME_TO_NUMBER.get(month_name)
+
+        # For the ongoing month, try the requested month first and then
+        # automatically fall back to earlier months in the same year.
+        # Example on 1 August 2026:
+        #   august -> july -> june -> ... -> january
+        # This allows the dashboard to keep showing the latest available
+        # currentinventory table until the new month's table is created.
+        if (
+            requested_month_number
+            and year_int == today.year
+            and requested_month_number == today.month
+        ):
+            return [
+                calendar_month_name[month_number].lower()
+                for month_number in range(requested_month_number, 0, -1)
+            ]
+
         return [month_name]
 
     return []
