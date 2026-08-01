@@ -98,10 +98,12 @@ type TooltipSeriesParam = {
   axisValue?: string | number;
   seriesName?: string;
   data?: any;
+  dataIndex?: number;
   marker?: string;
 };
 
 type PadPoint = { value: number | null; __isPad?: boolean };
+type AxisDay = { day: number; __isPad?: boolean };
 
 const LiveLineChart: React.FC<{
   dataPrev: DailyPoint[];
@@ -264,7 +266,7 @@ const LiveLineChart: React.FC<{
     // }, [rangeActive, s, e, dataPrev, dataCurr, metric]);
 
 
-    const allDays = useMemo(() => {
+    const axisDays = useMemo<AxisDay[]>(() => {
       const hasRealMetricValue = (point: DailyPoint | undefined) => {
         if (!point) return false;
 
@@ -292,6 +294,43 @@ const LiveLineChart: React.FC<{
         .filter(Number.isFinite)
         .sort((a, b) => a - b);
 
+      const toAxisDays = (days: number[]): AxisDay[] =>
+        days.map((day) => ({ day }));
+
+      const withSingleDayLineSpan = (days: number[]): AxisDay[] => {
+        if (days.length !== 1) return toAxisDays(days);
+
+        const [onlyDay] = days;
+        const currentHasExpectedZero =
+          showCurrent && onlyDay === expectedCurrentEndDay;
+        const currentHasValue =
+          currentHasExpectedZero ||
+          (showCurrent &&
+            dataCurr.some(
+              (point) =>
+                getDay(point.date) === onlyDay &&
+                hasRealMetricValue(point) &&
+                (!shouldCapCurrentToDataEnd ||
+                  !currentDataEndDate ||
+                  point.date <= currentDataEndDate)
+            ));
+        const previousHasValue =
+          showPrevious &&
+          dataPrev.some(
+            (point) => getDay(point.date) === onlyDay && hasRealMetricValue(point)
+          );
+
+        if (!currentHasValue && !previousHasValue) return toAxisDays(days);
+
+        const padDay = onlyDay < 31 ? onlyDay + 1 : onlyDay - 1;
+        const realAxisDay: AxisDay = { day: onlyDay };
+        const padAxisDay: AxisDay = { day: padDay, __isPad: true };
+
+        return onlyDay < 31
+          ? [realAxisDay, padAxisDay]
+          : [padAxisDay, realAxisDay];
+      };
+
       const currentVisibleEndDays = [
         currDays.length ? currDays[currDays.length - 1] : null,
         expectedCurrentEndDay,
@@ -307,7 +346,9 @@ const LiveLineChart: React.FC<{
 
         if (finalEndDay < s) return [];
 
-        return Array.from({ length: finalEndDay - s + 1 }, (_, i) => s + i);
+        return withSingleDayLineSpan(
+          Array.from({ length: finalEndDay - s + 1 }, (_, i) => s + i)
+        );
       }
 
       // ✅ Expanded mode:
@@ -317,7 +358,9 @@ const LiveLineChart: React.FC<{
         const minDay = Math.min(prevDays[0], currDays[0] ?? prevDays[0]);
         const maxDay = prevDays[prevDays.length - 1];
 
-        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
+        return withSingleDayLineSpan(
+          Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i)
+        );
       }
 
       // ✅ Normal mode:
@@ -326,33 +369,46 @@ const LiveLineChart: React.FC<{
         const minDay = currDays[0] ?? currentPeriodStartDay;
         const maxDay = maxCurrentVisibleDay ?? currDays[currDays.length - 1];
 
-        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
+        return withSingleDayLineSpan(
+          Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i)
+        );
       }
 
       if (prevDays.length) {
         const minDay = prevDays[0];
         const maxDay = prevDays[prevDays.length - 1];
 
-        return Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i);
+        return withSingleDayLineSpan(
+          Array.from({ length: maxDay - minDay + 1 }, (_, i) => minDay + i)
+        );
       }
 
       return [];
-    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
+    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate, showCurrent, showPrevious]);
 
-    const xAxis = useMemo(() => allDays.map(String), [allDays]);
+    const xAxis = useMemo(() => axisDays.map(({ day }) => String(day)), [axisDays]);
+    const xAxisLabelFormatter = useMemo(
+      () => (value: string, index: number) =>
+        axisDays[index]?.__isPad ? "" : value,
+      [axisDays]
+    );
 
     const pickValue = (pt: DailyPoint | undefined) =>
       metric === "quantity" ? pt?.quantity ?? null : pt?.net_sales ?? null;
 
     const prevData = useMemo(() => {
-      return allDays.map((day) => {
+      return axisDays.map(({ day, __isPad }) => {
+        if (__isPad) return null;
+
         const pt = dataPrev.find((d) => getDay(d.date) === day);
         return pickValue(pt);
       });
-    }, [allDays, dataPrev, metric]);
+    }, [axisDays, dataPrev, metric]);
 
     const currData = useMemo(() => {
-      return allDays.map((day) => {
+      return axisDays.map(({ day, __isPad }) => {
+        if (__isPad) return null;
+
         const pt = dataCurr.find(
           (d) =>
             getDay(d.date) === day &&
@@ -361,7 +417,7 @@ const LiveLineChart: React.FC<{
         const value = pickValue(pt);
         return day === expectedCurrentEndDay && value == null ? 0 : value;
       });
-    }, [allDays, dataCurr, metric, expectedCurrentEndDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
+    }, [axisDays, dataCurr, metric, expectedCurrentEndDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
 
     /**
      * ✅ Critical fix:
@@ -435,6 +491,13 @@ const LiveLineChart: React.FC<{
             const params = (Array.isArray(rawParams) ? rawParams : []) as TooltipSeriesParam[];
 
             const day = params?.[0]?.axisValue ?? "";
+            const dataIndex = params.find(
+              (p) => typeof p.dataIndex === "number"
+            )?.dataIndex;
+
+            if (typeof dataIndex === "number" && axisDays[dataIndex]?.__isPad) {
+              return "";
+            }
 
             const stripRange = (name: string) => (name || "").replace(/\s*\d+\s*[–-]\s*\d+\s*$/g, "");
 
@@ -474,6 +537,8 @@ const LiveLineChart: React.FC<{
                 return `${p.marker ?? ""}${seriesName} <b>${shown}</b>`;
               });
 
+            if (!lines.length) return "";
+
             return [`Day ${day}`, ...lines].join("<br/>");
           },
         },
@@ -504,6 +569,7 @@ const LiveLineChart: React.FC<{
           axisLabel: {
             fontSize: axisFontSize,
             color: "#6B7280",
+            formatter: xAxisLabelFormatter,
           },
           nameTextStyle: {
             fontSize: axisNameFontSize,
@@ -621,6 +687,8 @@ const LiveLineChart: React.FC<{
         yAxisName,
         yNameGap,
         xAxis,
+        axisDays,
+        xAxisLabelFormatter,
         prevSeriesData,
         currSeriesData,
         metric,
@@ -646,7 +714,7 @@ const LiveLineChart: React.FC<{
       return () => ro.disconnect();
     }, []);
 
-    const hasDays = allDays.length > 0;
+    const hasDays = axisDays.length > 0;
 
     return (
       <div ref={containerRef} className="w-full h-full min-h-0 overflow-hidden">
