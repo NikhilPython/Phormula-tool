@@ -339,6 +339,33 @@ def _safe_ident(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", name)
 
 
+def _public_table_exists(table_name: str) -> bool:
+    """Return True only when the requested table already exists in public schema."""
+    safe_table_name = _safe_ident(table_name).lower()
+    return bool(db.session.execute(text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        )
+    """), {"table_name": safe_table_name}).scalar())
+
+
+def _missing_ads_table_response(table_name: str, month: int, year: int, country: str, table_type: str):
+    month_name = calendar.month_name[month]
+    return jsonify({
+        "success": False,
+        "error": f"{month_name} {year} {table_type} ads table is not present.",
+        "message": f"Requested {table_type} ads table public.{table_name.lower()} does not exist.",
+        "table_name": f"public.{table_name.lower()}",
+        "country": country,
+        "month": month,
+        "month_name": month_name,
+        "year": year,
+    }), 404
+
+
 def _latest_end_date_for_month(model, user_id, country, first_day, last_day):
     """
     Picks latest end_date for rows whose start_date falls within [first_day, last_day].
@@ -741,6 +768,14 @@ def monthly_sp_sd_to_db():
             return jsonify({"error": "country is required (e.g. UK/US/CA)"}), 400
         if not include.intersection({"SP", "SD", "SB"}):
             return jsonify({"error": "include must contain SP and/or SD and/or SB"}), 400
+
+        # Do not auto-create a missing month table.
+        # The route must only refresh a table that was already provisioned.
+        table_name = _safe_ident(f"adsmonthly_{user_id}_{country}_{month}_{year}")
+        if not _public_table_exists(table_name):
+            return _missing_ads_table_response(
+                table_name, month, year, country, "monthly"
+            )
 
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
@@ -1172,8 +1207,7 @@ def monthly_sp_sd_to_db():
         out = pd.concat([out, pd.DataFrame([total_row])], ignore_index=True)
         items = out.where(pd.notnull(out), None).to_dict(orient="records")
 
-        # ---- dynamic table name ----
-        table_name = _safe_ident(f"adsmonthly_{user_id}_{country}_{month}_{year}")
+        # ---- target table name was validated before reading report rows ----
 
         # ---- SQL ----
         create_sql = f"""
@@ -1246,7 +1280,8 @@ def monthly_sp_sd_to_db():
         """
 
         try:
-            db.session.execute(text(create_sql))
+            # Table existence is validated before processing. Missing month tables
+            # return 404 instead of being created automatically.
 
             # ✅ if table existed previously, add missing columns safely
             db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS product_spend DOUBLE PRECISION;'))
@@ -1712,6 +1747,14 @@ def daily_sp_sd_sb_to_db():
         if not include.intersection({"SP", "SD", "SB"}):
             return jsonify({"error": "include must contain SP and/or SD and/or SB"}), 400
 
+        # Do not auto-create a missing month table.
+        # The route must only refresh a table that was already provisioned.
+        table_name = _safe_ident(f"adsdaily_{user_id}_{country}_{month}_{year}")
+        if not _public_table_exists(table_name):
+            return _missing_ads_table_response(
+                table_name, month, year, country, "daily"
+            )
+
         first_day = date(year, month, 1)
         last_day = date(year, month, calendar.monthrange(year, month)[1])
 
@@ -2015,8 +2058,7 @@ def daily_sp_sd_sb_to_db():
 
         items = out.where(pd.notnull(out), None).to_dict(orient="records")
 
-        # ✅ dynamic daily table name - one table for full month
-        table_name = _safe_ident(f"adsdaily_{user_id}_{country}_{month}_{year}")
+        # ✅ target daily table name was validated before reading report rows
 
         create_sql = f"""
         CREATE TABLE IF NOT EXISTS public.{table_name} (
@@ -2090,9 +2132,8 @@ def daily_sp_sd_sb_to_db():
         """
 
         try:
-            db.session.execute(text(create_sql))
-
-            
+            # Table existence is validated before processing. Missing month tables
+            # return 404 instead of being created automatically.
 
             # ✅ if table already exists, add missing columns safely
             db.session.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN IF NOT EXISTS date DATE;'))
