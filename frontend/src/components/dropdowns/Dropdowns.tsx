@@ -74,6 +74,9 @@ type Summary = {
   otherwplatform?: number;
   advertising_total?: number;
   advertising_total_final?: number;
+  advertising_fees?: number;
+  ads_spend?: number;
+  total_ads?: number;
   total_amazon_fee?: number;
   tacos?: number;
 };
@@ -87,6 +90,9 @@ type UploadRow = {
   total_cous: number;
   advertising_total: number;
   advertising_total_final?: number;
+  advertising_fees?: number;
+  ads_spend?: number;
+  total_ads?: number;
   otherwplatform: number;
   taxncredit?: number;
   profit?: number;
@@ -1339,16 +1345,84 @@ const pickFirstNonZeroNum = (...values: any[]) => {
   return fallback;
 };
 
-const getAdvertisingTotalValue = (row: any) =>
-  pickFirstNonZeroNum(
-    row?.advertising_total_final,
-    row?.advertising_total,
-    row?.total_ads,
-    row?.ads_spend,
-    row?.cost_of_advertisement
+const pickFirstNonZeroOrNull = (...values: any[]) => {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+
+    const n = toNum(value);
+    if (n !== 0) return n;
+  }
+
+  return null;
+};
+
+const hasOwnAdSpendField = (row: any) =>
+  row &&
+  typeof row === "object" &&
+  ["advertising_fees", "ads_spend", "total_ads"].some((key) =>
+    Object.prototype.hasOwnProperty.call(row, key)
   );
 
-const getAdvertisingBaseValue = (row: any) => {
+const getNoCm2AdvertisingValue = (row: any) => {
+  const requestedValue = pickFirstNonZeroOrNull(
+    row?.advertising_fees,
+    row?.ads_spend,
+    row?.total_ads
+  );
+
+  if (requestedValue !== null) return requestedValue;
+  if (hasOwnAdSpendField(row)) return 0;
+
+  return pickFirstNonZeroNum(
+    row?.advertising_total_final,
+    row?.advertising_total,
+    row?.cost_of_advertisement
+  );
+};
+
+const hasSkuCm2Data = (rows: any[] = []) => {
+  const productRows = rows.filter((row) => {
+    const productName = String(row?.product_name || "").trim().toLowerCase();
+    const sku = String(row?.sku || "").trim().toLowerCase();
+
+    return (
+      productName !== "total" &&
+      productName !== "grand total" &&
+      productName !== "others" &&
+      sku !== "total" &&
+      sku !== "grand_total" &&
+      sku !== "others"
+    );
+  });
+
+  if (!productRows.length) return false;
+
+  return productRows.some((row) => {
+    const adsSpend = toNum(row?.ads_spend ?? row?.advertising_total);
+    const backendAcos = toNum(row?.acos);
+    const netSales = toNum(row?.net_sales);
+    const acos = backendAcos || (netSales !== 0 ? (adsSpend / netSales) * 100 : 0);
+    const cm1Profit = toNum(row?.profit);
+    const cm2Profit = toNum(row?.cm2_profit ?? row?.cm2_profit_total);
+
+    return adsSpend !== 0 || acos !== 0 || Math.abs(cm2Profit - cm1Profit) > 0.01;
+  });
+};
+
+const getAdvertisingTotalValue = (row: any, hasCm2Columns = true) =>
+  hasCm2Columns
+    ? pickFirstNonZeroNum(
+      row?.advertising_total_final,
+      row?.advertising_total,
+      row?.total_ads,
+      row?.ads_spend,
+      row?.cost_of_advertisement
+    )
+    : getNoCm2AdvertisingValue(row);
+
+const getAdvertisingBaseValue = (row: any, hasCm2Columns = true) => {
+  if (!hasCm2Columns) return getNoCm2AdvertisingValue(row);
+
   const directValue = pickFirstNonZeroNum(
     row?.advertising_total,
     row?.cost_of_advertisement
@@ -7116,10 +7190,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const mapSkuTotalToSummary = (row: any): Summary => {
+  const mapSkuTotalToSummary = (row: any, hasCm2Columns = true): Summary => {
     const netSales = toNum(row?.net_sales);
-    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
-    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row, hasCm2Columns));
+    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row, hasCm2Columns));
     const cm2ProfitTotal = getCm2ProfitValue(row);
     const cm2Margins = getCm2MarginValue(row, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(row, netSales, cm2ProfitTotal);
@@ -7157,6 +7231,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
+      advertising_fees: toNum(row?.advertising_fees),
+      ads_spend: toNum(row?.ads_spend),
+      total_ads: toNum(row?.total_ads),
 
       total_amazon_fee: toNum(row?.amazon_fee),
 
@@ -7170,11 +7247,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     monthVal: string,
     quarterVal: string,
     yearVal: string,
-    country: string
+    country: string,
+    hasCm2Columns = true
   ): UploadRow => {
     const netSales = toNum(row?.net_sales);
-    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
-    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(row, hasCm2Columns));
+    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row, hasCm2Columns));
 
     const cm1Profit = toNum(row?.profit);
 
@@ -7204,6 +7282,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
+      advertising_fees: toNum(row?.advertising_fees),
+      ads_spend: toNum(row?.ads_spend),
+      total_ads: toNum(row?.total_ads),
 
       otherwplatform: toNum(row?.platform_fee),
 
@@ -7237,13 +7318,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ): UploadHistoryResponse => {
     const currentTotal = getSkuTotalRow(data?.current_data);
     const previousTotal = getSkuTotalRow(data?.previous_data);
+    const currentHasCm2 = hasSkuCm2Data(data?.current_data ?? []);
+    const previousHasCm2 = hasSkuCm2Data(data?.previous_data ?? []);
 
     return {
-      summary: mapSkuTotalToSummary(currentTotal),
+      summary: mapSkuTotalToSummary(currentTotal, currentHasCm2),
       summaryComparisons: {
-        ...(rangeType === "monthly" ? { lastMonth: mapSkuTotalToSummary(previousTotal) } : {}),
-        ...(rangeType === "quarterly" ? { lastQuarter: mapSkuTotalToSummary(previousTotal) } : {}),
-        ...(rangeType === "yearly" ? { lastYear: mapSkuTotalToSummary(previousTotal) } : {}),
+        ...(rangeType === "monthly" ? { lastMonth: mapSkuTotalToSummary(previousTotal, previousHasCm2) } : {}),
+        ...(rangeType === "quarterly" ? { lastQuarter: mapSkuTotalToSummary(previousTotal, previousHasCm2) } : {}),
+        ...(rangeType === "yearly" ? { lastYear: mapSkuTotalToSummary(previousTotal, previousHasCm2) } : {}),
       },
       current_data: data?.current_data ?? [],
       previous_data: data?.previous_data ?? [],
@@ -9130,6 +9213,8 @@ lines.push(
 
 
   const normalizeRowsForParent = (data: any[]): TableRow[] => {
+    const hasCm2Columns = hasSkuCm2Data(data);
+
     return data.map((row) => {
       const productName =
         row?.product_name && String(row.product_name).trim() !== ""
@@ -9140,8 +9225,8 @@ lines.push(
 
       const isTotalRow = productName.trim().toLowerCase() === "total";
       const netSales = toNum(row.net_sales);
-      const advertisingTotal = Math.abs(getAdvertisingBaseValue(row));
-      const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row));
+      const advertisingTotal = Math.abs(getAdvertisingBaseValue(row, hasCm2Columns));
+      const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row, hasCm2Columns));
       const cm2Profit = getCm2ProfitValue(row);
       const cm2Margin = getCm2MarginValue(row, netSales, cm2Profit);
       const cm2ProfitPer = getCm2PerValue(row, netSales, cm2Profit);
@@ -9172,6 +9257,9 @@ lines.push(
 
         advertising_total: advertisingTotal,
         advertising_total_final: advertisingTotalFinal,
+        advertising_fees: toNum(row.advertising_fees),
+        ads_spend: toNum(row.ads_spend),
+        total_ads: toNum(row.total_ads),
         visible_ads: toNum(row.visible_ads),
         dealsvouchar_ads: toNum(row.dealsvouchar_ads),
 
@@ -9267,6 +9355,7 @@ lines.push(
 
   const buildSummaryFromSkuRows = (rows: TableRow[]): Summary => {
     const totalRow = getSkuTotalRow(rows);
+    const hasCm2Columns = hasSkuCm2Data(rows);
 
     const netSales = toNum(totalRow?.net_sales) || sumSkuRows(rows, "net_sales");
     const grossSales =
@@ -9278,8 +9367,8 @@ lines.push(
       toNum(totalRow?.net_units_sold) ||
       sumSkuRows(rows, "total_quantity");
 
-    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
-    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow, hasCm2Columns));
+    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow, hasCm2Columns));
 
     const cm2 = getCm2ProfitValue(totalRow);
 
@@ -9314,6 +9403,9 @@ lines.push(
 
       advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
+      advertising_fees: toNum((totalRow as any)?.advertising_fees),
+      ads_spend: toNum((totalRow as any)?.ads_spend),
+      total_ads: toNum((totalRow as any)?.total_ads),
 
       total_amazon_fee:
         toNum((totalRow as any)?.amazon_fee) ||
@@ -9334,12 +9426,13 @@ lines.push(
     }
   ): UploadRow[] => {
     const totalRow = getSkuTotalRow(rows);
+    const hasCm2Columns = hasSkuCm2Data(rows);
 
     if (!totalRow) return [];
 
     const netSales = toNum((totalRow as any)?.net_sales);
-    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
-    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow, hasCm2Columns));
+    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow, hasCm2Columns));
 
     const cm1Profit = toNum((totalRow as any)?.profit);
 
@@ -9371,6 +9464,9 @@ lines.push(
 
         advertising_total: advertisingTotal,
         advertising_total_final: advertisingTotalFinal,
+        advertising_fees: toNum((totalRow as any)?.advertising_fees),
+        ads_spend: toNum((totalRow as any)?.ads_spend),
+        total_ads: toNum((totalRow as any)?.total_ads),
 
         otherwplatform:
           toNum((totalRow as any)?.platform_fee),
@@ -9411,14 +9507,15 @@ lines.push(
     countryVal: string
   ): UploadRow[] => {
     const totalRow = getSkuTotalRow(rows);
+    const hasCm2Columns = hasSkuCm2Data(rows);
 
     if (!totalRow) return [];
 
     const cm1Profit = toNum((totalRow as any)?.profit);
 
     const netSales = toNum((totalRow as any)?.net_sales);
-    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow));
-    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow));
+    const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow, hasCm2Columns));
+    const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow, hasCm2Columns));
     const cm2ProfitTotal = getCm2ProfitValue(totalRow);
     const cm2Margins = getCm2MarginValue(totalRow, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(totalRow, netSales, cm2ProfitTotal);
@@ -9440,6 +9537,9 @@ lines.push(
 
         advertising_total: advertisingTotal,
         advertising_total_final: advertisingTotalFinal,
+        advertising_fees: toNum((totalRow as any)?.advertising_fees),
+        ads_spend: toNum((totalRow as any)?.ads_spend),
+        total_ads: toNum((totalRow as any)?.total_ads),
 
         otherwplatform:
           toNum((totalRow as any)?.platform_fee),

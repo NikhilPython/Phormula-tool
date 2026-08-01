@@ -161,6 +161,8 @@ export type TableRow = {
 
   advertising_total?: number;
   advertising_total_final?: number;
+  advertising_fees?: number;
+  total_ads?: number;
   visible_ads?: number;
   dealsvouchar_ads?: number;
 
@@ -196,6 +198,8 @@ export type TableRow = {
 type Totals = {
   advertising_total: number;
   advertising_total_final?: number;
+  advertising_fees: number;
+  total_ads: number;
   visible_ads: number;
   dealsvouchar_ads: number;
   other_transactions: number;
@@ -450,6 +454,8 @@ function normalizeRows(data: any[]): TableRow[] {
       advertising_total_final: toNumber(
         row.advertising_total_final ?? row.advertising_total
       ),
+      advertising_fees: toNumber(row.advertising_fees),
+      total_ads: toNumber(row.total_ads),
 
 
       visible_ads: toNumber(row.visible_ads),
@@ -541,6 +547,8 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     brand_spend: toNumber(totalRow.brand_spend),
 
     advertising_total: toNumber(totalRow.advertising_total),
+    advertising_fees: toNumber(totalRow.advertising_fees),
+    total_ads: toNumber(totalRow.total_ads),
 
     net_reimbursement: netReimbursement,
     debt_payment: toNumber(totalRow.debt_payment),
@@ -766,11 +774,34 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const childTotal =
         toNumber(visibilityAdsValue) + toNumber(totals.dealsvouchar_ads);
 
-      if (childTotal !== 0) return childTotal;
+      return toNumber(totals.advertising_total) || childTotal;
     }
 
-    return toNumber(totals.advertising_total);
-  }, [hasCm2Data, totals.advertising_total, totals.dealsvouchar_ads, visibilityAdsValue]);
+    const requestedAdSpend =
+      nonZeroOrNull(totals.advertising_fees) ??
+      nonZeroOrNull(totals.ads_spend) ??
+      nonZeroOrNull(totals.total_ads);
+
+    if (requestedAdSpend !== null) return requestedAdSpend;
+
+    const hasRequestedAdField =
+      rawTotalRow &&
+      typeof rawTotalRow === "object" &&
+      ["advertising_fees", "ads_spend", "total_ads"].some((key) =>
+        Object.prototype.hasOwnProperty.call(rawTotalRow, key)
+      );
+
+    return hasRequestedAdField ? 0 : toNumber(totals.advertising_total);
+  }, [
+    hasCm2Data,
+    rawTotalRow,
+    totals.advertising_total,
+    totals.advertising_fees,
+    totals.ads_spend,
+    totals.total_ads,
+    totals.dealsvouchar_ads,
+    visibilityAdsValue,
+  ]);
 
   const [tableSort, setTableSort] = useState<{
     key: string;
