@@ -550,6 +550,9 @@ def get_exact_other_skus_month_row(
             "sales_mix": 0,
             "profit_mix": 0,
             "unit_wise_profitability": 0,
+            "cm2_profit": 0,
+            "cm2_profit_percentage": 0,
+            "cm2_profit_per_unit": 0,
         }
 
     table_name = matching_tables[0]
@@ -581,11 +584,18 @@ def get_exact_other_skus_month_row(
             for i in range(len(product_names))
         }
 
+        cm2_select = (
+            'COALESCE(SUM(cm2_profit), 0) AS cm2_profit'
+            if "cm2_profit" in columns
+            else '0 AS cm2_profit'
+        )
+
         query = text(f"""
             SELECT
                 COALESCE(SUM(net_sales), 0) AS net_sales,
                 COALESCE(SUM("{quantity_col}"), 0) AS total_quantity,
-                COALESCE(SUM("{profit_col}"), 0) AS profit
+                COALESCE(SUM("{profit_col}"), 0) AS profit,
+                {cm2_select}
             FROM "{table_name}"
             WHERE LOWER(TRIM(product_name)) IN ({placeholders})
         """)
@@ -595,6 +605,7 @@ def get_exact_other_skus_month_row(
         other_net_sales = float(row[0] or 0)
         other_quantity = float(row[1] or 0)
         other_profit = float(row[2] or 0)
+        other_cm2_profit = float(row[3] or 0)
 
         conversion_rate = 1.0
 
@@ -616,9 +627,20 @@ def get_exact_other_skus_month_row(
 
             other_net_sales *= conversion_rate
             other_profit *= conversion_rate
+            other_cm2_profit *= conversion_rate
 
         asp = other_net_sales / other_quantity if other_quantity else 0
         unit_wise_profitability = other_profit / other_quantity if other_quantity else 0
+        cm2_profit_percentage = (
+            (other_cm2_profit / other_net_sales) * 100
+            if other_net_sales
+            else 0
+        )
+        cm2_profit_per_unit = (
+            other_cm2_profit / other_quantity
+            if other_quantity
+            else 0
+        )
 
         total_net_sales, total_profit = get_monthly_total_net_sales_and_profit(
             conn=conn,
@@ -652,7 +674,10 @@ def get_exact_other_skus_month_row(
             "asp": asp,
             "sales_mix": sales_mix,
             "profit_mix": profit_mix,
-            "unit_wise_profitability": unit_wise_profitability,
+            "unit_wise_profitability": round(unit_wise_profitability, 2),
+            "cm2_profit": round(other_cm2_profit, 2),
+            "cm2_profit_percentage": round(cm2_profit_percentage, 2),
+            "cm2_profit_per_unit": round(cm2_profit_per_unit, 2),
         }
 
     except Exception as e:
@@ -844,6 +869,7 @@ def productwise_performance():
                     total_sales_mix = 0.0
                     total_profit_mix = 0.0
                     total_cost_of_unit_sold = 0.0
+                    total_cm2_profit = 0.0
 
                     table_found = False
                     conversion_rate_applied = None
@@ -878,6 +904,12 @@ def productwise_performance():
                             if not required_cols.issubset(columns):
                                 continue
 
+                            cm2_select = (
+                                'cm2_profit'
+                                if 'cm2_profit' in columns
+                                else '0 AS cm2_profit'
+                            )
+
                             has_sku_col = 'sku' in columns
 
                             where_condition = """
@@ -891,7 +923,15 @@ def productwise_performance():
                                 """
 
                             query = text(f"""
-                                SELECT net_sales, total_quantity, profit, asp, sales_mix, profit_mix, cost_of_unit_sold
+                                SELECT
+                                    net_sales,
+                                    total_quantity,
+                                    profit,
+                                    asp,
+                                    sales_mix,
+                                    profit_mix,
+                                    cost_of_unit_sold,
+                                    {cm2_select}
                                 FROM "{table_name}"
                                 WHERE {where_condition}
                             """)
@@ -911,6 +951,7 @@ def productwise_performance():
                             table_sales_mix = sum(float(row[4] or 0) for row in rows)
                             table_profit_mix = sum(float(row[5] or 0) for row in rows)
                             table_cost_of_unit_sold = sum(float(row[6] or 0) for row in rows)
+                            table_cm2_profit = sum(float(row[7] or 0) for row in rows)
 
                             if country.lower() in ('uk', 'us'):
                                 source_currency = country_currency_map.get(country.lower())
@@ -932,6 +973,7 @@ def productwise_performance():
                                 table_profit *= conversion_rate
                                 # table_asp *= conversion_rate
                                 table_cost_of_unit_sold *= conversion_rate
+                                table_cm2_profit *= conversion_rate
 
                                 conversion_rate_applied = conversion_rate
                             else:
@@ -944,6 +986,7 @@ def productwise_performance():
                             total_sales_mix += table_sales_mix
                             total_profit_mix += table_profit_mix
                             total_cost_of_unit_sold += table_cost_of_unit_sold
+                            total_cm2_profit += table_cm2_profit
 
                         except Exception as e:
                             continue
@@ -957,6 +1000,24 @@ def productwise_performance():
                     gross_margin = (
                         (total_profit / total_sales) * 100
                         if total_sales > 0
+                        else 0.0
+                    )
+
+                    unit_wise_profitability = (
+                        total_profit / total_quantity
+                        if total_quantity > 0
+                        else 0.0
+                    )
+
+                    cm2_profit_percentage = (
+                        (total_cm2_profit / total_sales) * 100
+                        if total_sales > 0
+                        else 0.0
+                    )
+
+                    cm2_profit_per_unit = (
+                        total_cm2_profit / total_quantity
+                        if total_quantity > 0
                         else 0.0
                     )
 
@@ -976,6 +1037,10 @@ def productwise_performance():
                         'sales_mix': total_sales_mix if table_found else 0.0,
                         'profit_mix': total_profit_mix if table_found else 0.0,
                         'gross_margin': gross_margin,
+                        'unit_wise_profitability': round(unit_wise_profitability, 2) if table_found else 0.0,
+                        'cm2_profit': round(total_cm2_profit, 2) if table_found else 0.0,
+                        'cm2_profit_percentage': round(cm2_profit_percentage, 2) if table_found else 0.0,
+                        'cm2_profit_per_unit': round(cm2_profit_per_unit, 2) if table_found else 0.0,
                         'year': year,
                         'conversion_rate_applied': conversion_rate_applied,
                     })
@@ -1133,6 +1198,9 @@ def productwise_performance():
                                 "profit_mix": profit_mix,
 
                                 "unit_wise_profitability": item.get("unit_wise_profitability") or 0,
+                                "cm2_profit": item.get("cm2_profit") or 0,
+                                "cm2_profit_percentage": item.get("cm2_profit_percentage") or 0,
+                                "cm2_profit_per_unit": item.get("cm2_profit_per_unit") or 0,
                             })
 
                         other_skus_graph_data[country] = other_rows

@@ -32,7 +32,7 @@ ChartJS.register(
 );
 
 type CountryKey = "uk" | "global" | "us" | "ca";
-type TrendTab = "sales_cm1" | "units_asp" | "mix" | "inventory_units";
+type TrendTab = "sales_cm1" | "units_asp" | "mix" | "inventory_units" | "cm2";
 type CurrencyCode = "USD" | "GBP" | "INR" | "CAD";
 
 interface ProductMetricPoint {
@@ -44,6 +44,10 @@ interface ProductMetricPoint {
   sales_mix: number;
   profit_mix: number;
   inventory_units: number;
+  unit_wise_profitability: number;
+  cm2_profit: number;
+  cm2_profit_percentage: number;
+  cm2_profit_per_unit: number;
 }
 
 interface ApiMonthRow {
@@ -59,6 +63,10 @@ interface ApiMonthRow {
   sales_mix?: number;
   profit_mix?: number;
   inventory_units?: number;
+  unit_wise_profitability?: number;
+  cm2_profit?: number;
+  cm2_profit_percentage?: number;
+  cm2_profit_per_unit?: number;
 }
 
 interface ApiResponse {
@@ -172,6 +180,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
       sales_mix: "#3A8EA4",
       profit_mix: "#ED9F50",
       inventory_units: "#7B9A6D",
+      unit_wise_profitability: "#7C6FB0",
+      cm2_profit: "#5EA68E",
+      cm2_profit_percentage: "#D98B5F",
+      cm2_profit_per_unit: "#8B6F47",
     };
 
     return colors[metric] || "#6b7280";
@@ -356,6 +368,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: Map<string, number>;
           profit_mix: Map<string, number>;
           inventory_units: Map<string, number>;
+          unit_wise_profitability: Map<string, number>;
+          cm2_profit: Map<string, number>;
+          cm2_profit_percentage: Map<string, number>;
+          cm2_profit_per_unit: Map<string, number>;
         }
       > = {
         uk: {
@@ -366,6 +382,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: new Map(),
           profit_mix: new Map(),
           inventory_units: new Map(),
+          unit_wise_profitability: new Map(),
+          cm2_profit: new Map(),
+          cm2_profit_percentage: new Map(),
+          cm2_profit_per_unit: new Map(),
         },
         global: {
           net_sales: new Map(),
@@ -375,6 +395,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: new Map(),
           profit_mix: new Map(),
           inventory_units: new Map(),
+          unit_wise_profitability: new Map(),
+          cm2_profit: new Map(),
+          cm2_profit_percentage: new Map(),
+          cm2_profit_per_unit: new Map(),
         },
         us: {
           net_sales: new Map(),
@@ -384,6 +408,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: new Map(),
           profit_mix: new Map(),
           inventory_units: new Map(),
+          unit_wise_profitability: new Map(),
+          cm2_profit: new Map(),
+          cm2_profit_percentage: new Map(),
+          cm2_profit_per_unit: new Map(),
         },
         ca: {
           net_sales: new Map(),
@@ -393,6 +421,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           sales_mix: new Map(),
           profit_mix: new Map(),
           inventory_units: new Map(),
+          unit_wise_profitability: new Map(),
+          cm2_profit: new Map(),
+          cm2_profit_percentage: new Map(),
+          cm2_profit_per_unit: new Map(),
         },
       };
 
@@ -447,6 +479,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             valueMaps[country].asp.set(label, Number.isFinite(asp) ? asp : 0);
             valueMaps[country].sales_mix.set(label, Number(row.sales_mix ?? 0));
             valueMaps[country].profit_mix.set(label, Number(row.profit_mix ?? 0));
+            valueMaps[country].unit_wise_profitability.set(label, Number(Number(row.unit_wise_profitability ?? 0).toFixed(2)));
+            valueMaps[country].cm2_profit.set(label, Number(row.cm2_profit ?? 0));
+            valueMaps[country].cm2_profit_percentage.set(label, Number(row.cm2_profit_percentage ?? 0));
+            valueMaps[country].cm2_profit_per_unit.set(label, Number(Number(row.cm2_profit_per_unit ?? 0).toFixed(2)));
           });
         });
       }
@@ -471,6 +507,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             sales_mix: valueMaps.uk.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.uk.profit_mix.get(label) ?? 0,
             inventory_units: valueMaps.uk.inventory_units.get(label) ?? 0,
+            unit_wise_profitability: valueMaps.uk.unit_wise_profitability.get(label) ?? 0,
+            cm2_profit: valueMaps.uk.cm2_profit.get(label) ?? 0,
+            cm2_profit_percentage: valueMaps.uk.cm2_profit_percentage.get(label) ?? 0,
+            cm2_profit_per_unit: valueMaps.uk.cm2_profit_per_unit.get(label) ?? 0,
           };
         }),
         global: months.map((m) => {
@@ -484,6 +524,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             sales_mix: valueMaps.global.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.global.profit_mix.get(label) ?? 0,
             inventory_units: valueMaps.global.inventory_units.get(label) ?? 0,
+            unit_wise_profitability: valueMaps.global.unit_wise_profitability.get(label) ?? 0,
+            cm2_profit: valueMaps.global.cm2_profit.get(label) ?? 0,
+            cm2_profit_percentage: valueMaps.global.cm2_profit_percentage.get(label) ?? 0,
+            cm2_profit_per_unit: valueMaps.global.cm2_profit_per_unit.get(label) ?? 0,
           };
         }),
         us: months.map((m) => {
@@ -497,6 +541,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             sales_mix: valueMaps.us.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.us.profit_mix.get(label) ?? 0,
             inventory_units: valueMaps.us.inventory_units.get(label) ?? 0,
+            unit_wise_profitability: valueMaps.us.unit_wise_profitability.get(label) ?? 0,
+            cm2_profit: valueMaps.us.cm2_profit.get(label) ?? 0,
+            cm2_profit_percentage: valueMaps.us.cm2_profit_percentage.get(label) ?? 0,
+            cm2_profit_per_unit: valueMaps.us.cm2_profit_per_unit.get(label) ?? 0,
           };
         }),
         ca: months.map((m) => {
@@ -510,6 +558,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             sales_mix: valueMaps.ca.sales_mix.get(label) ?? 0,
             profit_mix: valueMaps.ca.profit_mix.get(label) ?? 0,
             inventory_units: valueMaps.ca.inventory_units.get(label) ?? 0,
+            unit_wise_profitability: valueMaps.ca.unit_wise_profitability.get(label) ?? 0,
+            cm2_profit: valueMaps.ca.cm2_profit.get(label) ?? 0,
+            cm2_profit_percentage: valueMaps.ca.cm2_profit_percentage.get(label) ?? 0,
+            cm2_profit_per_unit: valueMaps.ca.cm2_profit_per_unit.get(label) ?? 0,
           };
         }),
       };
@@ -565,7 +617,11 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         if (!point) return false;
 
         if (activeTab === "units_asp") {
-          return Number(point.units_sold || 0) > 0 || Number(point.asp || 0) > 0;
+          return Number(point.units_sold || 0) > 0 || Number(point.asp || 0) > 0 || Number(point.unit_wise_profitability || 0) !== 0;
+        }
+
+        if (activeTab === "cm2") {
+          return Number(point.cm2_profit || 0) !== 0 || Number(point.cm2_profit_percentage || 0) !== 0 || Number(point.cm2_profit_per_unit || 0) !== 0;
         }
 
         if (activeTab === "inventory_units") {
@@ -737,10 +793,40 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         yAxisID: "y1",
       }));
 
-      return {
-        labels,
-        datasets: [...unitDatasets, ...aspDatasets],
-      };
+      const unitProfitabilityDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} CM1 Profit Per Unit`,
+        data: labels.map((label) => {
+          const found = journeyData[country]?.find((d) => d.month === label);
+          return found ? found.unit_wise_profitability : 0;
+        }),
+        borderColor: getMetricColor("unit_wise_profitability"),
+        backgroundColor: getMetricColor("unit_wise_profitability"),
+        tension: 0.35, pointRadius: 3, pointHitRadius: 12, pointHoverRadius: 5, fill: false, borderDash: [], borderWidth: 2, yAxisID: "y1",
+      }));
+
+      return { labels, datasets: [...unitDatasets, ...aspDatasets, ...unitProfitabilityDatasets] };
+    }
+
+    if (activeTab === "cm2") {
+      const cm2ProfitDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} CM2 Profit`,
+        data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit ?? 0),
+        borderColor: getMetricColor("cm2_profit"), backgroundColor: getMetricColor("cm2_profit"),
+        tension: 0.35, pointRadius: 3, pointHitRadius: 12, pointHoverRadius: 5, fill: false, borderDash: [], borderWidth: 2, yAxisID: "y",
+      }));
+      const cm2PercentageDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} CM2 Profit %`,
+        data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit_percentage ?? 0),
+        borderColor: getMetricColor("cm2_profit_percentage"), backgroundColor: getMetricColor("cm2_profit_percentage"),
+        tension: 0.35, pointRadius: 3, pointHitRadius: 12, pointHoverRadius: 5, fill: false, borderDash: [], borderWidth: 2, yAxisID: "y1",
+      }));
+      const cm2PerUnitDatasets = activeCountries.map((country) => ({
+        label: `${formatCountry(country)} CM2 Profit / Unit`,
+        data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit_per_unit ?? 0),
+        borderColor: getMetricColor("cm2_profit_per_unit"), backgroundColor: getMetricColor("cm2_profit_per_unit"),
+        tension: 0.35, pointRadius: 3, pointHitRadius: 12, pointHoverRadius: 5, fill: false, borderDash: [], borderWidth: 2, yAxisID: "y",
+      }));
+      return { labels, datasets: [...cm2ProfitDatasets, ...cm2PercentageDatasets, ...cm2PerUnitDatasets] };
     }
 
     const salesMixDatasets = activeCountries.map((country) => ({
@@ -842,11 +928,15 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               const datasetLabel = String(context.dataset.label || "");
               const lowerLabel = datasetLabel.toLowerCase();
 
-              if (lowerLabel.includes("asp")) {
+              if (
+                lowerLabel.includes("asp") ||
+                lowerLabel.includes("profit per unit") ||
+                lowerLabel.includes("profit / unit")
+              ) {
                 return `${datasetLabel}: ${formatAsp(value)}`;
               }
 
-              if (lowerLabel.includes("mix")) {
+              if (lowerLabel.includes("mix") || lowerLabel.includes("%")) {
                 return `${datasetLabel}: ${formatPercent(value)}`;
               }
 
@@ -918,6 +1008,8 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             text:
               activeTab === "units_asp"
                 ? "Units (in nos.)"
+                : activeTab === "cm2"
+                  ? `CM2 Amount (${currencySymbol})`
                 : activeTab === "inventory_units"
                   ? "Inventory Units"
                   : activeTab === "mix"
@@ -936,24 +1028,27 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               }
 
               if (activeTab === "mix") return formatPercent(value);
+              if (activeTab === "cm2") return formatCurrency(value);
 
               return formatCurrency(value);
             },
           },
         },
         y1: {
-          display: activeTab === "units_asp" || activeTab === "inventory_units",
+          display: activeTab === "units_asp" || activeTab === "inventory_units" || activeTab === "cm2",
           position: "right",
           min: 0,
           grid: {
             drawOnChartArea: false,
           },
           title: {
-            display: activeTab === "units_asp" || activeTab === "inventory_units",
+            display: activeTab === "units_asp" || activeTab === "inventory_units" || activeTab === "cm2",
             text:
               activeTab === "inventory_units"
                 ? "Unit Sales (in nos.)"
-                : `ASP (${currencySymbol})`,
+                : activeTab === "cm2"
+                  ? "CM2 Profit (%)"
+                  : `ASP / Unit Profitability (${currencySymbol})`,
           },
           ticks: {
             font: {
@@ -961,6 +1056,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             },
             callback: (value: number) => {
               if (activeTab === "inventory_units") return formatUnits(Number(value));
+              if (activeTab === "cm2") return formatPercent(Number(value));
               return formatAsp(Number(value));
             },
           },
@@ -993,7 +1089,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
-              <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
+              <div className="flex flex-col gap-3 ">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
                     {/* <div className="flex items-center gap-1 flex-wrap">
@@ -1017,18 +1113,19 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-auto pb-1 2xl:w-auto 2xl:overflow-visible">
-                  <div className="min-w-max 2xl:min-w-0 2xl:w-fit">
+                <div className="w-full overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] 2xl:w-auto 2xl:overflow-visible">
+                  <div className="min-w-[760px] lg:min-w-[860px] 2xl:min-w-0 2xl:w-fit">
                     <SegmentedToggle<TrendTab>
                       value={activeTab}
                       onChange={setActiveTab}
-                      textSizeClass="text-[10px] sm:text-xs"
+                      textSizeClass="text-[9px] sm:text-[10px] lg:text-xs whitespace-nowrap"
                       className="w-full 2xl:w-auto"
                       options={[
                         { value: "sales_cm1", label: "Sales & CM1 Profit" },
-                        { value: "units_asp", label: "Units & ASP" },
+                        { value: "units_asp", label: "Units, ASP & CM1 Profit/Unit" },
                         { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
                         { value: "inventory_units", label: "Inventory Units & Unit Sales" },
+                        { value: "cm2", label: "CM2 Metrics" },
                       ]}
                     />
                   </div>
@@ -1037,7 +1134,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
             </div>
 
             <div
-              className={`relative flex h-[380px] max-h-[500px] items-center justify-center rounded-md bg-white ${isDraggingChart ? "cursor-grabbing" : "cursor-grab"
+              className={`relative flex h-[320px] sm:h-[360px] lg:h-[400px] max-h-[500px] items-center justify-center rounded-md bg-white ${isDraggingChart ? "cursor-grabbing" : "cursor-grab"
                 }`}
               onMouseDown={() => setIsDraggingChart(true)}
               onMouseUp={() => setIsDraggingChart(false)}
@@ -1084,6 +1181,10 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span className="h-0 w-9 border-t-2 border border-[#B75A5A]" />
                     <span>ASP</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#7C6FB0]" />
+                    <span>CM1 Profit Per Unit</span>
+                  </div>
                 </>
               )}
 
@@ -1097,6 +1198,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                     <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
                     <span>CM1 Profit Mix</span>
                   </div>
+                </>
+              )}
+
+              {activeTab === "cm2" && (
+                <>
+                  <div className="flex items-center gap-2"><span className="h-0 w-9 border-t-2 border-[#5EA68E]" /><span>CM2 Profit</span></div>
+                  <div className="flex items-center gap-2"><span className="h-0 w-9 border-t-2 border-[#D98B5F]" /><span>CM2 Profit %</span></div>
+                  <div className="flex items-center gap-2"><span className="h-0 w-9 border-t-2 border-[#8B6F47]" /><span>CM2 Profit / Unit</span></div>
                 </>
               )}
 
