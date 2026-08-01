@@ -1,5 +1,6 @@
 from flask import  jsonify
 from sqlalchemy import create_engine,  inspect
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 from config import Config
@@ -395,8 +396,15 @@ def ensure_storage_fee_columns(conn, table_name: str):
     _TABLE_COL_CACHE.pop(f"public.{table_name}", None)
 
 def process_skuwise_data(user_id, country, month, year):
-    engine = create_engine(db_url)
-    engine1 = create_engine(db_url1)
+    # Normalize filter values to match rolling-table schema:
+    # month/year are TEXT and user_id is INTEGER.
+    user_id = int(user_id)
+    country = str(country).strip().lower()
+    month = str(month).strip().lower()
+    year = str(year).strip()
+
+    engine = create_engine(db_url, poolclass=NullPool)
+    engine1 = create_engine(db_url1, poolclass=NullPool)
     conn = engine.connect()
 
     source_table = f"user_{user_id}_{country}_{month}{year}_data"
@@ -2541,11 +2549,20 @@ def process_skuwise_data(user_id, country, month, year):
             conn.close()
         except Exception:
             pass
+        try:
+            engine.dispose()
+            engine1.dispose()
+        except Exception:
+            pass
         print("[process_skuwise_data] END")
 
 
 def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
-    engine = create_engine(db_url)
+    user_id = int(user_id)
+    month = str(month).strip().lower()
+    year = str(year).strip()
+
+    engine = create_engine(db_url, poolclass=NullPool)
     conn = engine.connect()
     country = "uk"
 
@@ -2847,7 +2864,10 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
     except Exception as e:
         print(f"❌ Error: {e}")
     finally:
-        conn.close()
+        try:
+            conn.close()
+        finally:
+            engine.dispose()
 
 
 def process_yearly_skuwise_data(user_id, country, year):
@@ -2855,7 +2875,11 @@ def process_yearly_skuwise_data(user_id, country, year):
     import pandas as pd
     import numpy as np
 
-    engine = create_engine(db_url)
+    user_id = int(user_id)
+    country = str(country).strip().lower()
+    year = str(year).strip()
+
+    engine = create_engine(db_url, poolclass=NullPool)
     conn = engine.connect()
 
     config_list = [
@@ -3130,7 +3154,10 @@ def process_yearly_skuwise_data(user_id, country, year):
         conn.rollback()
         raise
     finally:
-        conn.close()
+        try:
+            conn.close()
+        finally:
+            engine.dispose()
 
 
 

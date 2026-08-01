@@ -1481,25 +1481,13 @@ def process_skuwise_us_data(user_id, country, month, year):
             (sku_grouped["rembursement_fee"] / sku_grouped["Net Sales"]) * 100,
             0,
         )
-        # CM2 follows the report layout:
-        # Profit - Advertising - Shipping - Storage - Platform Management
-        # + Other Adjustment - Inventory Charges and Reimbursement.
-        # inventory_charges_and_reimbursement can be negative, so subtracting it
-        # correctly adds the net reimbursement benefit back to CM2.
-        sku_grouped["cm2_profit"] = (
-            safe_series(sku_grouped, "profit")
-            - safe_series(sku_grouped, "advertising_total").abs()
-            - safe_series(sku_grouped, "shipping_charges").abs()
-            - safe_series(sku_grouped, "storage_fee").abs()
-            - safe_series(sku_grouped, "inventory_charges_and_reimbursement")
-            - safe_series(sku_grouped, "platform_management_fees").abs()
-            + safe_series(sku_grouped, "other_adjustment")
-        )
-        sku_grouped["cm2_margins"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (sku_grouped["cm2_profit"] / sku_grouped["Net Sales"]) * 100,
-            0,
-        )
+        # Keep CM2 as a report-level metric, matching the UK output.
+        # Shipping, storage, platform-management and adjustment transactions can
+        # have blank/non-product SKUs, so allocating them to individual SKUs
+        # produces misleading SKU-wise CM2 values. The correct CM2 is written
+        # only to the TOTAL row below.
+        sku_grouped["cm2_profit"] = 0.0
+        sku_grouped["cm2_margins"] = 0.0
         sku_grouped["acos"] = np.where(
             sku_grouped["Net Sales"] != 0,
             (sku_grouped["advertising_total"] / sku_grouped["Net Sales"]) * 100,
@@ -1782,22 +1770,13 @@ def process_skuwise_us_data(user_id, country, month, year):
             - abs(platform_management_fees_total)
             + other_adjustment_total
         )
-        if ads_table_applied:
-            cm2_profit = float(pd.to_numeric(sku_grouped["cm2_profit"], errors="coerce").fillna(0.0).sum())
+        # Do not derive report-level CM2 by summing SKU rows. SKU CM2 is
+        # intentionally zero, while TOTAL CM2 uses the complete monthly charges.
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
         rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
-        sku_grouped["cm2_profit_percentage"] = np.where(
-            sku_grouped["Net Sales"] != 0,
-            (sku_grouped["cm2_profit"] / sku_grouped["Net Sales"]) * 100,
-            0
-        )
-
-        sku_grouped["cm2_profit_percentage"] = (
-            sku_grouped["cm2_profit_percentage"]
-            .replace([np.inf, -np.inf], 0)
-            .fillna(0)
-        )
+        # Same as UK: SKU rows remain zero; TOTAL row receives the percentage.
+        sku_grouped["cm2_profit_percentage"] = 0.0
 
         # ---------- total row ----------
         sum_row = sku_grouped.select_dtypes(include=[np.number]).sum()
