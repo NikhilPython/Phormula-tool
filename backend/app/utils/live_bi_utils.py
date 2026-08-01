@@ -1556,7 +1556,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             day_sku = tmp_sku[tmp_sku["date_only"] == d]
             day_sku_shipments = day_sku.loc[_shipment_type_mask(day_sku)]
 
-            quantity = float(safe_num(day_sku_shipments.get("quantity", 0)).sum()) if len(day_sku_shipments) else 0.0
+            quantity = float(safe_num(day_sku_shipments.get("quantity", 0)).abs().sum()) if len(day_sku_shipments) else 0.0
             product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
             cogs = float(
                 safe_num(day_sku.get("cost_of_unit_sold", 0)).sum()
@@ -1569,30 +1569,30 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 safe_num(day_sku.get("fba_fees", 0)).sum()
             ) if len(day_sku) else 0.0
 
-            # ✅ gross_sales per day (robust rebates)
-            gross_sales = float((
-                safe_num(day_sku.get("product_sales", 0.0))
-                + safe_num(day_sku.get("product_sales_tax", 0.0))
-                + safe_num(day_sku.get("postage_credits", 0.0))
-                + safe_num(day_sku.get("gift_wrap_credits", 0.0))
-                + safe_num(day_sku.get("shipping_credits_tax", 0.0))
-                + safe_num(day_sku.get("giftwrap_credits_tax", 0.0))
-                - safe_num(day_sku.get("promotional_rebates", 0.0)).abs()
-                - safe_num(day_sku.get("promotional_rebates_tax", 0.0)).abs()
-            ).sum()) if len(day_sku) else 0.0
+            # Match the finance MTD card's previous-period sales formula.
+            gross_sales = product_sales
+            promotional_rebates = float(safe_num(day_sku.get("promotional_rebates", 0.0)).sum()) if len(day_sku) else 0.0
+            type_normalized = (
+                day_sku.get("type", pd.Series("", index=day_sku.index))
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .str.lower()
+            ) if len(day_sku) else pd.Series(dtype=str)
+            refund_mask = type_normalized.eq("refund") if len(day_sku) else pd.Series(dtype=bool)
+            refund_sales = (
+                float(safe_num(day_sku.loc[refund_mask, "product_sales"]).abs().sum())
+                if len(day_sku) and "product_sales" in day_sku.columns
+                else 0.0
+            )
+            net_sales = gross_sales - refund_sales - abs(promotional_rebates)
 
             # sales/profit based on SKU rows (keeps your earlier behavior for UK)
             sales_df = day_sku if len(day_sku) else day_all
 
             if country_key == "us":
-                net_sales, _, _ = us_sales(sales_df, country=country_key)
                 profit, _, _ = us_profit(sales_df, country=country_key)
             else:
-                net_sales = float((
-                    safe_num(sales_df.get("product_sales", 0.0))
-                    + safe_num(sales_df.get("promotional_rebates", 0.0))
-                ).sum())
-
                 # profit, _, _ = uk_profit(sales_df)
 
                 profit, _, _ = uk_profit(
@@ -1613,6 +1613,8 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "quantity": float(quantity),
                 "product_sales": float(product_sales),
                 "gross_sales": float(gross_sales),
+                "refund_sales": float(refund_sales),
+                "promotional_rebates": float(promotional_rebates),
                 "net_sales": float(net_sales),
                 "profit": float(profit),
                 "platform_fee": float(platform_fee_total),
@@ -1722,7 +1724,6 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["cogs"] = safe_num(df.get("cogs", 0))
     df["product_sales"] = safe_num(df.get("product_sales", 0))
     df["promotional_rebates"] = safe_num(df.get("promotional_rebates", 0))
-    df["net_sales"] = df["product_sales"] + df["promotional_rebates"]
 
     # ✅ gross_sales from DB (fallback compute if missing)
     if "gross_sales" in df.columns:
@@ -1752,6 +1753,15 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         desc_lower.str.contains("refund|return", case=False, na=False, regex=True)
         | type_lower.str.contains("refund|return", case=False, na=False, regex=True)
         | bucket_lower.str.contains("refund|return", case=False, na=False, regex=True)
+    )
+
+    # Keep live BI sales aligned with /amazon_api/finances/mtd_transactions.
+    df["refund_sales"] = 0.0
+    df.loc[return_mask, "refund_sales"] = df.loc[return_mask, "product_sales"].abs()
+    df["net_sales"] = (
+        df["gross_sales"]
+        - df["refund_sales"].abs()
+        - df["promotional_rebates"].abs()
     )
 
     df["quantity_filtered"] = 0.0
@@ -1823,13 +1833,20 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
           .agg(
               product_name=("product_name", "first"),
               quantity=("quantity_filtered", "sum"),
-              net_sales=("net_sales", "sum"),
               product_sales=("product_sales", "sum"),
               gross_sales=("gross_sales", "sum"),  # ✅ NEW
+              refund_sales=("refund_sales", "sum"),
+              promotional_rebates=("promotional_rebates", "sum"),
               profit=("profit", "sum"),
               cogs=("cogs", "sum"),
               __has_mapping__=("__has_mapping__", "max"),
           )
+    )
+
+    sku_agg["net_sales"] = (
+        sku_agg["gross_sales"]
+        - sku_agg["refund_sales"].abs()
+        - sku_agg["promotional_rebates"].abs()
     )
 
     qty_nonzero = sku_agg["quantity"].replace(0, np.nan)
@@ -1853,14 +1870,17 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     daily_qty = df.groupby("date_only", as_index=False)["quantity_filtered"].sum()
     qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity_filtered"])}
 
-    daily_ns = df.groupby("date_only", as_index=False)["net_sales"].sum()
-    ns_map = {d: float(v) for d, v in zip(daily_ns["date_only"], daily_ns["net_sales"])}
-
     daily_ps = df.groupby("date_only", as_index=False)["product_sales"].sum()
     ps_map = {d: float(v) for d, v in zip(daily_ps["date_only"], daily_ps["product_sales"])}
 
     daily_gs = df.groupby("date_only", as_index=False)["gross_sales"].sum()  # ✅ NEW
     gs_map = {d: float(v) for d, v in zip(daily_gs["date_only"], daily_gs["gross_sales"])}
+
+    daily_refund = df.groupby("date_only", as_index=False)["refund_sales"].sum()
+    refund_map = {d: float(v) for d, v in zip(daily_refund["date_only"], daily_refund["refund_sales"])}
+
+    daily_promos = df.groupby("date_only", as_index=False)["promotional_rebates"].sum()
+    promo_map = {d: float(v) for d, v in zip(daily_promos["date_only"], daily_promos["promotional_rebates"])}
 
     daily_profit = df.groupby("date_only", as_index=False)["profit"].sum()
     profit_map = {d: float(v) for d, v in zip(daily_profit["date_only"], daily_profit["profit"])}
@@ -1875,14 +1895,22 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         # ✅ NEW: reimbursement from raw transactions
         remb_map[d] = float(compute_net_reimbursement_from_df(day_df))
 
-    all_days = sorted(set(qty_map) | set(ns_map) | set(ps_map) | set(gs_map) | set(profit_map) | set(pf_map) | set(ad_map) | set(remb_map))
+    all_days = sorted(set(qty_map) | set(ps_map) | set(gs_map) | set(refund_map) | set(promo_map) | set(profit_map) | set(pf_map) | set(ad_map) | set(remb_map))
     for d in all_days:
+        net_sales = (
+            gs_map.get(d, 0.0)
+            - abs(refund_map.get(d, 0.0))
+            - abs(promo_map.get(d, 0.0))
+        )
+
         daily_series.append({
             "date": d.isoformat(),
             "quantity": qty_map.get(d, 0.0),
-            "net_sales": ns_map.get(d, 0.0),
+            "net_sales": net_sales,
             "product_sales": ps_map.get(d, 0.0),
             "gross_sales": gs_map.get(d, 0.0),   # ✅ NEW
+            "refund_sales": refund_map.get(d, 0.0),
+            "promotional_rebates": promo_map.get(d, 0.0),
             "profit": profit_map.get(d, 0.0),
             "platform_fee": pf_map.get(d, 0.0),
             "advertising": ad_map.get(d, 0.0),

@@ -195,6 +195,7 @@ export type ChartMetric = "net_sales" | "quantity";
 
 export type DailyPoint = {
     date: string;
+    currency?: CurrencyCode;
     quantity?: number;
     net_sales?: number;
     gross_sales?: number;

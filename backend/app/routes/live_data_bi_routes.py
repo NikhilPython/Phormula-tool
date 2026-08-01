@@ -4488,7 +4488,7 @@ def live_mtd_vs_previous():
             _, previous_uk_raw = fetch_previous_period_data(
                 user_id, "uk", prev_full_start, prev_full_end
             )
-            previous_uk = _convert_daily_series_to_usd(previous_uk_raw, uk_to_usd_rate)
+            previous_uk = _tag_daily_series(previous_uk_raw, "uk")
 
         elif country == "us":
             _, previous_us_raw = fetch_previous_period_data(
@@ -4515,7 +4515,7 @@ def live_mtd_vs_previous():
             _, current_mtd_uk_raw = fetch_current_mtd_data(
                 user_id, "uk", curr_start, curr_end
             )
-            current_mtd_uk = _convert_daily_series_to_usd(current_mtd_uk_raw, uk_to_usd_rate)
+            current_mtd_uk = _tag_daily_series(current_mtd_uk_raw, "uk")
 
         elif country == "us":
             _, current_mtd_us_raw = fetch_current_mtd_data(
@@ -4532,10 +4532,7 @@ def live_mtd_vs_previous():
             _, previous_aligned_uk_raw = fetch_previous_period_data(
                 user_id, "uk", prev_start, prev_end
             )
-            previous_aligned_uk = _convert_daily_series_to_usd(
-                previous_aligned_uk_raw,
-                uk_to_usd_rate,
-            )
+            previous_aligned_uk = _tag_daily_series(previous_aligned_uk_raw, "uk")
 
         elif country == "us":
             _, previous_aligned_us_raw = fetch_previous_period_data(
@@ -6635,6 +6632,8 @@ DAILY_MONEY_COLS = [
     "product_sales",
     "gross_sales",
     "net_sales",
+    "refund_sales",
+    "promotional_rebates",
     "profit",
     "platform_fee",
     "advertising",
@@ -6668,12 +6667,17 @@ def _convert_daily_series_to_usd(rows, rate):
 
 def _tag_daily_series(rows, country):
     out = []
+    currency = {
+        "uk": "GBP",
+        "us": "USD",
+        "ca": "CAD",
+    }.get(str(country or "").lower(), "USD")
 
     for r in rows or []:
         nr = dict(r)
         nr["country"] = country
         nr["source_country"] = country
-        nr["currency"] = "USD"
+        nr["currency"] = currency
         out.append(nr)
 
     return out

@@ -3785,30 +3785,44 @@ export default function DashboardPage() {
         const currentSource = getCurrentSource();
         const previousSource = getPreviousSource();
 
-        const convPoint = (p: DailyPoint): DailyPoint => ({
-            ...p,
-            quantity: Number(p.quantity || 0),
+        const getPointCurrency = (p: DailyPoint): CurrencyCode => {
+            const code = String(p.currency || "").toUpperCase();
 
-            net_sales:
-                p.net_sales != null
-                    ? convertToDisplayCurrency(Number(p.net_sales || 0), fromCurrency)
-                    : p.net_sales,
+            if (code === "GBP" || code === "USD" || code === "CAD" || code === "INR") {
+                return code as CurrencyCode;
+            }
 
-            gross_sales:
-                p.gross_sales != null
-                    ? convertToDisplayCurrency(Number(p.gross_sales || 0), fromCurrency)
-                    : p.gross_sales,
+            return fromCurrency;
+        };
 
-            profit:
-                p.profit != null
-                    ? convertToDisplayCurrency(Number(p.profit || 0), fromCurrency)
-                    : p.profit,
+        const convPoint = (p: DailyPoint): DailyPoint => {
+            const pointCurrency = getPointCurrency(p);
 
-            cm2_profit:
-                p.cm2_profit != null
-                    ? convertToDisplayCurrency(Number(p.cm2_profit || 0), fromCurrency)
-                    : p.cm2_profit,
-        });
+            return {
+                ...p,
+                quantity: Number(p.quantity || 0),
+
+                net_sales:
+                    p.net_sales != null
+                        ? convertToDisplayCurrency(Number(p.net_sales || 0), pointCurrency)
+                        : p.net_sales,
+
+                gross_sales:
+                    p.gross_sales != null
+                        ? convertToDisplayCurrency(Number(p.gross_sales || 0), pointCurrency)
+                        : p.gross_sales,
+
+                profit:
+                    p.profit != null
+                        ? convertToDisplayCurrency(Number(p.profit || 0), pointCurrency)
+                        : p.profit,
+
+                cm2_profit:
+                    p.cm2_profit != null
+                        ? convertToDisplayCurrency(Number(p.cm2_profit || 0), pointCurrency)
+                        : p.cm2_profit,
+            };
+        };
 
         const blankFutureCurrentPoint = (p: DailyPoint): DailyPoint => {
             const converted = convPoint(p);
