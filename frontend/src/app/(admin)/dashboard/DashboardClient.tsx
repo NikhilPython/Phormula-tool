@@ -102,6 +102,7 @@ import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
+import { CalendarDays } from "lucide-react";
 
 import type {
     AgeingBucket,
@@ -345,11 +346,11 @@ const getPrevRegionYearMonthFromTimestamp = (
     timestamp: number | string | Date
 ) => {
     const date = getRegionDateFromTimestamp(timestamp, region);
-    date.setMonth(date.getMonth() - 1);
+    const previousMonth = new Date(date.getFullYear(), date.getMonth() - 1, 1);
 
     return {
-        monthName: date.toLocaleString("en-US", { month: "long" }),
-        year: date.getFullYear(),
+        monthName: previousMonth.toLocaleString("en-US", { month: "long" }),
+        year: previousMonth.getFullYear(),
     };
 };
 
@@ -803,15 +804,15 @@ const getRegionYearMonth = (region: RegionKey) => {
 
 const getPrevRegionYearMonth = (region: RegionKey) => {
     const now = getRegionNow(region);
-    now.setMonth(now.getMonth() - 1);
+    const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    const monthName = now.toLocaleString("en-US", {
+    const monthName = previousMonth.toLocaleString("en-US", {
         month: "long",
     });
 
     return {
         monthName,
-        year: now.getFullYear(),
+        year: previousMonth.getFullYear(),
     };
 };
 
@@ -1190,6 +1191,189 @@ const attachNetSalesDeltaToLiveRows = (
 
 const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
 
+const SALES_DATA_EPSILON = 1e-9;
+
+const CURRENT_SALES_ROW_KEYS = [
+    "net_sales",
+    "gross_sales",
+    "total_net_sales",
+    "total_gross_sales",
+    "quantity",
+    "total_quantity",
+    "net_quantity",
+    "units",
+];
+
+const CURRENT_SALES_TOTAL_KEYS = [
+    ...CURRENT_SALES_ROW_KEYS,
+    "current_net_sales",
+    "current_gross_sales",
+    "current_quantity",
+    "current_units",
+    "total_current_net_sales",
+    "total_current_gross_sales",
+    "total_current_quantity",
+    "total_current_units",
+    "period_sales_home",
+    "today_sales_home",
+];
+
+const CURRENT_SALES_ROW_COLLECTION_KEYS = [
+    "skuwise_items",
+    "skuwise_items_global",
+    "skuwise_items_uk",
+    "skuwise_items_us",
+    "skuwise_items_ca",
+];
+
+const CURRENT_DAILY_SERIES_KEYS = [
+    "current_mtd",
+    "current_mtd_global",
+    "current_mtd_uk",
+    "current_mtd_us",
+    "current_mtd_ca",
+];
+
+type InventoryUnavailableNotice = {
+    key: string;
+    country: string;
+    month: string;
+    year: string;
+    message: string;
+    triedSources: string[];
+};
+
+const getInventoryUnavailableKey = (
+    country: string,
+    month: string,
+    year: string
+) =>
+    [
+        String(country || "").toLowerCase(),
+        String(month || "").toLowerCase(),
+        String(year || ""),
+    ].join(":");
+
+const isInventoryUnavailablePayload = (payload: any) => {
+    if (!payload || payload.success !== false) return false;
+
+    const message = String(payload?.message || payload?.error || "").toLowerCase();
+    const triedSources = Array.isArray(payload?.tried_sources)
+        ? payload.tried_sources.join(" ").toLowerCase()
+        : "";
+
+    return (
+        message.includes("no current inventory table") ||
+        message.includes("inventory_aged_history") ||
+        triedSources.includes("currentinventory") ||
+        triedSources.includes("inventory_aged_history")
+    );
+};
+
+const makeInventoryUnavailableError = (payload: any, fallbackMessage: string) => {
+    const error = new Error(
+        payload?.message || payload?.error || fallbackMessage
+    ) as Error & {
+        inventoryUnavailable?: boolean;
+        payload?: any;
+    };
+
+    error.inventoryUnavailable = true;
+    error.payload = payload;
+
+    return error;
+};
+
+const getInventoryUnavailablePayloadFromResults = (
+    results: PromiseSettledResult<any>[]
+) => {
+    for (const result of results) {
+        if (
+            result.status === "fulfilled" &&
+            isInventoryUnavailablePayload(result.value)
+        ) {
+            return result.value;
+        }
+
+        if (result.status !== "rejected") continue;
+
+        const reason = result.reason as {
+            inventoryUnavailable?: boolean;
+            payload?: any;
+        };
+
+        if (reason?.inventoryUnavailable) {
+            return reason.payload || { message: reason instanceof Error ? reason.message : "" };
+        }
+    }
+
+    return null;
+};
+
+const hasNonZeroSalesValue = (value: unknown) =>
+    Math.abs(toNumberSafe(value)) > SALES_DATA_EPSILON;
+
+const hasCurrentSalesInRow = (row: any) =>
+    !!row && CURRENT_SALES_ROW_KEYS.some((key) => hasNonZeroSalesValue(row?.[key]));
+
+const hasCurrentSalesRows = (rows: unknown) =>
+    Array.isArray(rows) && rows.some((row) => hasCurrentSalesInRow(row));
+
+const hasCurrentSalesTotals = (...sources: any[]) =>
+    sources.some((source) =>
+        !!source &&
+        CURRENT_SALES_TOTAL_KEYS.some((key) => hasNonZeroSalesValue(source?.[key]))
+    );
+
+const hasCurrentSalesInDailySeries = (series: any) =>
+    !!series &&
+    CURRENT_DAILY_SERIES_KEYS.some((key) => hasCurrentSalesRows(series?.[key]));
+
+function DashboardGettingReadyPopup({
+    show,
+    onExploreOtherTabs,
+}: {
+    show: boolean;
+    onExploreOtherTabs: () => void;
+}) {
+    if (!show) return null;
+
+    return (
+        <div
+            className="pointer-events-none fixed inset-x-0 top-[104px] z-[70] flex justify-center px-4 sm:top-[116px]"
+            aria-live="polite"
+        >
+            <div
+                role="status"
+                className="pointer-events-auto w-full max-w-[440px] rounded-lg border border-gray-200 bg-white px-6 py-7 text-center shadow-[0_14px_34px_rgba(15,23,42,0.18)] sm:px-7"
+            >
+                <CalendarDays
+                    className="mx-auto mb-5 h-6 w-6 text-[#5EA68E]"
+                    strokeWidth={2.25}
+                    aria-hidden="true"
+                />
+
+                <h2 className="mb-4 text-xl font-bold text-[#5EA68E] sm:text-2xl">
+                    Your Dashboard Is Getting Ready!
+                </h2>
+
+                <p className="mx-auto mb-7 max-w-[340px] text-sm leading-5 text-gray-700">
+                    No sales recorded yet for this month. Your dashboard will update
+                    automatically as soon as the first sale comes in.
+                </p>
+
+                <button
+                    type="button"
+                    onClick={onExploreOtherTabs}
+                    className="inline-flex items-center justify-center rounded-md bg-[#37455F] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#2f3a50] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2"
+                >
+                    Explore Other Tabs
+                </button>
+            </div>
+        </div>
+    );
+}
+
 /* ===================== RANGE PICKER (moved above graph) ===================== */
 
 
@@ -1472,6 +1656,8 @@ export default function DashboardPage() {
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("summary");
+    const [dismissedSalesDelayNoticeKey, setDismissedSalesDelayNoticeKey] =
+        useState<string | null>(null);
     const [summaryLoading, setSummaryLoading] = useState(true);
     const [countryTime, setCountryTime] = useState<CountryTimezoneResponse | null>(null);
     const [countryTimeLoading, setCountryTimeLoading] = useState(false);
@@ -1505,6 +1691,8 @@ export default function DashboardPage() {
 
     const [inventoryInsightsError, setInventoryInsightsError] =
         useState<string | null>(null);
+    const [inventoryUnavailableNotice, setInventoryUnavailableNotice] =
+        useState<InventoryUnavailableNotice | null>(null);
 
     type PlSortConfig = {
         key: string;
@@ -1999,15 +2187,15 @@ export default function DashboardPage() {
 
     const getPrevBackendCountryYearMonth = useCallback(() => {
         const now = getBackendCountryDate();
-        now.setMonth(now.getMonth() - 1);
+        const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-        const monthName = now.toLocaleString("en-US", {
+        const monthName = previousMonth.toLocaleString("en-US", {
             month: "long",
         });
 
         return {
             monthName,
-            year: now.getFullYear(),
+            year: previousMonth.getFullYear(),
         };
     }, [getBackendCountryDate]);
 
@@ -2744,6 +2932,16 @@ export default function DashboardPage() {
         };
     }, [getBackendCountryYearMonth]);
 
+    const inventoryInsightsRequestKey = useMemo(
+        () =>
+            getInventoryUnavailableKey(
+                inventoryCountry,
+                invMonthYear.month,
+                invMonthYear.year
+            ),
+        [inventoryCountry, invMonthYear.month, invMonthYear.year]
+    );
+
     const inventoryInsightsReportCountry =
         platform === "global" ? selectedGlobalInventoryCountry : countryName;
 
@@ -2838,7 +3036,14 @@ export default function DashboardPage() {
 
             const json = await res.json().catch(() => ({}));
 
-            if (!res.ok) {
+            if (!res.ok || json?.success === false) {
+                if (isInventoryUnavailablePayload(json)) {
+                    throw makeInventoryUnavailableError(
+                        json,
+                        `Inventory data is not available for ${monthName} ${yearValue}`
+                    );
+                }
+
                 throw new Error(
                     json?.message ||
                     json?.error ||
@@ -2884,7 +3089,14 @@ export default function DashboardPage() {
 
             const json = await res.json().catch(() => ({}));
 
-            if (!res.ok) {
+            if (!res.ok || json?.success === false) {
+                if (isInventoryUnavailablePayload(json)) {
+                    throw makeInventoryUnavailableError(
+                        json,
+                        `Inventory age summary is not available for ${monthName} ${yearValue}`
+                    );
+                }
+
                 throw new Error(
                     json?.message ||
                     json?.error ||
@@ -2925,11 +3137,20 @@ export default function DashboardPage() {
         });
     };
 
-    const fetchInventoryInsights = useCallback(async () => {
+    const fetchInventoryInsights = useCallback(async ({
+        force = false,
+    }: { force?: boolean } = {}) => {
         if (isMonthYearNA) {
             setInventoryInsightsData(null);
             setInventoryInsightsError(null);
+            setInventoryUnavailableNotice(null);
             setInventoryInsightsLoading(false);
+            return;
+        }
+
+        if (!force && inventoryUnavailableNotice?.key === inventoryInsightsRequestKey) {
+            setInventoryInsightsLoading(false);
+            setInventoryInsightsError(null);
             return;
         }
 
@@ -2938,6 +3159,9 @@ export default function DashboardPage() {
         try {
             setInventoryInsightsLoading(true);
             setInventoryInsightsError(null);
+            if (force) {
+                setInventoryUnavailableNotice(null);
+            }
 
             const country = inventoryCountry;
             const currentMonth = invMonthYear.month;
@@ -2968,6 +3192,29 @@ export default function DashboardPage() {
                 ),
             ]);
 
+            const unavailablePayload =
+                getInventoryUnavailablePayloadFromResults(inventoryResults);
+
+            if (unavailablePayload) {
+                setInventoryInsightResponses([]);
+                setInventoryAgeSummaryResponses([]);
+                setInventoryInsightsData(null);
+                setInventoryInsightsError(null);
+                setInventoryUnavailableNotice({
+                    key: inventoryInsightsRequestKey,
+                    country: String(country || "").toUpperCase(),
+                    month: selectedInventoryMonth.month,
+                    year: selectedInventoryMonth.year,
+                    message:
+                        unavailablePayload?.message ||
+                        "Inventory Data is not available at this moment",
+                    triedSources: Array.isArray(unavailablePayload?.tried_sources)
+                        ? unavailablePayload.tried_sources.map((source: any) => String(source))
+                        : [],
+                });
+                return;
+            }
+
             const inventoryResponses = inventoryResults
                 .filter(
                     (result): result is PromiseFulfilledResult<InventoryCurrentApiResponse> =>
@@ -2989,6 +3236,7 @@ export default function DashboardPage() {
             // ✅ Save all months so dropdown/chart rebuild keeps June + previous months
             setInventoryInsightResponses(inventoryResponses);
             setInventoryAgeSummaryResponses(ageSummaryResponses);
+            setInventoryUnavailableNotice(null);
 
             const builtInventoryInsights = buildInventoryInsightsFromResponses(
                 inventoryResponses,
@@ -3015,6 +3263,8 @@ export default function DashboardPage() {
         inventoryCountry,
         invMonthYear.month,
         invMonthYear.year,
+        inventoryInsightsRequestKey,
+        inventoryUnavailableNotice,
         profileHomeCurrency,
         selectedAgeingTrendBucket,
         selectedGlobalInventoryCountry,
@@ -3148,9 +3398,16 @@ export default function DashboardPage() {
     );
 
     useEffect(() => {
+        setInventoryUnavailableNotice((prev) =>
+            prev && prev.key !== inventoryInsightsRequestKey ? null : prev
+        );
+    }, [inventoryInsightsRequestKey]);
+
+    useEffect(() => {
         if (activeTab !== "inventory") return;
         if (inventoryInsightsData) return;
         if (inventoryInsightsLoading) return;
+        if (inventoryUnavailableNotice?.key === inventoryInsightsRequestKey) return;
         if (isMonthYearNA) return;
 
         void fetchInventoryInsights().then(() => {
@@ -3160,6 +3417,8 @@ export default function DashboardPage() {
         activeTab,
         inventoryInsightsData,
         inventoryInsightsLoading,
+        inventoryUnavailableNotice,
+        inventoryInsightsRequestKey,
         isMonthYearNA,
         fetchInventoryInsights,
         triggerCachePost,
@@ -4120,9 +4379,11 @@ export default function DashboardPage() {
     const runDashboardLoadWithSteps = useCallback(async ({
         dataOnlyRefresh = false,
         forceAdsReportSync = false,
+        forceInventoryInsightsRefresh = false,
     }: {
         dataOnlyRefresh?: boolean;
         forceAdsReportSync?: boolean;
+        forceInventoryInsightsRefresh?: boolean;
     } = {}) => {
         if (isMonthYearNA) {
             resetStepState();
@@ -4214,7 +4475,7 @@ export default function DashboardPage() {
             ensureDashboardLoadActive();
 
             setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
-            await fetchInventoryInsights();
+            await fetchInventoryInsights({ force: forceInventoryInsightsRefresh });
             ensureDashboardLoadActive();
 
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
@@ -4387,8 +4648,7 @@ export default function DashboardPage() {
     const formatAppliedRangeLabel = (start: number | null, end: number | null) => {
         if (start == null || end == null) return "Select Date Range";
 
-        const { monthName } = getRegionYearMonth(activeDateRegion);
-        const shortMonth = monthName.slice(0, 3);
+        const shortMonth = currentDisplayMonth.monthName.slice(0, 3);
 
         return `${shortMonth} ${start}-${end}`;
     };
@@ -4420,6 +4680,7 @@ export default function DashboardPage() {
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
         setInventoryInsightsData(parsed?.inventoryInsightsData ?? null);
         setInventoryInsightsError(parsed?.inventoryInsightsError ?? null);
+        setInventoryUnavailableNotice(parsed?.inventoryUnavailableNotice ?? null);
         setSelectedAgeingTrendBucket(parsed?.selectedAgeingTrendBucket ?? "365+ days");
         setInventoryInsightsLoading(false);
         setMonthlySpRows(parsed?.monthlySpRows ?? []);
@@ -5014,6 +5275,7 @@ export default function DashboardPage() {
             await runDashboardLoadWithSteps({
                 dataOnlyRefresh: true,
                 forceAdsReportSync: true,
+                forceInventoryInsightsRefresh: true,
             });
 
             const refreshedAt = Date.now();
@@ -7751,6 +8013,7 @@ export default function DashboardPage() {
 
             inventoryInsightsData,
             inventoryInsightsError,
+            inventoryUnavailableNotice,
             selectedAgeingTrendBucket,
 
             monthlySpRows,
@@ -7784,6 +8047,7 @@ export default function DashboardPage() {
         inventoryAlerts,
         inventoryInsightsData,
         inventoryInsightsError,
+        inventoryUnavailableNotice,
         selectedAgeingTrendBucket,
         monthlySpRows,
         monthlySpTotalSpend,
@@ -9005,6 +9269,120 @@ export default function DashboardPage() {
         monthlySkuwiseRowsForTable,
         previousSkuwiseRowsForDelta,
     ]);
+
+    const dashboardHasFetchedCurrentSalesData = useMemo(() => {
+        if (shouldShowDummyUi) return false;
+
+        return Boolean(
+            data ||
+            liveBiPayload ||
+            biDailySeries ||
+            biAlignedTotals ||
+            monthlySkuwiseRows.length ||
+            finalMonthlySkuwiseRowsForTable.length
+        );
+    }, [
+        shouldShowDummyUi,
+        data,
+        liveBiPayload,
+        biDailySeries,
+        biAlignedTotals,
+        monthlySkuwiseRows.length,
+        finalMonthlySkuwiseRowsForTable.length,
+    ]);
+
+    const hasCurrentMonthSalesData = useMemo(() => {
+        if (shouldShowDummyUi) return true;
+
+        const hasRowsFromApi = CURRENT_SALES_ROW_COLLECTION_KEYS.some((key) =>
+            hasCurrentSalesRows((data as any)?.[key])
+        );
+
+        return (
+            hasRowsFromApi ||
+            hasCurrentSalesRows(monthlySkuwiseRows) ||
+            hasCurrentSalesRows(finalMonthlySkuwiseRowsForTable) ||
+            hasCurrentSalesTotals(
+                (data as any)?.totals,
+                (data as any)?.derived_totals,
+                (data as any)?.derived_totals_global,
+                (data as any)?.derived_totals_uk,
+                (data as any)?.derived_totals_us,
+                (data as any)?.derived_totals_ca,
+                liveBiPayload,
+                liveBiPayload?.aligned_totals,
+                biAlignedTotals
+            ) ||
+            hasCurrentSalesInDailySeries(biDailySeries) ||
+            hasCurrentSalesInDailySeries(liveBiPayload?.daily_series)
+        );
+    }, [
+        shouldShowDummyUi,
+        data,
+        monthlySkuwiseRows,
+        finalMonthlySkuwiseRowsForTable,
+        liveBiPayload,
+        biAlignedTotals,
+        biDailySeries,
+    ]);
+
+    const salesDelayNoticeKey = useMemo(
+        () =>
+            [
+                liveDashboardCountry,
+                activeDateRegion,
+                currentDisplayMonth.monthName,
+                currentDisplayMonth.year,
+                dashboardAllowedEndISO,
+                selectedStartDay ?? "na",
+                selectedEndDay ?? "na",
+            ].join(":"),
+        [
+            liveDashboardCountry,
+            activeDateRegion,
+            currentDisplayMonth.monthName,
+            currentDisplayMonth.year,
+            dashboardAllowedEndISO,
+            selectedStartDay,
+            selectedEndDay,
+        ]
+    );
+
+    const shouldShowSalesDelayNotice =
+        !shouldShowDummyUi &&
+        !unauthorized &&
+        amazonIntegrated &&
+        dashboardAllowedDay === 1 &&
+        dashboardHasFetchedCurrentSalesData &&
+        !hasCurrentMonthSalesData &&
+        !pageLoading &&
+        !error &&
+        !biError &&
+        dismissedSalesDelayNoticeKey !== salesDelayNoticeKey;
+
+    useEffect(() => {
+        if (
+            hasCurrentMonthSalesData ||
+            dashboardAllowedDay !== 1 ||
+            !dashboardHasFetchedCurrentSalesData
+        ) {
+            setDismissedSalesDelayNoticeKey(null);
+        }
+    }, [
+        hasCurrentMonthSalesData,
+        dashboardAllowedDay,
+        dashboardHasFetchedCurrentSalesData,
+        salesDelayNoticeKey,
+    ]);
+
+    const handleExploreOtherTabsFromSalesDelay = useCallback(() => {
+        setDismissedSalesDelayNoticeKey(salesDelayNoticeKey);
+
+        const nextTab: TopTab = activeTab === "inventory" ? "summary" : "inventory";
+        shouldScrollTabTopRef.current = true;
+        setActiveTab(nextTab);
+        syncTabToHash(nextTab);
+    }, [activeTab, salesDelayNoticeKey, syncTabToHash]);
 
     const handleDownloadPlProductwiseMtd = useCallback(() => {
         try {
@@ -11569,6 +11947,11 @@ export default function DashboardPage() {
                 />
             )}
 
+            <DashboardGettingReadyPopup
+                show={shouldShowSalesDelayNotice}
+                onExploreOtherTabs={handleExploreOtherTabsFromSalesDelay}
+            />
+
             <DashboardPageHeader
                 brandName={brandName}
                 countryName={countryName}
@@ -11830,6 +12213,7 @@ export default function DashboardPage() {
                     <DashboardInventoryInsightsTab
                         inventoryInsightsLoading={inventoryInsightsLoading}
                         inventoryInsightsError={inventoryInsightsError}
+                        inventoryUnavailableNotice={inventoryUnavailableNotice}
                         inventoryInsightsData={displayedInventoryInsightsData}
                         platform={platform}
                         selectedGlobalInventoryCountry={selectedGlobalInventoryCountry}

@@ -262,6 +262,10 @@ export default function Cm1ProfitBreakdownPie({
       0
     );
 
+    if (othersChartValue === 0) {
+      return rebuiltKept;
+    }
+
     const othersDeltaPct =
       othersPrev === 0
         ? null
