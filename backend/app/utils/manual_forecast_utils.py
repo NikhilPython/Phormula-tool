@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from flask import jsonify
-from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy import create_engine, MetaData, Table, inspect
 from config import Config
 from dateutil.relativedelta import relativedelta
-from datetime import datetime
+from datetime import datetime, date
 from calendar import month_name
+import calendar
 import pandas as pd
 import numpy as np
 from sqlalchemy.orm import sessionmaker
@@ -60,6 +61,165 @@ def month_label(dt: datetime) -> str:
 
 def add_months(dt: datetime, k: int) -> datetime:
     return dt + relativedelta(months=k)
+
+def get_inventory_snapshot_date(selected_month: str, selected_year: int) -> str:
+    month_num = datetime.strptime(selected_month.strip(), "%B").month
+    today = date.today()
+
+    if selected_year == today.year and month_num == today.month:
+        if today.month == 1:
+            prev_month = 12
+            prev_year = today.year - 1
+        else:
+            prev_month = today.month - 1
+            prev_year = today.year
+
+        last_day = calendar.monthrange(prev_year, prev_month)[1]
+        return f"{prev_year:04d}-{prev_month:02d}-{last_day:02d}"
+
+    last_day = calendar.monthrange(selected_year, month_num)[1]
+    return f"{selected_year:04d}-{month_num:02d}-{last_day:02d}"
+
+def _inventory_table_country_key(country: str | None) -> str:
+    key = re.sub(r"\s+", " ", str(country or "").strip().lower())
+    if key in {"usa", "united states"}:
+        return "us"
+    if key in {"gb", "united kingdom"}:
+        return "uk"
+    return re.sub(r"[^a-z0-9_]", "_", key).strip("_")
+
+def _safe_inventory_table_name(user_id: int, country: str | None, month_num: int, year: int) -> str | None:
+    country_key = _inventory_table_country_key(country)
+    if not country_key:
+        return None
+
+    table_name = f"inventorymonthly_{int(user_id)}_{country_key}_{int(month_num):02d}_{int(year)}"
+    if not re.fullmatch(r"[a-z0-9_]+", table_name):
+        return None
+
+    return table_name
+
+def fetch_inventorymonthly_onhand_quantity(
+    forecast_totals: pd.DataFrame,
+    engine1,
+    *,
+    user_id: int,
+    country: str | None,
+    inventory_date: str,
+    forecast_sku_col: str = "sku",
+) -> pd.DataFrame:
+    out = forecast_totals.copy()
+    out["total_onhand_quantity"] = 0
+
+    if forecast_sku_col not in out.columns:
+        return out
+
+    try:
+        snapshot_dt = datetime.strptime(str(inventory_date), "%Y-%m-%d")
+    except Exception:
+        return out
+
+    table_name = _safe_inventory_table_name(user_id, country, snapshot_dt.month, snapshot_dt.year)
+    if not table_name:
+        return out
+
+    try:
+        inspector = inspect(engine1)
+        if table_name not in set(inspector.get_table_names(schema="public")):
+            return out
+
+        columns = {col["name"] for col in inspector.get_columns(table_name, schema="public")}
+        sku_col = next((c for c in ["msku", "sku", "seller_sku", "SKU"] if c in columns), None)
+        if not sku_col or "total_onhand_quantity" not in columns:
+            return out
+
+        awd_df = pd.read_sql(
+            text(f"""
+                SELECT
+                    "{sku_col}" AS "sku",
+                    COALESCE(total_onhand_quantity, 0) AS total_onhand_quantity
+                FROM public."{table_name}"
+            """),
+            con=engine1,
+        )
+    except Exception:
+        return out
+
+    if awd_df.empty:
+        return out
+
+    awd_df["sku_norm"] = awd_df["sku"].map(_norm_sku)
+    awd_df["total_onhand_quantity"] = (
+        pd.to_numeric(awd_df["total_onhand_quantity"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    awd_totals = (
+        awd_df[awd_df["sku_norm"] != ""]
+        .groupby("sku_norm", as_index=False)["total_onhand_quantity"]
+        .sum()
+    )
+
+    out["sku_norm"] = out[forecast_sku_col].map(_norm_sku)
+    out = out.drop(columns=["total_onhand_quantity"]).merge(
+        awd_totals,
+        on="sku_norm",
+        how="left",
+    )
+    out.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+    out["total_onhand_quantity"] = (
+        pd.to_numeric(out["total_onhand_quantity"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+
+    return out
+
+def add_air_sea_dispatch_split(
+    inventory_forecast: pd.DataFrame,
+    forecast_cols: list[str],
+    *,
+    air_time_weeks: int | float,
+    stock_unit_weeks: int | float,
+    total_units_col: str = "Shortfall Unit",
+) -> pd.DataFrame:
+    out = inventory_forecast.copy()
+    usable_forecast_cols = [c for c in forecast_cols if c in out.columns]
+
+    total_units = (
+        pd.to_numeric(out.get(total_units_col, 0), errors="coerce")
+        .fillna(0)
+        .clip(lower=0)
+    )
+
+    try:
+        air_required_weeks = max(float(air_time_weeks or 0), 0) + max(float(stock_unit_weeks or 0), 0)
+    except Exception:
+        air_required_weeks = 0
+
+    air_month_count = int(np.ceil(air_required_weeks / 4.345)) if air_required_weeks > 0 else 0
+    air_month_count = min(max(air_month_count, 0), len(usable_forecast_cols))
+
+    if air_month_count > 0:
+        air_demand = (
+            out[usable_forecast_cols[:air_month_count]]
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0)
+            .sum(axis=1)
+        )
+    else:
+        air_demand = pd.Series(0, index=out.index)
+
+    inventory_at_month_end = (
+        pd.to_numeric(out.get("Inventory at Month End", 0), errors="coerce")
+        .fillna(0)
+    )
+    urgent_air_units = (air_demand - inventory_at_month_end).clip(lower=0)
+
+    out["AIR"] = np.minimum(total_units, urgent_air_units).round().astype(int)
+    out["SEA"] = (total_units - out["AIR"]).clip(lower=0).round().astype(int)
+
+    return out
 
 def _encode_file_to_base64(file_path: str) -> str | None:
     try:
@@ -633,6 +793,15 @@ def generate_manual_forecast(
     except NameError:
         pass
 
+    snapshot_date = get_inventory_snapshot_date(mv.title(), req_year)
+    inventory_forecast = fetch_inventorymonthly_onhand_quantity(
+        inventory_forecast,
+        engine1,
+        user_id=user_id,
+        country=country,
+        inventory_date=snapshot_date,
+    )
+
     # Merge sales & product names
     inventory_forecast = inventory_forecast.merge(sales_summary, on="sku", how="left").fillna(0)
     inventory_forecast = inventory_forecast.merge(product_names, on="sku", how="left").fillna("")
@@ -670,8 +839,29 @@ def generate_manual_forecast(
     else:
         inventory_forecast["Inventory at Month End"] = 0.0
 
+    if "total_onhand_quantity" in inventory_forecast:
+        inventory_forecast["total_onhand_quantity"] = (
+            pd.to_numeric(inventory_forecast["total_onhand_quantity"], errors="coerce")
+            .fillna(0)
+            .round()
+            .astype(int)
+        )
+    else:
+        inventory_forecast["total_onhand_quantity"] = 0
+
     inventory_forecast["Dispatch"] = (inventory_forecast["Projected Sales Total"] - inventory_forecast["Inventory at Month End"]).clip(lower=0)
     inventory_forecast["Current Inventory + Dispatch"] = inventory_forecast["Dispatch"] + inventory_forecast["Inventory at Month End"]
+    inventory_forecast["Shortfall Unit"] = (
+        inventory_forecast["Projected Sales Total"]
+        - inventory_forecast["Inventory at Month End"]
+        + inventory_forecast["total_onhand_quantity"]
+    ).round().astype(int)
+    inventory_forecast = add_air_sea_dispatch_split(
+        inventory_forecast,
+        forecast_cols,
+        air_time_weeks=air_weeks,
+        stock_unit_weeks=buffer_weeks,
+    )
 
     # ==== NEW: Coverage Ratio (before dispatch) — same as generate_forecast ====
     divisor = pd.to_numeric(inventory_forecast.get("Last Month Sales(Units)", 0), errors="coerce").replace(0, np.nan)
@@ -679,7 +869,8 @@ def generate_manual_forecast(
     inventory_forecast["Inventory Coverage Ratio Before Dispatch"] = coverage.where(coverage.notna(), "-")
 
     # ---- 8) Total row ----
-    numeric_columns = ["Projected Sales Total", "Inventory at Month End", "Last Month Sales(Units)",
+    numeric_columns = ["Projected Sales Total", "Inventory at Month End", "total_onhand_quantity",
+                       "Dispatch", "Current Inventory + Dispatch", "Shortfall Unit", "SEA", "AIR", "Last Month Sales(Units)",
                        f"{sold_m3} Sold", f"{sold_m2} Sold", f"{sold_m1} Sold"] + forecast_cols
     numeric_columns = [c for c in numeric_columns if c in inventory_forecast.columns]
     total_row = pd.DataFrame([inventory_forecast[numeric_columns].sum().round(2)], index=["Total"])
@@ -694,8 +885,9 @@ def generate_manual_forecast(
                      f"{sold_m3} Sold", f"{sold_m2} Sold", f"{sold_m1} Sold",
                      "Projected Sales Total",
                      "Inventory at Month End",
+                     "total_onhand_quantity",
                      "Inventory Coverage Ratio Before Dispatch",
-                     "Dispatch", "Current Inventory + Dispatch"] + forecast_cols
+                     "Dispatch", "Current Inventory + Dispatch", "Shortfall Unit", "SEA", "AIR"] + forecast_cols
     final_columns = [c for c in final_columns if c in inventory_forecast.columns]
     inventory_forecast = inventory_forecast[final_columns].copy()
 

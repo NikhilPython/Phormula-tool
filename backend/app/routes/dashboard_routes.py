@@ -199,11 +199,18 @@ def getDispatchfile():
             header_map = {
                 'sku': 'sku',
                 'product name': 'Product Name',
-                'inventory at month end': 'Inventory at Month End',
+                'inventory at month end': 'FBA',
+                'total onhand quantity': 'AWD',
+                'total_onhand_quantity': 'AWD',
+                'fba': 'FBA',
+                'awd': 'AWD',
                 'projected sales total': 'Projected Sales Total',
                 'dispatch': 'Dispatch',
                 'current inventory + dispatch': 'Current Inventory + Dispatch',
                 'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
+                'shortfall unit': 'Shortfall Unit',
+                'sea': 'SEA',
+                'air': 'AIR',
             }
 
             return header_map.get(lower, cleaned)
@@ -267,11 +274,13 @@ def getDispatchfile():
             expected_columns = [
                 'Product Name',
                 'sku',
-                'Inventory at Month End',
+                'FBA',
+                'AWD',
                 'Projected Sales Total',
-                'Dispatch',
-                'Current Inventory + Dispatch',
-                'Inventory Coverage Ratio Before Dispatch'
+                'Inventory Coverage Ratio Before Dispatch',
+                'Shortfall Unit',
+                'SEA',
+                'AIR'
             ]
 
             available_columns = [c for c in expected_columns if c in df.columns]
@@ -293,16 +302,39 @@ def getDispatchfile():
             ].copy()
 
             numeric_cols = [
-                'Inventory at Month End',
+                'FBA',
+                'AWD',
                 'Projected Sales Total',
-                'Dispatch',
-                'Current Inventory + Dispatch',
-                'Inventory Coverage Ratio Before Dispatch'
+                'Inventory Coverage Ratio Before Dispatch',
+                'Shortfall Unit',
+                'SEA',
+                'AIR'
             ]
 
             for col in numeric_cols:
                 if col in cleaned.columns:
                     cleaned[col] = pd.to_numeric(cleaned[col], errors='coerce').fillna(0)
+
+            if 'FBA' not in cleaned.columns:
+                cleaned['FBA'] = 0
+            if 'AWD' not in cleaned.columns:
+                cleaned['AWD'] = 0
+
+            if (
+                'Shortfall Unit' not in cleaned.columns and
+                'Projected Sales Total' in cleaned.columns and
+                'FBA' in cleaned.columns
+            ):
+                cleaned['Shortfall Unit'] = (
+                    cleaned['Projected Sales Total']
+                    - cleaned['FBA']
+                    + cleaned['AWD']
+                )
+
+            if 'SEA' not in cleaned.columns:
+                cleaned['SEA'] = cleaned['Shortfall Unit'].clip(lower=0)
+            if 'AIR' not in cleaned.columns:
+                cleaned['AIR'] = 0
 
             return cleaned
 
@@ -322,10 +354,12 @@ def getDispatchfile():
             group_keys = ['Product Name']
 
             sum_cols = [
-                'Inventory at Month End',
+                'FBA',
+                'AWD',
                 'Projected Sales Total',
-                'Dispatch',
-                'Current Inventory + Dispatch'
+                'Shortfall Unit',
+                'SEA',
+                'AIR'
             ]
             agg_spec = {c: 'sum' for c in sum_cols if c in combined_df.columns}
 
@@ -336,15 +370,15 @@ def getDispatchfile():
 
             if (
                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
-                'Inventory at Month End' in combined_df.columns
+                'FBA' in combined_df.columns
             ):
                 def weighted_avg(group):
-                    denom = group['Inventory at Month End'].sum()
+                    denom = group['FBA'].sum()
                     if denom <= 0:
                         return 0
                     return (
                         group['Inventory Coverage Ratio Before Dispatch'] *
-                        group['Inventory at Month End']
+                        group['FBA']
                     ).sum() / denom
 
                 ratio_df = (
@@ -361,14 +395,32 @@ def getDispatchfile():
             if sku_df is not None:
                 final_df = pd.merge(final_df, sku_df, on='Product Name', how='left')
 
+            if (
+                'Projected Sales Total' in final_df.columns and
+                'FBA' in final_df.columns
+            ):
+                if 'AWD' not in final_df.columns:
+                    final_df['AWD'] = 0
+                final_df['Shortfall Unit'] = (
+                    final_df['Projected Sales Total']
+                    - final_df['FBA']
+                    + final_df['AWD']
+                )
+            if 'SEA' not in final_df.columns and 'Shortfall Unit' in final_df.columns:
+                final_df['SEA'] = final_df['Shortfall Unit'].clip(lower=0)
+            if 'AIR' not in final_df.columns:
+                final_df['AIR'] = 0
+
             ordered_cols = [
                 'Product Name',
                 'sku',
-                'Inventory at Month End',
+                'FBA',
+                'AWD',
                 'Projected Sales Total',
-                'Dispatch',
-                'Current Inventory + Dispatch',
-                'Inventory Coverage Ratio Before Dispatch'
+                'Inventory Coverage Ratio Before Dispatch',
+                'Shortfall Unit',
+                'SEA',
+                'AIR'
             ]
             final_df = final_df[[c for c in ordered_cols if c in final_df.columns]]
 
@@ -379,10 +431,12 @@ def getDispatchfile():
                 elif col == 'sku':
                     total_row[col] = ''
                 elif col in [
-                    'Inventory at Month End',
+                    'FBA',
+                    'AWD',
                     'Projected Sales Total',
-                    'Dispatch',
-                    'Current Inventory + Dispatch'
+                    'Shortfall Unit',
+                    'SEA',
+                    'AIR'
                 ]:
                     total_row[col] = float(final_df[col].sum()) if col in final_df.columns else 0
                 elif col == 'Inventory Coverage Ratio Before Dispatch':
@@ -410,11 +464,13 @@ def getDispatchfile():
                     worksheet.write(0, col_idx, col_name, header_format)
 
                     if col_name in [
-                        'Inventory at Month End',
+                        'FBA',
+                        'AWD',
                         'Projected Sales Total',
-                        'Dispatch',
-                        'Current Inventory + Dispatch',
-                        'Inventory Coverage Ratio Before Dispatch'
+                        'Inventory Coverage Ratio Before Dispatch',
+                        'Shortfall Unit',
+                        'SEA',
+                        'AIR'
                     ]:
                         worksheet.set_column(col_idx, col_idx, 22, number_format)
                     elif col_name == 'Product Name':
@@ -563,37 +619,67 @@ def merge_dispatch_files(file_uk, file_us):
     common_cols = [
         'Product Name',
         'Inventory at Month End',
+        'total_onhand_quantity',
+        'FBA',
+        'AWD',
         'Projected Sales Total',
-        'Dispatch',
-        'Current Inventory + Dispatch',
-        'Inventory Coverage Ratio Before Dispatch'
+        'Inventory Coverage Ratio Before Dispatch',
+        'Shortfall Unit',
+        'SEA',
+        'AIR'
     ]
     # Keep only the columns that exist in each file
     df_uk = df_uk[[c for c in common_cols if c in df_uk.columns]].copy()
     df_us = df_us[[c for c in common_cols if c in df_us.columns]].copy()
 
+    for df in [df_uk, df_us]:
+        if 'FBA' not in df.columns and 'Inventory at Month End' in df.columns:
+            df['FBA'] = df['Inventory at Month End']
+        if 'AWD' not in df.columns and 'total_onhand_quantity' in df.columns:
+            df['AWD'] = df['total_onhand_quantity']
+
     df_combined = pd.concat([df_uk, df_us], ignore_index=True)
 
     # Coerce numerics
-    for col in ['Inventory at Month End', 'Projected Sales Total', 'Dispatch', 'Current Inventory + Dispatch']:
+    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
         if col in df_combined.columns:
             df_combined[col] = pd.to_numeric(df_combined[col], errors='coerce').fillna(0)
 
+    if 'FBA' not in df_combined.columns:
+        df_combined['FBA'] = 0
+    if 'AWD' not in df_combined.columns:
+        df_combined['AWD'] = 0
+
+    if (
+        'Shortfall Unit' not in df_combined.columns and
+        'Projected Sales Total' in df_combined.columns and
+        'FBA' in df_combined.columns
+    ):
+        df_combined['Shortfall Unit'] = (
+            df_combined['Projected Sales Total']
+            - df_combined['FBA']
+            + df_combined['AWD']
+        )
+    if 'SEA' not in df_combined.columns:
+        df_combined['SEA'] = df_combined['Shortfall Unit'].clip(lower=0)
+    if 'AIR' not in df_combined.columns:
+        df_combined['AIR'] = 0
+
     # Group sums
     agg_spec = {}
-    for col in ['Inventory at Month End', 'Projected Sales Total', 'Dispatch', 'Current Inventory + Dispatch']:
+    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
         if col in df_combined.columns:
             agg_spec[col] = 'sum'
     grouped = df_combined.groupby('Product Name', as_index=False).agg(agg_spec) if agg_spec else df_combined[['Product Name']].drop_duplicates()
 
     # Weighted average coverage ratio (if present)
-    if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'Inventory at Month End' in df_combined.columns:
+    if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'FBA' in df_combined.columns:
         def weighted_avg(df):
-            denom = df['Inventory at Month End'].sum()
+            denom = df['FBA'].sum()
             if denom <= 0:
                 return 0
             ratio_num = pd.to_numeric(df['Inventory Coverage Ratio Before Dispatch'], errors='coerce').fillna(0)
-            return (ratio_num * df['Inventory at Month End']).sum() / denom
+            return (ratio_num * df['FBA']).sum() / denom
 
         ratio_df = (
             df_combined
@@ -608,9 +694,25 @@ def merge_dispatch_files(file_uk, file_us):
     else:
         final_df = grouped.copy()
 
+    if (
+        'Projected Sales Total' in final_df.columns and
+        'FBA' in final_df.columns
+    ):
+        if 'AWD' not in final_df.columns:
+            final_df['AWD'] = 0
+        final_df['Shortfall Unit'] = (
+            final_df['Projected Sales Total']
+            - final_df['FBA']
+            + final_df['AWD']
+        )
+    if 'SEA' not in final_df.columns:
+        final_df['SEA'] = final_df['Shortfall Unit'].clip(lower=0)
+    if 'AIR' not in final_df.columns:
+        final_df['AIR'] = 0
+
     # Total row
     total_row = {'Product Name': 'Total'}
-    for col in ['Inventory at Month End', 'Projected Sales Total', 'Dispatch', 'Current Inventory + Dispatch']:
+    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
         if col in final_df.columns and pd.api.types.is_numeric_dtype(final_df[col]):
             total_row[col] = final_df[col].sum()
     if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:

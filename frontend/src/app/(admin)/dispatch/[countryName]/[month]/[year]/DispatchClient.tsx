@@ -20,9 +20,14 @@ interface SkuRow {
   SKU?: string
   'Product Name'?: string
   'Inventory at Month End'?: string | number
+  'total_onhand_quantity'?: string | number
+  'FBA'?: string | number
+  'AWD'?: string | number
+  'Projected Sales Total'?: string | number
   'Inventory Coverage Ratio Before Dispatch'?: string | number
-  'Dispatch'?: string | number
-  'Current Inventory + Dispatch'?: string | number
+  'Shortfall Unit'?: string | number
+  'SEA'?: string | number
+  'AIR'?: string | number
 }
 
 type DispatchPageProps = {
@@ -50,20 +55,27 @@ const monthNames = [
 ] as const
 
 const DISPLAYED_COLUMNS = [
-  'S. No.',
-  'Product Name',
   'SKU',
-  'Inventory at Month End',
+  'Product Name',
+  'FBA',
+  'AWD',
+  'Projected Sales Total',
   'Inventory Coverage Ratio Before Dispatch',
-  'Dispatch',
-  'Current Inventory + Dispatch',
+  'Shortfall Unit',
+  'SEA',
+  'AIR',
 ] as const
 
 const NUMERIC_COLUMNS = [
   'Inventory at Month End',
+  'total_onhand_quantity',
+  'FBA',
+  'AWD',
+  'Projected Sales Total',
   'Inventory Coverage Ratio Before Dispatch',
-  'Dispatch',
-  'Current Inventory + Dispatch',
+  'Shortfall Unit',
+  'SEA',
+  'AIR',
 ] as const
 
 function capitalize(str: string) {
@@ -98,10 +110,15 @@ function normalizeHeader(header: unknown): string {
     sku: 'SKU',
     'product name': 'Product Name',
     'inventory at month end': 'Inventory at Month End',
+    'total onhand quantity': 'total_onhand_quantity',
+    'total_onhand_quantity': 'total_onhand_quantity',
+    fba: 'FBA',
+    awd: 'AWD',
     'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
-    dispatch: 'Dispatch',
-    'current inventory + dispatch': 'Current Inventory + Dispatch',
     'projected sales total': 'Projected Sales Total',
+    'shortfall unit': 'Shortfall Unit',
+    sea: 'SEA',
+    air: 'AIR',
   }
 
   return headerMap[cleaned] || String(header ?? '').trim()
@@ -140,17 +157,27 @@ function isMeaningfulRow(row: SkuRow): boolean {
   const productName = String(row['Product Name'] ?? '').trim()
   const sku = String(row['SKU'] ?? '').trim()
   const inventoryAtMonthEnd = row['Inventory at Month End']
-  const dispatch = row['Dispatch']
-  const currentInventoryDispatch = row['Current Inventory + Dispatch']
+  const totalOnhandQuantity = row['total_onhand_quantity']
+  const fba = row['FBA']
+  const awd = row['AWD']
+  const projectedSalesTotal = row['Projected Sales Total']
   const coverageRatio = row['Inventory Coverage Ratio Before Dispatch']
+  const shortfallUnit = row['Shortfall Unit']
+  const sea = row['SEA']
+  const air = row['AIR']
 
   return Boolean(
     productName ||
     sku ||
     (inventoryAtMonthEnd !== '' && inventoryAtMonthEnd !== undefined) ||
-    (dispatch !== '' && dispatch !== undefined) ||
-    (currentInventoryDispatch !== '' && currentInventoryDispatch !== undefined) ||
-    (coverageRatio !== '' && coverageRatio !== undefined)
+    (totalOnhandQuantity !== '' && totalOnhandQuantity !== undefined) ||
+    (fba !== '' && fba !== undefined) ||
+    (awd !== '' && awd !== undefined) ||
+    (projectedSalesTotal !== '' && projectedSalesTotal !== undefined) ||
+    (coverageRatio !== '' && coverageRatio !== undefined) ||
+    (shortfallUnit !== '' && shortfallUnit !== undefined) ||
+    (sea !== '' && sea !== undefined) ||
+    (air !== '' && air !== undefined)
   )
 }
 
@@ -165,7 +192,9 @@ function buildOthersRow(rows: SkuRow[]): SkuRow {
   return {
     'Product Name': 'Others',
     'SKU': '',
-    'Inventory at Month End': rows.reduce((sum, row) => sum + toNumber(row['Inventory at Month End']), 0),
+    'FBA': rows.reduce((sum, row) => sum + toNumber(row['FBA']), 0),
+    'AWD': rows.reduce((sum, row) => sum + toNumber(row['AWD']), 0),
+    'Projected Sales Total': rows.reduce((sum, row) => sum + toNumber(row['Projected Sales Total']), 0),
     'Inventory Coverage Ratio Before Dispatch':
       rows.length > 0
         ? (rows.reduce(
@@ -174,11 +203,9 @@ function buildOthersRow(rows: SkuRow[]): SkuRow {
           0
         ) / rows.length).toFixed(2)
         : 0,
-    'Dispatch': rows.reduce((sum, row) => sum + toNumber(row['Dispatch']), 0),
-    'Current Inventory + Dispatch': rows.reduce(
-      (sum, row) => sum + toNumber(row['Current Inventory + Dispatch']),
-      0
-    ),
+    'Shortfall Unit': rows.reduce((sum, row) => sum + toNumber(row['Shortfall Unit']), 0),
+    'SEA': rows.reduce((sum, row) => sum + toNumber(row['SEA']), 0),
+    'AIR': rows.reduce((sum, row) => sum + toNumber(row['AIR']), 0),
   }
 }
 
@@ -393,6 +420,35 @@ export default function DispatchPage({
             obj[header] = parseCellValue(header, row[idx])
           })
 
+          if (obj['FBA'] === undefined || obj['FBA'] === '') {
+            obj['FBA'] = toNumber(obj['Inventory at Month End'])
+          }
+
+          if (obj['AWD'] === undefined || obj['AWD'] === '') {
+            obj['AWD'] = toNumber(obj['total_onhand_quantity'])
+          }
+
+          if (obj['Projected Sales Total'] !== undefined && obj['FBA'] !== undefined) {
+            if (obj['AWD'] === undefined || obj['AWD'] === '') {
+              obj['AWD'] = 0
+            }
+
+            if (obj['Shortfall Unit'] === undefined || obj['Shortfall Unit'] === '') {
+              obj['Shortfall Unit'] =
+                toNumber(obj['Projected Sales Total']) -
+                toNumber(obj['FBA']) +
+                toNumber(obj['AWD'])
+            }
+
+            if (obj['SEA'] === undefined || obj['SEA'] === '') {
+              obj['SEA'] = Math.max(toNumber(obj['Shortfall Unit']), 0)
+            }
+
+            if (obj['AIR'] === undefined || obj['AIR'] === '') {
+              obj['AIR'] = 0
+            }
+          }
+
           return obj
         })
         .filter((row) => isMeaningfulRow(row))
@@ -462,24 +518,6 @@ export default function DispatchPage({
       }, 0)
   }
 
-  function calculateTotalCoverageRatio() {
-    const nonTotalRows = skuData.filter((row) => !isTotalRow(row))
-
-    const totalCurrentInventoryDispatch = nonTotalRows.reduce(
-      (sum, row) => sum + toNumber(row['Current Inventory + Dispatch']),
-      0
-    )
-
-    const totalDispatch = nonTotalRows.reduce(
-      (sum, row) => sum + toNumber(row['Dispatch']),
-      0
-    )
-
-    if (totalDispatch === 0) return 0
-
-    return totalCurrentInventoryDispatch / totalDispatch
-  }
-
   const displayedColumns = [...DISPLAYED_COLUMNS]
 
   function handleExportToExcel() {
@@ -487,12 +525,9 @@ export default function DispatchPage({
 
     const exportRows = skuData.map((row, index) => {
       const formattedRow: Record<string, string | number> = {
-        'S. No.': isTotalRow(row) ? '' : index + 1,
       };
 
       displayedColumns.forEach((col) => {
-        if (col === 'S. No.') return;
-
         if (col === 'SKU' && isTotalRow(row)) {
           formattedRow['SKU'] = '';
           return;
@@ -501,15 +536,18 @@ export default function DispatchPage({
         if (
           isTotalRow(row) &&
           [
-            'Inventory at Month End',
-            'Dispatch',
-            'Current Inventory + Dispatch',
+            'FBA',
+            'AWD',
+            'Projected Sales Total',
             'Inventory Coverage Ratio Before Dispatch',
+            'Shortfall Unit',
+            'SEA',
+            'AIR',
           ].includes(col)
         ) {
           formattedRow[col] =
             col === 'Inventory Coverage Ratio Before Dispatch'
-              ? calculateTotalCoverageRatio()
+              ? '-'
               : calculateColumnTotal(col);
           return;
         }
@@ -570,8 +608,8 @@ export default function DispatchPage({
     const sortedRows = [...skuData]
       .filter((row) => !isTotalRow(row))
       .sort((a, b) => {
-        const valA = Number(a['Inventory at Month End'] ?? 0)
-        const valB = Number(b['Inventory at Month End'] ?? 0)
+        const valA = Number(a['FBA'] ?? 0)
+        const valB = Number(b['FBA'] ?? 0)
         return valB - valA
       })
 
@@ -598,33 +636,42 @@ export default function DispatchPage({
       const obj: Record<string, any> = {
         __isTotal: isTotal,
         __isOthers: isOthers,
-        sno: isTotal ? '' : index + 1,
       }
 
       displayedColumns.forEach((col) => {
-        if (col === 'S. No.') return
-
         if (isTotal) {
-          if (col === 'Inventory at Month End') {
+          if (col === 'FBA') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
             return
           }
 
-          if (col === 'Dispatch') {
+          if (col === 'AWD') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
             return
           }
 
-          if (col === 'Current Inventory + Dispatch') {
+          if (col === 'Projected Sales Total') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'Shortfall Unit') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'SEA') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'AIR') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'Inventory Coverage Ratio Before Dispatch') {
-            obj[col] = calculateTotalCoverageRatio().toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })
+            obj[col] = '-'
             return
           }
         }
@@ -661,42 +708,42 @@ export default function DispatchPage({
 
   const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
     const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
-    const isSNo = col === 'S. No.'
     const isProduct = col === 'Product Name'
     const isSku = col === 'SKU'
-    const isInventoryMonthEnd = col === 'Inventory at Month End'
-    const isDispatch = col === 'Dispatch'
-    const isCurrentInventoryDispatch = col === 'Current Inventory + Dispatch'
+    const isFba = col === 'FBA'
+    const isAwd = col === 'AWD'
+    const isProjectedSalesTotal = col === 'Projected Sales Total'
+    const isShortfallUnit = col === 'Shortfall Unit'
+    const isSea = col === 'SEA'
+    const isAir = col === 'AIR'
 
     return {
-      key: isSNo ? 'sno' : col,
+      key: col,
       header:
         col === 'Inventory Coverage Ratio Before Dispatch'
           ? 'Coverage Ratio Before Dispatch'
           : col,
-      width: isSNo
-        ? '55px'
-        : isProduct
+      width: isProduct
           ? '190px'
           : isSku
             ? '170px'
             : isCoverage
               ? '190px'
-              : isInventoryMonthEnd
-                ? '165px'
-                : isDispatch
-                  ? '110px'
-                  : isCurrentInventoryDispatch
-                    ? '200px'
-                    : '150px',
+              : isFba || isAwd
+                ? '100px'
+                  : isProjectedSalesTotal
+                    ? '170px'
+                    : isShortfallUnit
+                      ? '145px'
+                      : isSea || isAir
+                        ? '100px'
+                        : '150px',
       cellClassName:
         isSku
           ? 'dispatch-sku-cell'
           : isProduct
             ? 'text-left'
-            : isSNo
-              ? 'text-center'
-              : 'text-center',
+            : 'text-center',
       headerClassName: 'text-center whitespace-normal break-words',
     }
   })

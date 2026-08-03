@@ -1456,6 +1456,27 @@ def _norm_country_key(country: str | None) -> str:
     return re.sub(r"\s+", " ", str(country or "").strip().lower())
 
 
+def _inventory_table_country_key(country: str | None) -> str:
+    key = _norm_country_key(country)
+    if key in {"usa", "united states"}:
+        return "us"
+    if key in {"gb", "united kingdom"}:
+        return "uk"
+    return re.sub(r"[^a-z0-9_]", "_", key).strip("_")
+
+
+def _safe_inventory_table_name(user_id: int, country: str | None, month_num: int, year: int) -> str | None:
+    country_key = _inventory_table_country_key(country)
+    if not country_key:
+        return None
+
+    table_name = f"inventorymonthly_{int(user_id)}_{country_key}_{int(month_num):02d}_{int(year)}"
+    if not re.fullmatch(r"[a-z0-9_]+", table_name):
+        return None
+
+    return table_name
+
+
 def _inventory_marketplace_id_for_country(country: str | None) -> str | None:
     return INVENTORY_MARKETPLACE_BY_COUNTRY.get(_norm_country_key(country))
 
@@ -1490,6 +1511,157 @@ def get_inventory_snapshot_date(selected_month: str, selected_year: int) -> str:
     # historical/completed month -> selected month end
     last_day = calendar.monthrange(selected_year, month_num)[1]
     return f"{selected_year:04d}-{month_num:02d}-{last_day:02d}"
+
+
+def fetch_inventorymonthly_onhand_quantity(
+    forecast_totals: pd.DataFrame,
+    engine1,
+    *,
+    user_id: int,
+    country: str | None,
+    inventory_date: str,
+    forecast_sku_col: str = "sku",
+    debug: bool = False,
+) -> pd.DataFrame:
+    """
+    Adds total_onhand_quantity from public.inventorymonthly_{user}_{country}_{MM}_{YYYY}.
+
+    The month/year is derived from the same inventory snapshot date used for
+    Inventory at Month End, so an August forecast uses the July snapshot table
+    when the current-month rule selects July month end.
+    """
+    out = forecast_totals.copy()
+
+    if forecast_sku_col not in out.columns:
+        raise KeyError(f"forecast_totals missing SKU column '{forecast_sku_col}'")
+
+    out["total_onhand_quantity"] = 0
+
+    try:
+        snapshot_dt = datetime.strptime(str(inventory_date), "%Y-%m-%d")
+    except Exception:
+        return out
+
+    table_name = _safe_inventory_table_name(
+        user_id=user_id,
+        country=country,
+        month_num=snapshot_dt.month,
+        year=snapshot_dt.year,
+    )
+    if not table_name:
+        return out
+
+    try:
+        inspector = inspect(engine1)
+        if table_name not in set(inspector.get_table_names(schema="public")):
+            if debug:
+                print(f"[AWD] Inventory monthly table not found: {table_name}")
+            return out
+
+        columns = {col["name"] for col in inspector.get_columns(table_name, schema="public")}
+        sku_col = next((c for c in ["msku", "sku", "seller_sku", "SKU"] if c in columns), None)
+        if not sku_col or "total_onhand_quantity" not in columns:
+            if debug:
+                print(f"[AWD] Missing SKU/total_onhand_quantity in {table_name}")
+            return out
+
+        awd_df = pd.read_sql(
+            text(f"""
+                SELECT
+                    "{sku_col}" AS "sku",
+                    COALESCE(total_onhand_quantity, 0) AS total_onhand_quantity
+                FROM public."{table_name}"
+            """),
+            con=engine1,
+        )
+    except Exception as e:
+        if debug:
+            print(f"[AWD] Error reading {table_name}: {e}")
+        return out
+
+    if awd_df.empty:
+        return out
+
+    awd_df["sku_norm"] = awd_df["sku"].map(_norm_sku)
+    awd_df["total_onhand_quantity"] = (
+        pd.to_numeric(awd_df["total_onhand_quantity"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+    awd_totals = (
+        awd_df[awd_df["sku_norm"] != ""]
+        .groupby("sku_norm", as_index=False)["total_onhand_quantity"]
+        .sum()
+    )
+
+    out["sku_norm"] = out[forecast_sku_col].map(_norm_sku)
+    out = out.drop(columns=["total_onhand_quantity"]).merge(
+        awd_totals,
+        on="sku_norm",
+        how="left",
+    )
+    out.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+    out["total_onhand_quantity"] = (
+        pd.to_numeric(out["total_onhand_quantity"], errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
+
+    return out
+
+
+def add_air_sea_dispatch_split(
+    inventory_forecast: pd.DataFrame,
+    forecast_cols: list[str],
+    *,
+    air_time_weeks: int | float,
+    stock_unit_weeks: int | float,
+    total_units_col: str = "Shortfall Unit",
+) -> pd.DataFrame:
+    """
+    Split positive shortfall units into AIR and SEA.
+
+    AIR is the urgent quantity needed to cover the air lead-time window:
+    air_time_weeks + stock_unit_weeks, converted to whole forecast months.
+    SEA receives the remaining positive shortfall.
+    """
+    out = inventory_forecast.copy()
+    usable_forecast_cols = [c for c in forecast_cols if c in out.columns]
+
+    total_units = (
+        pd.to_numeric(out.get(total_units_col, 0), errors="coerce")
+        .fillna(0)
+        .clip(lower=0)
+    )
+
+    try:
+        air_required_weeks = max(float(air_time_weeks or 0), 0) + max(float(stock_unit_weeks or 0), 0)
+    except Exception:
+        air_required_weeks = 0
+
+    air_month_count = int(np.ceil(air_required_weeks / 4.345)) if air_required_weeks > 0 else 0
+    air_month_count = min(max(air_month_count, 0), len(usable_forecast_cols))
+
+    if air_month_count > 0:
+        air_demand = (
+            out[usable_forecast_cols[:air_month_count]]
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0)
+            .sum(axis=1)
+        )
+    else:
+        air_demand = pd.Series(0, index=out.index)
+
+    inventory_at_month_end = (
+        pd.to_numeric(out.get("Inventory at Month End", 0), errors="coerce")
+        .fillna(0)
+    )
+    urgent_air_units = (air_demand - inventory_at_month_end).clip(lower=0)
+
+    out["AIR"] = np.minimum(total_units, urgent_air_units).round().astype(int)
+    out["SEA"] = (total_units - out["AIR"]).clip(lower=0).round().astype(int)
+
+    return out
 
 
 def fetch_and_merge_inventory_monthwise_sellable(
@@ -2248,6 +2420,13 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         country=country,
         inventory_date=snapshot_date,
     )
+    inventory_forecast = fetch_inventorymonthly_onhand_quantity(
+        inventory_forecast,
+        engine1,
+        user_id=user_id,
+        country=country,
+        inventory_date=snapshot_date,
+    )
     # ✅ PRODUCT NAME from monthly user_* tables (already present in new_df)
     product_names = pd.DataFrame(columns=["sku", "Product Name"])
 
@@ -2329,6 +2508,16 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
 
     inventory_forecast.loc[inventory_forecast["sku"] == "Total", "Projected Sales Total"] = 0
 
+    if "total_onhand_quantity" in inventory_forecast:
+        inventory_forecast["total_onhand_quantity"] = (
+            pd.to_numeric(inventory_forecast["total_onhand_quantity"], errors="coerce")
+            .fillna(0)
+            .round()
+            .astype(int)
+        )
+    else:
+        inventory_forecast["total_onhand_quantity"] = 0
+
     inventory_forecast["Dispatch"] = (
         (inventory_forecast["Projected Sales Total"] - inventory_forecast["Inventory at Month End"])
         .clip(lower=0)
@@ -2337,6 +2526,17 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     )
 
     inventory_forecast["Current Inventory + Dispatch"] = (inventory_forecast["Dispatch"] + inventory_forecast["Inventory at Month End"]).astype(int)
+    inventory_forecast["Shortfall Unit"] = (
+        inventory_forecast["Projected Sales Total"]
+        - inventory_forecast["Inventory at Month End"]
+        + inventory_forecast["total_onhand_quantity"]
+    ).round().astype(int)
+    inventory_forecast = add_air_sea_dispatch_split(
+        inventory_forecast,
+        all_month_cols,
+        air_time_weeks=air_time_weeks,
+        stock_unit_weeks=stock_unit_weeks,
+    )
 
     divisor = pd.to_numeric(inventory_forecast[last_month_col], errors="coerce").replace(0, np.nan)
     coverage = (inventory_forecast["Inventory at Month End"] / divisor).round(2)
@@ -2345,7 +2545,17 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     # totals row
     sold_cols = [f"{sold_m3} Sold", f"{sold_m2} Sold", f"{sold_m1} Sold"]
     numeric_columns = _unique_cols(
-        ["Projected Sales Total", "Inventory at Month End", "Dispatch", "Current Inventory + Dispatch", last_month_col]
+        [
+            "Projected Sales Total",
+            "Inventory at Month End",
+            "total_onhand_quantity",
+            "Dispatch",
+            "Current Inventory + Dispatch",
+            "Shortfall Unit",
+            "SEA",
+            "AIR",
+            last_month_col,
+        ]
         + sold_cols
         + monthwise_forecast_cols
         + future_month_columns
@@ -2371,9 +2581,13 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             f"{sold_m2} Sold",
             "Projected Sales Total",
             "Inventory at Month End",
+            "total_onhand_quantity",
             "Inventory Coverage Ratio Before Dispatch",
             "Dispatch",
             "Current Inventory + Dispatch",
+            "Shortfall Unit",
+            "SEA",
+            "AIR",
         ]
         + monthwise_forecast_cols
         + future_month_columns
@@ -2406,14 +2620,24 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         "sku",
         "Product Name",
         "Inventory at Month End",
+        "total_onhand_quantity",
+        "Projected Sales Total",
         "Inventory Coverage Ratio Before Dispatch",
-        "Dispatch",
-        "Current Inventory + Dispatch",
+        "Shortfall Unit",
+        "SEA",
+        "AIR",
     ]
     dispatch_sheet_cols = [c for c in dispatch_sheet_cols if c in inventory_forecast.columns]
 
     inventory_sheet_df = inventory_forecast[inventory_sheet_cols].copy()
     dispatch_sheet_df = inventory_forecast[dispatch_sheet_cols].copy()
+    dispatch_sheet_df.rename(
+        columns={
+            "Inventory at Month End": "FBA",
+            "total_onhand_quantity": "AWD",
+        },
+        inplace=True,
+    )
 
     current_month = datetime.now().strftime("%b").lower()
     inventory_filename = f"inventory_forecast_{user_id}_{country}_{current_month}+2.xlsx"
@@ -2433,7 +2657,7 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     thin = Side(style="thin", color="CCCCCC")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    def write_sheet(ws, title_text, df):
+    def write_sheet(ws, title_text, df, grouped_headers=None):
         # Title row
         ws["A1"] = title_text
         ws["A1"].fill = title_fill
@@ -2453,7 +2677,27 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         for row in range(2, 6):
             ws[f"A{row}"].font = meta_font
 
-        start_row = 7
+        if grouped_headers:
+            group_row = 6
+            start_row = 7
+
+            for c_idx in range(1, len(df.columns) + 1):
+                cell = ws.cell(row=group_row, column=c_idx, value="")
+                cell.border = border
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            for group_title, start_col, end_col in grouped_headers:
+                ws.cell(row=group_row, column=start_col, value=group_title)
+                ws.merge_cells(
+                    start_row=group_row,
+                    start_column=start_col,
+                    end_row=group_row,
+                    end_column=end_col,
+                )
+        else:
+            start_row = 7
 
         # Write dataframe
         for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start_row):
@@ -2486,7 +2730,15 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
             ws.column_dimensions[col_letter].width = min(max_length + 2, 28)
 
     write_sheet(ws_inventory, "Inventory Report", inventory_sheet_df)
-    write_sheet(ws_dispatch, "Dispatch Report", dispatch_sheet_df)
+    write_sheet(
+        ws_dispatch,
+        "Dispatch Report",
+        dispatch_sheet_df,
+        grouped_headers=[
+            ("Inventory at Month End", 3, 4),
+            ("Dispatch by Mode", 8, 9),
+        ],
+    )
 
     inv_buf = BytesIO()
     wb.save(inv_buf)

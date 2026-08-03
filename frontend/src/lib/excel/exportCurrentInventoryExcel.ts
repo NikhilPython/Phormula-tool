@@ -2517,6 +2517,45 @@ export async function exportDispatchExcel(params: {
   ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
   ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
 
+  const hasDispatchGroups =
+    headers.includes("FBA") &&
+    headers.includes("AWD") &&
+    headers.includes("SEA") &&
+    headers.includes("AIR");
+
+  if (hasDispatchGroups) {
+    const groupRowNumber = 6;
+    const groupRow = ws.getRow(groupRowNumber);
+
+    headers.forEach((_, index) => {
+      const cell = groupRow.getCell(index + 1);
+      cell.value = "";
+      cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
+      cell.fill = whiteFill;
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: false,
+      };
+      cell.border = tableBorder;
+    });
+
+    const fbaIndex = headers.indexOf("FBA") + 1;
+    const awdIndex = headers.indexOf("AWD") + 1;
+    const seaIndex = headers.indexOf("SEA") + 1;
+    const airIndex = headers.indexOf("AIR") + 1;
+
+    if (fbaIndex > 0 && awdIndex === fbaIndex + 1) {
+      ws.mergeCells(groupRowNumber, fbaIndex, groupRowNumber, awdIndex);
+      ws.getCell(groupRowNumber, fbaIndex).value = "Inventory at Month End";
+    }
+
+    if (seaIndex > 0 && airIndex === seaIndex + 1) {
+      ws.mergeCells(groupRowNumber, seaIndex, groupRowNumber, airIndex);
+      ws.getCell(groupRowNumber, seaIndex).value = "Dispatch by Mode";
+    }
+  }
+
   const headerRowNumber = 7;
   const headerRow = ws.getRow(headerRowNumber);
 
@@ -2583,8 +2622,13 @@ export async function exportDispatchExcel(params: {
 
     if (idx === productNameCol0) width = 28;
     if (idx === skuCol0) width = 18;
+    if (lower === "fba" || lower === "awd") width = 12;
     if (lower.includes("coverage")) width = 26;
+    if (lower.includes("projected sales")) width = 20;
+    if (lower.includes("onhand")) width = 20;
     if (lower.includes("dispatch")) width = 18;
+    if (lower.includes("shortfall")) width = 18;
+    if (lower === "sea" || lower === "air") width = 12;
 
     return { width };
   });

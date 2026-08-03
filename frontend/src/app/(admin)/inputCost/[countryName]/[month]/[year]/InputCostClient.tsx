@@ -6004,7 +6004,12 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
-          { key: '__ending_transit_placeholder', label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)', width: 110, align: 'center' },
+          {
+            key: isUsReconCountry ? 'total_onhand_quantity' : '__ending_transit_placeholder',
+            label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)',
+            width: 110,
+            align: 'center',
+          },
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
