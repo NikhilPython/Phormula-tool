@@ -357,16 +357,28 @@ const parseProductInsightsBlocks = (
   ): ProductInsightBlock => {
     const metrics = block.metrics || [];
 
+    const cm1Profit = metrics.find(
+      (m) => m.label.trim().toLowerCase() === "cm1 profit"
+    );
+
     const cm2Profit = metrics.find(
       (m) => m.label.trim().toLowerCase() === "cm2 profit"
     );
 
+    const cm1ProfitValue = getMetricNumberValue(cm1Profit?.value);
     const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
 
-    // ✅ Monthly me CM2 tabhi show jab CM2 non-zero ho
-    // ✅ CM2 0 / missing ho to CM1 show
-    // ✅ Quarterly / Yearly me always CM1
-    const useCm1 = !isMonthlyRange(range) || !cm2Profit || cm2ProfitValue === 0;
+    // Backend fallback me CM2 ko CM1 ke equal bhej sakta hai.
+    // Monthly me genuine CM2 tabhi maana jayega jab CM2 present ho
+    // aur CM1 se materially different ho.
+    const hasRealCm2 =
+      isMonthlyRange(range) &&
+      !!cm2Profit &&
+      Math.abs(cm2ProfitValue - cm1ProfitValue) >= 0.01;
+
+    // Quarterly / Yearly me always CM1.
+    // Monthly me genuine CM2 ho to CM2, otherwise CM1.
+    const useCm1 = !hasRealCm2;
 
     const cleanedMetrics = metrics.filter((m) => {
       const lower = m.label.trim().toLowerCase();
@@ -382,9 +394,23 @@ const parseProductInsightsBlocks = (
       return true;
     });
 
+    const cleanedDrawerOnlyMetrics = (block.drawerOnlyMetrics || []).filter(
+      (m) => {
+        const lower = m.label.trim().toLowerCase();
+
+        // Monthly CM1-only period me Ads card bilkul hide rahega.
+        if (lower === "ads" || lower === "productwise ads spend") {
+          return hasRealCm2;
+        }
+
+        return true;
+      }
+    );
+
     return {
       ...block,
       metrics: cleanedMetrics,
+      drawerOnlyMetrics: cleanedDrawerOnlyMetrics,
     };
   };
 
@@ -1210,7 +1236,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                     className="mb-2"
                   />
 
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                     {sortedMetrics.map((m, i) => {
                       const { main, delta, deltaColor } = splitMetricValue(m.value);
 

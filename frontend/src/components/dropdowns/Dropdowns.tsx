@@ -2139,6 +2139,14 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
     currencySymbol || getCurrencySymbol(countryName || "");
 
   const isOtherSkusBlock = !!block?.isOtherSkus;
+
+  // Monthly drawer me Ads tabhi show hoga jab selected month/SKU ke paas
+  // genuine CM2 metrics available hon. CM1-only month me Ads card hide rahega.
+  const hasCm2Metrics = (block?.metrics || []).some((metric) => {
+    const label = metric.label.trim().toLowerCase();
+    return label === "cm2 profit" || label === "cm2 profit per unit";
+  });
+
   const sortedMetrics = [
     ...(block?.metrics || []),
     ...(block?.drawerOnlyMetrics || []),
@@ -2146,6 +2154,16 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
     .filter((m) => {
       const lower = m.label.trim().toLowerCase();
       const isGlobal = String(countryName || "").toLowerCase() === "global";
+
+      // Monthly CM1-only period me Ads available nahi maana jayega.
+      // Isliye zero-value Ads card render nahi karna.
+      if (
+        isMonthlyRange(range) &&
+        (lower === "ads" || lower === "productwise ads spend") &&
+        !hasCm2Metrics
+      ) {
+        return false;
+      }
 
       // ✅ Global me stock cover/current inventory kabhi mat dikhao
       if (

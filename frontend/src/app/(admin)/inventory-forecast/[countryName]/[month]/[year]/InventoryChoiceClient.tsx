@@ -957,90 +957,65 @@ export default function InventoryFlowPage() {
 
       <div className="font-lato">
         <div className="flex flex-col justify-start">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-            <div className="flex items-baseline gap-2">
-              <PageBreadcrumb
-                pageTitle={
-                  activeTab === 'dispatch'
-                    ? 'Dispatch Report - Amazon'
-                    : activeTab === 'purchaseOrder'
-                      ? 'PO Report - Amazon'
-                      : 'Inventory Forecast - Amazon'
-                }
-                variant="page"
-                align="left"
-                textSize="2xl"
-              />
-              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
-              </span>
-            </div>
+          <div className="sticky top-0 z-40 w-full bg-[#F7F7F7]">
+            <div className="flex flex-col gap-4 pb-2 md:flex-row md:items-center md:justify-between">
+              <div className="flex w-full flex-col leading-tight md:w-auto">
+                <div className="flex items-baseline gap-2">
+                  <PageBreadcrumb
+                    pageTitle={
+                      activeTab === 'dispatch'
+                        ? 'Dispatch Report - Amazon'
+                        : activeTab === 'purchaseOrder'
+                          ? 'PO Report - Amazon'
+                          : 'Inventory Forecast - Amazon'
+                    }
+                    variant="page"
+                    align="left"
+                    textSize="2xl"
+                  />
 
-            {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
-              <div className="flex flex-wrap items-center gap-3 justify-start md:justify-end">
-                <MonthYearPickerTable
-                  month={sharedMonth}
-                  year={sharedYear}
-                  yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-                  onMonthChange={(value) => setSharedMonth(value)}
-                  onYearChange={(value) => setSharedYear(value)}
-                  valueMode="lower"
-                />
+                  <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                    {countryName?.toLowerCase() === 'global'
+                      ? 'Global'
+                      : countryName?.toUpperCase()}
+                  </span>
+                </div>
 
-                {activeTab === 'dispatch' ? (
-                  <>
-                    {/* <button
-                      className="fetch-button"
-                      disabled={isDemoMode}
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent('dispatch-report-refresh', {
-                            detail: { month: sharedMonth, year: sharedYear },
-                          })
-                        );
-                      }}
-                    >
-                      Get Report
-                    </button> */}
-
-                    <DownloadIconButton
-                      size="md"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('dispatch-report-download'));
-                      }}
-                      disabled={isDemoMode}
-                    />
-                  </>
-                ) : (
-                  <>
-                    {/* <button
-                      className="fetch-button"
-                      disabled={isDemoMode}
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent('po-report-refresh', {
-                            detail: { month: sharedMonth, year: sharedYear },
-                          })
-                        );
-                      }}
-                    >
-                      {countryName?.toLowerCase() === 'global' ? 'Get Global Report' : 'Get Report'}
-                    </button> */}
-
-                    <DownloadIconButton
-                      size="md"
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('po-report-download'));
-                      }}
-                      disabled={isDemoMode}
-                    />
-                  </>
-                )}
+                <p className="mt-1 text-xs text-charcoal-500 2xl:text-sm">
+                  Plan inventory, dispatches, and purchase orders from one connected workflow.
+                </p>
               </div>
-            )}
+
+              {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
+                <div className="flex flex-wrap items-center gap-3 justify-start md:justify-end">
+                  <MonthYearPickerTable
+                    month={sharedMonth}
+                    year={sharedYear}
+                    yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+                    onMonthChange={(value) => setSharedMonth(value)}
+                    onYearChange={(value) => setSharedYear(value)}
+                    valueMode="lower"
+                  />
+
+                  <DownloadIconButton
+                    size="md"
+                    onClick={() => {
+                      window.dispatchEvent(
+                        new CustomEvent(
+                          activeTab === 'dispatch'
+                            ? 'dispatch-report-download'
+                            : 'po-report-download'
+                        )
+                      );
+                    }}
+                    disabled={isDemoMode}
+                  />
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="sticky max-[480px]:top-[74px] max-[640px]:top-[74px] sm:top-[62px] md:top-[62px] 2xl:top-[70px] z-30 mb-6 flex items-center justify-between gap-3 border-b border-gray-200 bg-[#F7F7F7] pb-2 pt-2">
             <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
 
             {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
