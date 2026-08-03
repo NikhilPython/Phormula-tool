@@ -25,49 +25,35 @@ export default function Loading() {
 
   return (
     <div
-      className="
-        relative
-        flex
+      className={`
+        relative flex w-full items-center justify-center
         min-h-[calc(100vh-150px)]
-        w-full
-        items-center
-        justify-center
-        bg-[#f8f9fa]
-        px-4
-        py-6
+        bg-[#f8f9fa] px-4 py-6
         lg:min-h-[calc(100vh-145px)]
         xl:min-h-[calc(100vh-150px)]
         2xl:min-h-[calc(100vh-165px)]
-      "
+      `}
     >
       <div
-        className="
-          w-full
-          max-w-md
-          rounded-2xl
-          bg-white
-          p-5
-          text-center
-          font-[Lato]
+        className={`
+          w-full max-w-md rounded-2xl bg-white p-5
+          text-center font-[Lato]
           shadow-[0px_8px_24px_rgba(0,0,0,0.10)]
-          lg:max-w-[390px]
-          lg:p-4
-          xl:max-w-[420px]
-          xl:p-5
-          2xl:max-w-md
-          2xl:p-6
-        "
+          lg:max-w-[390px] lg:p-4
+          xl:max-w-[420px] xl:p-5
+          2xl:max-w-md 2xl:p-6
+        `}
       >
         <div className="flex justify-center">
           <Loader transparent size={120} />
         </div>
 
         <div className="my-3 flex justify-center">
-          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] delay-[0ms]" />
-          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] delay-[200ms]" />
-          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] delay-[400ms]" />
-          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] delay-[600ms]" />
-          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] delay-[800ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:0ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:200ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:400ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:600ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:800ms]" />
         </div>
 
         <div className="mt-4">
