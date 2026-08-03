@@ -535,7 +535,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-6"
+      className="fixed inset-0 z-99999 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-3 lg:p-4 2xl:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="amazon-connect-title"
@@ -545,13 +545,13 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
         className="relative w-11/12 sm:w-full max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="max-h-[90vh] overflow-y-auto px-4 sm:px-6 md:px-8 pb-6 pt-5 sm:pt-8">
+        <div className="max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1.5rem)] lg:max-h-[calc(100dvh-2rem)] 2xl:max-h-[calc(100dvh-3rem)] overflow-y-auto overscroll-contain px-4 sm:px-6 lg:px-5 2xl:px-8 pb-4 2xl:pb-6 pt-4 2xl:pt-8">
           <div className="flex items-center justify-between relative">
             <div className="flex justify-center w-full mt-1 sm:mt-2">
               <img
                 src="/amazon.png"
                 alt="Amazon"
-                className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto"
+                className="w-12 h-12 sm:w-14 sm:h-14 2xl:w-16 2xl:h-16 mx-auto"
               />
             </div>
           </div>
@@ -563,7 +563,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
             textSize="2xl"
           />
 
-          <p className="mb-5 text-center text-xs sm:text-sm md:text-base text-[#414042]">
+          <p className="mb-3 2xl:mb-5 text-center text-xs sm:text-sm md:text-base text-[#414042]">
             Link your Amazon Seller Central to sync your sales data
           </p>
 
@@ -579,7 +579,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
             </div>
           )} */}
 
-          <div className="mb-5 rounded-md border border-[#5EA68E] border-l-[5px] bg-[#D9D9D94D] px-3 py-3 sm:py-4">
+          <div className="mb-3 2xl:mb-5 rounded-md border border-[#5EA68E] border-l-[5px] bg-[#D9D9D94D] px-3 py-3 2xl:py-4">
             <div className="flex items-center gap-2">
               <div className="flex items-center justify-center w-4 h-4 rounded-full bg-[#5EA68E]">
                 <FaLock className="text-white text-[8px]" />
@@ -615,7 +615,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                 setResolvedMarketplaceId(nextMarketplaceId);
                 setSelectedMarketplaceId(nextMarketplaceId);
               }}
-              className="mb-4 w-full rounded-md border border-gray-300 bg-white px-3 py-2 pr-10 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
+              className="mb-3 2xl:mb-4 w-full rounded-md border border-gray-300 bg-white px-3 py-2 pr-10 text-sm md:text-base text-gray-800 outline-none transition focus:border-green-500 focus:ring-2 focus:ring-green-500"
             >
               <option value="eu-west-1">{REGION_LABELS["eu-west-1"]}</option>
               <option value="us-east-1">{REGION_LABELS["us-east-1"]}</option>
@@ -643,9 +643,9 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
 
           {showProfileFields && resolvedMarketplaceId && (
             <>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-start">
+              <div className="grid grid-cols-1 gap-3 2xl:gap-4 md:grid-cols-3 md:items-start">
                 <div className="flex h-full flex-col">
-                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                  <label className="mb-1 2xl:mb-2 flex min-h-9 2xl:min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
                     <span>
                       Stock Buffer (weeks)
                       <span className="text-rose-500">*</span>
@@ -672,7 +672,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                 </div>
 
                 <div className="flex h-full flex-col">
-                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                  <label className="mb-1 2xl:mb-2 flex min-h-9 2xl:min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
                     <span>
                       Sea Transit Time (weeks)
                       <span className="text-rose-500">*</span>
@@ -699,7 +699,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                 </div>
 
                 <div className="flex h-full flex-col">
-                  <label className="mb-2 flex min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
+                  <label className="mb-1 2xl:mb-2 flex min-h-9 2xl:min-h-[40px] items-end text-xs sm:text-sm font-semibold leading-5 text-charcoal-500">
                     <span>
                       Air Transit Time (weeks)
                       <span className="text-rose-500">*</span>
@@ -726,7 +726,7 @@ export default function AmazonConnectLegacy({ onClose, onConnected }: Props) {
                 </div>
               </div>
 
-              <div className="mt-4 flex w-full justify-center">
+              <div className="mt-2 2xl:mt-4 flex w-full justify-center">
                 <Button
                   variant="primary"
                   size="sm"

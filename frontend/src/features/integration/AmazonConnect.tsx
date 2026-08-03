@@ -36,7 +36,7 @@ export default function AmazonConnect({
 
   return (
     <div
-      className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 p-3 sm:p-4 md:p-6"
+      className="fixed inset-0 z-99999 flex items-center justify-center overflow-y-auto bg-black/50 p-2 sm:p-3 lg:p-4 2xl:p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="amazon-connect-title"
@@ -46,7 +46,9 @@ export default function AmazonConnect({
         className="
           relative w-full max-w-md sm:max-w-lg md:max-w-xl
           bg-white rounded-2xl shadow-xl
-          p-4 sm:p-6 md:p-8
+          max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1.5rem)] lg:max-h-[calc(100dvh-2rem)] 2xl:max-h-[calc(100dvh-3rem)]
+          overflow-y-auto overscroll-contain
+          p-4 sm:p-5 lg:p-5 2xl:p-8
         "
         onClick={(e) => e.stopPropagation()}
       >
@@ -55,7 +57,7 @@ export default function AmazonConnect({
             <img
               src={ICONS.amazonLogo}
               alt="Amazon"
-              className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 mx-auto"
+              className="w-12 h-12 sm:w-14 sm:h-14 2xl:w-16 2xl:h-16 mx-auto"
             />
           </div>
         </div>
@@ -72,23 +74,23 @@ export default function AmazonConnect({
             text-center
             text-xs sm:text-sm md:text-base
             text-[#414042] font-bold
-            mt-2 mb-4 sm:mb-5 md:mb-6
+            mt-1.5 mb-3 2xl:mt-2 2xl:mb-6
             w-[90%] sm:w-[80%] m-auto
           "
         >
           Sync your Amazon Seller Central data to access analytics and insights
         </p>
 
-        <div className="w-full border-t border-gray-300 mb-4 sm:mb-6" />
+        <div className="w-full border-t border-gray-300 mb-3 2xl:mb-6" />
 
         <div
           className="
             rounded-lg border border-[#5EA68E26]
             bg-emerald-50/50
-            p-3 sm:p-4 mb-4 sm:mb-5
+            p-3 2xl:p-4 mb-3 2xl:mb-5
           "
         >
-          <div className="flex items-center gap-3 mb-2 sm:mb-3">
+          <div className="flex items-center gap-3 mb-2 2xl:mb-3">
             <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-[#D9D9D9]">
               <FaLink size={16} color="#5EA68E" />
             </div>
@@ -102,7 +104,7 @@ export default function AmazonConnect({
             </div>
           </div>
 
-          <ul className="text-xs sm:text-sm text-[#414042] space-y-2 sm:space-y-3 mb-3 sm:mb-4 ml-3 sm:ml-4">
+          <ul className="text-xs sm:text-sm text-[#414042] space-y-2 2xl:space-y-3 mb-3 2xl:mb-4 ml-3 sm:ml-4">
             {[
               "Real-time data synchronization",
               "Always up-to-date analytics",
@@ -130,7 +132,7 @@ export default function AmazonConnect({
           </Button>
         </div>
 
-        <div className="flex items-center justify-center w-full mt-4 sm:mt-5 mb-3 sm:mb-4">
+        <div className="flex items-center justify-center w-full mt-3 mb-2 2xl:mt-5 2xl:mb-4">
           <div className="flex-grow border-t border-gray-300" />
           <span className="mx-3 text-xs sm:text-sm text-[#414042] font-medium">
             or
@@ -138,7 +140,7 @@ export default function AmazonConnect({
           <div className="flex-grow border-t border-gray-300" />
         </div>
 
-        <div className="text-center mb-4 sm:mb-5">
+        <div className="text-center mb-3 2xl:mb-5">
           <button
             type="button"
             onClick={() => onChooseManual?.()}
@@ -148,7 +150,7 @@ export default function AmazonConnect({
           </button>
         </div>
 
-        <div className="w-full border-t border-gray-300 mb-4 sm:mb-5" />
+        <div className="w-full border-t border-gray-300 mb-3 2xl:mb-5" />
 
         <div className="flex items-center justify-center gap-2 text-[10px] sm:text-xs md:text-sm text-[#414042]">
           <img
