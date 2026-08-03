@@ -17,6 +17,7 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 
 interface SkuRow {
   [key: string]: string | number | undefined
+  'S. No.'?: string | number
   SKU?: string
   'Product Name'?: string
   'Inventory at Month End'?: string | number
@@ -55,8 +56,9 @@ const monthNames = [
 ] as const
 
 const DISPLAYED_COLUMNS = [
-  'SKU',
+  'S. No.',
   'Product Name',
+  'SKU',
   'FBA',
   'AWD',
   'Projected Sales Total',
@@ -523,11 +525,18 @@ export default function DispatchPage({
   function handleExportToExcel() {
     if (!skuData.length || noData || loading) return;
 
-    const exportRows = skuData.map((row, index) => {
+    let exportSerialNo = 0;
+
+    const exportRows = skuData.map((row) => {
       const formattedRow: Record<string, string | number> = {
       };
 
       displayedColumns.forEach((col) => {
+        if (col === 'S. No.') {
+          formattedRow[col] = isTotalRow(row) ? '' : ++exportSerialNo;
+          return;
+        }
+
         if (col === 'SKU' && isTotalRow(row)) {
           formattedRow['SKU'] = '';
           return;
@@ -629,7 +638,9 @@ export default function DispatchPage({
       rowsForDisplay.push(totalRow)
     }
 
-    return rowsForDisplay.map((row, index) => {
+    let serialNo = 0
+
+    return rowsForDisplay.map((row) => {
       const isTotal = isTotalRow(row)
       const isOthers = String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
 
@@ -639,6 +650,11 @@ export default function DispatchPage({
       }
 
       displayedColumns.forEach((col) => {
+        if (col === 'S. No.') {
+          obj[col] = isTotal || isOthers ? '' : ++serialNo
+          return
+        }
+
         if (isTotal) {
           if (col === 'FBA') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
@@ -708,6 +724,7 @@ export default function DispatchPage({
 
   const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
     const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
+    const isSNo = col === 'S. No.'
     const isProduct = col === 'Product Name'
     const isSku = col === 'SKU'
     const isFba = col === 'FBA'
@@ -723,7 +740,9 @@ export default function DispatchPage({
         col === 'Inventory Coverage Ratio Before Dispatch'
           ? 'Coverage Ratio Before Dispatch'
           : col,
-      width: isProduct
+      width: isSNo
+        ? '55px'
+        : isProduct
           ? '190px'
           : isSku
             ? '170px'
@@ -739,7 +758,9 @@ export default function DispatchPage({
                         ? '100px'
                         : '150px',
       cellClassName:
-        isSku
+        isSNo
+          ? 'text-center'
+          : isSku
           ? 'dispatch-sku-cell'
           : isProduct
             ? 'text-left'

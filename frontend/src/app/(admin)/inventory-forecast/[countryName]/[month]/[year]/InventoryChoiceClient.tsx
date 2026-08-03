@@ -957,8 +957,8 @@ export default function InventoryFlowPage() {
 
       <div className="font-lato">
         <div className="flex flex-col justify-start">
-          <div className="sticky top-0 z-40 w-full bg-[#F7F7F7]">
-            <div className="flex flex-col gap-4 pb-2 md:flex-row md:items-center md:justify-between">
+          <div className="sticky top-0 z-40 w-full bg-[#F7F7F7] pb-2">
+            <div className="flex flex-col gap-4 pb-1 md:flex-row md:items-center md:justify-between">
               <div className="flex w-full flex-col leading-tight md:w-auto">
                 <div className="flex items-baseline gap-2">
                   <PageBreadcrumb
@@ -1013,56 +1013,56 @@ export default function InventoryFlowPage() {
                 </div>
               )}
             </div>
-          </div>
 
-          <div className="sticky max-[480px]:top-[74px] max-[640px]:top-[74px] sm:top-[62px] md:top-[62px] 2xl:top-[70px] z-30 mb-6 flex items-center justify-between gap-3 border-b border-gray-200 bg-[#F7F7F7] pb-2 pt-2">
-            <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
+            <div className="flex items-center justify-between gap-3 border-b border-gray-200 py-1.5">
+              <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
 
-            {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeTab === 'dispatch') {
-                    setShowAllDispatchRows((prev) => !prev);
-                    return;
+              {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === 'dispatch') {
+                      setShowAllDispatchRows((prev) => !prev);
+                      return;
+                    }
+
+                    setShowAllPoRows((prev) => !prev);
+                  }}
+                  title={
+                    activeTab === 'dispatch'
+                      ? showAllDispatchRows
+                        ? "Collapse rows"
+                        : "Expand all rows"
+                      : showAllPoRows
+                        ? "Collapse rows"
+                        : "Expand all rows"
                   }
-
-                  setShowAllPoRows((prev) => !prev);
-                }}
-                title={
-                  activeTab === 'dispatch'
-                    ? showAllDispatchRows
-                      ? "Collapse rows"
-                      : "Expand all rows"
-                    : showAllPoRows
-                      ? "Collapse rows"
-                      : "Expand all rows"
-                }
-                aria-label={
-                  activeTab === 'dispatch'
-                    ? showAllDispatchRows
-                      ? "Collapse rows"
-                      : "Expand all rows"
-                    : showAllPoRows
-                      ? "Collapse rows"
-                      : "Expand all rows"
-                }
-                disabled={isDemoMode}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {activeTab === 'dispatch' ? (
-                  showAllDispatchRows ? (
+                  aria-label={
+                    activeTab === 'dispatch'
+                      ? showAllDispatchRows
+                        ? "Collapse rows"
+                        : "Expand all rows"
+                      : showAllPoRows
+                        ? "Collapse rows"
+                        : "Expand all rows"
+                  }
+                  disabled={isDemoMode}
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {activeTab === 'dispatch' ? (
+                    showAllDispatchRows ? (
+                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                    ) : (
+                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                    )
+                  ) : showAllPoRows ? (
                     <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                   ) : (
                     <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                  )
-                ) : showAllPoRows ? (
-                  <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                ) : (
-                  <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                )}
-              </button>
-            )}
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
           <PreviewLockedSection
