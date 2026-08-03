@@ -465,7 +465,7 @@ function SalesTargetCard({
   return (
     <>
 
-      <div className="rounded-xl border p-3 2xl:p-5 shadow-sm min-h-[430px] lg:h-full flex flex-col bg-white">
+      <div className="rounded-xl border p-3 2xl:p-5 shadow-sm min-h-[430px] lg:h-full flex flex-col lg:justify-between min-[1700px]:justify-start bg-white">
         {/* Legend */}
         <div className="mt-2 2xl:mt-2 grid grid-cols-4 gap-4 text-[10px] 2xl:text-xs">
           <div className="flex items-start justify-start gap-2 min-w-0">
