@@ -2,108 +2,112 @@
 
 import { useEffect, useState } from 'react';
 import { FaCogs, FaChartLine, FaCalculator } from 'react-icons/fa';
-import Loader from "@/components/loader/Loader";
+import Loader from '@/components/loader/Loader';
 
 export default function Loading() {
   const [progress, setProgress] = useState(0);
 
-  // 🔥 Simulated smooth progress
   useEffect(() => {
     let value = 0;
 
     const timer = setInterval(() => {
-      value += Math.random() * 6; // smooth increment
-      if (value >= 95) value = 95; // stop at 95%
+      value += Math.random() * 6;
+
+      if (value >= 95) {
+        value = 95;
+      }
+
       setProgress(Math.floor(value));
     }, 700);
 
     return () => clearInterval(timer);
   }, []);
 
-  const openExploreTab = () => {
-    window.open('/', '_blank', 'noopener,noreferrer');
-  };
-
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-[#f8f9fa]">
-      <div className="bg-white rounded-2xl shadow-[0px_8px_24px_rgba(0,0,0,0.10)] p-6 w-full max-w-md text-center font-[Lato]">
-
-        {/* Animated Logo */}
-                   <Loader transparent size={120} />
-
-        {/* Animated Dots */}
-        <div className="flex justify-center my-3">
-          <span className="w-2 h-2 mx-1 rounded-full bg-[#5EA68E] animate-dot delay-[0ms]"></span>
-          <span className="w-2 h-2 mx-1 rounded-full bg-[#5EA68E] animate-dot delay-[200ms]"></span>
-          <span className="w-2 h-2 mx-1 rounded-full bg-[#5EA68E] animate-dot delay-[400ms]"></span>
-          <span className="w-2 h-2 mx-1 rounded-full bg-[#5EA68E] animate-dot delay-[600ms]"></span>
-          <span className="w-2 h-2 mx-1 rounded-full bg-[#5EA68E] animate-dot delay-[800ms]"></span>
+    <div
+      className={`
+        relative flex w-full items-center justify-center
+        min-h-[calc(100vh-150px)]
+        bg-[#f8f9fa] px-4 py-6
+        lg:min-h-[calc(100vh-145px)]
+        xl:min-h-[calc(100vh-150px)]
+        2xl:min-h-[calc(100vh-165px)]
+      `}
+    >
+      <div
+        className={`
+          w-full max-w-md rounded-2xl bg-white p-5
+          text-center font-[Lato]
+          shadow-[0px_8px_24px_rgba(0,0,0,0.10)]
+          lg:max-w-[390px] lg:p-4
+          xl:max-w-[420px] xl:p-5
+          2xl:max-w-md 2xl:p-6
+        `}
+      >
+        <div className="flex justify-center">
+          <Loader transparent size={120} />
         </div>
 
-        {/* 🔥 Progress Bar (added, layout unchanged) */}
+        <div className="my-3 flex justify-center">
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:0ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:200ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:400ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:600ms]" />
+          <span className="animate-dot mx-1 h-2 w-2 rounded-full bg-[#5EA68E] [animation-delay:800ms]" />
+        </div>
+
         <div className="mt-4">
-          <div className="h-2 w-full bg-[#E5E7EB] rounded-full overflow-hidden">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[#E5E7EB]">
             <div
               className="h-full bg-[#5EA68E] transition-all duration-700"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="text-xs text-[#414042] mt-1 font-semibold">
+
+          <div className="mt-1 text-xs font-semibold text-[#414042]">
             {progress}% completed
           </div>
         </div>
 
-        <h2 className="text-[#414042] text-2xl mt-3">
+        <h2 className="mt-3 text-xl text-[#414042] 2xl:text-2xl">
           Processing your data
         </h2>
-        <p className="text-[#414042] text-sm mb-3">
+
+        <p className="mb-3 text-sm text-[#414042]">
           Analyzing financial information securely
         </p>
 
-        <div className="bg-[#D9D9D926] rounded-md p-3 flex items-center justify-center text-[#414042] border border-[#D9D9D9] text-sm my-2">
-          <FaCogs className="mr-2" /> Optimizing results for accuracy
+        <div className="my-2 flex items-center justify-center rounded-md border border-[#D9D9D9] bg-[#D9D9D926] p-2.5 text-sm text-[#414042] 2xl:p-3">
+          <FaCogs className="mr-2 shrink-0" />
+          <span>Optimizing results for accuracy</span>
         </div>
 
-        <div className="bg-[#D9D9D926] rounded-md p-3 flex items-center justify-center text-[#414042] border border-[#D9D9D9] text-sm my-2">
-          <FaChartLine className="mr-2" /> Processing market data and trends
+        <div className="my-2 flex items-center justify-center rounded-md border border-[#D9D9D9] bg-[#D9D9D926] p-2.5 text-sm text-[#414042] 2xl:p-3">
+          <FaChartLine className="mr-2 shrink-0" />
+          <span>Processing market data and trends</span>
         </div>
 
-        <div className="bg-[#D9D9D926] rounded-md p-3 flex items-center justify-center text-[#414042] border border-[#D9D9D9] text-sm my-2">
-          <FaCalculator className="mr-2" /> Running calculations and data analysis
+        <div className="my-2 flex items-center justify-center rounded-md border border-[#D9D9D9] bg-[#D9D9D926] p-2.5 text-sm text-[#414042] 2xl:p-3">
+          <FaCalculator className="mr-2 shrink-0" />
+          <span>Running calculations and data analysis</span>
         </div>
 
-        <p className="text-[#414042] text-sm mt-4">
+        <p className="mt-4 text-sm text-[#414042]">
           Results will be available shortly.
         </p>
 
-        {/* Buttons */}
-        {/* <div className="flex justify-center gap-4 mt-5">
-          <button
-            onClick={() => alert('You will be notified.')}
-            className="bg-[#37455F] text-[#f8edcf] px-4 py-2 rounded-md text-sm font-semibold hover:bg-[#34495e] shadow-[0px_4px_4px_0px_#00000040]"
-          >
-            Notify me
-          </button>
-
-          <button
-            onClick={openExploreTab}
-            className="bg-[#37455F] text-[#f8edcf] px-4 py-2 rounded-md text-sm font-semibold hover:bg-[#34495e] shadow-[0px_4px_4px_0px_#00000040]"
-          >
-            Till then explore tab
-          </button>
-        </div> */}
-
-        {/* 🔥 Dot animation CSS (safe to keep here or move to globals.css) */}
         <style jsx>{`
           @keyframes dotFlow {
             0% {
               opacity: 0.3;
               transform: translateY(0);
             }
+
             50% {
               opacity: 1;
               transform: translateY(-4px);
             }
+
             100% {
               opacity: 0.3;
               transform: translateY(0);
