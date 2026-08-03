@@ -4076,6 +4076,14 @@ def _upsert_inventory_awd_rows(
     return len(db_rows)
 
 
+# AWD is currently enabled only for marketplaces where the seller account
+# has AWD access. UK does not expose AWD inventory for this integration, so
+# never call Amazon's /awd API for the UK marketplace.
+AWD_SUPPORTED_MARKETPLACES = {
+    "ATVPDKIKX0DER",  # US
+}
+
+
 @inventory_bp.route("/amazon_api/inventory/awd", methods=["GET"])
 def sync_inventory_awd_from_amazon():
     """
@@ -4120,6 +4128,28 @@ def sync_inventory_awd_from_amazon():
     mp = request.args.get("marketplace_id", amazon_client.marketplace_id)
     sku = request.args.get("sku")
     store_in_db = request.args.get("store_in_db", "true").lower() != "false"
+
+    # IMPORTANT: Do not call the Amazon AWD API for UK or any marketplace
+    # that is not explicitly supported. Returning HTTP 200 keeps the live
+    # dashboard refresh flow running without producing a false 500 error.
+    if mp not in AWD_SUPPORTED_MARKETPLACES:
+        logger.info(
+            "Skipping AWD inventory sync for unsupported marketplace=%s user_id=%s",
+            mp,
+            user_id,
+        )
+        return jsonify({
+            "success": True,
+            "skipped": True,
+            "message": "AWD inventory sync is not available for this marketplace",
+            "marketplace_id": mp,
+            "sku_filter": sku,
+            "count": 0,
+            "db": {
+                "saved_rows": 0,
+            },
+            "items": [],
+        }), 200
 
     logger.info(
         "Starting AWD inventory sync for marketplace=%s user_id=%s sku=%s",
