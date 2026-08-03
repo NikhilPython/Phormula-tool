@@ -201,7 +201,7 @@ function updateStoredEtaSeconds(
     const avgSeconds =
       previousWeight > 0
         ? (previous.avgSeconds * previousWeight + boundedActual) /
-          (previousWeight + 1)
+        (previousWeight + 1)
         : boundedActual;
 
     history[key] = {
@@ -2781,9 +2781,42 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           </div>
         )}
         {error && (
-          <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 p-3 text-red-700 text-sm">
-            <AlertCircle />
-            <span style={{ whiteSpace: "pre-wrap" }}>{error}</span>
+          <div
+            className="
+      mt-4
+      flex items-start gap-3
+      rounded-lg
+      border border-red-200
+      bg-red-50
+      p-3
+      text-sm text-red-700
+      shadow-sm
+    "
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold text-red-800">
+                Something went wrong
+              </p>
+
+              <div
+                className="
+          mt-1
+          max-h-24
+          overflow-y-auto
+          whitespace-pre-wrap
+          break-words
+          pr-2
+          text-xs
+          leading-5
+          [overflow-wrap:anywhere]
+        "
+              >
+                {error}
+              </div>
+            </div>
           </div>
         )}
       </div>
