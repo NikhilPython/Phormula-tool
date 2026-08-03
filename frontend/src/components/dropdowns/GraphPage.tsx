@@ -95,6 +95,62 @@ const getCurrencySymbol = (codeOrCountry: string) => {
   }
 };
 
+const Y_AXIS_TARGET_INTERVALS = 10;
+
+const normalizeAxisNumber = (value: number) => Number(value.toPrecision(12));
+
+const getNiceTickStep = (magnitude: number) => {
+  if (!Number.isFinite(magnitude) || magnitude <= 0) return 1;
+
+  const rawStep = magnitude / Y_AXIS_TARGET_INTERVALS;
+  const exponent = Math.floor(Math.log10(rawStep));
+  const base = 10 ** exponent;
+  const normalizedStep = rawStep / base;
+
+  const multiplier =
+    normalizedStep <= 1
+      ? 1
+      : normalizedStep <= 2
+        ? 2
+        : normalizedStep <= 5
+          ? 5
+          : 10;
+
+  return normalizeAxisNumber(multiplier * base);
+};
+
+const getYAxisScale = (values: number[]) => {
+  if (values.length === 0) {
+    return { min: 0, max: undefined as number | undefined, stepSize: undefined as number | undefined };
+  }
+
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const magnitude = Math.max(Math.abs(minValue), Math.abs(maxValue));
+
+  if (magnitude <= 0) {
+    return { min: 0, max: undefined as number | undefined, stepSize: undefined as number | undefined };
+  }
+
+  const stepSize = getNiceTickStep(magnitude);
+
+  return {
+    min: minValue < 0 ? normalizeAxisNumber(Math.floor(minValue / stepSize) * stepSize) : 0,
+    max: maxValue > 0 ? normalizeAxisNumber(Math.ceil(maxValue / stepSize) * stepSize) : 0,
+    stepSize,
+  };
+};
+
+const formatAxisTick = (tickValue: string | number) => {
+  const value = Number(tickValue);
+  if (!Number.isFinite(value)) return String(tickValue);
+
+  const maxFractionDigits = Number.isInteger(value) ? 0 : 2;
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: maxFractionDigits,
+  });
+};
+
 const GraphPage: React.FC<GraphPageProps> = ({
   range,
   selectedMonth,
@@ -194,6 +250,15 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const now = new Date();
   const currentCalendarYear = now.getFullYear();
   const currentCalendarMonthIdx = now.getMonth();
+
+  const shouldZeroCurrentOrFutureMonth = (monthIdx: number | null | undefined) => {
+    return (
+      range === "quarterly" &&
+      selectedYearNum === currentCalendarYear &&
+      monthIdx != null &&
+      monthIdx >= currentCalendarMonthIdx
+    );
+  };
 
   const lastCompletedMonthIdx = useMemo(() => {
     if (range !== "yearly") return null;
@@ -361,6 +426,10 @@ const GraphPage: React.FC<GraphPageProps> = ({
             const [monthName] = l.split(" ");
             const monthIdx = MONTH_NAME_TO_IDX[String(monthName).toLowerCase()];
 
+            if (shouldZeroCurrentOrFutureMonth(monthIdx)) {
+              return 0;
+            }
+
             const isCurrentOngoingYear =
               range === "yearly" &&
               selectedYearNum === currentCalendarYear &&
@@ -423,8 +492,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
     .flatMap((d: any) => d.data as Array<number | null>)
     .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
 
-  const minValue = allDataPoints.length ? Math.min(...allDataPoints) : 0;
-  const minY = minValue < 0 ? Math.floor(minValue * 1.1) : 0;
+  const { min: minY, max: maxY, stepSize: yAxisStepSize } = getYAxisScale(allDataPoints);
 
   const periodInfo = useMemo(() => {
     if (range === "monthly" && selectedMonth) {
@@ -710,9 +778,12 @@ const GraphPage: React.FC<GraphPageProps> = ({
                         color: "#6B7280",
                       },
                       min: minY,
+                      max: maxY,
                       ticks: {
                         padding: 0,
                         color: "#6B7280",
+                        stepSize: yAxisStepSize,
+                        callback: formatAxisTick,
                       },
                       border: { display: false },
                       grid: {

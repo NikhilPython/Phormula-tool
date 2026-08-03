@@ -276,6 +276,46 @@ const getQuarterRelativeMonth = (
   return String(relativeMonth);
 };
 
+const getQuarterPointMonthIdx = (
+  quarterLabel: string,
+  point: GenericPoint | undefined,
+  xRaw: string | number
+): number | null => {
+  const parsedQuarter = parseQuarterLabel(quarterLabel);
+  if (!parsedQuarter) return null;
+
+  const quarterStartIdx = QUARTER_START_MONTH_IDX[parsedQuarter.q];
+  const quarterEndIdx = quarterStartIdx + 2;
+  const monthLabel = point?.monthLabel;
+
+  if (monthLabel != null) {
+    const monthIdx = normalizeMonthKeyToIdx(monthLabel);
+    const monthLabelNumber = Number(String(monthLabel).trim());
+
+    if (
+      monthIdx != null &&
+      monthIdx >= quarterStartIdx &&
+      monthIdx <= quarterEndIdx
+    ) {
+      return monthIdx;
+    }
+
+    if (
+      monthIdx != null &&
+      (Number.isNaN(monthLabelNumber) || monthLabelNumber < 1 || monthLabelNumber > 3)
+    ) {
+      return monthIdx;
+    }
+  }
+
+  const relativeMonth = Number(xRaw);
+  if (Number.isNaN(relativeMonth) || relativeMonth < 1 || relativeMonth > 3) {
+    return null;
+  }
+
+  return quarterStartIdx + relativeMonth - 1;
+};
+
 
 const mapBackendTrendToSeries = (trend: PerformanceTrendPayload): { xAxis: string[]; series: GenericSeries[] } => {
   const xType = String(trend.xType || "").toLowerCase();
@@ -525,6 +565,23 @@ const LiveLineChart: React.FC<{
       currentCalendarYear,
       currentCalendarMonthIdx,
     ]);
+
+    const shouldZeroCurrentOrFutureQuarterMonth = (
+      seriesName: string,
+      point: GenericPoint | undefined,
+      xRaw: string | number
+    ) => {
+      if (!isQuarterCompare) return false;
+
+      const parsedQuarter = parseQuarterLabel(seriesName);
+      if (!parsedQuarter) return false;
+      if (parsedQuarter.year !== selectedYearNum) return false;
+      if (selectedYearNum !== currentCalendarYear) return false;
+
+      const monthIdx = getQuarterPointMonthIdx(seriesName, point, xRaw);
+      return monthIdx != null && monthIdx >= currentCalendarMonthIdx;
+    };
+
     const fullYearXAxis = useMemo(() => {
       if (!isMonthAbbrAxis) return filteredXAxis;
 
@@ -777,6 +834,13 @@ const LiveLineChart: React.FC<{
                 return vPad == null ? null : { value: vPad, monthLabel: (p as any).monthLabel };
               }
               return vPad;
+            }
+
+            if (shouldZeroCurrentOrFutureQuarterMonth(ser.name, p, xRaw)) {
+              if (p && (p as any).monthLabel != null) {
+                return { value: 0, monthLabel: (p as any).monthLabel };
+              }
+              return 0;
             }
 
             // Month-abbr axis (Jan..Dec): fill missing months with 0
