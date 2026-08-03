@@ -788,6 +788,19 @@ def PO_generated():
 
     inventory_df.columns = [str(c).strip() for c in inventory_df.columns]
 
+    if 'Dispatch' not in inventory_df.columns:
+        if {'SEA', 'AIR'}.issubset(inventory_df.columns):
+            inventory_df['Dispatch'] = (
+                pd.to_numeric(inventory_df['SEA'], errors='coerce').fillna(0)
+                + pd.to_numeric(inventory_df['AIR'], errors='coerce').fillna(0)
+            )
+        elif 'Shortfall Unit' in inventory_df.columns:
+            inventory_df['Dispatch'] = (
+                pd.to_numeric(inventory_df['Shortfall Unit'], errors='coerce')
+                .fillna(0)
+                .clip(lower=0)
+            )
+
     if 'sku' not in inventory_df.columns or 'Dispatch' not in inventory_df.columns:
         return jsonify({
             'error': f"Required columns missing in Dispatch sheet. Found: {list(inventory_df.columns)}"
@@ -835,6 +848,59 @@ def PO_generated():
 
     sku_df['product_name'] = sku_df['product_name'].fillna('').astype(str).str.strip()
 
+    current_transit_df = pd.DataFrame(columns=['sku', 'Current Inventory Total Transit'])
+    current_inventory_table = f"currentinventory_{user_id}_{country_db}_{month_db}{year_db}_table"
+
+    try:
+        with engine.connect() as conn:
+            current_inventory_exists = table_exists(conn, current_inventory_table)
+
+        if current_inventory_exists:
+            current_inventory_df = pd.read_sql_table(current_inventory_table, engine)
+            current_inventory_columns = set(current_inventory_df.columns)
+            current_sku_col = next(
+                (
+                    col for col in ['SKU', 'sku', 'seller_sku', 'msku']
+                    if col in current_inventory_columns
+                ),
+                None
+            )
+            current_transit_col = next(
+                (
+                    col for col in ['total_transit', 'Total Transit', 'In Transit Units']
+                    if col in current_inventory_columns
+                ),
+                None
+            )
+
+            if current_sku_col and current_transit_col:
+                current_transit_df = current_inventory_df[
+                    [current_sku_col, current_transit_col]
+                ].copy()
+                current_transit_df.rename(
+                    columns={
+                        current_sku_col: 'sku',
+                        current_transit_col: 'Current Inventory Total Transit'
+                    },
+                    inplace=True
+                )
+                current_transit_df['sku'] = current_transit_df['sku'].astype(str).str.strip()
+                current_transit_df = current_transit_df[
+                    current_transit_df['sku'].notna()
+                    & (current_transit_df['sku'] != '')
+                    & ~current_transit_df['sku'].str.lower().str.contains('total', na=False)
+                ].copy()
+                current_transit_df['Current Inventory Total Transit'] = pd.to_numeric(
+                    current_transit_df['Current Inventory Total Transit'],
+                    errors='coerce'
+                ).fillna(0)
+                current_transit_df = current_transit_df.groupby(
+                    'sku',
+                    as_index=False
+                )['Current Inventory Total Transit'].sum()
+    except Exception:
+        current_transit_df = pd.DataFrame(columns=['sku', 'Current Inventory Total Transit'])
+
     merged_df = inventory_df.merge(
         sku_df[['sku', 'product_name', 'price', 'local_stock', 'in_transit_units']],
         on='sku',
@@ -847,6 +913,14 @@ def PO_generated():
         'local_stock': 'Current Inventory - Local Warehouse',
         'in_transit_units': 'In Transit Units'
     }, inplace=True)
+
+    if not current_transit_df.empty:
+        merged_df = merged_df.merge(current_transit_df, on='sku', how='left')
+        merged_df['In Transit Units'] = pd.to_numeric(
+            merged_df['Current Inventory Total Transit'],
+            errors='coerce'
+        ).fillna(merged_df['In Transit Units'])
+        merged_df.drop(columns=['Current Inventory Total Transit'], inplace=True)
 
     merged_df['Product Name'] = merged_df['Product Name'].replace('', pd.NA)
     merged_df['Product Name'] = merged_df['Product Name'].fillna(merged_df.get('Product Name DB', ''))
