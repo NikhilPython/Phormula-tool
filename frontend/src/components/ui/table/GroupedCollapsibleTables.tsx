@@ -9,6 +9,7 @@ export type Align = "left" | "center" | "right";
 export type LeafCol<RowT> = {
   key: string;
   label: React.ReactNode;
+  width?: string;
   align?: Align;
   tooltip?: React.ReactNode;
   thClassName?: string;
@@ -319,6 +320,14 @@ export default function GroupedCollapsibleTables<RowT>({
     return out;
   }, [groups, collapsed]);
 
+  const renderColGroup = () => (
+    <colgroup>
+      {visibleLeafCols.map((col) => (
+        <col key={col.key} style={col.width ? { width: col.width } : undefined} />
+      ))}
+    </colgroup>
+  );
+
   const thBase =
     "whitespace-nowrap border border-gray-300 px-2 py-2 text-xs 2xl:text-sm";
 
@@ -459,13 +468,17 @@ export default function GroupedCollapsibleTables<RowT>({
   if (shouldPinRows) {
     return (
       <div className="w-full">
-        <table className={tableClassName}>{renderHeader()}</table>
+        <table className={tableClassName}>
+          {renderColGroup()}
+          {renderHeader()}
+        </table>
 
         <div
           className="overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
           style={bodyScrollStyle}
         >
           <table className={tableClassName}>
+            {renderColGroup()}
             <tbody className="bg-white">
               {renderSignRow()}
               {renderRows(scrollRows)}
@@ -475,6 +488,7 @@ export default function GroupedCollapsibleTables<RowT>({
 
         {pinnedRows.length > 0 && (
           <table className={tableClassName}>
+            {renderColGroup()}
             <tbody className="bg-white">
               {renderRows(
                 pinnedRows,
@@ -489,6 +503,7 @@ export default function GroupedCollapsibleTables<RowT>({
 
   return (
     <table className={tableClassName}>
+      {renderColGroup()}
       {renderHeader()}
 
       <tbody className="bg-white">

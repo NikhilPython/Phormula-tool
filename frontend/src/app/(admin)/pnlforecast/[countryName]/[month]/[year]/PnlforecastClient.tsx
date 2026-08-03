@@ -1011,45 +1011,60 @@ const Pnlforecast: React.FC = () => {
     s: string,
     p: string,
     pp: string,
-  ): ColGroup<RowData> => ({
-    id,
-    label,
-    collapsedCols: [
-      {
-        key: s,
-        label: `Sales (${currencySymbol})`,
-        align: "center",
-        sortable: true,
-      },
-      {
-        key: p,
-        label: `CM1 (${currencySymbol})`,
-        align: "center",
-        sortable: true,
-      },
-    ],
-    expandedCols: [
-      { key: u, label: "Units", align: "center", sortable: true },
-      {
-        key: s,
-        label: `Sales (${currencySymbol})`,
-        align: "center",
-        sortable: true,
-      },
-      {
-        key: p,
-        label: `CM1 (${currencySymbol})`,
-        align: "center",
-        sortable: true,
-      },
-      { key: pp, label: "CM1 %", align: "center" },
-    ],
-  });
+  ): ColGroup<RowData> => {
+    const metricWidth = id === "sum" ? "92px" : "84px";
+
+    return {
+      id,
+      label,
+      collapsedCols: [
+        {
+          key: s,
+          label: `Sales (${currencySymbol})`,
+          width: metricWidth,
+          align: "center",
+          sortable: true,
+        },
+        {
+          key: p,
+          label: `CM1 (${currencySymbol})`,
+          width: metricWidth,
+          align: "center",
+          sortable: true,
+        },
+      ],
+      expandedCols: [
+        {
+          key: u,
+          label: "Units",
+          width: metricWidth,
+          align: "center",
+          sortable: true,
+        },
+        {
+          key: s,
+          label: `Sales (${currencySymbol})`,
+          width: metricWidth,
+          align: "center",
+          sortable: true,
+        },
+        {
+          key: p,
+          label: `CM1 (${currencySymbol})`,
+          width: metricWidth,
+          align: "center",
+          sortable: true,
+        },
+        { key: pp, label: "CM1 %", width: metricWidth, align: "center" },
+      ],
+    };
+  };
 
   const leftCols: LeafCol<RowData>[] = [
     {
       key: "sr_no",
       label: "S. No.",
+      width: "48px",
       align: "center",
       thClassName: "th-center",
       tdClassName: "td-center",
@@ -1057,13 +1072,17 @@ const Pnlforecast: React.FC = () => {
     {
       key: "product_name",
       label: "Product Name",
+      width: "180px",
       align: "left",
       thClassName: "th-left",
+      tdClassName: "overflow-hidden text-ellipsis",
     },
     {
       key: "sku",
       label: "SKU",
+      width: "110px",
       align: "center",
+      tdClassName: "overflow-hidden text-ellipsis",
     },
   ];
 
@@ -1416,7 +1435,7 @@ const Pnlforecast: React.FC = () => {
           </div>
 
           <div className="mt-4 w-full overflow-x-auto">
-            <div className="rounded-xl border border-gray-300 overflow-x-auto overflow-y-hidden min-w-[1100px]">
+            <div className="rounded-xl border border-gray-300 overflow-x-auto overflow-y-hidden">
               <div className="w-full text-xs 2xl:text-sm text-[#414042]">
                 <GroupedCollapsibleTables<RowData>
                   rows={noDataAvailable ? [] : tableRows}
@@ -1446,6 +1465,7 @@ const Pnlforecast: React.FC = () => {
                       ? 40 * 15
                       : undefined
                   }
+                  tableClassName="w-full table-fixed border-collapse text-[#414042]"
                   getValue={(row, key) => {
                     if (key === "sr_no") {
                       const isTotal =

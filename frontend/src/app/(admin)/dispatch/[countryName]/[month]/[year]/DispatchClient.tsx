@@ -679,7 +679,7 @@ export default function DispatchPage({
         : isProduct
           ? '190px'
           : isSku
-            ? '260px'
+            ? '170px'
             : isCoverage
               ? '190px'
               : isInventoryMonthEnd
@@ -753,7 +753,7 @@ export default function DispatchPage({
 
 @media (max-width: 1440px) {
   .forecast-data table {
-    min-width: 1140px;
+    min-width: 1080px;
   }
 }
 
