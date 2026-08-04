@@ -99,6 +99,7 @@ export function buildSkuwiseTableColumns(
                     label: "SKU",
                     align: "left" as const,
                     width: "7%",
+                    wideMinWidth: 155,
                 },
                 {
                     key: "quantity",

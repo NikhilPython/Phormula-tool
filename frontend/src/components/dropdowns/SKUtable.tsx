@@ -1016,6 +1016,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           label: "SKU",
           align: "left",
           width: "11%",
+          wideMinWidth: 155,
         },
         {
           key: "units_sold",

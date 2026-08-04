@@ -14,6 +14,7 @@ export type LeafCol<RowT> = {
   excelLabel?: string;
   align?: Align;
   width?: number | string;
+  wideMinWidth?: number;
   tooltip?: React.ReactNode;
   info?: React.ReactNode;
   thClassName?: string;
@@ -495,9 +496,24 @@ export default function GroupedCollapsibleTable<RowT>({
     return out;
   }, [leftCols, resolvedLayout, collapsed, groupMap, singleMap]);
 
+  const [isWideViewport, setIsWideViewport] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1700px)");
+    const updateViewportMatch = () => setIsWideViewport(mediaQuery.matches);
+
+    updateViewportMatch();
+    mediaQuery.addEventListener("change", updateViewportMatch);
+
+    return () => mediaQuery.removeEventListener("change", updateViewportMatch);
+  }, []);
 
 
   const getMinWidthForCol = (col: LeafCol<RowT>) => {
+
+    if (isWideViewport && typeof col.wideMinWidth === "number") {
+      return col.wideMinWidth;
+    }
 
     if (col.key === "available") return 110;
 
@@ -618,7 +634,7 @@ export default function GroupedCollapsibleTable<RowT>({
     );
 
     return Math.max(width, 1200);
-  }, [visibleLeafCols]);
+  }, [visibleLeafCols, isWideViewport]);
 
   const tableStyle: React.CSSProperties = {
     tableLayout: "fixed",
