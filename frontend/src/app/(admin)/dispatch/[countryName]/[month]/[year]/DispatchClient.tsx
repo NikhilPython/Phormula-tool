@@ -1113,7 +1113,7 @@ export default function DispatchPage({
             </div>
           )} */}
 
-          <div className="forecast-data">
+          <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
             {tableRows.length === 0 ? (
               <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
                 {noData
