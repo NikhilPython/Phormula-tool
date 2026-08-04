@@ -203,12 +203,19 @@ def getDispatchfile():
                 'total onhand quantity': 'AWD',
                 'total_onhand_quantity': 'AWD',
                 'fba': 'FBA',
+                'fba.1': 'In Transit FBA',
                 'awd': 'AWD',
+                'awd.1': 'In Transit AWD',
+                'in transit fba': 'In Transit FBA',
+                'in transit awd': 'In Transit AWD',
+                'in stock': 'In stock',
+                'in transit': 'In transit',
                 'projected sales total': 'Projected Sales Total',
                 'dispatch': 'Dispatch',
                 'current inventory + dispatch': 'Current Inventory + Dispatch',
                 'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
                 'shortfall unit': 'Shortfall Unit',
+                'to be dispatch': 'To be Dispatch',
                 'sea': 'SEA',
                 'air': 'AIR',
             }
@@ -276,9 +283,14 @@ def getDispatchfile():
                 'sku',
                 'FBA',
                 'AWD',
+                'In Transit FBA',
+                'In Transit AWD',
+                'In stock',
+                'In transit',
                 'Projected Sales Total',
                 'Inventory Coverage Ratio Before Dispatch',
                 'Shortfall Unit',
+                'To be Dispatch',
                 'SEA',
                 'AIR'
             ]
@@ -304,9 +316,14 @@ def getDispatchfile():
             numeric_cols = [
                 'FBA',
                 'AWD',
+                'In Transit FBA',
+                'In Transit AWD',
+                'In stock',
+                'In transit',
                 'Projected Sales Total',
                 'Inventory Coverage Ratio Before Dispatch',
                 'Shortfall Unit',
+                'To be Dispatch',
                 'SEA',
                 'AIR'
             ]
@@ -319,21 +336,36 @@ def getDispatchfile():
                 cleaned['FBA'] = 0
             if 'AWD' not in cleaned.columns:
                 cleaned['AWD'] = 0
+            cleaned['In stock'] = cleaned['FBA'] + cleaned['AWD']
+            if 'In transit' not in cleaned.columns:
+                cleaned['In transit'] = 0
 
             if (
-                'Shortfall Unit' not in cleaned.columns and
                 'Projected Sales Total' in cleaned.columns and
                 'FBA' in cleaned.columns
             ):
                 cleaned['Shortfall Unit'] = (
                     cleaned['Projected Sales Total']
                     - cleaned['FBA']
-                    + cleaned['AWD']
-                )
+                    - cleaned['AWD']
+                ).clip(lower=0)
+                cleaned['To be Dispatch'] = (
+                    cleaned['Shortfall Unit']
+                    - cleaned['In transit']
+                ).clip(lower=0)
 
             if 'SEA' not in cleaned.columns:
-                cleaned['SEA'] = cleaned['Shortfall Unit'].clip(lower=0)
+                cleaned['SEA'] = cleaned['To be Dispatch'].clip(lower=0)
             if 'AIR' not in cleaned.columns:
+                cleaned['AIR'] = 0
+            if (
+                {'SEA', 'AIR', 'To be Dispatch'}.issubset(cleaned.columns) and
+                not (
+                    cleaned['SEA'].fillna(0).round().astype(int)
+                    + cleaned['AIR'].fillna(0).round().astype(int)
+                ).equals(cleaned['To be Dispatch'].fillna(0).round().astype(int))
+            ):
+                cleaned['SEA'] = cleaned['To be Dispatch'].clip(lower=0)
                 cleaned['AIR'] = 0
 
             return cleaned
@@ -356,8 +388,13 @@ def getDispatchfile():
             sum_cols = [
                 'FBA',
                 'AWD',
+                'In Transit FBA',
+                'In Transit AWD',
+                'In stock',
+                'In transit',
                 'Projected Sales Total',
                 'Shortfall Unit',
+                'To be Dispatch',
                 'SEA',
                 'AIR'
             ]
@@ -370,15 +407,15 @@ def getDispatchfile():
 
             if (
                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
-                'FBA' in combined_df.columns
+                'In stock' in combined_df.columns
             ):
                 def weighted_avg(group):
-                    denom = group['FBA'].sum()
+                    denom = group['In stock'].sum()
                     if denom <= 0:
                         return 0
                     return (
                         group['Inventory Coverage Ratio Before Dispatch'] *
-                        group['FBA']
+                        group['In stock']
                     ).sum() / denom
 
                 ratio_df = (
@@ -401,13 +438,20 @@ def getDispatchfile():
             ):
                 if 'AWD' not in final_df.columns:
                     final_df['AWD'] = 0
+                if 'In stock' not in final_df.columns:
+                    final_df['In stock'] = final_df['FBA'] + final_df['AWD']
+                if 'In transit' not in final_df.columns:
+                    final_df['In transit'] = 0
                 final_df['Shortfall Unit'] = (
                     final_df['Projected Sales Total']
-                    - final_df['FBA']
-                    + final_df['AWD']
-                )
+                    - final_df['In stock']
+                ).clip(lower=0)
+                final_df['To be Dispatch'] = (
+                    final_df['Shortfall Unit']
+                    - final_df['In transit']
+                ).clip(lower=0)
             if 'SEA' not in final_df.columns and 'Shortfall Unit' in final_df.columns:
-                final_df['SEA'] = final_df['Shortfall Unit'].clip(lower=0)
+                final_df['SEA'] = final_df['To be Dispatch'].clip(lower=0)
             if 'AIR' not in final_df.columns:
                 final_df['AIR'] = 0
 
@@ -416,9 +460,14 @@ def getDispatchfile():
                 'sku',
                 'FBA',
                 'AWD',
+                'In Transit FBA',
+                'In Transit AWD',
+                'In stock',
+                'In transit',
                 'Projected Sales Total',
                 'Inventory Coverage Ratio Before Dispatch',
                 'Shortfall Unit',
+                'To be Dispatch',
                 'SEA',
                 'AIR'
             ]
@@ -433,8 +482,13 @@ def getDispatchfile():
                 elif col in [
                     'FBA',
                     'AWD',
+                    'In Transit FBA',
+                    'In Transit AWD',
+                    'In stock',
+                    'In transit',
                     'Projected Sales Total',
                     'Shortfall Unit',
+                    'To be Dispatch',
                     'SEA',
                     'AIR'
                 ]:
@@ -467,10 +521,11 @@ def getDispatchfile():
                         'FBA',
                         'AWD',
                         'Projected Sales Total',
-                        'Inventory Coverage Ratio Before Dispatch',
-                        'Shortfall Unit',
-                        'SEA',
-                        'AIR'
+                    'Inventory Coverage Ratio Before Dispatch',
+                    'Shortfall Unit',
+                    'To be Dispatch',
+                    'SEA',
+                    'AIR'
                     ]:
                         worksheet.set_column(col_idx, col_idx, 22, number_format)
                     elif col_name == 'Product Name':
@@ -615,16 +670,28 @@ def merge_dispatch_files(file_uk, file_us):
     df_uk = pd.read_excel(file_uk)
     df_us = pd.read_excel(file_us)
 
+    dispatch_column_aliases = {
+        'Inventory at Month End': 'FBA',
+        'total_onhand_quantity': 'AWD',
+        'FBA.1': 'In Transit FBA',
+        'AWD.1': 'In Transit AWD',
+    }
+    df_uk.rename(columns=dispatch_column_aliases, inplace=True)
+    df_us.rename(columns=dispatch_column_aliases, inplace=True)
+
     # Align on the new schema
     common_cols = [
         'Product Name',
-        'Inventory at Month End',
-        'total_onhand_quantity',
         'FBA',
         'AWD',
+        'In Transit FBA',
+        'In Transit AWD',
+        'In stock',
+        'In transit',
         'Projected Sales Total',
         'Inventory Coverage Ratio Before Dispatch',
         'Shortfall Unit',
+        'To be Dispatch',
         'SEA',
         'AIR'
     ]
@@ -641,7 +708,19 @@ def merge_dispatch_files(file_uk, file_us):
     df_combined = pd.concat([df_uk, df_us], ignore_index=True)
 
     # Coerce numerics
-    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
+    for col in [
+        'FBA',
+        'AWD',
+        'In Transit FBA',
+        'In Transit AWD',
+        'In stock',
+        'In transit',
+        'Projected Sales Total',
+        'Shortfall Unit',
+        'To be Dispatch',
+        'SEA',
+        'AIR'
+    ]:
         if col in df_combined.columns:
             df_combined[col] = pd.to_numeric(df_combined[col], errors='coerce').fillna(0)
 
@@ -649,37 +728,64 @@ def merge_dispatch_files(file_uk, file_us):
         df_combined['FBA'] = 0
     if 'AWD' not in df_combined.columns:
         df_combined['AWD'] = 0
+    df_combined['In stock'] = df_combined['FBA'] + df_combined['AWD']
+    if 'In transit' not in df_combined.columns:
+        df_combined['In transit'] = 0
 
     if (
-        'Shortfall Unit' not in df_combined.columns and
         'Projected Sales Total' in df_combined.columns and
         'FBA' in df_combined.columns
     ):
         df_combined['Shortfall Unit'] = (
             df_combined['Projected Sales Total']
             - df_combined['FBA']
-            + df_combined['AWD']
-        )
+            - df_combined['AWD']
+        ).clip(lower=0)
+        df_combined['To be Dispatch'] = (
+            df_combined['Shortfall Unit']
+            - df_combined['In transit']
+        ).clip(lower=0)
     if 'SEA' not in df_combined.columns:
-        df_combined['SEA'] = df_combined['Shortfall Unit'].clip(lower=0)
+        df_combined['SEA'] = df_combined['To be Dispatch'].clip(lower=0)
     if 'AIR' not in df_combined.columns:
+        df_combined['AIR'] = 0
+    if (
+        {'SEA', 'AIR', 'To be Dispatch'}.issubset(df_combined.columns) and
+        not (
+            df_combined['SEA'].fillna(0).round().astype(int)
+            + df_combined['AIR'].fillna(0).round().astype(int)
+        ).equals(df_combined['To be Dispatch'].fillna(0).round().astype(int))
+    ):
+        df_combined['SEA'] = df_combined['To be Dispatch'].clip(lower=0)
         df_combined['AIR'] = 0
 
     # Group sums
     agg_spec = {}
-    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
+    for col in [
+        'FBA',
+        'AWD',
+        'In Transit FBA',
+        'In Transit AWD',
+        'In stock',
+        'In transit',
+        'Projected Sales Total',
+        'Shortfall Unit',
+        'To be Dispatch',
+        'SEA',
+        'AIR'
+    ]:
         if col in df_combined.columns:
             agg_spec[col] = 'sum'
     grouped = df_combined.groupby('Product Name', as_index=False).agg(agg_spec) if agg_spec else df_combined[['Product Name']].drop_duplicates()
 
     # Weighted average coverage ratio (if present)
-    if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'FBA' in df_combined.columns:
+    if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'In stock' in df_combined.columns:
         def weighted_avg(df):
-            denom = df['FBA'].sum()
+            denom = df['In stock'].sum()
             if denom <= 0:
                 return 0
             ratio_num = pd.to_numeric(df['Inventory Coverage Ratio Before Dispatch'], errors='coerce').fillna(0)
-            return (ratio_num * df['FBA']).sum() / denom
+            return (ratio_num * df['In stock']).sum() / denom
 
         ratio_df = (
             df_combined
@@ -700,19 +806,38 @@ def merge_dispatch_files(file_uk, file_us):
     ):
         if 'AWD' not in final_df.columns:
             final_df['AWD'] = 0
+        if 'In stock' not in final_df.columns:
+            final_df['In stock'] = final_df['FBA'] + final_df['AWD']
+        if 'In transit' not in final_df.columns:
+            final_df['In transit'] = 0
         final_df['Shortfall Unit'] = (
             final_df['Projected Sales Total']
-            - final_df['FBA']
-            + final_df['AWD']
-        )
+            - final_df['In stock']
+        ).clip(lower=0)
+        final_df['To be Dispatch'] = (
+            final_df['Shortfall Unit']
+            - final_df['In transit']
+        ).clip(lower=0)
     if 'SEA' not in final_df.columns:
-        final_df['SEA'] = final_df['Shortfall Unit'].clip(lower=0)
+        final_df['SEA'] = final_df['To be Dispatch'].clip(lower=0)
     if 'AIR' not in final_df.columns:
         final_df['AIR'] = 0
 
     # Total row
     total_row = {'Product Name': 'Total'}
-    for col in ['FBA', 'AWD', 'Projected Sales Total', 'Shortfall Unit', 'SEA', 'AIR']:
+    for col in [
+        'FBA',
+        'AWD',
+        'In Transit FBA',
+        'In Transit AWD',
+        'In stock',
+        'In transit',
+        'Projected Sales Total',
+        'Shortfall Unit',
+        'To be Dispatch',
+        'SEA',
+        'AIR'
+    ]:
         if col in final_df.columns and pd.api.types.is_numeric_dtype(final_df[col]):
             total_row[col] = final_df[col].sum()
     if 'Inventory Coverage Ratio Before Dispatch' in final_df.columns:
@@ -788,18 +913,48 @@ def PO_generated():
 
     inventory_df.columns = [str(c).strip() for c in inventory_df.columns]
 
-    if 'Dispatch' not in inventory_df.columns:
-        if {'SEA', 'AIR'}.issubset(inventory_df.columns):
-            inventory_df['Dispatch'] = (
-                pd.to_numeric(inventory_df['SEA'], errors='coerce').fillna(0)
-                + pd.to_numeric(inventory_df['AIR'], errors='coerce').fillna(0)
-            )
-        elif 'Shortfall Unit' in inventory_df.columns:
-            inventory_df['Dispatch'] = (
-                pd.to_numeric(inventory_df['Shortfall Unit'], errors='coerce')
-                .fillna(0)
-                .clip(lower=0)
-            )
+    for col in ['FBA', 'AWD', 'In transit', 'Projected Sales Total', 'SEA', 'AIR']:
+        if col in inventory_df.columns:
+            inventory_df[col] = pd.to_numeric(inventory_df[col], errors='coerce').fillna(0)
+
+    if {'FBA', 'AWD', 'Projected Sales Total'}.issubset(inventory_df.columns):
+        inventory_df['In stock'] = inventory_df['FBA'] + inventory_df['AWD']
+        if 'In transit' not in inventory_df.columns:
+            inventory_df['In transit'] = 0
+        inventory_df['Shortfall Unit'] = (
+            inventory_df['Projected Sales Total'] - inventory_df['In stock']
+        ).clip(lower=0)
+        inventory_df['To be Dispatch'] = (
+            inventory_df['Shortfall Unit'] - inventory_df['In transit']
+        ).clip(lower=0)
+        if 'SEA' not in inventory_df.columns:
+            inventory_df['SEA'] = inventory_df['To be Dispatch']
+        if 'AIR' not in inventory_df.columns:
+            inventory_df['AIR'] = 0
+        if not (
+            inventory_df['SEA'].fillna(0).round().astype(int)
+            + inventory_df['AIR'].fillna(0).round().astype(int)
+        ).equals(inventory_df['To be Dispatch'].fillna(0).round().astype(int)):
+            inventory_df['SEA'] = inventory_df['To be Dispatch']
+            inventory_df['AIR'] = 0
+
+    if {'SEA', 'AIR'}.issubset(inventory_df.columns):
+        inventory_df['Dispatch'] = (
+            pd.to_numeric(inventory_df['SEA'], errors='coerce').fillna(0)
+            + pd.to_numeric(inventory_df['AIR'], errors='coerce').fillna(0)
+        )
+    elif 'Dispatch' not in inventory_df.columns and 'To be Dispatch' in inventory_df.columns:
+        inventory_df['Dispatch'] = (
+            pd.to_numeric(inventory_df['To be Dispatch'], errors='coerce')
+            .fillna(0)
+            .clip(lower=0)
+        )
+    elif 'Dispatch' not in inventory_df.columns and 'Shortfall Unit' in inventory_df.columns:
+        inventory_df['Dispatch'] = (
+            pd.to_numeric(inventory_df['Shortfall Unit'], errors='coerce')
+            .fillna(0)
+            .clip(lower=0)
+        )
 
     if 'sku' not in inventory_df.columns or 'Dispatch' not in inventory_df.columns:
         return jsonify({

@@ -2542,12 +2542,26 @@ export async function exportDispatchExcel(params: {
 
     const fbaIndex = headers.indexOf("FBA") + 1;
     const awdIndex = headers.indexOf("AWD") + 1;
+    const transitFbaIndex = headers.indexOf("In Transit FBA") + 1;
+    const transitAwdIndex = headers.indexOf("In Transit AWD") + 1;
+    const inStockIndex = headers.indexOf("In stock") + 1;
+    const inTransitIndex = headers.indexOf("In transit") + 1;
     const seaIndex = headers.indexOf("SEA") + 1;
     const airIndex = headers.indexOf("AIR") + 1;
 
     if (fbaIndex > 0 && awdIndex === fbaIndex + 1) {
       ws.mergeCells(groupRowNumber, fbaIndex, groupRowNumber, awdIndex);
       ws.getCell(groupRowNumber, fbaIndex).value = "Inventory at Month End";
+    }
+
+    if (transitFbaIndex > 0 && transitAwdIndex === transitFbaIndex + 1) {
+      ws.mergeCells(groupRowNumber, transitFbaIndex, groupRowNumber, transitAwdIndex);
+      ws.getCell(groupRowNumber, transitFbaIndex).value = "In Transit Inventory";
+    }
+
+    if (inStockIndex > 0 && inTransitIndex === inStockIndex + 1) {
+      ws.mergeCells(groupRowNumber, inStockIndex, groupRowNumber, inTransitIndex);
+      ws.getCell(groupRowNumber, inStockIndex).value = "Total Sellable Inventory";
     }
 
     if (seaIndex > 0 && airIndex === seaIndex + 1) {
@@ -2562,7 +2576,12 @@ export async function exportDispatchExcel(params: {
   headers.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1);
 
-    cell.value = h;
+    const dispatchHeaderLabels: Record<string, string> = {
+      "In Transit FBA": "FBA",
+      "In Transit AWD": "AWD",
+    };
+
+    cell.value = dispatchHeaderLabels[h] || h;
     cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
     cell.fill = whiteFill;
     cell.alignment = {

@@ -6817,6 +6817,18 @@ def _save_fba_inbound_shipment_items(
 
 @inventory_bp.route("/amazon_api/fba/inbound-shipments", methods=["GET"])
 def get_fba_inbound_shipments():
+    try:
+        return _get_fba_inbound_shipments_impl()
+    except Exception as exc:
+        logger.exception("Unhandled FBA inbound shipments route failure")
+        return jsonify({
+            "success": False,
+            "error": "FBA inbound shipments request failed",
+            "detail": str(exc),
+        }), 500
+
+
+def _get_fba_inbound_shipments_impl():
     """Fetch WORKING/CLOSED FBA shipments and their SKU quantities.
 
     Default behavior:
@@ -6844,6 +6856,12 @@ def get_fba_inbound_shipments():
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
     store_in_db = request.args.get("store_in_db", "true").strip().lower() != "false"
+    include_items_arg = request.args.get("include_items")
+    include_items = (
+        include_items_arg.strip().lower() in {"1", "true", "yes", "y"}
+        if include_items_arg is not None
+        else not store_in_db
+    )
     status_values = [
         x.strip().upper()
         for x in (request.args.get("shipment_statuses") or "WORKING,CLOSED").split(",")
@@ -6875,7 +6893,7 @@ def get_fba_inbound_shipments():
         if next_token:
             params["NextToken"] = next_token
         else:
-            params["ShipmentStatusList"] = status_values
+            params["ShipmentStatusList"] = ",".join(status_values)
 
         response = amazon_client.make_api_call(endpoint, "GET", params)
         if not response:
@@ -6957,22 +6975,810 @@ def get_fba_inbound_shipments():
                 "success": False,
                 "error": "Amazon data was fetched but database save failed",
                 "detail": str(exc),
-                "items": shipment_results,
+                "shipment_count": len(shipment_results),
+                "sku_row_count": len(complete_rows),
+                "item_errors": item_errors,
                 "db": db_result,
             }), 500
 
-    return jsonify({
+    response_payload = {
         "success": True,
         "source": "fulfillment-inbound-v0-getShipments+getShipmentItemsByShipmentId",
         "marketplace_id": marketplace_id,
         "shipment_statuses": status_values,
+        "store_in_db": store_in_db,
+        "include_items": include_items,
         "shipment_pages_fetched": shipment_pages,
         "item_pages_fetched": item_pages_total,
         "shipment_count": len(shipment_results),
         "sku_row_count": len(complete_rows),
         "quantity_shipped_total": sum(x.get("QuantityShippedTotal", 0) for x in shipment_results),
         "quantity_received_total": sum(x.get("QuantityReceivedTotal", 0) for x in shipment_results),
-        "items": shipment_results,
         "item_errors": item_errors,
         "db": db_result,
+    }
+    if include_items:
+        response_payload["items"] = shipment_results
+    else:
+        response_payload["items_preview"] = shipment_results[:5]
+
+    return jsonify(response_payload), 200
+
+
+# =============================================================================
+# FBA INBOUND PLAN SHIPMENT BOXES (Fulfillment Inbound v2024-03-20)
+# Docs:
+# GET /inbound/fba/2024-03-20/inboundPlans/{inboundPlanId}/shipments/{shipmentId}/boxes
+# =============================================================================
+
+def _extract_fba_2024_next_token(payload_data) -> str | None:
+    if not isinstance(payload_data, dict):
+        return None
+    pagination = payload_data.get("pagination") or {}
+    if isinstance(pagination, dict):
+        return pagination.get("nextToken")
+    return None
+
+
+def _fetch_fba_2024_shipment_boxes(
+    *,
+    inbound_plan_id: str,
+    shipment_id: str,
+    page_size: int,
+    pagination_token: str | None = None,
+    fetch_all: bool = True,
+) -> tuple[list[dict], int, str | None]:
+    endpoint = (
+        f"/inbound/fba/2024-03-20/inboundPlans/{inbound_plan_id}"
+        f"/shipments/{shipment_id}/boxes"
+    )
+    boxes: list[dict] = []
+    pages_fetched = 0
+    next_token = pagination_token
+    seen_tokens: set[str] = set()
+
+    while True:
+        params = {"pageSize": page_size}
+        if next_token:
+            params["paginationToken"] = next_token
+
+        response = amazon_client.make_api_call(endpoint, "GET", params)
+        if not response:
+            raise RuntimeError("Amazon returned an empty shipment-boxes response")
+        if response.get("error"):
+            raise RuntimeError(json.dumps(response, default=str))
+
+        payload_data = response.get("payload") or response
+        page_boxes = payload_data.get("boxes") if isinstance(payload_data, dict) else []
+        if isinstance(page_boxes, list):
+            boxes.extend(x for x in page_boxes if isinstance(x, dict))
+
+        pages_fetched += 1
+        returned_next_token = _extract_fba_2024_next_token(payload_data)
+
+        if not fetch_all or not returned_next_token:
+            next_token = returned_next_token
+            break
+
+        token_key = str(returned_next_token)
+        if token_key in seen_tokens:
+            logger.warning("Stopping FBA 2024 shipment-box pagination because nextToken repeated")
+            next_token = returned_next_token
+            break
+
+        seen_tokens.add(token_key)
+        next_token = returned_next_token
+
+    return boxes, pages_fetched, next_token
+
+
+@inventory_bp.route("/amazon_api/fba/shipment-boxes", methods=["GET"])
+def get_fba_2024_shipment_boxes():
+    """List boxes for one Fulfillment Inbound v2024 shipment.
+
+    Required query params:
+      inbound_plan_id or inboundPlanId
+      shipment_id or shipmentId
+
+    Optional:
+      marketplace_id=<id>  # chooses SP-API region
+      page_size=1..1000
+      pagination_token=<token>
+      fetch_all=true/false
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+    _apply_region_and_marketplace_from_request()
+    marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+    inbound_plan_id = (
+        request.args.get("inbound_plan_id")
+        or request.args.get("inboundPlanId")
+        or ""
+    ).strip()
+    shipment_id = (
+        request.args.get("shipment_id")
+        or request.args.get("shipmentId")
+        or ""
+    ).strip()
+
+    if not inbound_plan_id or not shipment_id:
+        return jsonify({
+            "success": False,
+            "error": "inbound_plan_id and shipment_id are required",
+        }), 400
+
+    try:
+        page_size = int(request.args.get("page_size") or request.args.get("pageSize") or 1000)
+        if page_size < 1 or page_size > 1000:
+            raise ValueError
+    except ValueError:
+        return jsonify({"success": False, "error": "page_size must be between 1 and 1000"}), 400
+
+    pagination_token = (
+        request.args.get("pagination_token")
+        or request.args.get("paginationToken")
+        or None
+    )
+    fetch_all = request.args.get("fetch_all", "true").strip().lower() != "false"
+
+    try:
+        boxes, pages_fetched, next_token = _fetch_fba_2024_shipment_boxes(
+            inbound_plan_id=inbound_plan_id,
+            shipment_id=shipment_id,
+            page_size=page_size,
+            pagination_token=pagination_token,
+            fetch_all=fetch_all,
+        )
+    except Exception as exc:
+        logger.exception("Failed to fetch FBA 2024 shipment boxes")
+        return jsonify({
+            "success": False,
+            "error": "Amazon could not fetch FBA shipment boxes",
+            "detail": str(exc),
+        }), 502
+
+    return jsonify({
+        "success": True,
+        "source": "fulfillment-inbound-v2024-03-20-listShipmentBoxes",
+        "marketplace_id": marketplace_id,
+        "inbound_plan_id": inbound_plan_id,
+        "shipment_id": shipment_id,
+        "page_size": page_size,
+        "fetch_all": fetch_all,
+        "pages_fetched": pages_fetched,
+        "box_count": len(boxes),
+        "next_token": next_token,
+        "boxes": boxes,
+    }), 200
+
+
+def _fetch_fba_2024_collection(
+    *,
+    endpoint: str,
+    collection_keys: list[str],
+    page_size: int,
+    pagination_token: str | None = None,
+    fetch_all: bool = True,
+    extra_params: dict | None = None,
+) -> tuple[list[dict], int, str | None]:
+    items: list[dict] = []
+    pages_fetched = 0
+    next_token = pagination_token
+    seen_tokens: set[str] = set()
+
+    while True:
+        params = dict(extra_params or {})
+        params["pageSize"] = page_size
+        if next_token:
+            params["paginationToken"] = next_token
+
+        response = amazon_client.make_api_call(endpoint, "GET", params)
+        if not response:
+            raise RuntimeError(f"Amazon returned an empty response for {endpoint}")
+        if response.get("error"):
+            raise RuntimeError(json.dumps(response, default=str))
+
+        payload_data = response.get("payload") or response
+        page_items = []
+        if isinstance(payload_data, dict):
+            for collection_key in collection_keys:
+                value = payload_data.get(collection_key)
+                if isinstance(value, list):
+                    page_items = value
+                    break
+
+        items.extend(x for x in page_items if isinstance(x, dict))
+        pages_fetched += 1
+
+        returned_next_token = _extract_fba_2024_next_token(payload_data)
+        if not fetch_all or not returned_next_token:
+            next_token = returned_next_token
+            break
+
+        token_key = str(returned_next_token)
+        if token_key in seen_tokens:
+            logger.warning("Stopping FBA 2024 pagination for %s because nextToken repeated", endpoint)
+            next_token = returned_next_token
+            break
+
+        seen_tokens.add(token_key)
+        next_token = returned_next_token
+
+    return items, pages_fetched, next_token
+
+
+def _fetch_fba_2024_object(endpoint: str) -> dict:
+    response = amazon_client.make_api_call(endpoint, "GET", {})
+    if not response:
+        raise RuntimeError(f"Amazon returned an empty response for {endpoint}")
+    if response.get("error"):
+        raise RuntimeError(json.dumps(response, default=str))
+
+    payload_data = response.get("payload") or response
+    return payload_data if isinstance(payload_data, dict) else {"data": payload_data}
+
+
+def _find_fba_2024_ids(obj, key_names: set[str]) -> list[str]:
+    found: list[str] = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if key in key_names and nested:
+                    found.append(str(nested).strip())
+                walk(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                walk(nested)
+
+    walk(obj)
+    return list(dict.fromkeys(x for x in found if x))
+
+
+def _fba_2024_excel_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, default=str)
+    return value
+
+
+def _fba_2024_append_sheet(wb: Workbook, title: str, rows: list[dict]) -> None:
+    ws = wb.create_sheet(title[:31])
+    if not rows:
+        ws.append(["message"])
+        ws.append(["No data"])
+        return
+
+    headers: list[str] = []
+    for row in rows:
+        for key in row.keys():
+            if key not in headers:
+                headers.append(key)
+
+    ws.append(headers)
+    for row in rows:
+        ws.append([_fba_2024_excel_value(row.get(header)) for header in headers])
+
+    header_fill = PatternFill("solid", fgColor="5EA88B")
+    header_font = Font(bold=True, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style="thin", color="D9E2E7"),
+        right=Side(style="thin", color="D9E2E7"),
+        top=Side(style="thin", color="D9E2E7"),
+        bottom=Side(style="thin", color="D9E2E7"),
+    )
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    for column_cells in ws.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_len = 0
+        for cell in column_cells[:100]:
+            max_len = max(max_len, len(str(cell.value or "")))
+        ws.column_dimensions[column_letter].width = min(max(max_len + 2, 12), 45)
+
+
+def _fba_2024_flatten_plan_summary(plan: dict) -> dict:
+    summary = plan.get("summary") or {}
+    detail = plan.get("detail") or {}
+    return {
+        "inboundPlanId": plan.get("inboundPlanId"),
+        "status": detail.get("status") or summary.get("status"),
+        "name": detail.get("name") or summary.get("name"),
+        "createdAt": detail.get("createdAt") or summary.get("createdAt"),
+        "lastUpdatedAt": detail.get("lastUpdatedAt") or summary.get("lastUpdatedAt"),
+        "marketplaceIds": detail.get("marketplaceIds") or summary.get("marketplaceIds"),
+        "shipment_count": len(plan.get("shipments") or []),
+        "plan_item_count": len(plan.get("plan_items") or []),
+        "plan_box_count": len(plan.get("plan_boxes") or []),
+        "error_count": len(plan.get("errors") or []),
+        "sourceAddress": detail.get("sourceAddress"),
+        "summary_json": summary,
+        "detail_json": detail,
+    }
+
+
+def _fba_2024_flatten_box(inbound_plan_id: str, box: dict, shipment_id: str = "") -> dict:
+    dimensions = box.get("dimensions") or {}
+    weight = box.get("weight") or {}
+    return {
+        "inboundPlanId": inbound_plan_id,
+        "shipmentId": shipment_id,
+        "boxId": box.get("boxId"),
+        "packageId": box.get("packageId"),
+        "externalContainerIdentifier": box.get("externalContainerIdentifier"),
+        "externalContainerIdentifierType": box.get("externalContainerIdentifierType"),
+        "contentInformationSource": box.get("contentInformationSource"),
+        "templateName": box.get("templateName"),
+        "box_quantity": box.get("quantity"),
+        "length": dimensions.get("length"),
+        "width": dimensions.get("width"),
+        "height": dimensions.get("height"),
+        "dimension_unit": dimensions.get("unitOfMeasurement"),
+        "weight_value": weight.get("value"),
+        "weight_unit": weight.get("unit"),
+        "item_count": len(box.get("items") or []),
+        "box_json": box,
+    }
+
+
+def _fba_2024_flatten_box_item(
+    inbound_plan_id: str,
+    box: dict,
+    item: dict,
+    shipment_id: str = "",
+) -> dict:
+    return {
+        "inboundPlanId": inbound_plan_id,
+        "shipmentId": shipment_id,
+        "boxId": box.get("boxId"),
+        "packageId": box.get("packageId"),
+        "msku": item.get("msku"),
+        "asin": item.get("asin"),
+        "fnsku": item.get("fnsku"),
+        "quantity": item.get("quantity"),
+        "expiration": item.get("expiration"),
+        "labelOwner": item.get("labelOwner"),
+        "manufacturingLotCode": item.get("manufacturingLotCode"),
+        "prepInstructions": item.get("prepInstructions"),
+        "item_json": item,
+    }
+
+
+def _build_fba_2024_inbound_plans_excel(
+    *,
+    marketplace_id: str,
+    statuses: list[str],
+    plans: list[dict],
+    list_errors: list[dict],
+    detail_errors: list[dict],
+    totals: dict,
+) -> BytesIO:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Summary"
+    summary_rows = [
+        ["Marketplace ID", marketplace_id],
+        ["Statuses", ", ".join(statuses)],
+        ["Plan Count", len(plans)],
+        ["Plan Items", totals.get("plan_items", 0)],
+        ["Plan Boxes", totals.get("plan_boxes", 0)],
+        ["Shipments", totals.get("shipments", 0)],
+        ["Shipment Items", totals.get("shipment_items", 0)],
+        ["Shipment Boxes", totals.get("shipment_boxes", 0)],
+        ["List Error Count", len(list_errors)],
+        ["Detail Error Count", len(detail_errors)],
+        ["Generated At", datetime.utcnow().isoformat()],
+    ]
+    for row in summary_rows:
+        ws.append(row)
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 40
+
+    plan_rows = []
+    plan_item_rows = []
+    plan_box_rows = []
+    plan_box_item_rows = []
+    shipment_rows = []
+    shipment_item_rows = []
+    shipment_box_rows = []
+    shipment_box_item_rows = []
+    error_rows = []
+
+    for err in list_errors:
+        error_rows.append({
+            "scope": "listInboundPlans",
+            "inboundPlanId": "",
+            "shipmentId": "",
+            "operation": "listInboundPlans",
+            "error": err.get("error"),
+            "error_json": err,
+        })
+
+    for detail_error in detail_errors:
+        for err in detail_error.get("errors") or []:
+            error_rows.append({
+                "scope": "inboundPlan",
+                "inboundPlanId": detail_error.get("inboundPlanId"),
+                "shipmentId": "",
+                "operation": err.get("operation"),
+                "error": err.get("error"),
+                "error_json": err,
+            })
+
+    for plan in plans:
+        inbound_plan_id = str(plan.get("inboundPlanId") or "")
+        plan_rows.append(_fba_2024_flatten_plan_summary(plan))
+
+        for item in plan.get("plan_items") or []:
+            row = {"inboundPlanId": inbound_plan_id}
+            row.update(item)
+            row["item_json"] = item
+            plan_item_rows.append(row)
+
+        for box in plan.get("plan_boxes") or []:
+            plan_box_rows.append(_fba_2024_flatten_box(inbound_plan_id, box))
+            for item in box.get("items") or []:
+                plan_box_item_rows.append(_fba_2024_flatten_box_item(inbound_plan_id, box, item))
+
+        for shipment in plan.get("shipments") or []:
+            shipment_id = str(shipment.get("shipmentId") or "")
+            detail = shipment.get("detail") or {}
+            shipment_rows.append({
+                "inboundPlanId": inbound_plan_id,
+                "shipmentId": shipment_id,
+                "status": detail.get("status"),
+                "name": detail.get("name"),
+                "createdAt": detail.get("createdAt"),
+                "lastUpdatedAt": detail.get("lastUpdatedAt"),
+                "item_count": len(shipment.get("items") or []),
+                "box_count": len(shipment.get("boxes") or []),
+                "error_count": len(shipment.get("errors") or []),
+                "detail_json": detail,
+            })
+
+            for err in shipment.get("errors") or []:
+                error_rows.append({
+                    "scope": "shipment",
+                    "inboundPlanId": inbound_plan_id,
+                    "shipmentId": shipment_id,
+                    "operation": err.get("operation"),
+                    "error": err.get("error"),
+                    "error_json": err,
+                })
+
+            for item in shipment.get("items") or []:
+                row = {"inboundPlanId": inbound_plan_id, "shipmentId": shipment_id}
+                row.update(item)
+                row["item_json"] = item
+                shipment_item_rows.append(row)
+
+            for box in shipment.get("boxes") or []:
+                shipment_box_rows.append(_fba_2024_flatten_box(inbound_plan_id, box, shipment_id))
+                for item in box.get("items") or []:
+                    shipment_box_item_rows.append(
+                        _fba_2024_flatten_box_item(inbound_plan_id, box, item, shipment_id)
+                    )
+
+    _fba_2024_append_sheet(wb, "Plans", plan_rows)
+    _fba_2024_append_sheet(wb, "Plan Items", plan_item_rows)
+    _fba_2024_append_sheet(wb, "Plan Boxes", plan_box_rows)
+    _fba_2024_append_sheet(wb, "Plan Box Items", plan_box_item_rows)
+    _fba_2024_append_sheet(wb, "Shipments", shipment_rows)
+    _fba_2024_append_sheet(wb, "Shipment Items", shipment_item_rows)
+    _fba_2024_append_sheet(wb, "Shipment Boxes", shipment_box_rows)
+    _fba_2024_append_sheet(wb, "Shipment Box Items", shipment_box_item_rows)
+    _fba_2024_append_sheet(wb, "Errors", error_rows)
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
+@inventory_bp.route("/amazon_api/fba/inbound-plans-all", methods=["GET"])
+def get_fba_2024_inbound_plans_all():
+    """Fetch v2024 inbound plans and related Amazon-side data.
+
+    This is a crawler over Amazon GET operations, not a single Amazon API:
+      listInboundPlans -> getInboundPlan -> list plan items/boxes
+      -> get shipment/list shipment items/list shipment boxes when shipment IDs exist.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid token payload"}), 401
+
+    _apply_region_and_marketplace_from_request()
+    marketplace_id = request.args.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
+
+    status_values = [
+        x.strip().upper()
+        for x in (request.args.get("statuses") or request.args.get("status") or "ACTIVE,SHIPPED").split(",")
+        if x.strip()
+    ]
+    allowed_statuses = {"ACTIVE", "VOIDED", "SHIPPED"}
+    invalid_statuses = [x for x in status_values if x not in allowed_statuses]
+    if invalid_statuses:
+        return jsonify({
+            "success": False,
+            "error": "Invalid inbound plan status",
+            "invalid_statuses": invalid_statuses,
+            "allowed_statuses": sorted(allowed_statuses),
+        }), 400
+
+    try:
+        plan_page_size = int(request.args.get("plan_page_size") or request.args.get("page_size") or 30)
+        page_size = int(request.args.get("detail_page_size") or 1000)
+        max_plans = int(request.args.get("max_plans") or 10)
+        delay_seconds = float(request.args.get("delay_seconds") or 0.55)
+        if plan_page_size < 1 or plan_page_size > 30:
+            raise ValueError("plan_page_size")
+        if page_size < 1 or page_size > 1000:
+            raise ValueError("detail_page_size")
+        if max_plans < 1 or max_plans > 200:
+            raise ValueError("max_plans")
+        if delay_seconds < 0:
+            raise ValueError("delay_seconds")
+    except ValueError as exc:
+        return jsonify({
+            "success": False,
+            "error": "Invalid paging/limit parameter",
+            "detail": str(exc),
+        }), 400
+
+    fetch_all_pages = request.args.get("fetch_all_pages", "true").strip().lower() != "false"
+    include_plan_items = request.args.get("include_plan_items", "true").strip().lower() != "false"
+    include_plan_boxes = request.args.get("include_plan_boxes", "true").strip().lower() != "false"
+    include_shipments = request.args.get("include_shipments", "true").strip().lower() != "false"
+    include_shipment_items = request.args.get("include_shipment_items", "true").strip().lower() != "false"
+    include_shipment_boxes = request.args.get("include_shipment_boxes", "true").strip().lower() != "false"
+
+    sort_by = (request.args.get("sort_by") or request.args.get("sortBy") or "LAST_UPDATED_TIME").strip().upper()
+    sort_order = (request.args.get("sort_order") or request.args.get("sortOrder") or "DESC").strip().upper()
+    if sort_by not in {"LAST_UPDATED_TIME", "CREATION_TIME"}:
+        return jsonify({"success": False, "error": "sort_by must be LAST_UPDATED_TIME or CREATION_TIME"}), 400
+    if sort_order not in {"ASC", "DESC"}:
+        return jsonify({"success": False, "error": "sort_order must be ASC or DESC"}), 400
+
+    all_plan_summaries: list[dict] = []
+    list_errors: list[dict] = []
+    list_pages_fetched = 0
+
+    for status in status_values:
+        try:
+            summaries, pages, next_token = _fetch_fba_2024_collection(
+                endpoint="/inbound/fba/2024-03-20/inboundPlans",
+                collection_keys=["inboundPlans", "plans"],
+                page_size=plan_page_size,
+                fetch_all=fetch_all_pages,
+                extra_params={
+                    "status": status,
+                    "sortBy": sort_by,
+                    "sortOrder": sort_order,
+                },
+            )
+            list_pages_fetched += pages
+            for summary in summaries:
+                summary["_requested_status"] = status
+                all_plan_summaries.append(summary)
+        except Exception as exc:
+            logger.exception("Failed to list FBA 2024 inbound plans for status %s", status)
+            list_errors.append({"status": status, "error": str(exc)})
+
+    deduped_summaries: list[dict] = []
+    seen_plan_ids: set[str] = set()
+    for summary in all_plan_summaries:
+        plan_ids = _find_fba_2024_ids(summary, {"inboundPlanId"})
+        plan_id = plan_ids[0] if plan_ids else ""
+        if not plan_id or plan_id in seen_plan_ids:
+            continue
+        seen_plan_ids.add(plan_id)
+        deduped_summaries.append(summary)
+        if len(deduped_summaries) >= max_plans:
+            break
+
+    plans: list[dict] = []
+    detail_errors: list[dict] = []
+    totals = {
+        "plan_items": 0,
+        "plan_boxes": 0,
+        "shipments": 0,
+        "shipment_items": 0,
+        "shipment_boxes": 0,
+    }
+
+    for summary in deduped_summaries:
+        plan_id = (_find_fba_2024_ids(summary, {"inboundPlanId"}) or [""])[0]
+        plan_record = {
+            "inboundPlanId": plan_id,
+            "summary": summary,
+            "detail": None,
+            "plan_items": [],
+            "plan_boxes": [],
+            "shipments": [],
+            "errors": [],
+        }
+
+        try:
+            plan_record["detail"] = _fetch_fba_2024_object(
+                f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}"
+            )
+        except Exception as exc:
+            plan_record["errors"].append({"operation": "getInboundPlan", "error": str(exc)})
+
+        if include_plan_items:
+            try:
+                plan_items, _, _ = _fetch_fba_2024_collection(
+                    endpoint=f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}/items",
+                    collection_keys=["items"],
+                    page_size=page_size,
+                    fetch_all=fetch_all_pages,
+                )
+                plan_record["plan_items"] = plan_items
+                totals["plan_items"] += len(plan_items)
+                time.sleep(delay_seconds)
+            except Exception as exc:
+                plan_record["errors"].append({"operation": "listInboundPlanItems", "error": str(exc)})
+
+        if include_plan_boxes:
+            try:
+                plan_boxes, _, _ = _fetch_fba_2024_collection(
+                    endpoint=f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}/boxes",
+                    collection_keys=["boxes"],
+                    page_size=page_size,
+                    fetch_all=fetch_all_pages,
+                )
+                plan_record["plan_boxes"] = plan_boxes
+                totals["plan_boxes"] += len(plan_boxes)
+                time.sleep(delay_seconds)
+            except Exception as exc:
+                plan_record["errors"].append({"operation": "listInboundPlanBoxes", "error": str(exc)})
+
+        shipment_ids = _find_fba_2024_ids(
+            {
+                "summary": summary,
+                "detail": plan_record.get("detail"),
+                "plan_boxes": plan_record.get("plan_boxes"),
+                "plan_items": plan_record.get("plan_items"),
+            },
+            {"shipmentId"},
+        )
+
+        if include_shipments:
+            for shipment_id in shipment_ids:
+                shipment_record = {
+                    "shipmentId": shipment_id,
+                    "detail": None,
+                    "items": [],
+                    "boxes": [],
+                    "errors": [],
+                }
+                try:
+                    shipment_record["detail"] = _fetch_fba_2024_object(
+                        f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}/shipments/{shipment_id}"
+                    )
+                    time.sleep(delay_seconds)
+                except Exception as exc:
+                    shipment_record["errors"].append({"operation": "getShipment", "error": str(exc)})
+
+                if include_shipment_items:
+                    try:
+                        shipment_items, _, _ = _fetch_fba_2024_collection(
+                            endpoint=f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}/shipments/{shipment_id}/items",
+                            collection_keys=["items"],
+                            page_size=page_size,
+                            fetch_all=fetch_all_pages,
+                        )
+                        shipment_record["items"] = shipment_items
+                        totals["shipment_items"] += len(shipment_items)
+                        time.sleep(delay_seconds)
+                    except Exception as exc:
+                        shipment_record["errors"].append({"operation": "listShipmentItems", "error": str(exc)})
+
+                if include_shipment_boxes:
+                    try:
+                        shipment_boxes, _, _ = _fetch_fba_2024_collection(
+                            endpoint=f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}/shipments/{shipment_id}/boxes",
+                            collection_keys=["boxes"],
+                            page_size=page_size,
+                            fetch_all=fetch_all_pages,
+                        )
+                        shipment_record["boxes"] = shipment_boxes
+                        totals["shipment_boxes"] += len(shipment_boxes)
+                        time.sleep(delay_seconds)
+                    except Exception as exc:
+                        shipment_record["errors"].append({"operation": "listShipmentBoxes", "error": str(exc)})
+
+                plan_record["shipments"].append(shipment_record)
+
+        totals["shipments"] += len(plan_record["shipments"])
+        if plan_record["errors"]:
+            detail_errors.append({"inboundPlanId": plan_id, "errors": plan_record["errors"]})
+        plans.append(plan_record)
+        time.sleep(delay_seconds)
+
+    export_format = (request.args.get("format") or "").strip().lower()
+    download_excel = (
+        export_format in {"excel", "xlsx"}
+        or request.args.get("download", "").strip().lower() in {"1", "true", "yes", "y"}
+    )
+
+    if download_excel:
+        excel_stream = _build_fba_2024_inbound_plans_excel(
+            marketplace_id=marketplace_id,
+            statuses=status_values,
+            plans=plans,
+            list_errors=list_errors,
+            detail_errors=detail_errors,
+            totals=totals,
+        )
+        filename = (
+            f"FBA_Inbound_Plans_All_{marketplace_id}_"
+            f"{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        )
+        return send_file(
+            excel_stream,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            max_age=0,
+        )
+
+    return jsonify({
+        "success": len(list_errors) == 0,
+        "source": "fulfillment-inbound-v2024-03-20-all-get-data",
+        "marketplace_id": marketplace_id,
+        "statuses": status_values,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+        "fetch_all_pages": fetch_all_pages,
+        "limits": {
+            "max_plans": max_plans,
+            "plan_page_size": plan_page_size,
+            "detail_page_size": page_size,
+            "delay_seconds": delay_seconds,
+        },
+        "list_pages_fetched": list_pages_fetched,
+        "plan_count": len(plans),
+        "totals": totals,
+        "list_errors": list_errors,
+        "detail_errors": detail_errors,
+        "plans": plans,
     }), 200

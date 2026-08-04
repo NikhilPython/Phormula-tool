@@ -24,9 +24,14 @@ interface SkuRow {
   'total_onhand_quantity'?: string | number
   'FBA'?: string | number
   'AWD'?: string | number
+  'In Transit FBA'?: string | number
+  'In Transit AWD'?: string | number
+  'In stock'?: string | number
+  'In transit'?: string | number
   'Projected Sales Total'?: string | number
   'Inventory Coverage Ratio Before Dispatch'?: string | number
   'Shortfall Unit'?: string | number
+  'To be Dispatch'?: string | number
   'SEA'?: string | number
   'AIR'?: string | number
 }
@@ -61,9 +66,14 @@ const DISPLAYED_COLUMNS = [
   'SKU',
   'FBA',
   'AWD',
+  'In Transit FBA',
+  'In Transit AWD',
+  'In stock',
+  'In transit',
   'Projected Sales Total',
   'Inventory Coverage Ratio Before Dispatch',
   'Shortfall Unit',
+  'To be Dispatch',
   'SEA',
   'AIR',
 ] as const
@@ -73,9 +83,14 @@ const NUMERIC_COLUMNS = [
   'total_onhand_quantity',
   'FBA',
   'AWD',
+  'In Transit FBA',
+  'In Transit AWD',
+  'In stock',
+  'In transit',
   'Projected Sales Total',
   'Inventory Coverage Ratio Before Dispatch',
   'Shortfall Unit',
+  'To be Dispatch',
   'SEA',
   'AIR',
 ] as const
@@ -116,9 +131,16 @@ function normalizeHeader(header: unknown): string {
     'total_onhand_quantity': 'total_onhand_quantity',
     fba: 'FBA',
     awd: 'AWD',
+    'fba.1': 'In Transit FBA',
+    'awd.1': 'In Transit AWD',
+    'in transit fba': 'In Transit FBA',
+    'in transit awd': 'In Transit AWD',
+    'in stock': 'In stock',
+    'in transit': 'In transit',
     'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
     'projected sales total': 'Projected Sales Total',
     'shortfall unit': 'Shortfall Unit',
+    'to be dispatch': 'To be Dispatch',
     sea: 'SEA',
     air: 'AIR',
   }
@@ -162,9 +184,14 @@ function isMeaningfulRow(row: SkuRow): boolean {
   const totalOnhandQuantity = row['total_onhand_quantity']
   const fba = row['FBA']
   const awd = row['AWD']
+  const inTransitFba = row['In Transit FBA']
+  const inTransitAwd = row['In Transit AWD']
+  const inStock = row['In stock']
+  const inTransit = row['In transit']
   const projectedSalesTotal = row['Projected Sales Total']
   const coverageRatio = row['Inventory Coverage Ratio Before Dispatch']
   const shortfallUnit = row['Shortfall Unit']
+  const toBeDispatch = row['To be Dispatch']
   const sea = row['SEA']
   const air = row['AIR']
 
@@ -175,9 +202,14 @@ function isMeaningfulRow(row: SkuRow): boolean {
     (totalOnhandQuantity !== '' && totalOnhandQuantity !== undefined) ||
     (fba !== '' && fba !== undefined) ||
     (awd !== '' && awd !== undefined) ||
+    (inTransitFba !== '' && inTransitFba !== undefined) ||
+    (inTransitAwd !== '' && inTransitAwd !== undefined) ||
+    (inStock !== '' && inStock !== undefined) ||
+    (inTransit !== '' && inTransit !== undefined) ||
     (projectedSalesTotal !== '' && projectedSalesTotal !== undefined) ||
     (coverageRatio !== '' && coverageRatio !== undefined) ||
     (shortfallUnit !== '' && shortfallUnit !== undefined) ||
+    (toBeDispatch !== '' && toBeDispatch !== undefined) ||
     (sea !== '' && sea !== undefined) ||
     (air !== '' && air !== undefined)
   )
@@ -196,6 +228,10 @@ function buildOthersRow(rows: SkuRow[]): SkuRow {
     'SKU': '',
     'FBA': rows.reduce((sum, row) => sum + toNumber(row['FBA']), 0),
     'AWD': rows.reduce((sum, row) => sum + toNumber(row['AWD']), 0),
+    'In Transit FBA': rows.reduce((sum, row) => sum + toNumber(row['In Transit FBA']), 0),
+    'In Transit AWD': rows.reduce((sum, row) => sum + toNumber(row['In Transit AWD']), 0),
+    'In stock': rows.reduce((sum, row) => sum + toNumber(row['In stock']), 0),
+    'In transit': rows.reduce((sum, row) => sum + toNumber(row['In transit']), 0),
     'Projected Sales Total': rows.reduce((sum, row) => sum + toNumber(row['Projected Sales Total']), 0),
     'Inventory Coverage Ratio Before Dispatch':
       rows.length > 0
@@ -206,6 +242,7 @@ function buildOthersRow(rows: SkuRow[]): SkuRow {
         ) / rows.length).toFixed(2)
         : 0,
     'Shortfall Unit': rows.reduce((sum, row) => sum + toNumber(row['Shortfall Unit']), 0),
+    'To be Dispatch': rows.reduce((sum, row) => sum + toNumber(row['To be Dispatch']), 0),
     'SEA': rows.reduce((sum, row) => sum + toNumber(row['SEA']), 0),
     'AIR': rows.reduce((sum, row) => sum + toNumber(row['AIR']), 0),
   }
@@ -404,7 +441,17 @@ export default function DispatchPage({
         return
       }
 
-      const rawHeaders = (rows[headerRowIndex] || []).map((h) => normalizeHeader(h))
+      const duplicateHeaderCounts: Record<string, number> = {}
+      const rawHeaders = (rows[headerRowIndex] || []).map((h) => {
+        const normalized = normalizeHeader(h)
+        if (normalized === 'FBA' || normalized === 'AWD') {
+          duplicateHeaderCounts[normalized] = (duplicateHeaderCounts[normalized] || 0) + 1
+          if (duplicateHeaderCounts[normalized] === 2) {
+            return normalized === 'FBA' ? 'In Transit FBA' : 'In Transit AWD'
+          }
+        }
+        return normalized
+      })
       const dataRows = rows.slice(headerRowIndex + 1)
 
       const jsonData: SkuRow[] = dataRows
@@ -435,18 +482,27 @@ export default function DispatchPage({
               obj['AWD'] = 0
             }
 
-            if (obj['Shortfall Unit'] === undefined || obj['Shortfall Unit'] === '') {
-              obj['Shortfall Unit'] =
-                toNumber(obj['Projected Sales Total']) -
-                toNumber(obj['FBA']) +
-                toNumber(obj['AWD'])
-            }
+            const availableStock = toNumber(obj['FBA']) + toNumber(obj['AWD'])
+            const computedShortfall = Math.max(
+              toNumber(obj['Projected Sales Total']) - availableStock,
+              0,
+            )
 
-            if (obj['SEA'] === undefined || obj['SEA'] === '') {
-              obj['SEA'] = Math.max(toNumber(obj['Shortfall Unit']), 0)
-            }
+            obj['In stock'] = availableStock
+            obj['Shortfall Unit'] = computedShortfall
+            obj['To be Dispatch'] = Math.max(
+              computedShortfall - toNumber(obj['In transit']),
+              0,
+            )
 
-            if (obj['AIR'] === undefined || obj['AIR'] === '') {
+            if (
+              obj['SEA'] === undefined ||
+              obj['SEA'] === '' ||
+              obj['AIR'] === undefined ||
+              obj['AIR'] === '' ||
+              toNumber(obj['SEA']) + toNumber(obj['AIR']) !== toNumber(obj['To be Dispatch'])
+            ) {
+              obj['SEA'] = obj['To be Dispatch']
               obj['AIR'] = 0
             }
           }
@@ -547,9 +603,14 @@ export default function DispatchPage({
           [
             'FBA',
             'AWD',
+            'In Transit FBA',
+            'In Transit AWD',
+            'In stock',
+            'In transit',
             'Projected Sales Total',
             'Inventory Coverage Ratio Before Dispatch',
             'Shortfall Unit',
+            'To be Dispatch',
             'SEA',
             'AIR',
           ].includes(col)
@@ -666,12 +727,37 @@ export default function DispatchPage({
             return
           }
 
+          if (col === 'In Transit FBA') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'In Transit AWD') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'In stock') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'In transit') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
           if (col === 'Projected Sales Total') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'Shortfall Unit') {
+            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            return
+          }
+
+          if (col === 'To be Dispatch') {
             obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
             return
           }
@@ -729,8 +815,15 @@ export default function DispatchPage({
     const isSku = col === 'SKU'
     const isFba = col === 'FBA'
     const isAwd = col === 'AWD'
+    const isInventoryMetric = [
+      'In Transit FBA',
+      'In Transit AWD',
+      'In stock',
+      'In transit',
+    ].includes(col)
     const isProjectedSalesTotal = col === 'Projected Sales Total'
     const isShortfallUnit = col === 'Shortfall Unit'
+    const isToBeDispatch = col === 'To be Dispatch'
     const isSea = col === 'SEA'
     const isAir = col === 'AIR'
 
@@ -750,9 +843,11 @@ export default function DispatchPage({
               ? '190px'
               : isFba || isAwd
                 ? '100px'
+                : isInventoryMetric
+                  ? '115px'
                   : isProjectedSalesTotal
                     ? '170px'
-                    : isShortfallUnit
+                    : isShortfallUnit || isToBeDispatch
                       ? '145px'
                       : isSea || isAir
                         ? '100px'
