@@ -33,8 +33,7 @@ warnings.filterwarnings("ignore")
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
 db_url2 = os.getenv('DATABASE_AMAZON_URL')
-# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # ChatGPT adjudicator key
-OPENAI_API_KEY = None
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # ChatGPT adjudicator key
 ROLLING_HISTORY_MONTHS = 4  # 👈 compare last 4 months of actuals in ChatGPT/local adjudicator
 ASP_ELASTICITY = -0.5
 ASP_ADJUSTMENT_MIN = 0.80
