@@ -16,6 +16,7 @@ interface SegmentedToggleProps<T extends SegmentedValue = SegmentedValue> {
   className?: string;
   textSizeClass?: string;
   compact?: boolean;
+  laptopFit?: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
   className = "",
   textSizeClass,
   compact = true,
+  laptopFit = false,
 }: SegmentedToggleProps<T>) {
   const containerPad = compact ? "p-1" : "p-1";
   const gap = compact ? "gap-1" : "gap-1";
@@ -40,11 +42,27 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
   const font = textSizeClass ?? (compact ? "text-[10px] sm:text-xs" : "text-xs");
 
   return (
-    <div className={["inline-block w-fit", className].join(" ")}>
-      <div className="inline-block max-w-full overflow-x-auto sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div
+      className={[
+        "inline-block w-fit",
+        laptopFit ? "lg:max-2xl:block lg:max-2xl:w-full" : "",
+        className,
+      ].join(" ")}
+    >
+      <div
+        className={[
+          "inline-block max-w-full overflow-x-auto sm:overflow-visible [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          laptopFit
+            ? "lg:max-2xl:block lg:max-2xl:w-full lg:max-2xl:overflow-hidden"
+            : "",
+        ].join(" ")}
+      >
         <div
           className={[
             "inline-flex w-fit",
+            laptopFit
+              ? "lg:max-2xl:flex lg:max-2xl:w-full lg:max-2xl:justify-between lg:max-2xl:gap-0.5"
+              : "",
             "border border-[#c4c4c4] bg-gray-50",
             containerPad,
             gap,
@@ -63,6 +81,7 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
                 onClick={() => onChange(opt.value)}
                 className={[
                   "flex-none",
+                  laptopFit ? "lg:max-2xl:px-1.5" : "",
                   btnRadius,
                   btnPad,
                   "text-center font-medium transition-colors duration-150",

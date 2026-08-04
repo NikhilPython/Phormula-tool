@@ -1160,13 +1160,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] 2xl:w-auto 2xl:overflow-visible">
-                  <div className="min-w-[760px] lg:min-w-[660px] 2xl:min-w-0 2xl:w-fit">
+                <div className="w-full overflow-x-auto overscroll-x-contain pb-2 [scrollbar-width:thin] lg:max-2xl:overflow-visible lg:max-2xl:pb-0 2xl:w-auto 2xl:overflow-visible">
+                  <div className="min-w-[760px] lg:max-2xl:min-w-0 lg:max-2xl:w-full 2xl:min-w-0 2xl:w-fit">
                     <SegmentedToggle<TrendTab>
                       value={activeTab}
                       onChange={setActiveTab}
                       textSizeClass="text-[9px] sm:text-[10px] min-[1700px]:text-xs whitespace-nowrap"
                       className="w-full 2xl:w-auto"
+                      laptopFit
                       options={[
                         { value: "sales_cm1", label: "Sales, CM1 & CM2 Profit" },
                         { value: "units_asp", label: "Units, ASP, CM1 & CM2 Profit/Unit" },
