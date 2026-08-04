@@ -273,8 +273,9 @@ def fetch_currentinventory_dispatch_quantities(
     out.drop(columns=["sku_norm"], inplace=True, errors="ignore")
 
     for target_col in value_columns.values():
+        source_values = out[target_col] if target_col in out.columns else pd.Series(0, index=out.index)
         out[target_col] = (
-            pd.to_numeric(out.get(target_col, 0), errors="coerce")
+            pd.to_numeric(source_values, errors="coerce")
             .fillna(0)
             .round()
             .astype(int)
@@ -293,8 +294,9 @@ def add_air_sea_dispatch_split(
     out = inventory_forecast.copy()
     usable_forecast_cols = [c for c in forecast_cols if c in out.columns]
 
+    total_units_source = out[total_units_col] if total_units_col in out.columns else pd.Series(0, index=out.index)
     total_units = (
-        pd.to_numeric(out.get(total_units_col, 0), errors="coerce")
+        pd.to_numeric(total_units_source, errors="coerce")
         .fillna(0)
         .clip(lower=0)
     )
@@ -317,8 +319,14 @@ def add_air_sea_dispatch_split(
     else:
         air_demand = pd.Series(0, index=out.index)
 
+    if "total_sellable_in_stock" in out.columns:
+        stock_source = out["total_sellable_in_stock"]
+    elif "Inventory at Month End" in out.columns:
+        stock_source = out["Inventory at Month End"]
+    else:
+        stock_source = pd.Series(0, index=out.index)
     available_stock = (
-        pd.to_numeric(out.get("total_sellable_in_stock", out.get("Inventory at Month End", 0)), errors="coerce")
+        pd.to_numeric(stock_source, errors="coerce")
         .fillna(0)
     )
     urgent_air_units = (air_demand - available_stock).clip(lower=0)
@@ -990,7 +998,12 @@ def generate_manual_forecast(
     )
 
     # ==== NEW: Coverage Ratio (before dispatch) — same as generate_forecast ====
-    divisor = pd.to_numeric(inventory_forecast.get("Last Month Sales(Units)", 0), errors="coerce").replace(0, np.nan)
+    last_month_source = (
+        inventory_forecast["Last Month Sales(Units)"]
+        if "Last Month Sales(Units)" in inventory_forecast.columns
+        else pd.Series(0, index=inventory_forecast.index)
+    )
+    divisor = pd.to_numeric(last_month_source, errors="coerce").replace(0, np.nan)
     coverage = (pd.to_numeric(inventory_forecast["total_sellable_in_stock"], errors="coerce") / divisor).round(2)
     inventory_forecast["Inventory Coverage Ratio Before Dispatch"] = coverage.where(coverage.notna(), "-")
 
