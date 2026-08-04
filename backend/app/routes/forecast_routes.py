@@ -61,6 +61,68 @@ def send_db_file(stored: StoredFile, download_name: str):
         download_name=download_name
     )
 
+@forecast_bp.route("/api/stored-file/download", methods=["GET"])
+def download_stored_file():
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return jsonify({
+            "error": "Authorization token is missing or invalid"
+        }), 401
+
+    token = auth_header.split(" ", 1)[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+
+        country = request.args.get("country", "").strip().lower()
+        filename = request.args.get("filename", "").strip()
+
+        if not country or not filename:
+            return jsonify({
+                "error": "country and filename parameters are required"
+            }), 400
+
+        stored = load_file_from_db(
+            user_id=user_id,
+            country=country,
+            filename=filename,
+        )
+
+        if not stored:
+            return jsonify({
+                "error": "File not found in database"
+            }), 404
+
+        if not stored.data:
+            return jsonify({
+                "error": "File data is empty"
+            }), 404
+
+        return send_file(
+            BytesIO(stored.data),
+            mimetype=stored.content_type or XLSX_MIME,
+            as_attachment=True,
+            download_name=stored.filename,
+        )
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token has expired"}), 401
+
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}), 401
+
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc())
+
+        return jsonify({
+            "error": "Unable to download file",
+            "message": str(e),
+        }), 500
+
+
+
 
 
 def ingest_xlsx_path_to_db(*, path: str, user_id, country, filename, kind, month=None, year=None, content_type=XLSX_MIME):
