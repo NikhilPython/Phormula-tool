@@ -4484,11 +4484,11 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
-            setStep(2, "Inventory Fetch", 20, "Fetching aged, AWD, and current inventory...");
+            setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
             await fetchInventory();
             ensureDashboardLoadActive();
 
-            setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
+            setStep(2, "Inventory Fetch", 60, "Fetching inventory insights");
             await fetchInventoryInsights({ force: forceInventoryInsightsRefresh });
             ensureDashboardLoadActive();
 
@@ -4511,7 +4511,7 @@ export default function DashboardPage() {
                 });
                 ensureDashboardLoadActive();
             } else {
-                setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
+                setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
             }
 
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
@@ -11866,7 +11866,7 @@ export default function DashboardPage() {
 
         return (
             <span
-                className={`shrink-0 text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
                     }`}
                 title={`Previous Net Sales: ${Math.round(
                     Math.abs(toNumber(row.previous_net_sales))

@@ -49,6 +49,7 @@ export function buildSkuwiseTableColumns(
             align: "left",
             info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
             width: "14%",
+            tdClassName: "!whitespace-normal !text-clip break-words align-middle",
         },
     ];
 
@@ -98,6 +99,7 @@ export function buildSkuwiseTableColumns(
                     label: "SKU",
                     align: "left" as const,
                     width: "7%",
+                    wideMinWidth: 155,
                 },
                 {
                     key: "quantity",

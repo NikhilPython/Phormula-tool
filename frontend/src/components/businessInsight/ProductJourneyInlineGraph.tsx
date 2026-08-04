@@ -44,6 +44,10 @@ interface ProductMetricPoint {
   sales_mix: number;
   profit_mix: number;
   inventory_units: number;
+  unit_wise_profitability: number;
+  cm2_profit: number;
+  cm2_profit_percentage: number;
+  cm2_profit_per_unit: number;
 }
 
 interface ApiMonthRow {
@@ -59,6 +63,10 @@ interface ApiMonthRow {
   sales_mix?: number;
   profit_mix?: number;
   inventory_units?: number;
+  unit_wise_profitability?: number;
+  cm2_profit?: number;
+  cm2_profit_percentage?: number;
+  cm2_profit_per_unit?: number;
 }
 
 interface ApiResponse {
@@ -155,6 +163,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
       sales_mix: "#3A8EA4",
       profit_mix: "#ED9F50",
       inventory_units: "#7B9A6D",
+      unit_wise_profitability: "#7C6FB0",
+      cm2_profit: "#5EA68E",
+      cm2_profit_percentage: "#D98B5F",
+      cm2_profit_per_unit: "#8B6F47",
     };
 
     return colors[metric] || "#6b7280";
@@ -337,6 +349,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
           sales_mix: new Map<string, number>(),
           profit_mix: new Map<string, number>(),
           inventory_units: new Map<string, number>(),
+          unit_wise_profitability: new Map<string, number>(),
+          cm2_profit: new Map<string, number>(),
+          cm2_profit_percentage: new Map<string, number>(),
+          cm2_profit_per_unit: new Map<string, number>(),
         });
 
         const valueMaps: Record<CountryKey, ReturnType<typeof createMaps>> = {
@@ -391,6 +407,22 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
               valueMaps[country].asp.set(label, Number.isFinite(asp) ? asp : 0);
               valueMaps[country].sales_mix.set(label, Number(row.sales_mix ?? 0));
               valueMaps[country].profit_mix.set(label, Number(row.profit_mix ?? 0));
+              valueMaps[country].unit_wise_profitability.set(
+                label,
+                Number(Number(row.unit_wise_profitability ?? 0).toFixed(2))
+              );
+              valueMaps[country].cm2_profit.set(
+                label,
+                Number(row.cm2_profit ?? 0)
+              );
+              valueMaps[country].cm2_profit_percentage.set(
+                label,
+                Number(row.cm2_profit_percentage ?? 0)
+              );
+              valueMaps[country].cm2_profit_per_unit.set(
+                label,
+                Number(Number(row.cm2_profit_per_unit ?? 0).toFixed(2))
+              );
             });
           });
         }
@@ -416,6 +448,13 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
               sales_mix: valueMaps[country].sales_mix.get(label) ?? 0,
               profit_mix: valueMaps[country].profit_mix.get(label) ?? 0,
               inventory_units: valueMaps[country].inventory_units.get(label) ?? 0,
+              unit_wise_profitability:
+                valueMaps[country].unit_wise_profitability.get(label) ?? 0,
+              cm2_profit: valueMaps[country].cm2_profit.get(label) ?? 0,
+              cm2_profit_percentage:
+                valueMaps[country].cm2_profit_percentage.get(label) ?? 0,
+              cm2_profit_per_unit:
+                valueMaps[country].cm2_profit_per_unit.get(label) ?? 0,
             };
           });
 
@@ -481,7 +520,12 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         if (!point) return false;
 
         if (activeTab === "units_asp") {
-          return Number(point.units_sold || 0) > 0 || Number(point.asp || 0) > 0;
+          return (
+            Number(point.units_sold || 0) > 0 ||
+            Number(point.asp || 0) > 0 ||
+            Number(point.unit_wise_profitability || 0) !== 0 ||
+            Number(point.cm2_profit_per_unit || 0) !== 0
+          );
         }
 
         if (activeTab === "inventory_units") {
@@ -489,10 +533,18 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         }
 
         if (activeTab === "mix") {
-          return Number(point.sales_mix || 0) > 0 || Number(point.profit_mix || 0) > 0;
+          return (
+            Number(point.sales_mix || 0) > 0 ||
+            Number(point.profit_mix || 0) > 0 ||
+            Number(point.cm2_profit_percentage || 0) !== 0
+          );
         }
 
-        return Number(point.net_sales || 0) > 0 || Number(point.cm1_profit || 0) > 0;
+        return (
+          Number(point.net_sales || 0) > 0 ||
+          Number(point.cm1_profit || 0) > 0 ||
+          Number(point.cm2_profit || 0) !== 0
+        );
       });
     };
 
@@ -547,6 +599,19 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
             data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm1_profit || 0),
             borderColor: getMetricColor("cm1_profit"),
             backgroundColor: getMetricColor("cm1_profit"),
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 12,
+            fill: false,
+            borderWidth: 2,
+            yAxisID: "y",
+          })),
+          ...activeCountries.map((country) => ({
+            label: `${formatCountry(country)} CM2 Profit`,
+            data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit || 0),
+            borderColor: getMetricColor("cm2_profit"),
+            backgroundColor: getMetricColor("cm2_profit"),
             tension: 0.35,
             pointRadius: 3,
             pointHoverRadius: 5,
@@ -623,6 +688,32 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
             borderWidth: 2,
             yAxisID: "y1",
           })),
+          ...activeCountries.map((country) => ({
+            label: `${formatCountry(country)} CM1 Profit Per Unit`,
+            data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.unit_wise_profitability || 0),
+            borderColor: getMetricColor("unit_wise_profitability"),
+            backgroundColor: getMetricColor("unit_wise_profitability"),
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 12,
+            fill: false,
+            borderWidth: 2,
+            yAxisID: "y1",
+          })),
+          ...activeCountries.map((country) => ({
+            label: `${formatCountry(country)} CM2 Profit Per Unit`,
+            data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit_per_unit || 0),
+            borderColor: getMetricColor("cm2_profit_per_unit"),
+            backgroundColor: getMetricColor("cm2_profit_per_unit"),
+            tension: 0.35,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointHitRadius: 12,
+            fill: false,
+            borderWidth: 2,
+            yAxisID: "y1",
+          })),
         ],
       };
     }
@@ -648,6 +739,19 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
           data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.profit_mix || 0),
           borderColor: getMetricColor("profit_mix"),
           backgroundColor: getMetricColor("profit_mix"),
+          tension: 0.35,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointHitRadius: 12,
+          fill: false,
+          borderWidth: 2,
+          yAxisID: "y",
+        })),
+        ...activeCountries.map((country) => ({
+          label: `${formatCountry(country)} CM2 Profit Mix`,
+          data: labels.map((label) => journeyData[country]?.find((d) => d.month === label)?.cm2_profit_percentage || 0),
+          borderColor: getMetricColor("cm2_profit_percentage"),
+          backgroundColor: getMetricColor("cm2_profit_percentage"),
           tension: 0.35,
           pointRadius: 3,
           pointHoverRadius: 5,
@@ -712,9 +816,21 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
               const datasetLabel = String(context.dataset.label || "");
               const lowerLabel = datasetLabel.toLowerCase();
 
-              if (lowerLabel.includes("asp")) return `${datasetLabel}: ${formatAsp(value)}`;
-              if (lowerLabel.includes("mix")) return `${datasetLabel}: ${formatPercent(value)}`;
-              if (lowerLabel.includes("units")) return `${datasetLabel}: ${formatUnits(value)}`;
+              if (
+                lowerLabel.includes("asp") ||
+                lowerLabel.includes("profit per unit") ||
+                lowerLabel.includes("profit / unit")
+              ) {
+                return `${datasetLabel}: ${formatAsp(value)}`;
+              }
+
+              if (lowerLabel.includes("mix") || lowerLabel.includes("%")) {
+                return `${datasetLabel}: ${formatPercent(value)}`;
+              }
+
+              if (lowerLabel.includes("unit")) {
+                return `${datasetLabel}: ${formatUnits(value)}`;
+              }
 
               return `${datasetLabel}: ${formatCurrency(value)}`;
             },
@@ -800,7 +916,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
             text:
               activeTab === "inventory_units"
                 ? "Unit Sales (in nos.)"
-                : `ASP (${currencySymbol})`,
+                : `ASP / Unit Profitability (${currencySymbol})`,
           },
           ticks: {
             font: { size: isSmallScreen ? 10 : 12 },
@@ -852,9 +968,9 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                       textSizeClass="text-[10px] sm:text-xs"
                       className="w-full 2xl:w-auto"
                       options={[
-                        { value: "sales_cm1", label: "Sales & CM1 Profit" },
-                        { value: "units_asp", label: "Units & ASP" },
-                        { value: "mix", label: "Sales Mix & CM1 Profit Mix" },
+                        { value: "sales_cm1", label: "Sales, CM1 & CM2 Profit" },
+                        { value: "units_asp", label: "Units, ASP, CM1 & CM2 Profit/Unit" },
+                        { value: "mix", label: "Sales Mix, CM1 & CM2 Profit Mix" },
                         { value: "inventory_units", label: "Inventory Units & Unit Sales" },
                       ]}
                     />
@@ -900,6 +1016,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                     <span className="h-0 w-9 border-t-2 border-[#7B9A6D]" />
                     <span>CM1 Profit</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#5EA68E]" />
+                    <span>CM2 Profit</span>
+                  </div>
                 </>
               )}
 
@@ -913,6 +1033,14 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                     <span className="h-0 w-9 border-t-2 border-[#B75A5A]" />
                     <span>ASP</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#7C6FB0]" />
+                    <span>CM1 Profit Per Unit</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#8B6F47]" />
+                    <span>CM2 Profit Per Unit</span>
+                  </div>
                 </>
               )}
 
@@ -925,6 +1053,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="h-0 w-9 border-t-2 border-[#ED9F50]" />
                     <span>CM1 Profit Mix</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-0 w-9 border-t-2 border-[#D98B5F]" />
+                    <span>CM2 Profit Mix</span>
                   </div>
                 </>
               )}
