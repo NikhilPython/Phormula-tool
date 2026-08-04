@@ -4484,11 +4484,11 @@ export default function DashboardPage() {
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
-            setStep(2, "Inventory Fetch", 20, "Fetching aged, AWD, and current inventory...");
+            setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
             await fetchInventory();
             ensureDashboardLoadActive();
 
-            setStep(2, "Inventory Fetch", 60, "Fetching inventory insights.");
+            setStep(2, "Inventory Fetch", 60, "Fetching inventory insights");
             await fetchInventoryInsights({ force: forceInventoryInsightsRefresh });
             ensureDashboardLoadActive();
 
@@ -4511,7 +4511,7 @@ export default function DashboardPage() {
                 });
                 ensureDashboardLoadActive();
             } else {
-                setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping.");
+                setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
             }
 
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
