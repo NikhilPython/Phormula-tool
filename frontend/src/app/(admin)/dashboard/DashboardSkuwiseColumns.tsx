@@ -49,6 +49,7 @@ export function buildSkuwiseTableColumns(
             align: "left",
             info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
             width: "14%",
+            tdClassName: "!whitespace-normal !text-clip break-words align-middle",
         },
     ];
 

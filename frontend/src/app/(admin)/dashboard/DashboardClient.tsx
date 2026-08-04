@@ -11866,7 +11866,7 @@ export default function DashboardPage() {
 
         return (
             <span
-                className={`shrink-0 text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
                     }`}
                 title={`Previous Net Sales: ${Math.round(
                     Math.abs(toNumber(row.previous_net_sales))

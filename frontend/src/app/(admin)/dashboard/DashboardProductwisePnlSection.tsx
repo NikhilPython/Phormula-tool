@@ -761,13 +761,12 @@ export default function DashboardProductwisePnlSection({
                                                                     product_name: displayName,
                                                                 })
                                                             }
-                                                            className="flex w-full items-center justify-between gap-3 text-left text-green-500"
+                                                            className="flex w-full items-end justify-between gap-2 text-left text-green-500"
                                                             title={String(displayName || "")}
                                                         >
-                                                            <span className="min-w-0 truncate">
+                                                            <span className="min-w-0 flex-1 whitespace-normal break-words">
                                                                 {displayName}
                                                             </span>
-
                                                             {renderLiveNetSalesDelta({
                                                                 ...row,
                                                                 product_name: displayName,

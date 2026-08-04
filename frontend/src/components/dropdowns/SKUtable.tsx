@@ -991,6 +991,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
         align: "left",
         width: "17%",
+        tdClassName: "!whitespace-normal !text-clip break-words align-middle",
       },
     ],
     []
@@ -2419,7 +2420,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return (
       <span
-        className={`shrink-0 text-[11px] min-[1700px]:text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+        className={`shrink-0 whitespace-nowrap text-[11px] min-[1700px]:text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
           }`}
         title={`Previous Net Sales: ${formatValue(
           row.previous_net_sales,
@@ -2988,13 +2989,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       return (
                         <div
                           onClick={() => handleProductClick(row)}
-                          className="flex w-full cursor-pointer items-center justify-between gap-3 text-green-500"
+                          className="flex w-full cursor-pointer items-end justify-between gap-2 text-left text-green-500"
                           title={String(displayName || "")}
                         >
-                          <span className="min-w-0 truncate">
+                          <span className="min-w-0 flex-1 whitespace-normal break-words">
                             {String(displayName || "-")}
                           </span>
-
                           {!isOthers && renderNetSalesDelta(row)}
                         </div>
                       );
