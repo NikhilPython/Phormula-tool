@@ -963,8 +963,25 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       ? []
       : getLineChartData().datasets.flatMap((d: any) => d.data as number[]);
 
-  const minLineValue = allLineDataPoints.length ? Math.min(...allLineDataPoints) : 0;
-  const minLineY = minLineValue < 0 ? Math.floor(minLineValue * 1.1) : 0;
+  const maxLineValue = allLineDataPoints.length
+    ? Math.max(...allLineDataPoints)
+    : 0;
+
+  const minLineValue = allLineDataPoints.length
+    ? Math.min(...allLineDataPoints)
+    : 0;
+
+  // top hamesha clean 1000 multiple ho
+  const maxLineY = Math.max(1000, Math.ceil(maxLineValue / 1000) * 1000);
+
+  // agar negative value hai:
+  // -14 => -1000
+  // -1200 => -2000
+  // -2600 => -3000
+  const minLineY =
+    minLineValue < 0
+      ? Math.min(-1000, Math.floor(minLineValue / 1000) * 1000)
+      : 0;
 
   const lineChartOptions = {
     responsive: true,
@@ -1017,24 +1034,29 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         },
       },
       y: {
-        beginAtZero: minLineY >= 0,
         min: minLineY,
+        max: maxLineY,
+
         title: {
           display: true,
           text: `(${currencySymbol})`,
           color: "#6B7280",
           font: { size: yAxisFontSize },
         },
+
         ticks: {
+          stepSize: 1000,
           color: "#6B7280",
           font: { size: yAxisFontSize },
           padding: 0,
           callback: (value: any) =>
             formatCurrencyValue(Number(value), currencySymbol),
         },
+
         border: {
           display: false,
         },
+
         grid: {
           color: "#E5E7EB",
         },
