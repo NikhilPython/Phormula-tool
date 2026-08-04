@@ -7,7 +7,10 @@ import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css'
 import { Modal } from '@/components/ui/modal'
 import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
-import DataTable, { ColumnDef } from '@/components/ui/table/DataTable'
+import GroupedCollapsibleTable, {
+  type ColGroup,
+  type LeafCol,
+} from '@/components/ui/table/GroupedCollapsibleTable'
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
@@ -34,6 +37,11 @@ interface SkuRow {
   'To be Dispatch'?: string | number
   'SEA'?: string | number
   'AIR'?: string | number
+}
+
+type DispatchTableRow = Record<string, React.ReactNode> & {
+  __isTotal?: boolean
+  __isOthers?: boolean
 }
 
 type DispatchPageProps = {
@@ -66,16 +74,16 @@ const DISPLAYED_COLUMNS = [
   'SKU',
   'FBA',
   'AWD',
+  'In stock',
   'In Transit FBA',
   'In Transit AWD',
-  'In stock',
   'In transit',
-  'Projected Sales Total',
   'Inventory Coverage Ratio Before Dispatch',
+  'Projected Sales Total',
   'Shortfall Unit',
-  'To be Dispatch',
   'SEA',
   'AIR',
+  'To be Dispatch',
 ] as const
 
 const NUMERIC_COLUMNS = [
@@ -672,7 +680,7 @@ export default function DispatchPage({
     brandName,
   ]);
 
-  const tableRows = useMemo(() => {
+  const tableRows = useMemo<DispatchTableRow[]>(() => {
     const totalRow = skuData.find((row) => isTotalRow(row))
 
     const sortedRows = [...skuData]
@@ -705,7 +713,7 @@ export default function DispatchPage({
       const isTotal = isTotalRow(row)
       const isOthers = String(row['Product Name'] ?? '').trim().toLowerCase() === 'others'
 
-      const obj: Record<string, any> = {
+      const obj: DispatchTableRow = {
         __isTotal: isTotal,
         __isOthers: isOthers,
       }
@@ -804,65 +812,133 @@ export default function DispatchPage({
               : ''
       })
 
+      obj.sno = obj['S. No.']
+      obj.product_name = obj['Product Name']
+      obj.sku = obj['SKU']
+      obj.fba = obj['FBA']
+      obj.awd = obj['AWD']
+      obj.in_stock_total = obj['In stock']
+      obj.in_transit_fba = obj['In Transit FBA']
+      obj.in_transit_awd = obj['In Transit AWD']
+      obj.in_transit_total = obj['In transit']
+      obj.coverage_ratio = obj['Inventory Coverage Ratio Before Dispatch']
+      obj.projected_sales_total = obj['Projected Sales Total']
+      obj.shortfall_units = obj['Shortfall Unit']
+      obj.sea = obj['SEA']
+      obj.air = obj['AIR']
+      obj.dispatch_total = obj['To be Dispatch']
+
       return obj
     })
   }, [skuData, displayedColumns, showAllDispatchRows])
 
-  const columns: ColumnDef<any>[] = displayedColumns.map((col) => {
-    const isCoverage = col === 'Inventory Coverage Ratio Before Dispatch'
-    const isSNo = col === 'S. No.'
-    const isProduct = col === 'Product Name'
-    const isSku = col === 'SKU'
-    const isFba = col === 'FBA'
-    const isAwd = col === 'AWD'
-    const isInventoryMetric = [
-      'In Transit FBA',
-      'In Transit AWD',
-      'In stock',
-      'In transit',
-    ].includes(col)
-    const isProjectedSalesTotal = col === 'Projected Sales Total'
-    const isShortfallUnit = col === 'Shortfall Unit'
-    const isToBeDispatch = col === 'To be Dispatch'
-    const isSea = col === 'SEA'
-    const isAir = col === 'AIR'
+  const dispatchLeftCols = useMemo<LeafCol<DispatchTableRow>[]>(
+    () => [
+      { key: 'sno', label: 'S. No.', width: 58, align: 'center' },
+      {
+        key: 'product_name',
+        label: 'Product Name',
+        width: 220,
+        align: 'left',
+        tdClassName: '!whitespace-normal !text-clip break-words align-middle',
+      },
+      {
+        key: 'sku',
+        label: 'SKU',
+        width: 160,
+        align: 'left',
+        tdClassName: 'dispatch-sku-cell',
+      },
+    ],
+    []
+  )
 
-    return {
-      key: col,
-      header:
-        col === 'Inventory Coverage Ratio Before Dispatch'
-          ? 'Coverage Ratio Before Dispatch'
-          : col,
-      width: isSNo
-        ? '55px'
-        : isProduct
-          ? '190px'
-          : isSku
-            ? '170px'
-            : isCoverage
-              ? '190px'
-              : isFba || isAwd
-                ? '100px'
-                : isInventoryMetric
-                  ? '115px'
-                  : isProjectedSalesTotal
-                    ? '170px'
-                    : isShortfallUnit || isToBeDispatch
-                      ? '145px'
-                      : isSea || isAir
-                        ? '100px'
-                        : '150px',
-      cellClassName:
-        isSNo
-          ? 'text-center'
-          : isSku
-          ? 'dispatch-sku-cell'
-          : isProduct
-            ? 'text-left'
-            : 'text-center',
-      headerClassName: 'text-center whitespace-normal break-words',
-    }
-  })
+  const dispatchGroups = useMemo<ColGroup<DispatchTableRow>[]>(
+    () => [
+      {
+        id: 'in_stock',
+        label: 'In Stock',
+        collapsedCols: [
+          { key: 'in_stock_total', label: 'Total', width: 110, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'fba', label: 'FBA', width: 100, align: 'center' },
+          { key: 'awd', label: 'AWD', width: 100, align: 'center' },
+          { key: 'in_stock_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'in_transit',
+        label: 'In Transit',
+        collapsedCols: [
+          { key: 'in_transit_total', label: 'Total', width: 110, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'in_transit_fba', label: 'In Transit FBA', width: 120, align: 'center' },
+          { key: 'in_transit_awd', label: 'In Transit AWD', width: 120, align: 'center' },
+          { key: 'in_transit_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+      {
+        id: 'to_be_dispatched',
+        label: 'To be Dispatched',
+        collapsedCols: [
+          { key: 'dispatch_total', label: 'Total', width: 110, align: 'center' },
+        ],
+        expandedCols: [
+          { key: 'sea', label: 'SEA', width: 100, align: 'center' },
+          { key: 'air', label: 'AIR', width: 100, align: 'center' },
+          { key: 'dispatch_total', label: 'Total', width: 110, align: 'center' },
+        ],
+      },
+    ],
+    []
+  )
+
+  const dispatchSingleCols = useMemo<LeafCol<DispatchTableRow>[]>(
+    () => [
+      {
+        key: 'coverage_ratio',
+        label: 'Coverage Ratio Before Dispatch',
+        width: 160,
+        align: 'center',
+      },
+      {
+        key: 'projected_sales_total',
+        label: 'Projected Sales Total',
+        width: 150,
+        align: 'center',
+      },
+      {
+        key: 'shortfall_units',
+        label: 'Shortfall Units',
+        width: 130,
+        align: 'center',
+      },
+    ],
+    []
+  )
+
+  const dispatchTableLayout = useMemo(
+    () => [
+      { type: 'group' as const, id: 'in_stock' },
+      { type: 'group' as const, id: 'in_transit' },
+      { type: 'single' as const, key: 'coverage_ratio' },
+      { type: 'single' as const, key: 'projected_sales_total' },
+      { type: 'single' as const, key: 'shortfall_units' },
+      { type: 'group' as const, id: 'to_be_dispatched' },
+    ],
+    []
+  )
+
+  const dispatchInitialCollapsed = useMemo(
+    () => ({
+      in_stock: true,
+      in_transit: true,
+      to_be_dispatched: true,
+    }),
+    []
+  )
 
   return (
     <>
@@ -1038,44 +1114,50 @@ export default function DispatchPage({
           )} */}
 
           <div className="forecast-data">
-            <div className="forecast-data">
-              <DataTable
-                columns={columns}
-                data={tableRows}
-                paginate={false}
-                scrollY={false}
-                maxHeight="none"
-                stickyHeader
-                loading={loading}
-                emptyMessage={
-                  noData
-                    ? "No Data Available for selected period"
-                    : "Select Month and Year to see Dispatch!"
+            {tableRows.length === 0 ? (
+              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
+                {noData
+                  ? "No Data Available for selected period"
+                  : "Select Month and Year to see Dispatch!"}
+              </div>
+            ) : (
+              <GroupedCollapsibleTable<DispatchTableRow>
+                rows={tableRows}
+                getRowKey={(row, index) =>
+                  row.__isTotal ? 'total' : row.__isOthers ? 'others' : index
                 }
-                rowClassName={(row: any) =>
-                  row.__isTotal
-                    ? "bg-[#EFEFEF] font-semibold"
-                    : row.__isOthers
-                      ? showAllDispatchRows
-                        ? ""
-                        : "cursor-pointer"
-                      : ""
-                }
-                onRowClick={(row: any) => {
+                leftCols={dispatchLeftCols}
+                groups={dispatchGroups}
+                singleCols={dispatchSingleCols}
+                layout={dispatchTableLayout}
+                initialCollapsed={dispatchInitialCollapsed}
+                getValue={(row, colKey) => row[colKey] ?? ''}
+                getRowClassName={(row, index) => {
+                  if (row.__isTotal) return "bg-[#EFEFEF] font-semibold"
+                  if (row.__isOthers && !showAllDispatchRows) return "cursor-pointer bg-white"
+                  return index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                }}
+                onRowClick={(row) => {
                   if (!showAllDispatchRows && row.__isOthers) {
-                    setShowAllDispatchRows(true);
+                    setShowAllDispatchRows(true)
                   }
                 }}
-                isTotalRow={(row: any) => !!row.__isTotal}
+                isTotalRow={(row) => !!row.__isTotal}
                 bodyMaxHeight={
                   showAllDispatchRows &&
-                    tableRows.filter((row: any) => !row.__isTotal).length > 15
+                    tableRows.filter((row) => !row.__isTotal).length > 15
                     ? 40 * 15
                     : undefined
                 }
-                tableClassName="text-xs 2xl:text-sm [&_th]:whitespace-normal [&_th]:break-words [&_th]:text-center [&_th]:py-3"
+                tableClassName="w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                preserveColumnWidths="responsive"
+                stickyLeftBorderMode="shadow-only"
+                stickyLeftDividerMode="leading"
+                stickyLeftHorizontalBorderMode="border"
               />
-            </div>
+            )}
           </div>
         </>
       )}
