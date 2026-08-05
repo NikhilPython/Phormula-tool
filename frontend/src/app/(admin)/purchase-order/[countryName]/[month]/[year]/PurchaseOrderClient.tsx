@@ -25,6 +25,7 @@ type PurchaseOrderPageProps = {
   selectedYearProp?: string;
   showAllRowsProp?: boolean;
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>;
+  onProductNameClick?: (productName: string) => void;
 };
 
 const MONTHS = [
@@ -140,6 +141,7 @@ export default function PurchaseOrderPage({
   selectedYearProp,
   showAllRowsProp,
   onShowAllRowsChange,
+  onProductNameClick,
 }: PurchaseOrderPageProps) {
   const params = useParams() as {
     countryName?: string;
@@ -763,10 +765,34 @@ export default function PurchaseOrderPage({
             return '';
           }
 
+          if (col === 'Product Name') {
+            const normalized = text.trim().toLowerCase();
+            const isClickable =
+              !!text &&
+              !row.__isTotalRow &&
+              !row.__isOthersRow &&
+              !['total', 'others', 'other skus', '-'].includes(normalized);
+
+            if (isClickable) {
+              return (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onProductNameClick?.(text);
+                  }}
+                  className="ccursor-zoom-in text-left  text-green-500"
+                >
+                  {text}
+                </button>
+              );
+            }
+          }
+
           return text;
         },
       })),
-    [displayedColumns]
+    [displayedColumns, onProductNameClick]
   );
 
   const getTableRowClassName = useCallback((row: Row) => {

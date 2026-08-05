@@ -705,15 +705,15 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   };
 
   const EmptyTableState = () => (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 overflow-hidden min-w-[900px]">
-      <table className="w-full 2xl:text-sm text-xs text-[#414042]">
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 overflow-hidden min-w-225">
+      <table className="w-full 2xl:text-sm text-xs text-charcoal-500">
         <thead>
           <tr className="font-normal">
-            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">S.No</th>
-            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-left">Product Name</th>
-            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">SKU</th>
-            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">Last 3 Months</th>
-            <th className="p-3 border border-slate-200 bg-[#5EA68E] text-[#F8EDCE] font-semibold text-center">Forecasted Months</th>
+            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">S.No</th>
+            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-left">Product Name</th>
+            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">SKU</th>
+            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">Last 3 Months</th>
+            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">Forecasted Months</th>
           </tr>
         </thead>
         <tbody>
@@ -855,7 +855,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
             </div>
           )}
 
-          <div className="w-full h-[550px]">
+          <div className="w-full h-137.5">
             <Line
               ref={chartRef}
               data={chartData}
@@ -896,7 +896,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                   onClick={() => setShowAllForecastRows((prev) => !prev)}
                   title={showAllForecastRows ? "Collapse rows" : "Expand all rows"}
                   aria-label={showAllForecastRows ? "Collapse rows" : "Expand all rows"}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md"
                 >
                   {showAllForecastRows ? (
                     <RiCollapseDiagonalFill size={18} className="font-extrabold" />
@@ -910,7 +910,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           <div className="mt-4 w-full overflow-x-auto">
             {hasRenderableData ? (
               <div
-                className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-auto min-w-[900px] [scrollbar-gutter:stable]"
+                className="rounded-xl border border-slate-200 bg-white shadow-sm min-w-225 [scrollbar-gutter:stable]"
                 style={
                   shouldScrollForecastTable
                     ? { maxHeight: `${forecastTableBodyMaxHeight + 88 + 40}px` }
@@ -922,21 +922,21 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                     <tr>
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[70px] ${tableHeaderCell}`}
+                        className={`sticky top-0 z-30 w-17.5 ${tableHeaderCell}`}
                       >
                         S.No
                       </th>
 
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[200px] ${tableHeaderCell} text-left`}
+                        className={`sticky top-0 z-30 w-50 ${tableHeaderCell} text-left`}
                       >
                         Product Name
                       </th>
 
                       <th
                         rowSpan={2}
-                        className={`sticky top-0 z-30 w-[220px] ${tableHeaderCell} text-left`}
+                        className={`sticky top-0 z-30 w-55 ${tableHeaderCell} text-left`}
                       >
                         SKU
                       </th>
@@ -957,27 +957,27 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                     </tr>
 
                     <tr>
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
                         {soldLabels[0] || ""}
                       </th>
 
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
                         {soldLabels[1] || ""}
                       </th>
 
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
                         {soldLabels[2] || ""}
                       </th>
 
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
                         {forecastLabels[0] || ""}
                       </th>
 
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop}`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
                         {forecastLabels[1] || ""}
                       </th>
 
-                      <th className={`sticky top-[41px] z-20 w-[120px] ${tableHeaderCellNoTop} border-r-0`}>
+                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop} border-r-0`}>
                         {forecastLabels[2] || ""}
                       </th>
                     </tr>
@@ -997,20 +997,20 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                             }
                           }}
                           className={[
-                            "h-[40px] bg-white text-center transition-colors",
+                            "h-10 bg-white text-center transition-colors",
                             isOthersRow && !showAllForecastRows ? "cursor-pointer" : "",
                           ].join(" ")}
                         >
                           <td className={tableBodyCell}>{row.sNo}</td>
 
                           <td className={tableBodyTextCell}>
-                            <div className="leading-snug max-w-[260px]">
+                            <div className="leading-snug max-w-65 text-green-500 text-left cursor-pointer">
                               {row.product}
                             </div>
                           </td>
 
                           <td className={tableSkuCell}>
-                            <div className="max-w-full whitespace-normal break-words leading-snug text-left">
+                            <div className="max-w-full whitespace-normal wrap-break-word leading-snug text-left">
                               {String(row.sku)
                                 .split(",")
                                 .map((sku, index, arr) => (
@@ -1034,7 +1034,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                   </tbody>
 
                   <tfoot>
-                    <tr className="sticky bottom-0 z-30 h-[40px] bg-[#D9D9D933] text-center font-bold">
+                    <tr className="sticky bottom-0 z-30 h-10 bg-[#D9D9D933] text-center font-bold">
                       <td className={tableTotalCell}></td>
 
                       <td className={tableTotalTextCell}>
