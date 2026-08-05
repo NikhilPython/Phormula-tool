@@ -2917,6 +2917,7 @@ export default function LiveBusinessClient({
 
   type BIGridRow = {
     __isTotal?: boolean;
+    __isOthers?: boolean;
     sNo?: React.ReactNode;
     product?: React.ReactNode;
     salesMix?: React.ReactNode;
@@ -3305,6 +3306,7 @@ export default function LiveBusinessClient({
         totalNetSalesMonth2 > 0 ? (othersNetSales / totalNetSalesMonth2) * 100 : 0;
 
       rows.push({
+        __isOthers: true,
         sNo: <CenterCell value={6} />,
         product: <span className="text-green-500">Others</span>,
         salesMix: <CenterCell value={
@@ -3507,6 +3509,9 @@ export default function LiveBusinessClient({
   const rowClassNameForDataTable = (row: BIGridRow) => {
     if (row.__isTotal) {
       return 'bg-[#EFEFEF] font-semibold';
+    }
+    if (row.__isOthers && !showAllSkus) {
+      return 'bg-white cursor-pointer';
     }
     return 'bg-white';
   };
@@ -5053,6 +5058,15 @@ export default function LiveBusinessClient({
                     headerMaxWidth={140}
                     emptyMessage={getSkuEmptyMessage()}
                     rowClassName={rowClassNameForDataTable}
+                    onRowClick={(row) => {
+                      if (
+                        activeTab === "all_skus" &&
+                        !showAllSkus &&
+                        row.__isOthers
+                      ) {
+                        setShowAllSkus(true);
+                      }
+                    }}
                     isTotalRow={(row) => !!row.__isTotal}
                     bodyMaxHeight={
                       showAllSkus && activeTab === "all_skus" && allSkuRows.length > 15
