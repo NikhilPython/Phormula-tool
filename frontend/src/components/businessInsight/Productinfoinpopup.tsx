@@ -1114,10 +1114,14 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     [activeTab, allLabels.length, currencySymbol, initialMaxIndex, initialMinIndex]
   );
 
-  const isImprovementsPage = pathname?.includes("mprovements") || false;
-
   return (
     <div className="w-full">
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Loader fullscreen transparent />
+        </div>
+      )}
+
       {error && (
         <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-6">
           <div className="flex items-center">

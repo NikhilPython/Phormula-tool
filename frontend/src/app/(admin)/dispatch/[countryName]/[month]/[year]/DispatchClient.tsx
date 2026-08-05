@@ -51,6 +51,7 @@ type DispatchPageProps = {
   selectedYearProp?: string
   showAllRowsProp?: boolean
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
+  onProductNameClick?: (productName: string, sku?: string) => void
 }
 
 const monthNames = [
@@ -308,6 +309,7 @@ export default function DispatchPage({
   selectedYearProp,
   showAllRowsProp,
   onShowAllRowsChange,
+  onProductNameClick,
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
   const router = useRouter()
@@ -350,7 +352,10 @@ export default function DispatchPage({
   const [isInitialized, setIsInitialized] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [noData, setNoData] = useState(false)
-  const monthdps = monthNames as unknown as string[]
+  const monthdps = useMemo(
+  () => [...monthNames],
+  []
+)
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
 
   const showAllDispatchRows =
@@ -542,19 +547,36 @@ export default function DispatchPage({
   }
 
   useEffect(() => {
-    if (month && year) {
-      const capitalizeMonth = capitalize(month)
-      const monthIndex = monthdps.indexOf(capitalizeMonth)
-      const nextMonth = monthdps[(monthIndex + 1) % 12]
-      setMonthDp(nextMonth)
-      setYearDp(year)
-      setIsInitialized(true)
-    } else {
-      setMonthDp(getCurrentMonthPlus1())
-      setYearDp(getCurrentYear())
-      setIsInitialized(true)
-    }
-  }, [month, year, monthdps])
+  if (month && year) {
+    const capitalizeMonth = capitalize(month)
+    const monthIndex = monthdps.indexOf(capitalizeMonth)
+
+    const nextMonth =
+      monthIndex >= 0
+        ? monthdps[(monthIndex + 1) % 12]
+        : getCurrentMonthPlus1()
+
+    const nextYear =
+      monthIndex === 11
+        ? String(Number(year) + 1)
+        : year
+
+    setMonthDp((previous) =>
+      previous === nextMonth ? previous : nextMonth
+    )
+
+    setYearDp((previous) =>
+      previous === nextYear ? previous : nextYear
+    )
+
+    setIsInitialized(true)
+    return
+  }
+
+  setMonthDp(getCurrentMonthPlus1())
+  setYearDp(getCurrentYear())
+  setIsInitialized(true)
+}, [month, year, monthdps])
 
   useEffect(() => {
     if (isInitialized && monthdp && yeardp) {
@@ -813,7 +835,28 @@ export default function DispatchPage({
       })
 
       obj.sno = obj['S. No.']
-      obj.product_name = obj['Product Name']
+
+      const rawProductName = String(row['Product Name'] ?? '').trim()
+      const rawSku = String(row['SKU'] ?? '').trim()
+      const isClickableProduct =
+        !!rawProductName &&
+        !isTotal &&
+        !isOthers &&
+        !['total', 'others', 'other skus', '-'].includes(rawProductName.toLowerCase())
+
+      obj.product_name = isClickableProduct ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onProductNameClick?.(rawProductName, rawSku || undefined)
+          }}
+          className="cursor-zoom-in text-left  text-green-500"
+        >
+          {rawProductName}
+        </button>
+      ) : obj['Product Name']
+
       obj.sku = obj['SKU']
       obj.fba = obj['FBA']
       obj.awd = obj['AWD']
@@ -830,7 +873,7 @@ export default function DispatchPage({
 
       return obj
     })
-  }, [skuData, displayedColumns, showAllDispatchRows])
+  }, [skuData, displayedColumns, showAllDispatchRows, onProductNameClick])
 
   const dispatchLeftCols = useMemo<LeafCol<DispatchTableRow>[]>(
     () => [
@@ -1063,12 +1106,12 @@ export default function DispatchPage({
                 title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
                 disabled={loading || noData}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
               >
                 {showAllDispatchRows ? (
-                  <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
+                  <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
                 ) : (
-                  <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-[18px] lg:w-[18px]" />
+                  <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
                 )}
               </button>
             )}
@@ -1115,7 +1158,7 @@ export default function DispatchPage({
 
           <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
             {tableRows.length === 0 ? (
-              <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
+              <div className="flex min-h-55 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
                 {noData
                   ? "No Data Available for selected period"
                   : "Select Month and Year to see Dispatch!"}
