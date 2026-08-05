@@ -9687,7 +9687,7 @@ lines.push(
     businessSummary: "ai-insights",
     inventoryInsights: "inventory-insights",
     skuBreakdown: "pnl-breakdown",
-    skuwiseProfit: "sku-journey",
+    skuwiseProfit: "skuwise-profit",
     cashFlow: "cash-flow",
   };
 

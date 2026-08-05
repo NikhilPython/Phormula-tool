@@ -86,13 +86,47 @@ const AppSidebar: React.FC = () => {
       setCurrentHash(hash);
     };
 
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+
+    const patchedPushState: History["pushState"] = function (
+      data,
+      unused,
+      url
+    ) {
+      originalPushState.call(window.history, data, unused, url);
+      updateHash();
+    };
+
+    const patchedReplaceState: History["replaceState"] = function (
+      data,
+      unused,
+      url
+    ) {
+      originalReplaceState.call(window.history, data, unused, url);
+      updateHash();
+    };
+
+    window.history.pushState = patchedPushState;
+    window.history.replaceState = patchedReplaceState;
+
     updateHash();
 
     window.addEventListener("hashchange", updateHash);
+    window.addEventListener("popstate", updateHash);
     window.addEventListener("page-hash-navigate", updateHash as EventListener);
 
     return () => {
+      if (window.history.pushState === patchedPushState) {
+        window.history.pushState = originalPushState;
+      }
+
+      if (window.history.replaceState === patchedReplaceState) {
+        window.history.replaceState = originalReplaceState;
+      }
+
       window.removeEventListener("hashchange", updateHash);
+      window.removeEventListener("popstate", updateHash);
       window.removeEventListener(
         "page-hash-navigate",
         updateHash as EventListener
