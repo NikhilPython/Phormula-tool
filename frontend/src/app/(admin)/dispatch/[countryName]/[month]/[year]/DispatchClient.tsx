@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css'
@@ -51,6 +51,31 @@ type DispatchPageProps = {
   selectedYearProp?: string
   showAllRowsProp?: boolean
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
+  promptOnOpenKey?: number
+}
+
+type AwdDispatchInputRow = {
+  shipment_id: string
+  shipment_status?: string | null
+  sku?: string | null
+  asin?: string | null
+  expected_unit_quantity?: number
+  created_at?: string | null
+  updated_at?: string | null
+  ship_by?: string | null
+  shipment_type?: string | null
+  expected_reach_date?: string | null
+  sku_quantities?: Array<{
+    sku?: string | null
+    expected_unit_quantity?: number | string | null
+  }> | null
+}
+
+const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
+  uk: 'A1F83G8C2ARO7P',
+  gb: 'A1F83G8C2ARO7P',
+  us: 'ATVPDKIKX0DER',
+  usa: 'ATVPDKIKX0DER',
   onProductNameClick?: (productName: string, sku?: string) => void
 }
 
@@ -231,6 +256,63 @@ function toNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0
 }
 
+function formatAwdDate(value?: string | null): string {
+  if (!value) return ''
+  return String(value).slice(0, 10)
+}
+
+function splitSkuList(value?: string | null): string[] {
+  return String(value ?? '')
+    .split(',')
+    .map((sku) => sku.trim().toUpperCase())
+    .filter(Boolean)
+}
+
+function applyAwdShipmentDetails(rows: SkuRow[], awdRows: AwdDispatchInputRow[]): SkuRow[] {
+  if (!awdRows.length) return rows
+
+  const unitsBySku = new Map<string, number>()
+  awdRows.forEach((shipment) => {
+    const skuQuantities = Array.isArray(shipment.sku_quantities) ? shipment.sku_quantities : []
+
+    if (skuQuantities.length) {
+      skuQuantities.forEach((item) => {
+        const sku = String(item?.sku ?? '').trim().toUpperCase()
+        if (!sku) return
+        unitsBySku.set(
+          sku,
+          (unitsBySku.get(sku) ?? 0) + toNumber(item?.expected_unit_quantity)
+        )
+      })
+      return
+    }
+
+    const skus = splitSkuList(shipment.sku)
+    if (skus.length === 1) {
+      const sku = skus[0]
+      unitsBySku.set(
+        sku,
+        (unitsBySku.get(sku) ?? 0) + toNumber(shipment.expected_unit_quantity)
+      )
+    }
+  })
+
+  return rows.map((row) => {
+    const sku = String(row.SKU ?? '').trim().toUpperCase()
+    const awdUnits = unitsBySku.get(sku)
+    if (awdUnits === undefined) return row
+
+    const inTransitFba = toNumber(row['In Transit FBA'])
+    const nextInTransitAwd = Math.round(awdUnits)
+
+    return {
+      ...row,
+      'In Transit AWD': nextInTransitAwd,
+      'In transit': inTransitFba + nextInTransitAwd,
+    }
+  })
+}
+
 function buildOthersRow(rows: SkuRow[]): SkuRow {
   return {
     'Product Name': 'Others',
@@ -309,6 +391,7 @@ export default function DispatchPage({
   selectedYearProp,
   showAllRowsProp,
   onShowAllRowsChange,
+  promptOnOpenKey,
   onProductNameClick,
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
@@ -357,6 +440,11 @@ export default function DispatchPage({
   []
 )
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
+  const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([])
+  const [awdInputOpen, setAwdInputOpen] = useState(false)
+  const [awdInputSaving, setAwdInputSaving] = useState(false)
+  const [awdInputError, setAwdInputError] = useState('')
+  const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
 
   const showAllDispatchRows =
     typeof showAllRowsProp === 'boolean'
@@ -365,6 +453,147 @@ export default function DispatchPage({
 
   const setShowAllDispatchRows =
     onShowAllRowsChange ?? setLocalShowAllDispatchRows
+
+  async function fetchAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!marketplaceId) return []
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/awd/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(marketplaceId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+
+    const text = await response.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || 'Failed to fetch AWD shipment details')
+    }
+
+    return Array.isArray(data?.items) ? data.items : []
+  }
+
+  async function saveAwdDispatchInputs(token: string, rows: AwdDispatchInputRow[]) {
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!marketplaceId) return
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/awd/inbound-shipments/dispatch-inputs`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          marketplace_id: marketplaceId,
+          shipments: rows.map((row) => ({
+            shipment_id: row.shipment_id,
+            shipment_type: String(row.shipment_type || '').toUpperCase(),
+            expected_reach_date: row.expected_reach_date,
+          })),
+        }),
+      }
+    )
+
+    const text = await response.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || 'Failed to save AWD shipment details')
+    }
+  }
+
+  async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
+    const rows = await fetchAwdDispatchInputs(token)
+    if (!rows.length) {
+      throw new Error('No AWD inbound shipments found for dispatch input. Please fetch AWD inbound shipments first.')
+    }
+
+    setAwdInputRows(
+      rows.map((row) => ({
+        ...row,
+        shipment_type: row.shipment_type || '',
+        expected_reach_date: row.expected_reach_date || '',
+      }))
+    )
+    setAwdInputError('')
+    setAwdInputOpen(true)
+
+    const savedRows = await new Promise<AwdDispatchInputRow[] | null>((resolve) => {
+      awdInputResolverRef.current = resolve
+    })
+
+    if (!savedRows) {
+      throw new Error('Please complete AWD shipment details before opening dispatch.')
+    }
+
+    return savedRows
+  }
+
+  function updateAwdInputRow(
+    shipmentId: string,
+    patch: Partial<Pick<AwdDispatchInputRow, 'shipment_type' | 'expected_reach_date'>>
+  ) {
+    setAwdInputRows((rows) =>
+      rows.map((row) =>
+        row.shipment_id === shipmentId
+          ? { ...row, ...patch }
+          : row
+      )
+    )
+  }
+
+  function closeAwdInputModal(rows: AwdDispatchInputRow[] | null) {
+    setAwdInputOpen(false)
+    const resolve = awdInputResolverRef.current
+    awdInputResolverRef.current = null
+    resolve?.(rows)
+  }
+
+  async function handleSaveAwdInputRows() {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null
+    if (!token) {
+      setAwdInputError('Authorization token is missing')
+      return
+    }
+
+    const missing = awdInputRows.find((row) => !row.shipment_type || !row.expected_reach_date)
+    if (missing) {
+      setAwdInputError('Please select shipment type and expected reach date for every AWD shipment.')
+      return
+    }
+
+    try {
+      setAwdInputSaving(true)
+      setAwdInputError('')
+      const normalizedRows = awdInputRows.map((row) => ({
+        ...row,
+        shipment_type: String(row.shipment_type || '').toUpperCase(),
+      }))
+      await saveAwdDispatchInputs(token, normalizedRows)
+      closeAwdInputModal(normalizedRows)
+    } catch (err: any) {
+      setAwdInputError(err?.message || 'Failed to save AWD shipment details')
+    } finally {
+      setAwdInputSaving(false)
+    }
+  }
 
   async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
     if (!monthdpValue || !yeardpValue) {
@@ -380,12 +609,16 @@ export default function DispatchPage({
       return
     }
 
-    setLoading(true)
     setError('')
     setNoData(false)
-    setSkuData([])
+    setLoading(false)
 
     try {
+      const awdRows = await requestAwdDispatchInputs(token)
+
+      setLoading(true)
+      setSkuData([])
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
         {
@@ -467,7 +700,7 @@ export default function DispatchPage({
       })
       const dataRows = rows.slice(headerRowIndex + 1)
 
-      const jsonData: SkuRow[] = dataRows
+      const jsonData: SkuRow[] = applyAwdShipmentDetails(dataRows
         .filter(
           (row) =>
             Array.isArray(row) &&
@@ -522,7 +755,7 @@ export default function DispatchPage({
 
           return obj
         })
-        .filter((row) => isMeaningfulRow(row))
+        .filter((row) => isMeaningfulRow(row)), awdRows)
 
       if (!jsonData.length) {
         setNoData(true)
@@ -582,7 +815,7 @@ export default function DispatchPage({
     if (isInitialized && monthdp && yeardp) {
       void fetchDispatchFile(monthdp, yeardp)
     }
-  }, [isInitialized, monthdp, yeardp])
+  }, [isInitialized, monthdp, yeardp, promptOnOpenKey])
 
 
   function isTotalRow(row: SkuRow) {
@@ -1068,6 +1301,102 @@ export default function DispatchPage({
 
   /* keep the rest of your existing CSS below this */
 `}</style>
+
+      {awdInputOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-6xl rounded-lg bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h3 className="text-lg font-semibold text-gray-900">AWD Shipment Details</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Select shipment type and expected reach date before opening the dispatch file.
+              </p>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto px-5 py-4">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <th className="border px-3 py-2">Shipment ID</th>
+                    <th className="border px-3 py-2">Status</th>
+                    <th className="border px-3 py-2">SKU</th>
+                    <th className="border px-3 py-2">Units</th>
+                    <th className="border px-3 py-2">Created At</th>
+                    <th className="border px-3 py-2">Updated At</th>
+                    <th className="border px-3 py-2">Ship By</th>
+                    <th className="border px-3 py-2">Shipment Type</th>
+                    <th className="border px-3 py-2">Expected Reach Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {awdInputRows.map((row) => (
+                    <tr key={row.shipment_id} className="text-gray-700">
+                      <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
+                      <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
+                      <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
+                        {row.sku || '-'}
+                      </td>
+                      <td className="border px-3 py-2 text-center">{row.expected_unit_quantity ?? 0}</td>
+                      <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
+                      <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
+                      <td className="border px-3 py-2">{formatAwdDate(row.ship_by) || '-'}</td>
+                      <td className="border px-3 py-2">
+                        <select
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          value={row.shipment_type || ''}
+                          onChange={(event) =>
+                            updateAwdInputRow(row.shipment_id, {
+                              shipment_type: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select</option>
+                          <option value="SEA">SEA</option>
+                          <option value="AIR">AIR</option>
+                        </select>
+                      </td>
+                      <td className="border px-3 py-2">
+                        <input
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          type="date"
+                          value={row.expected_reach_date || ''}
+                          onChange={(event) =>
+                            updateAwdInputRow(row.shipment_id, {
+                              expected_reach_date: event.target.value,
+                            })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {awdInputError && (
+              <div className="px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
+            )}
+
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-60"
+                onClick={() => closeAwdInputModal(null)}
+                disabled={awdInputSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                onClick={handleSaveAwdInputRows}
+                disabled={awdInputSaving}
+              >
+                {awdInputSaving ? 'Saving...' : 'Save and Open Dispatch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!embedded && (
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">

@@ -130,6 +130,19 @@ type FetchEtaHistory = Record<
   }
 >;
 
+type AwdDispatchInputRow = {
+  shipment_id: string;
+  shipment_status?: string | null;
+  sku?: string | null;
+  asin?: string | null;
+  expected_unit_quantity?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  ship_by?: string | null;
+  shipment_type?: string | null;
+  expected_reach_date?: string | null;
+};
+
 const ETA_HISTORY_STORAGE_KEY = "amazonFetchEtaHistory:v1";
 const MAX_ETA_HISTORY_SAMPLES = 20;
 const MIN_ACTIVE_ETA_SECONDS = 8;
@@ -798,6 +811,74 @@ async function fetchDispatchFile(params: {
   return { ok: true, url, blob };
 }
 
+async function fetchAwdDispatchInputs(params: {
+  marketplaceId: string;
+}) {
+  const token = getAuthToken();
+  const qs = new URLSearchParams({
+    marketplace_id: params.marketplaceId,
+  });
+
+  const url = `${API_BASE}/amazon_api/awd/inbound-shipments/dispatch-inputs?${qs.toString()}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok || data?.success === false) {
+    throw new Error(data?.error || `AWD dispatch inputs failed: ${res.status}`);
+  }
+
+  return Array.isArray(data?.items) ? data.items as AwdDispatchInputRow[] : [];
+}
+
+async function saveAwdDispatchInputs(params: {
+  marketplaceId: string;
+  shipments: Array<{
+    shipment_id: string;
+    shipment_type: string;
+    expected_reach_date: string;
+  }>;
+}) {
+  const token = getAuthToken();
+  const url = `${API_BASE}/amazon_api/awd/inbound-shipments/dispatch-inputs`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      marketplace_id: params.marketplaceId,
+      shipments: params.shipments,
+    }),
+  });
+
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+
+  if (!res.ok || data?.success === false) {
+    throw new Error(data?.error || `Saving AWD dispatch inputs failed: ${res.status}`);
+  }
+
+  return data;
+}
+
 
 async function fetchGeneratedPOFile(params: {
   country: string;
@@ -964,6 +1045,7 @@ async function runForecastAndPoSequence(params: {
   month: number | string;
   setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
   runEtaUnit?: <T>(unitId: string, fn: () => Promise<T>) => Promise<T>;
+  prepareAwdDispatchInputs?: () => Promise<void>;
 }) {
   const runMeasured =
     params.runEtaUnit ?? (async <T,>(_unitId: string, fn: () => Promise<T>) => fn());
@@ -981,6 +1063,17 @@ async function runForecastAndPoSequence(params: {
     currentGoingMonthName,
     currentGoingYearStr
   );
+
+  params.setStep(
+    8,
+    "Forecast",
+    0,
+    "Reviewing AWD in-transit shipment details..."
+  );
+
+  if (params.prepareAwdDispatchInputs) {
+    await params.prepareAwdDispatchInputs();
+  }
 
   params.setStep(
     8,
@@ -1327,6 +1420,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
   const [message, setMessage] = useState<string>("");
 
   const [busy, setBusy] = useState(false);
+  const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([]);
+  const [awdInputOpen, setAwdInputOpen] = useState(false);
+  const [awdInputSaving, setAwdInputSaving] = useState(false);
+  const [awdInputError, setAwdInputError] = useState("");
+  const awdInputResolverRef = useRef<((value: boolean) => void) | null>(null);
 
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [dynamicProgress, setDynamicProgress] = useState(0);
@@ -1607,6 +1705,80 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     [completeEtaUnit, startEtaUnit]
   );
 
+  const requestAwdDispatchInputs = useCallback(async () => {
+    if (!marketplaceIdUsed) return;
+
+    const rows = await fetchAwdDispatchInputs({ marketplaceId: marketplaceIdUsed });
+    if (!rows.length) return;
+
+    setAwdInputRows(
+      rows.map((row) => ({
+        ...row,
+        shipment_type: row.shipment_type || "",
+        expected_reach_date: row.expected_reach_date || "",
+      }))
+    );
+    setAwdInputError("");
+    setAwdInputOpen(true);
+
+    const shouldContinue = await new Promise<boolean>((resolve) => {
+      awdInputResolverRef.current = resolve;
+    });
+
+    if (!shouldContinue) {
+      throw new Error("AWD shipment details were not completed.");
+    }
+  }, [marketplaceIdUsed]);
+
+  const updateAwdInputRow = useCallback(
+    (shipmentId: string, patch: Partial<Pick<AwdDispatchInputRow, "shipment_type" | "expected_reach_date">>) => {
+      setAwdInputRows((rows) =>
+        rows.map((row) =>
+          row.shipment_id === shipmentId
+            ? { ...row, ...patch }
+            : row
+        )
+      );
+    },
+    []
+  );
+
+  const closeAwdInputModal = useCallback((shouldContinue: boolean) => {
+    setAwdInputOpen(false);
+    const resolve = awdInputResolverRef.current;
+    awdInputResolverRef.current = null;
+    resolve?.(shouldContinue);
+  }, []);
+
+  const handleSaveAwdInputRows = useCallback(async () => {
+    const missingRow = awdInputRows.find(
+      (row) => !row.shipment_type || !row.expected_reach_date
+    );
+
+    if (missingRow) {
+      setAwdInputError("Please select shipment type and expected reach date for every AWD shipment.");
+      return;
+    }
+
+    try {
+      setAwdInputSaving(true);
+      setAwdInputError("");
+      await saveAwdDispatchInputs({
+        marketplaceId: marketplaceIdUsed,
+        shipments: awdInputRows.map((row) => ({
+          shipment_id: row.shipment_id,
+          shipment_type: String(row.shipment_type || "").toUpperCase(),
+          expected_reach_date: String(row.expected_reach_date || ""),
+        })),
+      });
+      closeAwdInputModal(true);
+    } catch (error: any) {
+      setAwdInputError(error?.message || "Failed to save AWD shipment details.");
+    } finally {
+      setAwdInputSaving(false);
+    }
+  }, [awdInputRows, closeAwdInputModal, marketplaceIdUsed]);
+
   useEffect(() => {
     if (!busy) {
       etaPlanRef.current = null;
@@ -1857,6 +2029,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           month: mNum,
           setStep,
           runEtaUnit,
+          prepareAwdDispatchInputs: requestAwdDispatchInputs,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -2130,6 +2303,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           month: last.mNum,
           setStep,
           runEtaUnit,
+          prepareAwdDispatchInputs: requestAwdDispatchInputs,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -2212,6 +2386,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         year: lastMonth.y,
         month: lastMonth.mNum,
         setStep,
+        prepareAwdDispatchInputs: requestAwdDispatchInputs,
       });
 
       setMessage(
@@ -2342,6 +2517,100 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   return (
     <div className="w-full">
+      {awdInputOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-6xl rounded-lg bg-white shadow-xl">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h3 className="text-lg font-semibold text-charcoal-500">AWD Shipment Details</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Select shipment type and expected reach date before dispatch is generated.
+              </p>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto px-5 py-4">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                    <th className="border px-3 py-2">Shipment ID</th>
+                    <th className="border px-3 py-2">Status</th>
+                    <th className="border px-3 py-2">SKU</th>
+                    <th className="border px-3 py-2">Units</th>
+                    <th className="border px-3 py-2">Created At</th>
+                    <th className="border px-3 py-2">Updated At</th>
+                    <th className="border px-3 py-2">Ship By</th>
+                    <th className="border px-3 py-2">Shipment Type</th>
+                    <th className="border px-3 py-2">Expected Reach Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {awdInputRows.map((row) => (
+                    <tr key={row.shipment_id} className="text-gray-700">
+                      <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
+                      <td className="border px-3 py-2">{row.shipment_status || "-"}</td>
+                      <td className="border px-3 py-2 max-w-[220px] whitespace-normal break-words">{row.sku || "-"}</td>
+                      <td className="border px-3 py-2 text-center">{row.expected_unit_quantity ?? 0}</td>
+                      <td className="border px-3 py-2">{row.created_at ? row.created_at.slice(0, 10) : "-"}</td>
+                      <td className="border px-3 py-2">{row.updated_at ? row.updated_at.slice(0, 10) : "-"}</td>
+                      <td className="border px-3 py-2">{row.ship_by ? row.ship_by.slice(0, 10) : "-"}</td>
+                      <td className="border px-3 py-2">
+                        <select
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          value={row.shipment_type || ""}
+                          onChange={(event) =>
+                            updateAwdInputRow(row.shipment_id, {
+                              shipment_type: event.target.value,
+                            })
+                          }
+                        >
+                          <option value="">Select</option>
+                          <option value="SEA">SEA</option>
+                          <option value="AIR">AIR</option>
+                        </select>
+                      </td>
+                      <td className="border px-3 py-2">
+                        <input
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          type="date"
+                          value={row.expected_reach_date || ""}
+                          onChange={(event) =>
+                            updateAwdInputRow(row.shipment_id, {
+                              expected_reach_date: event.target.value,
+                            })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {awdInputError && (
+              <div className="px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
+            )}
+
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+                onClick={() => closeAwdInputModal(false)}
+                disabled={awdInputSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                onClick={handleSaveAwdInputRows}
+                disabled={awdInputSaving}
+              >
+                {awdInputSaving ? "Saving..." : "Save and Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl bg-white max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="items-center mb-2 p-4">

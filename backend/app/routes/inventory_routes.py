@@ -6020,6 +6020,8 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             created_at TIMESTAMPTZ,
             updated_at TIMESTAMPTZ,
             ship_by TIMESTAMPTZ,
+            shipment_type TEXT,
+            expected_reach_date DATE,
             synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     """))
@@ -6035,6 +6037,8 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS received_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS expiration_date TEXT,
+            ADD COLUMN IF NOT EXISTS shipment_type TEXT,
+            ADD COLUMN IF NOT EXISTS expected_reach_date DATE,
             ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     """))
 
@@ -6072,6 +6076,174 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             (user_id, marketplace_id, shipment_id, sku)
         WHERE sku IS NOT NULL AND TRIM(sku) <> ''
     """))
+
+
+def _get_auth_user_id_from_request() -> int | None:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.split(" ", 1)[1].strip()
+    payload, user_id, member_id = get_effective_user_id_from_token(token)
+    return int(payload.get("user_id") or user_id)
+
+
+@inventory_bp.route("/amazon_api/awd/inbound-shipments/dispatch-inputs", methods=["GET"])
+def get_awd_inbound_dispatch_inputs():
+    try:
+        user_id = _get_auth_user_id_from_request()
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+    marketplace_id = (request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
+
+    try:
+        with amazon_conn() as conn:
+            _ensure_awd_inbound_shipments_table(conn)
+            rows = conn.execute(text("""
+                WITH sku_rows AS (
+                    SELECT
+                        shipment_id,
+                        sku,
+                        STRING_AGG(DISTINCT COALESCE(asin, ''), ', ')
+                            FILTER (WHERE COALESCE(asin, '') <> '') AS asin,
+                        SUM(COALESCE(expected_unit_quantity, 0)) AS expected_unit_quantity,
+                        MAX(shipment_status) AS shipment_status,
+                        MIN(created_at) AS created_at,
+                        MAX(updated_at) AS updated_at,
+                        MAX(ship_by) AS ship_by,
+                        MAX(shipment_type) AS shipment_type,
+                        MAX(expected_reach_date) AS expected_reach_date
+                    FROM public.inventory_awd_inbound_shipments
+                    WHERE user_id = :user_id
+                      AND marketplace_id = :marketplace_id
+                      AND COALESCE(expected_unit_quantity, 0) > 0
+                      AND UPPER(REPLACE(COALESCE(shipment_status, ''), '-', '_')) NOT IN ('CANCELLED', 'CLOSED', 'DELIVERED')
+                    GROUP BY shipment_id, sku
+                )
+                SELECT
+                    shipment_id,
+                    MAX(shipment_status) AS shipment_status,
+                    STRING_AGG(DISTINCT sku, ', ') AS sku,
+                    STRING_AGG(DISTINCT asin, ', ') FILTER (WHERE COALESCE(asin, '') <> '') AS asin,
+                    SUM(COALESCE(expected_unit_quantity, 0)) AS expected_unit_quantity,
+                    MIN(created_at) AS created_at,
+                    MAX(updated_at) AS updated_at,
+                    MAX(ship_by) AS ship_by,
+                    MAX(shipment_type) AS shipment_type,
+                    MAX(expected_reach_date) AS expected_reach_date,
+                    JSONB_AGG(
+                        JSONB_BUILD_OBJECT(
+                            'sku', sku,
+                            'expected_unit_quantity', expected_unit_quantity
+                        )
+                        ORDER BY sku
+                    ) FILTER (WHERE COALESCE(sku, '') <> '') AS sku_quantities
+                FROM sku_rows
+                GROUP BY shipment_id
+                ORDER BY COALESCE(MAX(ship_by), MAX(updated_at), MIN(created_at)) ASC NULLS LAST, shipment_id ASC
+            """), {
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+            }).mappings().all()
+    except Exception as exc:
+        logger.exception("Failed to read AWD dispatch inputs")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        for key in ("created_at", "updated_at", "ship_by"):
+            value = item.get(key)
+            item[key] = value.isoformat() if value else None
+        reach_date = item.get("expected_reach_date")
+        item["expected_reach_date"] = reach_date.isoformat() if reach_date else None
+        item["expected_unit_quantity"] = int(item.get("expected_unit_quantity") or 0)
+        items.append(item)
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": marketplace_id,
+        "items": items,
+    }), 200
+
+
+@inventory_bp.route("/amazon_api/awd/inbound-shipments/dispatch-inputs", methods=["POST"])
+def save_awd_inbound_dispatch_inputs():
+    try:
+        user_id = _get_auth_user_id_from_request()
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    marketplace_id = (payload.get("marketplace_id") or request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
+
+    shipments = payload.get("shipments") or []
+    if not isinstance(shipments, list):
+        return jsonify({"success": False, "error": "shipments must be a list"}), 400
+
+    normalized_rows = []
+    for item in shipments:
+        if not isinstance(item, dict):
+            continue
+        shipment_id = str(item.get("shipment_id") or "").strip()
+        shipment_type = str(item.get("shipment_type") or "").strip().upper()
+        expected_reach_date = str(item.get("expected_reach_date") or "").strip()
+        if not shipment_id:
+            continue
+        if shipment_type not in {"SEA", "AIR"}:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have shipment_type SEA or AIR"}), 400
+        try:
+            datetime.strptime(expected_reach_date, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have expected_reach_date YYYY-MM-DD"}), 400
+        normalized_rows.append({
+            "shipment_id": shipment_id,
+            "shipment_type": shipment_type,
+            "expected_reach_date": expected_reach_date,
+        })
+
+    try:
+        saved = 0
+        with amazon_conn() as conn:
+            _ensure_awd_inbound_shipments_table(conn)
+            for row in normalized_rows:
+                result = conn.execute(text("""
+                    UPDATE public.inventory_awd_inbound_shipments
+                    SET shipment_type = :shipment_type,
+                        expected_reach_date = CAST(:expected_reach_date AS DATE)
+                    WHERE user_id = :user_id
+                      AND marketplace_id = :marketplace_id
+                      AND shipment_id = :shipment_id
+                """), {
+                    "user_id": int(user_id),
+                    "marketplace_id": marketplace_id,
+                    **row,
+                })
+                saved += int(result.rowcount or 0)
+    except Exception as exc:
+        logger.exception("Failed to save AWD dispatch inputs")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": marketplace_id,
+        "updated_rows": saved,
+    }), 200
 
 
 def _save_awd_inbound_shipments(
@@ -6533,12 +6705,7 @@ def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
             marketplace_id TEXT NOT NULL,
             shipment_id TEXT NOT NULL,
             shipment_name TEXT,
-            destination_fulfillment_center_id TEXT,
             shipment_status TEXT,
-            label_prep_type TEXT,
-            are_cases_required BOOLEAN,
-            confirmed_need_by_date DATE,
-            box_contents_source TEXT,
 
             seller_sku TEXT NOT NULL,
             fulfillment_network_sku TEXT,
@@ -6546,23 +6713,6 @@ def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
             quantity_received BIGINT NOT NULL DEFAULT 0,
             quantity_in_case BIGINT NOT NULL DEFAULT 0,
 
-            ship_from_name TEXT,
-            ship_from_address_line1 TEXT,
-            ship_from_address_line2 TEXT,
-            ship_from_district_or_county TEXT,
-            ship_from_city TEXT,
-            ship_from_state_or_province_code TEXT,
-            ship_from_country_code TEXT,
-            ship_from_postal_code TEXT,
-
-            estimated_box_contents_total_units BIGINT DEFAULT 0,
-            fee_per_unit_currency_code TEXT,
-            fee_per_unit_value NUMERIC(18, 6),
-            total_fee_currency_code TEXT,
-            total_fee_value NUMERIC(18, 6),
-
-            shipment_json JSONB,
-            shipment_item_json JSONB,
             synced_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
             created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
@@ -6576,8 +6726,49 @@ def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS fulfillment_network_sku TEXT,
             ADD COLUMN IF NOT EXISTS quantity_shipped BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS quantity_received BIGINT NOT NULL DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS quantity_in_case BIGINT NOT NULL DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS shipment_item_json JSONB;
+            ADD COLUMN IF NOT EXISTS quantity_in_case BIGINT NOT NULL DEFAULT 0;
+    """))
+
+    conn.execute(text("""
+        ALTER TABLE public.inventory_fba_inbound_shipments
+            ADD COLUMN IF NOT EXISTS "inboundPlanId" TEXT,
+            ADD COLUMN IF NOT EXISTS status TEXT,
+            ADD COLUMN IF NOT EXISTS "createdAt" TEXT,
+            ADD COLUMN IF NOT EXISTS "marketplaceIds" JSONB,
+            ADD COLUMN IF NOT EXISTS shipment_count BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS plan_box_count BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS msku TEXT,
+            ADD COLUMN IF NOT EXISTS fnsku TEXT,
+            ADD COLUMN IF NOT EXISTS asin TEXT,
+            ADD COLUMN IF NOT EXISTS quantity BIGINT NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS "shipmentId" TEXT,
+            ADD COLUMN IF NOT EXISTS "boxId" TEXT,
+            ADD COLUMN IF NOT EXISTS "packageId" TEXT,
+            ADD COLUMN IF NOT EXISTS name TEXT;
+    """))
+
+    conn.execute(text("""
+        ALTER TABLE public.inventory_fba_inbound_shipments
+            DROP COLUMN IF EXISTS destination_fulfillment_center_id,
+            DROP COLUMN IF EXISTS label_prep_type,
+            DROP COLUMN IF EXISTS are_cases_required,
+            DROP COLUMN IF EXISTS confirmed_need_by_date,
+            DROP COLUMN IF EXISTS box_contents_source,
+            DROP COLUMN IF EXISTS ship_from_name,
+            DROP COLUMN IF EXISTS ship_from_address_line1,
+            DROP COLUMN IF EXISTS ship_from_address_line2,
+            DROP COLUMN IF EXISTS ship_from_district_or_county,
+            DROP COLUMN IF EXISTS ship_from_city,
+            DROP COLUMN IF EXISTS ship_from_state_or_province_code,
+            DROP COLUMN IF EXISTS ship_from_country_code,
+            DROP COLUMN IF EXISTS ship_from_postal_code,
+            DROP COLUMN IF EXISTS estimated_box_contents_total_units,
+            DROP COLUMN IF EXISTS fee_per_unit_currency_code,
+            DROP COLUMN IF EXISTS fee_per_unit_value,
+            DROP COLUMN IF EXISTS total_fee_currency_code,
+            DROP COLUMN IF EXISTS total_fee_value,
+            DROP COLUMN IF EXISTS shipment_json,
+            DROP COLUMN IF EXISTS shipment_item_json;
     """))
 
     # The old table used one row per shipment. Replace that unique key with
@@ -6667,66 +6858,26 @@ def _save_fba_inbound_shipment_items(
         INSERT INTO public.inventory_fba_inbound_shipments (
             user_id, marketplace_id,
             shipment_id, shipment_name,
-            destination_fulfillment_center_id, shipment_status,
-            label_prep_type, are_cases_required,
-            confirmed_need_by_date, box_contents_source,
+            shipment_status,
             seller_sku, fulfillment_network_sku,
             quantity_shipped, quantity_received, quantity_in_case,
-            ship_from_name, ship_from_address_line1, ship_from_address_line2,
-            ship_from_district_or_county, ship_from_city,
-            ship_from_state_or_province_code, ship_from_country_code,
-            ship_from_postal_code,
-            estimated_box_contents_total_units,
-            fee_per_unit_currency_code, fee_per_unit_value,
-            total_fee_currency_code, total_fee_value,
-            shipment_json, shipment_item_json,
             synced_at, updated_at
         ) VALUES (
             :user_id, :marketplace_id,
             :shipment_id, :shipment_name,
-            :destination_fulfillment_center_id, :shipment_status,
-            :label_prep_type, :are_cases_required,
-            :confirmed_need_by_date, :box_contents_source,
+            :shipment_status,
             :seller_sku, :fulfillment_network_sku,
             :quantity_shipped, :quantity_received, :quantity_in_case,
-            :ship_from_name, :ship_from_address_line1, :ship_from_address_line2,
-            :ship_from_district_or_county, :ship_from_city,
-            :ship_from_state_or_province_code, :ship_from_country_code,
-            :ship_from_postal_code,
-            :estimated_box_contents_total_units,
-            :fee_per_unit_currency_code, :fee_per_unit_value,
-            :total_fee_currency_code, :total_fee_value,
-            CAST(:shipment_json AS JSONB), CAST(:shipment_item_json AS JSONB),
             NOW(), NOW()
         )
         ON CONFLICT (user_id, marketplace_id, shipment_id, seller_sku)
         DO UPDATE SET
             shipment_name = EXCLUDED.shipment_name,
-            destination_fulfillment_center_id = EXCLUDED.destination_fulfillment_center_id,
             shipment_status = EXCLUDED.shipment_status,
-            label_prep_type = EXCLUDED.label_prep_type,
-            are_cases_required = EXCLUDED.are_cases_required,
-            confirmed_need_by_date = EXCLUDED.confirmed_need_by_date,
-            box_contents_source = EXCLUDED.box_contents_source,
             fulfillment_network_sku = EXCLUDED.fulfillment_network_sku,
             quantity_shipped = EXCLUDED.quantity_shipped,
             quantity_received = EXCLUDED.quantity_received,
             quantity_in_case = EXCLUDED.quantity_in_case,
-            ship_from_name = EXCLUDED.ship_from_name,
-            ship_from_address_line1 = EXCLUDED.ship_from_address_line1,
-            ship_from_address_line2 = EXCLUDED.ship_from_address_line2,
-            ship_from_district_or_county = EXCLUDED.ship_from_district_or_county,
-            ship_from_city = EXCLUDED.ship_from_city,
-            ship_from_state_or_province_code = EXCLUDED.ship_from_state_or_province_code,
-            ship_from_country_code = EXCLUDED.ship_from_country_code,
-            ship_from_postal_code = EXCLUDED.ship_from_postal_code,
-            estimated_box_contents_total_units = EXCLUDED.estimated_box_contents_total_units,
-            fee_per_unit_currency_code = EXCLUDED.fee_per_unit_currency_code,
-            fee_per_unit_value = EXCLUDED.fee_per_unit_value,
-            total_fee_currency_code = EXCLUDED.total_fee_currency_code,
-            total_fee_value = EXCLUDED.total_fee_value,
-            shipment_json = EXCLUDED.shipment_json,
-            shipment_item_json = EXCLUDED.shipment_item_json,
             synced_at = NOW(),
             updated_at = NOW();
     """)
@@ -6743,42 +6894,17 @@ def _save_fba_inbound_shipment_items(
             if not shipment_id or not seller_sku:
                 continue
 
-            address = shipment.get("ShipFromAddress") or {}
-            fee = shipment.get("EstimatedBoxContentsFee") or {}
-            fee_per_unit = fee.get("FeePerUnit") or {}
-            total_fee = fee.get("TotalFee") or {}
-
             conn.execute(upsert_sql, {
                 "user_id": int(user_id),
                 "marketplace_id": marketplace_id,
                 "shipment_id": shipment_id,
                 "shipment_name": shipment.get("ShipmentName"),
-                "destination_fulfillment_center_id": shipment.get("DestinationFulfillmentCenterId"),
                 "shipment_status": shipment.get("ShipmentStatus"),
-                "label_prep_type": shipment.get("LabelPrepType"),
-                "are_cases_required": shipment.get("AreCasesRequired"),
-                "confirmed_need_by_date": _parse_fba_inbound_date(shipment.get("ConfirmedNeedByDate")),
-                "box_contents_source": shipment.get("BoxContentsSource"),
                 "seller_sku": seller_sku,
                 "fulfillment_network_sku": item.get("FulfillmentNetworkSKU"),
                 "quantity_shipped": _safe_int(item.get("QuantityShipped")),
                 "quantity_received": _safe_int(item.get("QuantityReceived")),
                 "quantity_in_case": _safe_int(item.get("QuantityInCase")),
-                "ship_from_name": address.get("Name"),
-                "ship_from_address_line1": address.get("AddressLine1"),
-                "ship_from_address_line2": address.get("AddressLine2"),
-                "ship_from_district_or_county": address.get("DistrictOrCounty"),
-                "ship_from_city": address.get("City"),
-                "ship_from_state_or_province_code": address.get("StateOrProvinceCode"),
-                "ship_from_country_code": address.get("CountryCode"),
-                "ship_from_postal_code": address.get("PostalCode"),
-                "estimated_box_contents_total_units": _safe_int(fee.get("TotalUnits")),
-                "fee_per_unit_currency_code": fee_per_unit.get("CurrencyCode"),
-                "fee_per_unit_value": _to_fba_decimal(fee_per_unit.get("Value")),
-                "total_fee_currency_code": total_fee.get("CurrencyCode"),
-                "total_fee_value": _to_fba_decimal(total_fee.get("Value")),
-                "shipment_json": json.dumps(shipment, default=str),
-                "shipment_item_json": json.dumps(item, default=str),
             })
             saved += 1
 
@@ -7340,6 +7466,205 @@ def _fba_2024_flatten_box_item(
     }
 
 
+def _first_non_empty(*values):
+    for value in values:
+        if value is not None and str(value).strip() != "":
+            return value
+    return None
+
+
+def _fba_2024_item_identity(item: dict) -> tuple[str, str, str]:
+    msku = str(item.get("msku") or item.get("sellerSku") or item.get("SellerSKU") or "").strip()
+    fnsku = str(item.get("fnsku") or item.get("fulfillmentNetworkSku") or item.get("FulfillmentNetworkSKU") or "").strip()
+    asin = str(item.get("asin") or item.get("ASIN") or "").strip()
+    return msku, fnsku, asin
+
+
+def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+
+    for plan in plans:
+        inbound_plan_id = str(plan.get("inboundPlanId") or "").strip()
+        summary = plan.get("summary") or {}
+        detail = plan.get("detail") or {}
+        status = _first_non_empty(detail.get("status"), summary.get("status"))
+        created_at = _first_non_empty(detail.get("createdAt"), summary.get("createdAt"))
+        marketplace_ids = _first_non_empty(detail.get("marketplaceIds"), summary.get("marketplaceIds"), [])
+        name = _first_non_empty(detail.get("name"), summary.get("name"))
+        shipment_count = len(plan.get("shipments") or [])
+        plan_box_count = len(plan.get("plan_boxes") or [])
+
+        def append_item_row(item: dict, *, shipment_id: str = "", box: dict | None = None, row_name=None, row_status=None, row_created_at=None):
+            if not isinstance(item, dict):
+                return
+
+            msku, fnsku, asin = _fba_2024_item_identity(item)
+            if not msku:
+                return
+
+            box = box or {}
+            rows.append({
+                "inboundPlanId": inbound_plan_id,
+                "status": _first_non_empty(row_status, status),
+                "createdAt": _first_non_empty(row_created_at, created_at),
+                "marketplaceIds": marketplace_ids,
+                "shipment_count": shipment_count,
+                "plan_box_count": plan_box_count,
+                "msku": msku,
+                "fnsku": fnsku,
+                "asin": asin,
+                "quantity": _safe_int(item.get("quantity")),
+                "shipmentId": str(shipment_id or "").strip(),
+                "boxId": str(box.get("boxId") or "").strip(),
+                "packageId": str(box.get("packageId") or "").strip(),
+                "name": _first_non_empty(row_name, name),
+            })
+
+        for shipment in plan.get("shipments") or []:
+            shipment_id = str(shipment.get("shipmentId") or "").strip()
+            shipment_detail = shipment.get("detail") or {}
+            shipment_status = shipment_detail.get("status")
+            shipment_name = shipment_detail.get("name")
+            shipment_created_at = shipment_detail.get("createdAt")
+            before_shipment_rows = len(rows)
+
+            for box in shipment.get("boxes") or []:
+                for item in box.get("items") or []:
+                    append_item_row(
+                        item,
+                        shipment_id=shipment_id,
+                        box=box,
+                        row_name=shipment_name,
+                        row_status=shipment_status,
+                        row_created_at=shipment_created_at,
+                    )
+
+            if len(rows) == before_shipment_rows:
+                for item in shipment.get("items") or []:
+                    append_item_row(
+                        item,
+                        shipment_id=shipment_id,
+                        row_name=shipment_name,
+                        row_status=shipment_status,
+                        row_created_at=shipment_created_at,
+                    )
+
+        if not any(str(row.get("inboundPlanId") or "") == inbound_plan_id for row in rows):
+            for box in plan.get("plan_boxes") or []:
+                for item in box.get("items") or []:
+                    append_item_row(item, box=box)
+
+        if not any(str(row.get("inboundPlanId") or "") == inbound_plan_id for row in rows):
+            for item in plan.get("plan_items") or []:
+                append_item_row(item)
+
+    aggregated: dict[tuple[str, str, str], dict] = {}
+    for row in rows:
+        shipment_id = row.get("shipmentId") or row.get("inboundPlanId") or ""
+        key = (str(row.get("inboundPlanId") or ""), str(shipment_id), str(row.get("msku") or ""))
+        current = aggregated.get(key)
+        if not current:
+            current = {**row, "shipmentId": str(shipment_id)}
+            aggregated[key] = current
+            continue
+
+        current["quantity"] = _safe_int(current.get("quantity")) + _safe_int(row.get("quantity"))
+        for col in ("boxId", "packageId"):
+            existing = [x.strip() for x in str(current.get(col) or "").split(",") if x.strip()]
+            candidate = str(row.get(col) or "").strip()
+            if candidate and candidate not in existing:
+                existing.append(candidate)
+            current[col] = ", ".join(existing)
+
+    return list(aggregated.values())
+
+
+def _save_fba_2024_inbound_plan_rows(
+    *,
+    rows: list[dict],
+    user_id: int,
+    marketplace_id: str,
+) -> int:
+    if not rows:
+        return 0
+
+    upsert_sql = text("""
+        INSERT INTO public.inventory_fba_inbound_shipments (
+            user_id, marketplace_id,
+            shipment_id, shipment_status, shipment_name,
+            seller_sku, fulfillment_network_sku, quantity_shipped,
+            "inboundPlanId", status, "createdAt", "marketplaceIds",
+            shipment_count, plan_box_count,
+            msku, fnsku, asin, quantity,
+            "shipmentId", "boxId", "packageId", name,
+            synced_at, updated_at
+        ) VALUES (
+            :user_id, :marketplace_id,
+            :shipment_id, :status, :name,
+            :msku, :fnsku, :quantity,
+            :inboundPlanId, :status, :createdAt, CAST(:marketplaceIds AS JSONB),
+            :shipment_count, :plan_box_count,
+            :msku, :fnsku, :asin, :quantity,
+            :shipmentId, :boxId, :packageId, :name,
+            NOW(), NOW()
+        )
+        ON CONFLICT (user_id, marketplace_id, shipment_id, seller_sku)
+        DO UPDATE SET
+            shipment_status = EXCLUDED.shipment_status,
+            shipment_name = EXCLUDED.shipment_name,
+            fulfillment_network_sku = EXCLUDED.fulfillment_network_sku,
+            quantity_shipped = EXCLUDED.quantity_shipped,
+            "inboundPlanId" = EXCLUDED."inboundPlanId",
+            status = EXCLUDED.status,
+            "createdAt" = EXCLUDED."createdAt",
+            "marketplaceIds" = EXCLUDED."marketplaceIds",
+            shipment_count = EXCLUDED.shipment_count,
+            plan_box_count = EXCLUDED.plan_box_count,
+            msku = EXCLUDED.msku,
+            fnsku = EXCLUDED.fnsku,
+            asin = EXCLUDED.asin,
+            quantity = EXCLUDED.quantity,
+            "shipmentId" = EXCLUDED."shipmentId",
+            "boxId" = EXCLUDED."boxId",
+            "packageId" = EXCLUDED."packageId",
+            name = EXCLUDED.name,
+            synced_at = NOW(),
+            updated_at = NOW();
+    """)
+
+    saved = 0
+    with amazon_conn() as conn:
+        _ensure_inventory_fba_inbound_shipments_table(conn)
+        for row in rows:
+            shipment_id = str(row.get("shipmentId") or row.get("inboundPlanId") or "").strip()
+            msku = str(row.get("msku") or "").strip()
+            if not shipment_id or not msku:
+                continue
+
+            conn.execute(upsert_sql, {
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+                "shipment_id": shipment_id,
+                "inboundPlanId": row.get("inboundPlanId"),
+                "status": row.get("status"),
+                "createdAt": row.get("createdAt"),
+                "marketplaceIds": json.dumps(row.get("marketplaceIds") or [], default=str),
+                "shipment_count": _safe_int(row.get("shipment_count")),
+                "plan_box_count": _safe_int(row.get("plan_box_count")),
+                "msku": msku,
+                "fnsku": row.get("fnsku"),
+                "asin": row.get("asin"),
+                "quantity": _safe_int(row.get("quantity")),
+                "shipmentId": row.get("shipmentId"),
+                "boxId": row.get("boxId"),
+                "packageId": row.get("packageId"),
+                "name": row.get("name"),
+            })
+            saved += 1
+
+    return saved
+
+
 def _build_fba_2024_inbound_plans_excel(
     *,
     marketplace_id: str,
@@ -7539,6 +7864,7 @@ def get_fba_2024_inbound_plans_all():
     include_shipments = request.args.get("include_shipments", "true").strip().lower() != "false"
     include_shipment_items = request.args.get("include_shipment_items", "true").strip().lower() != "false"
     include_shipment_boxes = request.args.get("include_shipment_boxes", "true").strip().lower() != "false"
+    store_in_db = request.args.get("store_in_db", "true").strip().lower() != "false"
 
     sort_by = (request.args.get("sort_by") or request.args.get("sortBy") or "LAST_UPDATED_TIME").strip().upper()
     sort_order = (request.args.get("sort_order") or request.args.get("sortOrder") or "DESC").strip().upper()
@@ -7704,6 +8030,31 @@ def get_fba_2024_inbound_plans_all():
         plans.append(plan_record)
         time.sleep(delay_seconds)
 
+    db_result = {
+        "table": "public.inventory_fba_inbound_shipments",
+        "saved_rows": 0,
+    }
+    if store_in_db:
+        try:
+            db_rows = _collect_fba_2024_inbound_plan_db_rows(plans)
+            db_result["saved_rows"] = _save_fba_2024_inbound_plan_rows(
+                rows=db_rows,
+                user_id=int(user_id or payload.get("user_id")),
+                marketplace_id=marketplace_id,
+            )
+        except Exception as exc:
+            logger.exception("Failed to save FBA 2024 inbound plan rows")
+            return jsonify({
+                "success": False,
+                "error": "Amazon data was fetched but database save failed",
+                "detail": str(exc),
+                "marketplace_id": marketplace_id,
+                "statuses": status_values,
+                "plan_count": len(plans),
+                "totals": totals,
+                "db": db_result,
+            }), 500
+
     export_format = (request.args.get("format") or "").strip().lower()
     download_excel = (
         export_format in {"excel", "xlsx"}
@@ -7748,6 +8099,8 @@ def get_fba_2024_inbound_plans_all():
         "list_pages_fetched": list_pages_fetched,
         "plan_count": len(plans),
         "totals": totals,
+        "store_in_db": store_in_db,
+        "db": db_result,
         "list_errors": list_errors,
         "detail_errors": detail_errors,
         "plans": plans,

@@ -1715,6 +1715,7 @@ export default function InventoryFlowPage() {
   const lastPoTriggerRef = useRef<string | null>(null);
   const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
   const [showAllPoRows, setShowAllPoRows] = useState(false);
+  const [dispatchPromptKey, setDispatchPromptKey] = useState(0);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
@@ -1884,6 +1885,10 @@ export default function InventoryFlowPage() {
   }, []);
 
   const handleTabChange = (tab: InventoryFlowTab) => {
+    if (tab === 'dispatch') {
+      setDispatchPromptKey((current) => current + 1);
+    }
+
     setActiveTab(tab);
     const hash = TAB_TO_HASH[tab];
 
@@ -2648,6 +2653,7 @@ export default function InventoryFlowPage() {
                       selectedYearProp={sharedYear}
                       showAllRowsProp={showAllDispatchRows}
                       onShowAllRowsChange={setShowAllDispatchRows}
+                      promptOnOpenKey={dispatchPromptKey}
                       onProductNameClick={(productName, sku) =>
                         void openProductDrawer(productName, sku, sharedMonth, sharedYear)
                       }

@@ -1729,6 +1729,167 @@ def fetch_currentinventory_dispatch_quantities(
     return out
 
 
+def fetch_awd_inbound_in_transit_quantities(
+    forecast_totals: pd.DataFrame,
+    engine1,
+    *,
+    user_id: int,
+    country: str | None,
+    inventory_date: str,
+    forecast_sku_col: str = "sku",
+    debug: bool = False,
+) -> pd.DataFrame:
+    """
+    Adds AWD in-transit units from public.inventory_awd_inbound_shipments.
+
+    Dispatch shows this as In Transit Inventory > AWD. It uses
+    expected_unit_quantity for open shipment statuses, grouped by SKU.
+    """
+    out = forecast_totals.copy()
+    out["in_transit_awd"] = 0
+    for detail_col in [
+        "awd_shipment_id",
+        "awd_created_at",
+        "awd_updated_at",
+        "awd_ship_by",
+        "awd_shipment_type",
+        "awd_expected_reach_date",
+    ]:
+        out[detail_col] = ""
+
+    if forecast_sku_col not in out.columns:
+        return out
+
+    marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get((country or "").strip().lower())
+    if not marketplace_id:
+        return out
+
+    try:
+        datetime.strptime(str(inventory_date), "%Y-%m-%d")
+    except Exception:
+        inventory_date = date.today().strftime("%Y-%m-%d")
+
+    try:
+        inspector = inspect(engine1)
+        if "inventory_awd_inbound_shipments" not in set(inspector.get_table_names(schema="public")):
+            if debug:
+                print("[AWD INBOUND] inventory_awd_inbound_shipments table not found")
+            return out
+
+        columns = {col["name"] for col in inspector.get_columns("inventory_awd_inbound_shipments", schema="public")}
+        required = {
+            "user_id",
+            "marketplace_id",
+            "shipment_status",
+            "sku",
+            "expected_unit_quantity",
+            "shipment_type",
+            "expected_reach_date",
+        }
+        if not required.issubset(columns):
+            if debug:
+                print(f"[AWD INBOUND] Missing columns: {sorted(required - columns)}")
+            return out
+
+        awd_df = pd.read_sql(
+            text("""
+                SELECT
+                    sku,
+                    COALESCE(asin, '') AS asin,
+                    SUM(COALESCE(expected_unit_quantity, 0)) AS in_transit_awd,
+                    STRING_AGG(DISTINCT shipment_id, ', ') AS awd_shipment_id,
+                    STRING_AGG(DISTINCT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), ', ')
+                        FILTER (WHERE created_at IS NOT NULL) AS awd_created_at,
+                    STRING_AGG(DISTINCT TO_CHAR(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), ', ')
+                        FILTER (WHERE updated_at IS NOT NULL) AS awd_updated_at,
+                    STRING_AGG(DISTINCT TO_CHAR(ship_by AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), ', ')
+                        FILTER (WHERE ship_by IS NOT NULL) AS awd_ship_by,
+                    STRING_AGG(DISTINCT shipment_type, ', ')
+                        FILTER (WHERE COALESCE(shipment_type, '') <> '') AS awd_shipment_type,
+                    STRING_AGG(DISTINCT TO_CHAR(expected_reach_date, 'YYYY-MM-DD'), ', ')
+                        FILTER (WHERE expected_reach_date IS NOT NULL) AS awd_expected_reach_date
+                FROM public.inventory_awd_inbound_shipments
+                WHERE user_id = :user_id
+                  AND marketplace_id = :marketplace_id
+                  AND COALESCE(expected_unit_quantity, 0) > 0
+                  AND UPPER(REPLACE(COALESCE(shipment_status, ''), '-', '_')) NOT IN ('CANCELLED', 'CLOSED', 'DELIVERED')
+                  AND (ship_by IS NULL OR ship_by::date >= CAST(:inventory_date AS date))
+                  AND (expected_reach_date IS NULL OR expected_reach_date >= CAST(:inventory_date AS date))
+                GROUP BY sku, COALESCE(asin, '')
+            """),
+            con=engine1,
+            params={
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+                "inventory_date": inventory_date,
+            },
+        )
+    except Exception as e:
+        if debug:
+            print(f"[AWD INBOUND] Error reading inbound shipments: {e}")
+        return out
+
+    if awd_df.empty:
+        return out
+
+    awd_df["sku_norm"] = awd_df["sku"].map(_norm_sku)
+    awd_df["in_transit_awd"] = (
+        pd.to_numeric(awd_df["in_transit_awd"], errors="coerce")
+        .fillna(0)
+        .round()
+        .astype(int)
+    )
+    awd_totals = (
+        awd_df[awd_df["sku_norm"] != ""]
+        .groupby("sku_norm", as_index=False)
+        .agg({
+            "in_transit_awd": "sum",
+            "awd_shipment_id": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+            "awd_created_at": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+            "awd_updated_at": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+            "awd_ship_by": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+            "awd_shipment_type": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+            "awd_expected_reach_date": lambda s: ", ".join(dict.fromkeys(v for x in s.dropna() for v in str(x).split(", ") if v)),
+        })
+    )
+
+    out["sku_norm"] = out[forecast_sku_col].map(_norm_sku)
+    out = out.drop(
+        columns=[
+            "in_transit_awd",
+            "awd_shipment_id",
+            "awd_created_at",
+            "awd_updated_at",
+            "awd_ship_by",
+            "awd_shipment_type",
+            "awd_expected_reach_date",
+        ],
+        errors="ignore",
+    ).merge(
+        awd_totals,
+        on="sku_norm",
+        how="left",
+    )
+    out.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+    out["in_transit_awd"] = (
+        pd.to_numeric(out["in_transit_awd"], errors="coerce")
+        .fillna(0)
+        .round()
+        .astype(int)
+    )
+    for detail_col in [
+        "awd_shipment_id",
+        "awd_created_at",
+        "awd_updated_at",
+        "awd_ship_by",
+        "awd_shipment_type",
+        "awd_expected_reach_date",
+    ]:
+        out[detail_col] = out[detail_col].fillna("").astype(str)
+
+    return out
+
+
 def add_air_sea_dispatch_split(
     inventory_forecast: pd.DataFrame,
     forecast_cols: list[str],
@@ -2569,6 +2730,13 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         country=country,
         inventory_date=snapshot_date,
     )
+    inventory_forecast = fetch_awd_inbound_in_transit_quantities(
+        inventory_forecast,
+        engine1,
+        user_id=user_id,
+        country=country,
+        inventory_date=snapshot_date,
+    )
     # ✅ PRODUCT NAME from monthly user_* tables (already present in new_df)
     product_names = pd.DataFrame(columns=["sku", "Product Name"])
 
@@ -2680,6 +2848,20 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         inventory_forecast["Projected Sales Total"]
         - dispatch_in_stock
     ).clip(lower=0).round().astype(int)
+    in_transit_fba = (
+        inventory_forecast["in_transit_fba"]
+        if "in_transit_fba" in inventory_forecast.columns
+        else pd.Series(0, index=inventory_forecast.index)
+    )
+    in_transit_awd = (
+        inventory_forecast["in_transit_awd"]
+        if "in_transit_awd" in inventory_forecast.columns
+        else pd.Series(0, index=inventory_forecast.index)
+    )
+    inventory_forecast["total_sellable_in_transit"] = (
+        pd.to_numeric(in_transit_fba, errors="coerce").fillna(0)
+        + pd.to_numeric(in_transit_awd, errors="coerce").fillna(0)
+    ).round().astype(int)
     inventory_forecast["To be Dispatch"] = (
         inventory_forecast["Shortfall Unit"]
         - inventory_forecast["total_sellable_in_transit"]
@@ -2727,7 +2909,6 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     total_row["Product Name"] = "Total"
     total_row["SKU Type"] = "-"
     total_row["Inventory Coverage Ratio Before Dispatch"] = "-"
-
     inventory_forecast = pd.concat([inventory_forecast, total_row], ignore_index=True)
 
     # final columns

@@ -22,6 +22,7 @@ from io import BytesIO
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL')
+db_url_amazon = os.getenv('DATABASE_AMAZON_URL')
 
 
 
@@ -43,6 +44,21 @@ conv_engine = create_engine(
     max_overflow=10,
     pool_recycle=1800
 )
+
+amazon_engine = create_engine(
+    db_url_amazon,
+    pool_pre_ping=True,
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=1800
+) if db_url_amazon else None
+
+INVENTORY_MARKETPLACE_BY_COUNTRY = {
+    'uk': 'A1F83G8C2ARO7P',
+    'gb': 'A1F83G8C2ARO7P',
+    'us': 'ATVPDKIKX0DER',
+    'usa': 'ATVPDKIKX0DER',
+}
 
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 
@@ -370,6 +386,97 @@ def getDispatchfile():
 
             return cleaned
 
+        def month_start_date(month_name: str, year_value: int) -> str:
+            parsed = datetime.strptime(month_name.strip().title(), "%B")
+            return datetime(year_value, parsed.month, 1).strftime("%Y-%m-%d")
+
+        def refresh_awd_in_transit_from_db(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
+            refreshed = df.copy()
+            if amazon_engine is None or 'sku' not in refreshed.columns:
+                return refreshed
+
+            marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get(ctry.strip().lower())
+            if not marketplace_id:
+                return refreshed
+
+            try:
+                selected_month_start = month_start_date(requested_month, requested_year)
+            except Exception:
+                selected_month_start = datetime(requested_year, 1, 1).strftime("%Y-%m-%d")
+
+            try:
+                awd_df = pd.read_sql(
+                    text("""
+                        SELECT
+                            UPPER(TRIM(sku)) AS sku_norm,
+                            SUM(COALESCE(expected_unit_quantity, 0)) AS in_transit_awd
+                        FROM public.inventory_awd_inbound_shipments
+                        WHERE user_id = :user_id
+                          AND marketplace_id = :marketplace_id
+                          AND COALESCE(expected_unit_quantity, 0) > 0
+                          AND UPPER(REPLACE(COALESCE(shipment_status, ''), '-', '_')) NOT IN ('CANCELLED', 'CLOSED', 'DELIVERED')
+                          AND (ship_by IS NULL OR ship_by::date >= CAST(:selected_month_start AS date))
+                          AND (expected_reach_date IS NULL OR expected_reach_date >= CAST(:selected_month_start AS date))
+                        GROUP BY UPPER(TRIM(sku))
+                    """),
+                    con=amazon_engine,
+                    params={
+                        "user_id": int(user_id),
+                        "marketplace_id": marketplace_id,
+                        "selected_month_start": selected_month_start,
+                    },
+                )
+            except Exception:
+                return refreshed
+
+            if awd_df.empty:
+                return refreshed
+
+            awd_df["sku_norm"] = awd_df["sku_norm"].astype(str).str.strip().str.upper()
+            awd_df["in_transit_awd"] = pd.to_numeric(
+                awd_df["in_transit_awd"],
+                errors="coerce",
+            ).fillna(0)
+
+            awd_lookup = awd_df.set_index("sku_norm")["in_transit_awd"].to_dict()
+            refreshed["sku_norm"] = refreshed["sku"].astype(str).str.strip().str.upper()
+            refreshed["In Transit AWD"] = refreshed["sku_norm"].map(awd_lookup).fillna(0)
+            refreshed.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+
+            if "In Transit FBA" not in refreshed.columns:
+                refreshed["In Transit FBA"] = 0
+            refreshed["In Transit FBA"] = pd.to_numeric(
+                refreshed["In Transit FBA"],
+                errors="coerce",
+            ).fillna(0)
+            refreshed["In Transit AWD"] = pd.to_numeric(
+                refreshed["In Transit AWD"],
+                errors="coerce",
+            ).fillna(0)
+            refreshed["In transit"] = refreshed["In Transit FBA"] + refreshed["In Transit AWD"]
+
+            if "Projected Sales Total" in refreshed.columns:
+                if "In stock" not in refreshed.columns:
+                    refreshed["In stock"] = (
+                        pd.to_numeric(refreshed.get("FBA", 0), errors="coerce").fillna(0)
+                        + pd.to_numeric(refreshed.get("AWD", 0), errors="coerce").fillna(0)
+                    )
+                refreshed["In stock"] = pd.to_numeric(
+                    refreshed["In stock"],
+                    errors="coerce",
+                ).fillna(0)
+                refreshed["Shortfall Unit"] = (
+                    pd.to_numeric(refreshed["Projected Sales Total"], errors="coerce").fillna(0)
+                    - refreshed["In stock"]
+                ).clip(lower=0)
+                refreshed["To be Dispatch"] = (
+                    refreshed["Shortfall Unit"] - refreshed["In transit"]
+                ).clip(lower=0)
+                refreshed["SEA"] = refreshed["To be Dispatch"].clip(lower=0)
+                refreshed["AIR"] = 0
+
+            return refreshed
+
         def build_global_dispatch_file(frames: list[pd.DataFrame]) -> BytesIO:
             combined_df = pd.concat(frames, ignore_index=True)
 
@@ -548,7 +655,7 @@ def getDispatchfile():
 
             frames = []
 
-            for row in (uk_row, us_row):
+            for source_country, row in (('uk', uk_row), ('us', us_row)):
                 if not row:
                     continue
 
@@ -558,6 +665,7 @@ def getDispatchfile():
 
                 df = read_dispatch_dataframe(data_bytes)
                 df = clean_dispatch_dataframe(df)
+                df = refresh_awd_in_transit_from_db(df, source_country)
 
                 if not df.empty:
                     frames.append(df)
@@ -586,8 +694,13 @@ def getDispatchfile():
         if not data_bytes:
             return jsonify({'error': 'Stored file is empty/corrupt'}), 500
 
+        df = read_dispatch_dataframe(data_bytes)
+        df = clean_dispatch_dataframe(df)
+        df = refresh_awd_in_transit_from_db(df, country.lower())
+        output = build_global_dispatch_file([df])
+
         return send_file(
-            BytesIO(data_bytes),
+            output,
             download_name=filename or f"{country.lower()}_dispatch.xlsx",
             mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             as_attachment=False
