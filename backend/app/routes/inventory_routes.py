@@ -6017,19 +6017,9 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
             received_unit_quantity BIGINT NOT NULL DEFAULT 0,
             expiration_date TEXT,
-            lot_code TEXT,
-            prep_category TEXT,
-            prep_owner TEXT,
-            label_owner TEXT,
             created_at TIMESTAMPTZ,
             updated_at TIMESTAMPTZ,
             ship_by TIMESTAMPTZ,
-            origin_address JSONB NOT NULL DEFAULT '{}'::jsonb,
-            destination_address JSONB NOT NULL DEFAULT '{}'::jsonb,
-            sku_quantity_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            container_product_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            shipment_json JSONB NOT NULL DEFAULT '{}'::jsonb,
             synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     """))
@@ -6045,17 +6035,27 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS received_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS expiration_date TEXT,
-            ADD COLUMN IF NOT EXISTS lot_code TEXT,
-            ADD COLUMN IF NOT EXISTS prep_category TEXT,
-            ADD COLUMN IF NOT EXISTS prep_owner TEXT,
-            ADD COLUMN IF NOT EXISTS label_owner TEXT,
-            ADD COLUMN IF NOT EXISTS sku_quantity_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS container_product_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS origin_address JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS destination_address JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-            ADD COLUMN IF NOT EXISTS shipment_json JSONB NOT NULL DEFAULT '{}'::jsonb,
             ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """))
+
+    conn.execute(text("""
+        ALTER TABLE public.inventory_awd_inbound_shipments
+            DROP COLUMN IF EXISTS expected_quantity,
+            DROP COLUMN IF EXISTS received_quantity,
+            DROP COLUMN IF EXISTS remaining_quantity,
+            DROP COLUMN IF EXISTS origin_address,
+            DROP COLUMN IF EXISTS destination_address,
+            DROP COLUMN IF EXISTS received_quantities,
+            DROP COLUMN IF EXISTS shipment_sku_quantities,
+            DROP COLUMN IF EXISTS shipment_container_quantities,
+            DROP COLUMN IF EXISTS summary_json,
+            DROP COLUMN IF EXISTS shipment_json,
+            DROP COLUMN IF EXISTS lot_code,
+            DROP COLUMN IF EXISTS prep_category,
+            DROP COLUMN IF EXISTS prep_owner,
+            DROP COLUMN IF EXISTS label_owner,
+            DROP COLUMN IF EXISTS sku_quantity_json,
+            DROP COLUMN IF EXISTS container_product_json
     """))
 
     # Remove the old one-row-per-shipment uniqueness rule, then create SKU-level uniqueness.
@@ -6091,11 +6091,9 @@ def _save_awd_inbound_shipments(
             sku, asin,
             expected_case_quantity, received_case_quantity, case_difference,
             units_per_case, expected_unit_quantity, received_unit_quantity,
-            expiration_date, lot_code, prep_category, prep_owner, label_owner,
+            expiration_date,
             created_at, updated_at, ship_by,
-            origin_address, destination_address,
-            sku_quantity_json, container_product_json,
-            summary_json, shipment_json, synced_at
+            synced_at
         ) VALUES (
             :user_id, :marketplace_id, :shipment_id, :order_id,
             :external_reference_id, :shipment_status, :warehouse_reference_id,
@@ -6103,12 +6101,10 @@ def _save_awd_inbound_shipments(
             :sku, :asin,
             :expected_case_quantity, :received_case_quantity, :case_difference,
             :units_per_case, :expected_unit_quantity, :received_unit_quantity,
-            :expiration_date, :lot_code, :prep_category, :prep_owner, :label_owner,
+            :expiration_date,
             CAST(:created_at AS TIMESTAMPTZ), CAST(:updated_at AS TIMESTAMPTZ),
             CAST(:ship_by AS TIMESTAMPTZ),
-            CAST(:origin_address AS JSONB), CAST(:destination_address AS JSONB),
-            CAST(:sku_quantity_json AS JSONB), CAST(:container_product_json AS JSONB),
-            CAST(:summary_json AS JSONB), CAST(:shipment_json AS JSONB), NOW()
+            NOW()
         )
         ON CONFLICT (user_id, marketplace_id, shipment_id, sku)
         WHERE sku IS NOT NULL AND TRIM(sku) <> ''
@@ -6127,19 +6123,9 @@ def _save_awd_inbound_shipments(
             expected_unit_quantity = EXCLUDED.expected_unit_quantity,
             received_unit_quantity = EXCLUDED.received_unit_quantity,
             expiration_date = EXCLUDED.expiration_date,
-            lot_code = EXCLUDED.lot_code,
-            prep_category = EXCLUDED.prep_category,
-            prep_owner = EXCLUDED.prep_owner,
-            label_owner = EXCLUDED.label_owner,
             created_at = EXCLUDED.created_at,
             updated_at = EXCLUDED.updated_at,
             ship_by = EXCLUDED.ship_by,
-            origin_address = EXCLUDED.origin_address,
-            destination_address = EXCLUDED.destination_address,
-            sku_quantity_json = EXCLUDED.sku_quantity_json,
-            container_product_json = EXCLUDED.container_product_json,
-            summary_json = EXCLUDED.summary_json,
-            shipment_json = EXCLUDED.shipment_json,
             synced_at = NOW()
     """)
 
@@ -6168,7 +6154,7 @@ def _save_awd_inbound_shipments(
             carrier = shipment.get("carrierCode") or summary.get("carrierCode") or {}
             sku_rows = shipment.get("shipmentSkuQuantities") or []
 
-            # Container details provide ASIN, units/case, expiration and prep fields.
+            # Container details provide ASIN, units/case, and expiration.
             container_by_sku: dict[str, dict] = {}
             for container in shipment.get("shipmentContainerQuantities") or []:
                 if not isinstance(container, dict):
@@ -6183,16 +6169,10 @@ def _save_awd_inbound_shipments(
                         continue
                     attributes = product.get("attributes") or []
                     asin = next((a.get("value") for a in attributes if isinstance(a, dict) and a.get("name") == "asin"), None)
-                    prep = product.get("prepDetails") or {}
                     container_by_sku[sku_key] = {
                         "asin": asin,
                         "units_per_case": _safe_int(product.get("quantity")),
                         "expiration": product.get("expiration"),
-                        "lot_code": product.get("lotCode") or product.get("lot_code"),
-                        "prep_category": prep.get("prepCategory"),
-                        "prep_owner": prep.get("prepOwner"),
-                        "label_owner": prep.get("labelOwner"),
-                        "raw": product,
                     }
 
             for sku_row in sku_rows:
@@ -6226,19 +6206,9 @@ def _save_awd_inbound_shipments(
                     "expected_unit_quantity": expected_cases * units_per_case,
                     "received_unit_quantity": received_cases * units_per_case,
                     "expiration_date": extra.get("expiration"),
-                    "lot_code": extra.get("lot_code"),
-                    "prep_category": extra.get("prep_category"),
-                    "prep_owner": extra.get("prep_owner"),
-                    "label_owner": extra.get("label_owner"),
                     "created_at": shipment.get("createdAt") or summary.get("createdAt"),
                     "updated_at": shipment.get("updatedAt") or summary.get("updatedAt"),
                     "ship_by": shipment.get("shipBy") or summary.get("shipBy"),
-                    "origin_address": json.dumps(shipment.get("originAddress") or {}, default=str),
-                    "destination_address": json.dumps(shipment.get("destinationAddress") or {}, default=str),
-                    "sku_quantity_json": json.dumps(sku_row, default=str),
-                    "container_product_json": json.dumps(extra.get("raw") or {}, default=str),
-                    "summary_json": json.dumps(summary, default=str),
-                    "shipment_json": json.dumps(shipment, default=str),
                 })
                 saved += 1
 
