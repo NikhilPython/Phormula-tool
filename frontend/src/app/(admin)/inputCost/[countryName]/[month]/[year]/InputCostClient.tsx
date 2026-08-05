@@ -7301,7 +7301,7 @@ export default function InputCostPage({ params }: Params) {
           {activeTab === 'recon-table' && (
             <div
               className={[
-                "relative z-0 mt-10 w-full rounded-xl border border-gray-200 bg-white",
+                "relative z-0 mt-2 w-full rounded-xl border border-gray-200 bg-white",
                 "overflow-x-auto",
                 "[-webkit-overflow-scrolling:touch]",
               ].join(" ")}
