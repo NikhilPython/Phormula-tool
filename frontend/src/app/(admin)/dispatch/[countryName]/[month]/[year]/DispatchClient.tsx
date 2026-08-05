@@ -52,6 +52,7 @@ type DispatchPageProps = {
   showAllRowsProp?: boolean
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
   promptOnOpenKey?: number
+  onProductNameClick?: (productName: string, sku?: string) => void
 }
 
 type AwdDispatchInputRow = {
@@ -76,7 +77,6 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   gb: 'A1F83G8C2ARO7P',
   us: 'ATVPDKIKX0DER',
   usa: 'ATVPDKIKX0DER',
-  onProductNameClick?: (productName: string, sku?: string) => void
 }
 
 const monthNames = [
@@ -435,10 +435,10 @@ export default function DispatchPage({
   const [isInitialized, setIsInitialized] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [noData, setNoData] = useState(false)
-  const monthdps = useMemo(
-  () => [...monthNames],
-  []
-)
+  const monthdps = useMemo<string[]>(
+    () => [...monthNames],
+    []
+  )
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
   const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([])
   const [awdInputOpen, setAwdInputOpen] = useState(false)
