@@ -263,11 +263,26 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     [otherSkuProductNames]
   );
 
+  const journeyRequestKey = useMemo(
+    () =>
+      [
+        String(productname || "").trim().toLowerCase(),
+        scope,
+        chartCurrency,
+        isOtherSkus ? "other-skus" : "single-sku",
+        otherSkuKey,
+      ].join("|"),
+    [productname, scope, chartCurrency, isOtherSkus, otherSkuKey]
+  );
+
+  const [resolvedRequestKey, setResolvedRequestKey] = useState<string | null>(null);
+
   useEffect(() => {
     const cleanProductName = String(productname || "").trim();
 
     if (!cleanProductName) {
       setLoading(false);
+      setResolvedRequestKey(null);
       setError("");
       setJourneyData({ uk: [], global: [], us: [], ca: [] });
       return;
@@ -471,7 +486,10 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         setError(err?.message || "Failed to fetch data from server");
         setJourneyData({ uk: [], global: [], us: [], ca: [] });
       } finally {
-        setLoading(false);
+        if (!ac.signal.aborted) {
+          setResolvedRequestKey(journeyRequestKey);
+          setLoading(false);
+        }
       }
     };
 
@@ -486,7 +504,13 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     chartCurrency,
     isOtherSkus,
     otherSkuKey,
+    journeyRequestKey,
   ]);
+
+  const isJourneyLoading =
+    loading ||
+    (Boolean(String(productname || "").trim()) &&
+      resolvedRequestKey !== journeyRequestKey);
 
   const visibleCountries: CountryKey[] =
     scope === "uk"
@@ -934,7 +958,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   return (
     <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
 
-      {error && !loading && (
+      {error && !isJourneyLoading && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
           <div className="flex items-center">
             <div className="mr-3 text-xl text-red-600">❌</div>
@@ -988,7 +1012,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
               onTouchStart={() => setIsDraggingChart(true)}
               onTouchEnd={() => setIsDraggingChart(false)}
             >
-              {loading ? (
+              {isJourneyLoading ? (
                 <Loader fullscreen={false} transparent />
               ) : chartJSData?.labels?.length ? (
                 <>

@@ -107,7 +107,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
     year?: string;
   };
 
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [activeTab, setActiveTab] = useState<TrendTab>("sales_cm1");
   const [isDraggingChart, setIsDraggingChart] = useState(false);
@@ -289,6 +289,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         us: [],
         ca: [],
       });
+      setLoading(false);
       return;
     }
 
@@ -1116,8 +1117,8 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
   return (
     <div className="w-full">
       {loading && (
-        <div className="flex min-h-[calc(100vh-80px)] items-center justify-center text-center">
-          <Loader transparent />
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <Loader fullscreen transparent />
         </div>
       )}
 
@@ -1130,7 +1131,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
         </div>
       )}
 
-      {!loading && !error && (
+      {!error && (
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
@@ -1187,7 +1188,9 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
               onTouchStart={() => setIsDraggingChart(true)}
               onTouchEnd={() => setIsDraggingChart(false)}
             >
-              {chartJSData?.labels?.length ? (
+              {loading ? (
+                <Loader fullscreen={false} transparent />
+              ) : chartJSData?.labels?.length ? (
                 <>
                   {!isDraggingChart && allLabels.length > 12 && (
                     <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
