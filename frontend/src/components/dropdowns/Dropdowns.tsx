@@ -11091,6 +11091,10 @@ lines.push(
                       isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
                     }
                     initialProductName={productWiseInitialProductName}
+                    sharedInsightLoading={
+                      !isDemoMode &&
+                      (aiPanelLoading || (!aiPanel && !aiPanelError))
+                    }
 
                     // ✅ Same source as Dropdown drawer
                     sharedInsightData={{

@@ -54,6 +54,7 @@ interface ProductwisePerformanceProps {
   selectedYearProp?: number | "";
   initialProductName?: string;
   sharedInsightData?: SharedInsightData;
+  sharedInsightLoading?: boolean;
 }
 
 const toSlug = (name: string) => encodeURIComponent(name.trim());
@@ -246,6 +247,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   selectedYearProp,
   initialProductName = "",
   sharedInsightData,
+  sharedInsightLoading = false,
 }) => {
   const { homeCurrency, setHomeCurrency, formatHomeAmount } = useFx();
   const { data: userData } = useGetUserDataQuery();
@@ -2336,6 +2338,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   }, [visibleCountryCards]);
 
   const isMultiCountry = visibleCountryCards.length > 1;
+  const isInsightContentLoading = insightsLoading || sharedInsightLoading;
 
   return (
     <div className="w-full space-y-4">
@@ -2345,15 +2348,15 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         </div>
       )}
 
-      {insightsLoading && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6">
+      {isInsightContentLoading && (
+        <div className="flex min-h-[260px] items-center justify-center rounded-xl border border-slate-200 bg-white p-6">
           <Loader fullscreen={false} transparent />
         </div>
       )}
 
-      {!insightsLoading && renderInlineAiInsightSection()}
+      {!isInsightContentLoading && renderInlineAiInsightSection()}
 
-      {!selectedSku && !sharedInsightData?.blocks?.length && (
+      {!isInsightContentLoading && !selectedSku && !sharedInsightData?.blocks?.length && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-charcoal-500">
           No SKU-wise insight data available for this period.
         </div>
