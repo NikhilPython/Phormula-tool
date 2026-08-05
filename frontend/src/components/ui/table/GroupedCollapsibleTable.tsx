@@ -863,6 +863,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const getStickyBodyBackgroundClassName = (rowClassName?: string) => {
     if (rowClassName?.includes("bg-[#EFEFEF]")) return "bg-[#EFEFEF]";
+    if (rowClassName?.includes("bg-[#F8F8F8]")) return "bg-[#F8F8F8]";
     if (rowClassName?.includes("bg-gray-50")) return "bg-gray-50";
     if (rowClassName?.includes("bg-gray-100")) return "bg-gray-100";
     if (rowClassName?.includes("bg-white")) return "bg-white";
