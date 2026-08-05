@@ -538,6 +538,209 @@ const parseHistoricProductBlock = (
   return block;
 };
 
+
+type HistoricInsightBlock = {
+  name: string;
+  skuKey?: string;
+  metrics: DrawerMetric[];
+  journey: string[];
+  recommendation: string[];
+  inventoryRecommendation: string[];
+  adsRecommendation: string[];
+};
+
+// Same parsing approach used by the working summary/reference component.
+// It reads both PRODUCT INSIGHTS and ALL SKU INDIVIDUAL INSIGHTS and creates
+// a separate block for every product/SKU.
+const parseHistoricInsightBlocks = (summaryValue: any): HistoricInsightBlock[] => {
+  const text = String(summaryValue || "");
+  if (!text.trim()) return [];
+
+  const sectionLines: string[] = [];
+  let activeSection = false;
+
+  for (const raw of text.split(/\r?\n/)) {
+    const trimmed = String(raw || "").trim();
+    const sectionMatch = trimmed.match(/^##\s+(.+)$/i);
+
+    if (sectionMatch) {
+      const sectionName = sectionMatch[1].trim().toUpperCase();
+      activeSection =
+        sectionName === "PRODUCT INSIGHTS" ||
+        sectionName === "ALL SKU INDIVIDUAL INSIGHTS";
+      continue;
+    }
+
+    if (activeSection && trimmed) sectionLines.push(trimmed);
+  }
+
+  const metricLabels = [
+    "asp",
+    "units",
+    "net sales",
+    "cm1 profit",
+    "cm1 profit per unit",
+    "productwise ads spend",
+    "ads",
+    "cm2 profit",
+    "cm2 profit per unit",
+    "current inventory",
+    "coverage ratio",
+    "stock cover",
+  ];
+
+  const cleanLine = (value: string) =>
+    String(value || "")
+      .replace(/^[-•]\s*/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+
+  const isMetricLine = (value: string) => {
+    const lower = cleanLine(value).toLowerCase();
+    return metricLabels.some((label) => lower.startsWith(`${label}:`));
+  };
+
+  const blocks: HistoricInsightBlock[] = [];
+  let current: HistoricInsightBlock | null = null;
+  let inJourney = false;
+
+  const pushCurrent = () => {
+    if (!current?.name) return;
+
+    // PRODUCT INSIGHTS and ALL SKU INDIVIDUAL INSIGHTS contain duplicates.
+    // Prefer the block carrying an explicit SKU because it is unambiguous.
+    const existingIndex = blocks.findIndex((block) => {
+      if (current?.skuKey && block.skuKey) {
+        return drawerCompactKey(block.skuKey) === drawerCompactKey(current.skuKey);
+      }
+      return drawerCompactKey(block.name) === drawerCompactKey(current?.name);
+    });
+
+    if (existingIndex === -1) {
+      blocks.push(current);
+    } else if (!blocks[existingIndex].skuKey && current.skuKey) {
+      blocks[existingIndex] = current;
+    }
+  };
+
+  for (let index = 0; index < sectionLines.length; index += 1) {
+    const line = cleanLine(sectionLines[index]);
+    if (!line) continue;
+
+    const nextLine = cleanLine(sectionLines[index + 1] || "");
+    const lower = line.toLowerCase();
+
+    const isProductHeader =
+      !line.includes(":") &&
+      !lower.startsWith("product journey") &&
+      !lower.startsWith("products included") &&
+      !lower.startsWith("included skus") &&
+      (isMetricLine(nextLine) || nextLine.toLowerCase().startsWith("sku:"));
+
+    if (isProductHeader) {
+      pushCurrent();
+      current = {
+        name: line,
+        metrics: [],
+        journey: [],
+        recommendation: [],
+        inventoryRecommendation: [],
+        adsRecommendation: [],
+      };
+      inJourney = false;
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (lower.startsWith("sku:")) {
+      current.skuKey = line.replace(/^sku:\s*/i, "").trim();
+      continue;
+    }
+
+    if (lower.startsWith("bucket:")) continue;
+
+    if (lower.startsWith("product journey")) {
+      inJourney = true;
+      continue;
+    }
+
+    if (lower.startsWith("recommendation:")) {
+      const value = line.replace(/^recommendation:\s*/i, "").trim();
+      if (value) current.recommendation.push(value);
+      inJourney = false;
+      continue;
+    }
+
+    if (lower.startsWith("inventory action:")) {
+      const value = line.replace(/^inventory action:\s*/i, "").trim();
+      if (value) current.inventoryRecommendation.push(value);
+      inJourney = false;
+      continue;
+    }
+
+    if (lower.startsWith("ads action:")) {
+      const value = line.replace(/^ads action:\s*/i, "").trim();
+      if (value) current.adsRecommendation.push(value);
+      inJourney = false;
+      continue;
+    }
+
+    if (isMetricLine(line)) {
+      const separatorIndex = line.indexOf(":");
+      const rawLabel = line.slice(0, separatorIndex).trim();
+      const value = line.slice(separatorIndex + 1).trim();
+      const normalizedLabel = rawLabel.toLowerCase();
+
+      const label =
+        normalizedLabel === "productwise ads spend"
+          ? "Ads"
+          : normalizedLabel === "coverage ratio"
+            ? "Stock Cover"
+            : rawLabel.replace(/\bcm([12])\b/gi, "CM$1");
+
+      current.metrics.push({ label, value });
+      continue;
+    }
+
+    if (inJourney && !lower.startsWith("products included")) {
+      current.journey.push(line);
+    }
+  }
+
+  pushCurrent();
+  return blocks;
+};
+
+const findHistoricInsightBlock = (
+  json: any,
+  productName: string,
+  sku?: string
+): HistoricInsightBlock | undefined => {
+  const summarySources = [
+    json?.summary,
+    json?.data?.summary,
+    json?.insights,
+    json?.data?.insights,
+  ].filter(Boolean);
+
+  const blocks = summarySources.flatMap(parseHistoricInsightBlocks);
+  const targetSkuKeys = drawerSkuKeys(sku);
+  const targetProductKey = drawerCompactKey(productName);
+
+  return (
+    blocks.find((block) => {
+      const blockSkuKeys = drawerSkuKeys(block.skuKey);
+      return targetSkuKeys.some((targetSku) =>
+        blockSkuKeys.some((blockSku) => blockSku === targetSku)
+      );
+    }) ||
+    blocks.find(
+      (block) => drawerCompactKey(block.name) === targetProductKey
+    )
+  );
+};
+
 const getHistoricMetricNumber = (value?: string) => {
   const mainValue = String(value || "").split("(")[0];
 
@@ -626,6 +829,7 @@ const buildHistoricDrawerData = (
     )
     .join("\n");
   const block = parseHistoricProductBlock(sourceText, productName, sku);
+  const referenceInsightBlock = findHistoricInsightBlock(json, productName, sku);
   const metrics: DrawerMetric[] = [];
   if (structuredSkuRow) {
   const cm1Profit = structuredSkuRow?.profit;
@@ -750,7 +954,13 @@ const buildHistoricDrawerData = (
   const adsRecommendation: string[] = [];
   let inJourney = false;
 
-  if (!structuredSkuRow) {
+  if (!structuredSkuRow && referenceInsightBlock) {
+    metrics.push(...referenceInsightBlock.metrics);
+    journey.push(...referenceInsightBlock.journey);
+    recommendation.push(...referenceInsightBlock.recommendation);
+    inventoryRecommendation.push(...referenceInsightBlock.inventoryRecommendation);
+    adsRecommendation.push(...referenceInsightBlock.adsRecommendation);
+  } else if (!structuredSkuRow) {
   for (const line of block) {
     if (/^product journey/i.test(line)) {
       inJourney = true;
