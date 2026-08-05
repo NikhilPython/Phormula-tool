@@ -390,6 +390,122 @@ def getDispatchfile():
             parsed = datetime.strptime(month_name.strip().title(), "%B")
             return datetime(year_value, parsed.month, 1).strftime("%Y-%m-%d")
 
+        def refresh_fba_in_transit_from_db(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
+            refreshed = df.copy()
+            if amazon_engine is None or 'sku' not in refreshed.columns:
+                return refreshed
+
+            marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get(ctry.strip().lower())
+            if not marketplace_id:
+                return refreshed
+
+            try:
+                inspector = inspect(amazon_engine)
+                if "inventory_fba_inbound_shipments" not in set(inspector.get_table_names(schema="public")):
+                    return refreshed
+
+                columns = {col["name"] for col in inspector.get_columns("inventory_fba_inbound_shipments", schema="public")}
+                if "user_id" not in columns or "marketplace_id" not in columns:
+                    return refreshed
+
+                sku_expr = (
+                    "COALESCE(NULLIF(TRIM(msku), ''), NULLIF(TRIM(seller_sku), ''))"
+                    if {"msku", "seller_sku"}.issubset(columns)
+                    else "NULLIF(TRIM(msku), '')"
+                    if "msku" in columns
+                    else "NULLIF(TRIM(seller_sku), '')"
+                    if "seller_sku" in columns
+                    else None
+                )
+                quantity_expr = (
+                    "COALESCE(quantity, quantity_shipped, 0)"
+                    if {"quantity", "quantity_shipped"}.issubset(columns)
+                    else "COALESCE(quantity, 0)"
+                    if "quantity" in columns
+                    else "COALESCE(quantity_shipped, 0)"
+                    if "quantity_shipped" in columns
+                    else None
+                )
+                status_expr = (
+                    "COALESCE(status, shipment_status, '')"
+                    if {"status", "shipment_status"}.issubset(columns)
+                    else "COALESCE(status, '')"
+                    if "status" in columns
+                    else "COALESCE(shipment_status, '')"
+                    if "shipment_status" in columns
+                    else "''"
+                )
+                if not sku_expr or not quantity_expr:
+                    return refreshed
+
+                fba_df = pd.read_sql(
+                    text(f"""
+                        SELECT
+                            UPPER(TRIM({sku_expr})) AS sku_norm,
+                            SUM({quantity_expr}) AS in_transit_fba
+                        FROM public.inventory_fba_inbound_shipments
+                        WHERE user_id = :user_id
+                          AND marketplace_id = :marketplace_id
+                          AND UPPER(REPLACE({status_expr}, '-', '_')) = 'IN_TRANSIT'
+                        GROUP BY UPPER(TRIM({sku_expr}))
+                    """),
+                    con=amazon_engine,
+                    params={
+                        "user_id": int(user_id),
+                        "marketplace_id": marketplace_id,
+                    },
+                )
+            except Exception:
+                return refreshed
+
+            if fba_df.empty:
+                return refreshed
+
+            fba_df["sku_norm"] = fba_df["sku_norm"].astype(str).str.strip().str.upper()
+            fba_df["in_transit_fba"] = pd.to_numeric(
+                fba_df["in_transit_fba"],
+                errors="coerce",
+            ).fillna(0)
+
+            fba_lookup = fba_df.set_index("sku_norm")["in_transit_fba"].to_dict()
+            refreshed["sku_norm"] = refreshed["sku"].astype(str).str.strip().str.upper()
+            refreshed["In Transit FBA"] = refreshed["sku_norm"].map(fba_lookup).fillna(0)
+            refreshed.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+
+            if "In Transit AWD" not in refreshed.columns:
+                refreshed["In Transit AWD"] = 0
+            refreshed["In Transit FBA"] = pd.to_numeric(
+                refreshed["In Transit FBA"],
+                errors="coerce",
+            ).fillna(0)
+            refreshed["In Transit AWD"] = pd.to_numeric(
+                refreshed["In Transit AWD"],
+                errors="coerce",
+            ).fillna(0)
+            refreshed["In transit"] = refreshed["In Transit FBA"] + refreshed["In Transit AWD"]
+
+            if "Projected Sales Total" in refreshed.columns:
+                if "In stock" not in refreshed.columns:
+                    refreshed["In stock"] = (
+                        pd.to_numeric(refreshed.get("FBA", 0), errors="coerce").fillna(0)
+                        + pd.to_numeric(refreshed.get("AWD", 0), errors="coerce").fillna(0)
+                    )
+                refreshed["In stock"] = pd.to_numeric(
+                    refreshed["In stock"],
+                    errors="coerce",
+                ).fillna(0)
+                refreshed["Shortfall Unit"] = (
+                    pd.to_numeric(refreshed["Projected Sales Total"], errors="coerce").fillna(0)
+                    - refreshed["In stock"]
+                ).clip(lower=0)
+                refreshed["To be Dispatch"] = (
+                    refreshed["Shortfall Unit"] - refreshed["In transit"]
+                ).clip(lower=0)
+                refreshed["SEA"] = refreshed["To be Dispatch"].clip(lower=0)
+                refreshed["AIR"] = 0
+
+            return refreshed
+
         def refresh_awd_in_transit_from_db(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             refreshed = df.copy()
             if amazon_engine is None or 'sku' not in refreshed.columns:
@@ -665,6 +781,7 @@ def getDispatchfile():
 
                 df = read_dispatch_dataframe(data_bytes)
                 df = clean_dispatch_dataframe(df)
+                df = refresh_fba_in_transit_from_db(df, source_country)
                 df = refresh_awd_in_transit_from_db(df, source_country)
 
                 if not df.empty:
@@ -696,6 +813,7 @@ def getDispatchfile():
 
         df = read_dispatch_dataframe(data_bytes)
         df = clean_dispatch_dataframe(df)
+        df = refresh_fba_in_transit_from_db(df, country.lower())
         df = refresh_awd_in_transit_from_db(df, country.lower())
         output = build_global_dispatch_file([df])
 

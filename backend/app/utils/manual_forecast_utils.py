@@ -293,6 +293,114 @@ def fetch_currentinventory_dispatch_quantities(
     return out
 
 
+def fetch_fba_inbound_in_transit_quantities(
+    forecast_totals: pd.DataFrame,
+    engine1,
+    *,
+    user_id: int,
+    country: str | None,
+    forecast_sku_col: str = "sku",
+) -> pd.DataFrame:
+    out = forecast_totals.copy()
+    out["in_transit_fba"] = 0
+
+    if forecast_sku_col not in out.columns:
+        return out
+
+    marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get((country or "").strip().lower())
+    if not marketplace_id:
+        return out
+
+    try:
+        inspector = inspect(engine1)
+        if "inventory_fba_inbound_shipments" not in set(inspector.get_table_names(schema="public")):
+            return out
+
+        columns = {col["name"] for col in inspector.get_columns("inventory_fba_inbound_shipments", schema="public")}
+        if "user_id" not in columns or "marketplace_id" not in columns:
+            return out
+        sku_expr = (
+            "COALESCE(NULLIF(TRIM(msku), ''), NULLIF(TRIM(seller_sku), ''))"
+            if {"msku", "seller_sku"}.issubset(columns)
+            else "NULLIF(TRIM(msku), '')"
+            if "msku" in columns
+            else "NULLIF(TRIM(seller_sku), '')"
+            if "seller_sku" in columns
+            else None
+        )
+        if not sku_expr:
+            return out
+        quantity_expr = (
+            "COALESCE(quantity, quantity_shipped, 0)"
+            if {"quantity", "quantity_shipped"}.issubset(columns)
+            else "COALESCE(quantity, 0)"
+            if "quantity" in columns
+            else "COALESCE(quantity_shipped, 0)"
+            if "quantity_shipped" in columns
+            else None
+        )
+        if not quantity_expr:
+            return out
+        status_expr = (
+            "COALESCE(status, shipment_status, '')"
+            if {"status", "shipment_status"}.issubset(columns)
+            else "COALESCE(status, '')"
+            if "status" in columns
+            else "COALESCE(shipment_status, '')"
+            if "shipment_status" in columns
+            else "''"
+        )
+
+        fba_df = pd.read_sql(
+            text(f"""
+                SELECT
+                    {sku_expr} AS sku,
+                    SUM({quantity_expr}) AS in_transit_fba
+                FROM public.inventory_fba_inbound_shipments
+                WHERE user_id = :user_id
+                  AND marketplace_id = :marketplace_id
+                  AND UPPER(REPLACE({status_expr}, '-', '_')) = 'IN_TRANSIT'
+                GROUP BY {sku_expr}
+            """),
+            con=engine1,
+            params={"user_id": int(user_id), "marketplace_id": marketplace_id},
+        )
+    except Exception:
+        return out
+
+    if fba_df.empty:
+        return out
+
+    fba_df["sku_norm"] = fba_df["sku"].map(_norm_sku)
+    fba_df["in_transit_fba"] = (
+        pd.to_numeric(fba_df["in_transit_fba"], errors="coerce")
+        .fillna(0)
+        .round()
+        .astype(int)
+    )
+    fba_totals = (
+        fba_df[fba_df["sku_norm"] != ""]
+        .groupby("sku_norm", as_index=False)["in_transit_fba"]
+        .sum()
+    )
+
+    out["sku_norm"] = out[forecast_sku_col].map(_norm_sku)
+    out = out.drop(columns=["in_transit_fba"], errors="ignore").merge(
+        fba_totals,
+        on="sku_norm",
+        how="left",
+    )
+    out.drop(columns=["sku_norm"], inplace=True, errors="ignore")
+    out["in_transit_fba"] = (
+        pd.to_numeric(out["in_transit_fba"], errors="coerce")
+        .fillna(0)
+        .round()
+        .astype(int)
+    )
+
+    return out
+
+
 def fetch_awd_inbound_in_transit_quantities(
     forecast_totals: pd.DataFrame,
     engine1,
@@ -1080,6 +1188,12 @@ def generate_manual_forecast(
         user_id=user_id,
         country=country,
         inventory_date=snapshot_date,
+    )
+    inventory_forecast = fetch_fba_inbound_in_transit_quantities(
+        inventory_forecast,
+        engine1,
+        user_id=user_id,
+        country=country,
     )
     inventory_forecast = fetch_awd_inbound_in_transit_quantities(
         inventory_forecast,

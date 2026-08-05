@@ -6175,6 +6175,77 @@ def get_awd_inbound_dispatch_inputs():
     }), 200
 
 
+@inventory_bp.route("/amazon_api/fba/inbound-shipments/dispatch-inputs", methods=["GET"])
+def get_fba_inbound_dispatch_inputs():
+    try:
+        user_id = _get_auth_user_id_from_request()
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+    marketplace_id = (request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
+
+    try:
+        with amazon_conn() as conn:
+            _ensure_inventory_fba_inbound_shipments_table(conn)
+            rows = conn.execute(text("""
+                WITH normalized AS (
+                    SELECT
+                        COALESCE(NULLIF(TRIM("shipmentId"), ''), shipment_id) AS shipment_id,
+                        COALESCE(NULLIF(TRIM(status), ''), shipment_status) AS shipment_status,
+                        COALESCE(NULLIF(TRIM(msku), ''), seller_sku) AS sku,
+                        fnsku,
+                        asin,
+                        COALESCE(quantity, quantity_shipped, 0) AS quantity,
+                        "createdAt" AS created_at,
+                        name
+                    FROM public.inventory_fba_inbound_shipments
+                    WHERE user_id = :user_id
+                      AND marketplace_id = :marketplace_id
+                      AND COALESCE(quantity, quantity_shipped, 0) > 0
+                      AND UPPER(REPLACE(COALESCE(NULLIF(status, ''), shipment_status, ''), '-', '_')) = 'IN_TRANSIT'
+                )
+                SELECT
+                    shipment_id,
+                    MAX(shipment_status) AS shipment_status,
+                    STRING_AGG(DISTINCT sku, ', ') AS sku,
+                    STRING_AGG(DISTINCT COALESCE(fnsku, ''), ', ') FILTER (WHERE COALESCE(fnsku, '') <> '') AS fnsku,
+                    STRING_AGG(DISTINCT COALESCE(asin, ''), ', ') FILTER (WHERE COALESCE(asin, '') <> '') AS asin,
+                    SUM(COALESCE(quantity, 0)) AS quantity,
+                    MIN(created_at) AS created_at,
+                    MAX(name) AS name
+                FROM normalized
+                WHERE COALESCE(shipment_id, '') <> ''
+                  AND COALESCE(sku, '') <> ''
+                GROUP BY shipment_id
+                ORDER BY MIN(created_at) ASC NULLS LAST, shipment_id ASC
+            """), {
+                "user_id": int(user_id),
+                "marketplace_id": marketplace_id,
+            }).mappings().all()
+    except Exception as exc:
+        logger.exception("Failed to read FBA dispatch inputs")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    items = []
+    for row in rows:
+        item = dict(row)
+        item["quantity"] = int(item.get("quantity") or 0)
+        items.append(item)
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": marketplace_id,
+        "items": items,
+    }), 200
+
+
 @inventory_bp.route("/amazon_api/awd/inbound-shipments/dispatch-inputs", methods=["POST"])
 def save_awd_inbound_dispatch_inputs():
     try:

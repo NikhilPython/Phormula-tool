@@ -72,6 +72,17 @@ type AwdDispatchInputRow = {
   }> | null
 }
 
+type FbaDispatchInputRow = {
+  shipment_id: string
+  shipment_status?: string | null
+  sku?: string | null
+  fnsku?: string | null
+  asin?: string | null
+  quantity?: number
+  created_at?: string | null
+  name?: string | null
+}
+
 const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   uk: 'A1F83G8C2ARO7P',
   gb: 'A1F83G8C2ARO7P',
@@ -441,6 +452,7 @@ export default function DispatchPage({
   )
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
   const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([])
+  const [fbaInputRows, setFbaInputRows] = useState<FbaDispatchInputRow[]>([])
   const [awdInputOpen, setAwdInputOpen] = useState(false)
   const [awdInputSaving, setAwdInputSaving] = useState(false)
   const [awdInputError, setAwdInputError] = useState('')
@@ -483,6 +495,35 @@ export default function DispatchPage({
     return Array.isArray(data?.items) ? data.items : []
   }
 
+  async function fetchFbaDispatchInputs(token: string): Promise<FbaDispatchInputRow[]> {
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!marketplaceId) return []
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(marketplaceId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+
+    const text = await response.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || 'Failed to fetch FBA shipment details')
+    }
+
+    return Array.isArray(data?.items) ? data.items : []
+  }
+
   async function saveAwdDispatchInputs(token: string, rows: AwdDispatchInputRow[]) {
     const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
     if (!marketplaceId) return
@@ -520,9 +561,12 @@ export default function DispatchPage({
   }
 
   async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
-    const rows = await fetchAwdDispatchInputs(token)
-    if (!rows.length) {
-      throw new Error('No AWD inbound shipments found for dispatch input. Please fetch AWD inbound shipments first.')
+    const [rows, fbaRows] = await Promise.all([
+      fetchAwdDispatchInputs(token),
+      fetchFbaDispatchInputs(token),
+    ])
+    if (!rows.length && !fbaRows.length) {
+      throw new Error('No AWD or FBA inbound shipments found for dispatch input. Please fetch inbound shipments first.')
     }
 
     setAwdInputRows(
@@ -532,6 +576,7 @@ export default function DispatchPage({
         expected_reach_date: row.expected_reach_date || '',
       }))
     )
+    setFbaInputRows(fbaRows)
     setAwdInputError('')
     setAwdInputOpen(true)
 
@@ -1306,13 +1351,16 @@ export default function DispatchPage({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 px-4">
           <div className="w-full max-w-6xl rounded-lg bg-white shadow-xl">
             <div className="border-b border-gray-200 px-5 py-4">
-              <h3 className="text-lg font-semibold text-gray-900">AWD Shipment Details</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Inbound Shipment Details</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Select shipment type and expected reach date before opening the dispatch file.
+                Review FBA in-transit units and fill AWD shipment details before opening the dispatch file.
               </p>
             </div>
 
             <div className="max-h-[60vh] overflow-auto px-5 py-4">
+              {awdInputRows.length > 0 && (
+                <>
+              <h4 className="mb-2 text-sm font-semibold text-gray-800">AWD Shipments</h4>
               <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
@@ -1370,6 +1418,42 @@ export default function DispatchPage({
                   ))}
                 </tbody>
               </table>
+                </>
+              )}
+
+              {fbaInputRows.length > 0 && (
+                <div className={awdInputRows.length > 0 ? 'mt-6' : ''}>
+                  <h4 className="mb-2 text-sm font-semibold text-gray-800">FBA In-Transit Shipments</h4>
+                  <table className="min-w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                        <th className="border px-3 py-2">Shipment ID</th>
+                        <th className="border px-3 py-2">Status</th>
+                        <th className="border px-3 py-2">Name</th>
+                        <th className="border px-3 py-2">SKU</th>
+                        <th className="border px-3 py-2">Units</th>
+                        <th className="border px-3 py-2">Created At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fbaInputRows.map((row) => (
+                        <tr key={row.shipment_id} className="text-gray-700">
+                          <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
+                          <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
+                          <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
+                            {row.name || '-'}
+                          </td>
+                          <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
+                            {row.sku || '-'}
+                          </td>
+                          <td className="border px-3 py-2 text-center">{row.quantity ?? 0}</td>
+                          <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {awdInputError && (
