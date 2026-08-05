@@ -865,7 +865,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 ],
                 expandedCols: [
                     makeCol("totalInStock", "In Stock", "92px"),
-                    makeCol("totalInTransit", "In transit", "92px"),
+                    makeCol("totalInTransit", "In Transit", "92px"),
                 ],
             },
             {
