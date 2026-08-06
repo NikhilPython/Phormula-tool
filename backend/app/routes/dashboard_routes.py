@@ -227,6 +227,8 @@ def getDispatchfile():
                 'in stock': 'In stock',
                 'in transit': 'In transit',
                 'projected sales total': 'Projected Sales Total',
+                'last month sales(units)': 'Last Month Sales(Units)',
+                'last month sales (units)': 'Last Month Sales(Units)',
                 'dispatch': 'Dispatch',
                 'current inventory + dispatch': 'Current Inventory + Dispatch',
                 'inventory coverage ratio before dispatch': 'Inventory Coverage Ratio Before Dispatch',
@@ -390,7 +392,80 @@ def getDispatchfile():
             parsed = datetime.strptime(month_name.strip().title(), "%B")
             return datetime(year_value, parsed.month, 1).strftime("%Y-%m-%d")
 
-        def recalculate_coverage_before_dispatch(df: pd.DataFrame) -> pd.DataFrame:
+        def previous_month_label(month_name: str, year_value: int) -> tuple[str, int]:
+            parsed = datetime.strptime(month_name.strip().title(), "%B")
+            if parsed.month == 1:
+                return "December", year_value - 1
+            return datetime(year_value, parsed.month - 1, 1).strftime("%B"), year_value
+
+        def fetch_last_month_sales_lookup(ctry: str) -> dict[str, float]:
+            try:
+                sales_month, sales_year = previous_month_label(effective_month, requested_year)
+                country_key = ctry.strip().lower()
+                raw_table_name = f"user_{int(user_id)}_{country_key}_{sales_month}{sales_year}_data"
+                inspector = inspect(engine)
+                tables = {name.lower(): name for name in inspector.get_table_names(schema="public")}
+
+                sales_df = pd.DataFrame()
+                resolved_table = tables.get(raw_table_name.lower())
+                if resolved_table:
+                    columns = {col["name"] for col in inspector.get_columns(resolved_table, schema="public")}
+                    if "sku" in columns and "quantity" in columns:
+                        type_filter = "AND UPPER(TRIM(type)) = 'ORDER'" if "type" in columns else ""
+                        try:
+                            sales_df = pd.read_sql(
+                                text(f"""
+                                    SELECT UPPER(TRIM(sku)) AS sku_norm,
+                                           SUM(COALESCE(quantity, 0)) AS last_month_sales
+                                    FROM public."{resolved_table}"
+                                    WHERE COALESCE(TRIM(sku), '') <> ''
+                                      {type_filter}
+                                    GROUP BY UPPER(TRIM(sku))
+                                """),
+                                con=engine,
+                            )
+                        except Exception:
+                            sales_df = pd.DataFrame()
+
+                if sales_df.empty:
+                    sales_month_lower = sales_month.lower()
+                    for candidate in (
+                        f"skuwisemonthly_{int(user_id)}_{country_key}_{sales_month_lower}{sales_year}",
+                        f"skuwisemonthly_{int(user_id)}_{country_key}_{sales_month_lower}{sales_year}_table",
+                    ):
+                        resolved_table = tables.get(candidate.lower())
+                        if not resolved_table:
+                            continue
+                        columns = {col["name"] for col in inspector.get_columns(resolved_table, schema="public")}
+                        if "sku" not in columns:
+                            continue
+                        quantity_col = "total_quantity" if "total_quantity" in columns else "quantity" if "quantity" in columns else None
+                        if not quantity_col:
+                            continue
+                        sales_df = pd.read_sql(
+                            text(f"""
+                                SELECT UPPER(TRIM(sku)) AS sku_norm,
+                                       SUM(COALESCE("{quantity_col}", 0)) AS last_month_sales
+                                FROM public."{resolved_table}"
+                                WHERE COALESCE(TRIM(sku), '') <> ''
+                                GROUP BY UPPER(TRIM(sku))
+                            """),
+                            con=engine,
+                        )
+                        if not sales_df.empty:
+                            break
+            except Exception:
+                return {}
+
+            if sales_df.empty:
+                return {}
+            sales_df["last_month_sales"] = pd.to_numeric(
+                sales_df["last_month_sales"],
+                errors="coerce",
+            ).fillna(0)
+            return sales_df.set_index("sku_norm")["last_month_sales"].to_dict()
+
+        def recalculate_coverage_before_dispatch(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             refreshed = df.copy()
             coverage_col = 'Inventory Coverage Ratio Before Dispatch'
             if coverage_col not in refreshed.columns:
@@ -411,16 +486,31 @@ def getDispatchfile():
             transit = pd.to_numeric(refreshed['In transit'], errors='coerce').fillna(0)
 
             if 'Last Month Sales(Units)' in refreshed.columns:
-                divisor = pd.to_numeric(refreshed['Last Month Sales(Units)'], errors='coerce').replace(0, pd.NA)
+                divisor = pd.to_numeric(refreshed['Last Month Sales(Units)'], errors='coerce')
+                divisor = divisor.mask(divisor <= 0)
+            elif 'sku' in refreshed.columns:
+                sales_lookup = fetch_last_month_sales_lookup(ctry)
+                divisor = (
+                    refreshed['sku']
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .map(sales_lookup)
+                )
+                divisor = pd.to_numeric(divisor, errors='coerce')
+                divisor = divisor.mask(divisor <= 0)
             else:
                 # Older stored dispatch files did not keep Last Month Sales in the
                 # visible sheet. Their existing coverage used stock / last-month sales,
                 # so derive the same divisor and then include in-transit units.
-                old_ratio = pd.to_numeric(refreshed[coverage_col], errors='coerce').replace(0, pd.NA)
-                divisor = (stock / old_ratio).replace(0, pd.NA)
+                old_ratio = pd.to_numeric(refreshed[coverage_col], errors='coerce')
+                old_ratio = old_ratio.mask(old_ratio <= 0)
+                divisor = stock / old_ratio
+                divisor = divisor.mask(divisor <= 0)
 
             coverage = ((stock + transit) / divisor).round(2)
             refreshed[coverage_col] = coverage.where(coverage.notna(), "-")
+            refreshed["__coverage_sales_divisor"] = divisor
             return refreshed
 
         def refresh_fba_in_transit_from_db(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
@@ -654,7 +744,8 @@ def getDispatchfile():
                 'Shortfall Unit',
                 'To be Dispatch',
                 'SEA',
-                'AIR'
+                'AIR',
+                '__coverage_sales_divisor'
             ]
             agg_spec = {c: 'sum' for c in sum_cols if c in combined_df.columns}
 
@@ -663,7 +754,18 @@ def getDispatchfile():
             else:
                 grouped = combined_df[group_keys].drop_duplicates()
 
-            if (
+            if '__coverage_sales_divisor' in grouped.columns and 'In stock' in grouped.columns:
+                denominator = pd.to_numeric(grouped['__coverage_sales_divisor'], errors='coerce')
+                denominator = denominator.mask(denominator <= 0)
+                numerator = (
+                    pd.to_numeric(grouped['In stock'], errors='coerce').fillna(0)
+                    + pd.to_numeric(grouped.get('In transit', 0), errors='coerce').fillna(0)
+                )
+                grouped['Inventory Coverage Ratio Before Dispatch'] = (
+                    numerator / denominator
+                ).round(2).where(denominator.notna(), "-")
+                final_df = grouped.copy()
+            elif (
                 'Inventory Coverage Ratio Before Dispatch' in combined_df.columns and
                 'In stock' in combined_df.columns
             ):
@@ -825,7 +927,7 @@ def getDispatchfile():
                 df = clean_dispatch_dataframe(df)
                 df = refresh_fba_in_transit_from_db(df, source_country)
                 df = refresh_awd_in_transit_from_db(df, source_country)
-                df = recalculate_coverage_before_dispatch(df)
+                df = recalculate_coverage_before_dispatch(df, source_country)
 
                 if not df.empty:
                     frames.append(df)
@@ -858,7 +960,7 @@ def getDispatchfile():
         df = clean_dispatch_dataframe(df)
         df = refresh_fba_in_transit_from_db(df, country.lower())
         df = refresh_awd_in_transit_from_db(df, country.lower())
-        df = recalculate_coverage_before_dispatch(df)
+        df = recalculate_coverage_before_dispatch(df, country.lower())
         output = build_global_dispatch_file([df])
 
         return send_file(
@@ -964,6 +1066,7 @@ def merge_dispatch_files(file_uk, file_us):
         'In stock',
         'In transit',
         'Projected Sales Total',
+        'Last Month Sales(Units)',
         'Inventory Coverage Ratio Before Dispatch',
         'Shortfall Unit',
         'To be Dispatch',
@@ -1047,14 +1150,26 @@ def merge_dispatch_files(file_uk, file_us):
         'Shortfall Unit',
         'To be Dispatch',
         'SEA',
-        'AIR'
+        'AIR',
+        '__coverage_sales_divisor'
     ]:
         if col in df_combined.columns:
             agg_spec[col] = 'sum'
     grouped = df_combined.groupby('Product Name', as_index=False).agg(agg_spec) if agg_spec else df_combined[['Product Name']].drop_duplicates()
 
-    # Weighted average coverage ratio (if present)
-    if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'In stock' in df_combined.columns:
+    # Coverage ratio from summed stock+transit over summed last-month sales.
+    if '__coverage_sales_divisor' in grouped.columns and 'In stock' in grouped.columns:
+        denominator = pd.to_numeric(grouped['__coverage_sales_divisor'], errors='coerce')
+        denominator = denominator.mask(denominator <= 0)
+        numerator = (
+            pd.to_numeric(grouped['In stock'], errors='coerce').fillna(0)
+            + pd.to_numeric(grouped.get('In transit', 0), errors='coerce').fillna(0)
+        )
+        grouped['Inventory Coverage Ratio Before Dispatch'] = (
+            numerator / denominator
+        ).round(2).where(denominator.notna(), "-")
+        final_df = grouped.copy()
+    elif 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'In stock' in df_combined.columns:
         def weighted_avg(df):
             weight = (
                 pd.to_numeric(df['In stock'], errors='coerce').fillna(0)

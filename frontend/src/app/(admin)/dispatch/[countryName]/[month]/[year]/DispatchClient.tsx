@@ -335,11 +335,26 @@ function applyAwdShipmentDetails(rows: SkuRow[], awdRows: AwdDispatchInputRow[])
 
     const inTransitFba = toNumber(row['In Transit FBA'])
     const nextInTransitAwd = Math.round(awdUnits)
+    const inStock = toNumber(row['In stock'])
+    const oldCoverage = toNumber(row['Inventory Coverage Ratio Before Dispatch'])
+    const lastMonthSales =
+      toNumber(row['Last Month Sales(Units)']) ||
+      (oldCoverage > 0 && inStock > 0 ? inStock / oldCoverage : 0)
+    const nextInTransit = inTransitFba + nextInTransitAwd
+    const shortfall = toNumber(row['Shortfall Unit'])
+    const nextToDispatch = Math.max(shortfall - nextInTransit, 0)
 
     return {
       ...row,
       'In Transit AWD': nextInTransitAwd,
-      'In transit': inTransitFba + nextInTransitAwd,
+      'In transit': nextInTransit,
+      'To be Dispatch': nextToDispatch,
+      'SEA': nextToDispatch,
+      'AIR': 0,
+      'Inventory Coverage Ratio Before Dispatch':
+        lastMonthSales > 0
+          ? Number(((inStock + nextInTransit) / lastMonthSales).toFixed(2))
+          : row['Inventory Coverage Ratio Before Dispatch'],
     }
   })
 }
