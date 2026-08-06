@@ -6020,6 +6020,7 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             created_at TIMESTAMPTZ,
             updated_at TIMESTAMPTZ,
             ship_by TIMESTAMPTZ,
+            dispatch_date DATE,
             shipment_type TEXT,
             expected_reach_date DATE,
             synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -6037,6 +6038,7 @@ def _ensure_awd_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS expected_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS received_unit_quantity BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS expiration_date TEXT,
+            ADD COLUMN IF NOT EXISTS dispatch_date DATE,
             ADD COLUMN IF NOT EXISTS shipment_type TEXT,
             ADD COLUMN IF NOT EXISTS expected_reach_date DATE,
             ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -6119,6 +6121,7 @@ def get_awd_inbound_dispatch_inputs():
                         MIN(created_at) AS created_at,
                         MAX(updated_at) AS updated_at,
                         MAX(ship_by) AS ship_by,
+                        MAX(dispatch_date) AS dispatch_date,
                         MAX(shipment_type) AS shipment_type,
                         MAX(expected_reach_date) AS expected_reach_date
                     FROM public.inventory_awd_inbound_shipments
@@ -6137,6 +6140,7 @@ def get_awd_inbound_dispatch_inputs():
                     MIN(created_at) AS created_at,
                     MAX(updated_at) AS updated_at,
                     MAX(ship_by) AS ship_by,
+                    MAX(dispatch_date) AS dispatch_date,
                     MAX(shipment_type) AS shipment_type,
                     MAX(expected_reach_date) AS expected_reach_date,
                     JSONB_AGG(
@@ -6163,6 +6167,8 @@ def get_awd_inbound_dispatch_inputs():
         for key in ("created_at", "updated_at", "ship_by"):
             value = item.get(key)
             item[key] = value.isoformat() if value else None
+        dispatch_date = item.get("dispatch_date")
+        item["dispatch_date"] = dispatch_date.isoformat() if dispatch_date else None
         reach_date = item.get("expected_reach_date")
         item["expected_reach_date"] = reach_date.isoformat() if reach_date else None
         item["expected_unit_quantity"] = int(item.get("expected_unit_quantity") or 0)
@@ -6204,6 +6210,10 @@ def get_fba_inbound_dispatch_inputs():
                         asin,
                         COALESCE(quantity, quantity_shipped, 0) AS quantity,
                         "createdAt" AS created_at,
+                        updated_at,
+                        dispatch_date,
+                        shipment_type,
+                        expected_reach_date,
                         name
                     FROM public.inventory_fba_inbound_shipments
                     WHERE user_id = :user_id
@@ -6219,6 +6229,10 @@ def get_fba_inbound_dispatch_inputs():
                     STRING_AGG(DISTINCT COALESCE(asin, ''), ', ') FILTER (WHERE COALESCE(asin, '') <> '') AS asin,
                     SUM(COALESCE(quantity, 0)) AS quantity,
                     MIN(created_at) AS created_at,
+                    MAX(updated_at) AS updated_at,
+                    MAX(dispatch_date) AS dispatch_date,
+                    MAX(shipment_type) AS shipment_type,
+                    MAX(expected_reach_date) AS expected_reach_date,
                     MAX(name) AS name
                 FROM normalized
                 WHERE COALESCE(shipment_id, '') <> ''
@@ -6237,6 +6251,12 @@ def get_fba_inbound_dispatch_inputs():
     for row in rows:
         item = dict(row)
         item["quantity"] = int(item.get("quantity") or 0)
+        for key in ("updated_at",):
+            value = item.get(key)
+            item[key] = value.isoformat() if value else None
+        for key in ("dispatch_date", "expected_reach_date"):
+            value = item.get(key)
+            item[key] = value.isoformat() if value else None
         items.append(item)
 
     return jsonify({
@@ -6272,10 +6292,15 @@ def save_awd_inbound_dispatch_inputs():
         if not isinstance(item, dict):
             continue
         shipment_id = str(item.get("shipment_id") or "").strip()
+        dispatch_date = str(item.get("dispatch_date") or "").strip()
         shipment_type = str(item.get("shipment_type") or "").strip().upper()
         expected_reach_date = str(item.get("expected_reach_date") or "").strip()
         if not shipment_id:
             continue
+        try:
+            datetime.strptime(dispatch_date, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have dispatch_date YYYY-MM-DD"}), 400
         if shipment_type not in {"SEA", "AIR"}:
             return jsonify({"success": False, "error": f"Shipment {shipment_id} must have shipment_type SEA or AIR"}), 400
         try:
@@ -6284,6 +6309,7 @@ def save_awd_inbound_dispatch_inputs():
             return jsonify({"success": False, "error": f"Shipment {shipment_id} must have expected_reach_date YYYY-MM-DD"}), 400
         normalized_rows.append({
             "shipment_id": shipment_id,
+            "dispatch_date": dispatch_date,
             "shipment_type": shipment_type,
             "expected_reach_date": expected_reach_date,
         })
@@ -6295,7 +6321,8 @@ def save_awd_inbound_dispatch_inputs():
             for row in normalized_rows:
                 result = conn.execute(text("""
                     UPDATE public.inventory_awd_inbound_shipments
-                    SET shipment_type = :shipment_type,
+                    SET dispatch_date = CAST(:dispatch_date AS DATE),
+                        shipment_type = :shipment_type,
                         expected_reach_date = CAST(:expected_reach_date AS DATE)
                     WHERE user_id = :user_id
                       AND marketplace_id = :marketplace_id
@@ -6308,6 +6335,84 @@ def save_awd_inbound_dispatch_inputs():
                 saved += int(result.rowcount or 0)
     except Exception as exc:
         logger.exception("Failed to save AWD dispatch inputs")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": marketplace_id,
+        "updated_rows": saved,
+    }), 200
+
+
+@inventory_bp.route("/amazon_api/fba/inbound-shipments/dispatch-inputs", methods=["POST"])
+def save_fba_inbound_dispatch_inputs():
+    try:
+        user_id = _get_auth_user_id_from_request()
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    marketplace_id = (payload.get("marketplace_id") or request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
+
+    shipments = payload.get("shipments") or []
+    if not isinstance(shipments, list):
+        return jsonify({"success": False, "error": "shipments must be a list"}), 400
+
+    normalized_rows = []
+    for item in shipments:
+        if not isinstance(item, dict):
+            continue
+        shipment_id = str(item.get("shipment_id") or "").strip()
+        dispatch_date = str(item.get("dispatch_date") or "").strip()
+        shipment_type = str(item.get("shipment_type") or "").strip().upper()
+        expected_reach_date = str(item.get("expected_reach_date") or "").strip()
+        if not shipment_id:
+            continue
+        try:
+            datetime.strptime(dispatch_date, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have dispatch_date YYYY-MM-DD"}), 400
+        if shipment_type not in {"SEA", "AIR"}:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have shipment_type SEA or AIR"}), 400
+        try:
+            datetime.strptime(expected_reach_date, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": f"Shipment {shipment_id} must have expected_reach_date YYYY-MM-DD"}), 400
+        normalized_rows.append({
+            "shipment_id": shipment_id,
+            "dispatch_date": dispatch_date,
+            "shipment_type": shipment_type,
+            "expected_reach_date": expected_reach_date,
+        })
+
+    try:
+        saved = 0
+        with amazon_conn() as conn:
+            _ensure_inventory_fba_inbound_shipments_table(conn)
+            for row in normalized_rows:
+                result = conn.execute(text("""
+                    UPDATE public.inventory_fba_inbound_shipments
+                    SET dispatch_date = CAST(:dispatch_date AS DATE),
+                        shipment_type = :shipment_type,
+                        expected_reach_date = CAST(:expected_reach_date AS DATE)
+                    WHERE user_id = :user_id
+                      AND marketplace_id = :marketplace_id
+                      AND COALESCE(NULLIF(TRIM("shipmentId"), ''), shipment_id) = :shipment_id
+                """), {
+                    "user_id": int(user_id),
+                    "marketplace_id": marketplace_id,
+                    **row,
+                })
+                saved += int(result.rowcount or 0)
+    except Exception as exc:
+        logger.exception("Failed to save FBA dispatch inputs")
         return jsonify({"success": False, "error": str(exc)}), 500
 
     return jsonify({
@@ -6815,7 +6920,10 @@ def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS "shipmentId" TEXT,
             ADD COLUMN IF NOT EXISTS "boxId" TEXT,
             ADD COLUMN IF NOT EXISTS "packageId" TEXT,
-            ADD COLUMN IF NOT EXISTS name TEXT;
+            ADD COLUMN IF NOT EXISTS name TEXT,
+            ADD COLUMN IF NOT EXISTS dispatch_date DATE,
+            ADD COLUMN IF NOT EXISTS shipment_type TEXT,
+            ADD COLUMN IF NOT EXISTS expected_reach_date DATE;
     """))
 
     conn.execute(text("""

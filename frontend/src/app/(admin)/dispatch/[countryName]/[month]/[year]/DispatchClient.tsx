@@ -64,6 +64,7 @@ type AwdDispatchInputRow = {
   created_at?: string | null
   updated_at?: string | null
   ship_by?: string | null
+  dispatch_date?: string | null
   shipment_type?: string | null
   expected_reach_date?: string | null
   sku_quantities?: Array<{
@@ -80,7 +81,25 @@ type FbaDispatchInputRow = {
   asin?: string | null
   quantity?: number
   created_at?: string | null
+  updated_at?: string | null
+  dispatch_date?: string | null
+  shipment_type?: string | null
+  expected_reach_date?: string | null
   name?: string | null
+}
+
+type InboundDispatchInputRow = {
+  source: 'AWD' | 'FBA'
+  shipment_id: string
+  display_shipment_id: string
+  shipment_status?: string | null
+  sku?: string | null
+  units?: number
+  created_at?: string | null
+  updated_at?: string | null
+  dispatch_date?: string | null
+  shipment_type?: string | null
+  expected_reach_date?: string | null
 }
 
 const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
@@ -324,6 +343,40 @@ function applyAwdShipmentDetails(rows: SkuRow[], awdRows: AwdDispatchInputRow[])
   })
 }
 
+function buildInboundDispatchRows(
+  awdRows: AwdDispatchInputRow[],
+  fbaRows: FbaDispatchInputRow[]
+): InboundDispatchInputRow[] {
+  return [
+    ...awdRows.map((row) => ({
+      source: 'AWD' as const,
+      shipment_id: row.shipment_id,
+      display_shipment_id: `AWD-${row.shipment_id}`,
+      shipment_status: row.shipment_status,
+      sku: row.sku,
+      units: toNumber(row.expected_unit_quantity),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      dispatch_date: row.dispatch_date || '',
+      shipment_type: row.shipment_type || '',
+      expected_reach_date: row.expected_reach_date || '',
+    })),
+    ...fbaRows.map((row) => ({
+      source: 'FBA' as const,
+      shipment_id: row.shipment_id,
+      display_shipment_id: `FBA-${row.shipment_id}`,
+      shipment_status: row.shipment_status,
+      sku: row.sku,
+      units: toNumber(row.quantity),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      dispatch_date: row.dispatch_date || '',
+      shipment_type: row.shipment_type || '',
+      expected_reach_date: row.expected_reach_date || '',
+    })),
+  ]
+}
+
 function buildOthersRow(rows: SkuRow[]): SkuRow {
   return {
     'Product Name': 'Others',
@@ -453,6 +506,7 @@ export default function DispatchPage({
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
   const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([])
   const [fbaInputRows, setFbaInputRows] = useState<FbaDispatchInputRow[]>([])
+  const [inboundInputRows, setInboundInputRows] = useState<InboundDispatchInputRow[]>([])
   const [awdInputOpen, setAwdInputOpen] = useState(false)
   const [awdInputSaving, setAwdInputSaving] = useState(false)
   const [awdInputError, setAwdInputError] = useState('')
@@ -540,6 +594,7 @@ export default function DispatchPage({
           marketplace_id: marketplaceId,
           shipments: rows.map((row) => ({
             shipment_id: row.shipment_id,
+            dispatch_date: row.dispatch_date,
             shipment_type: String(row.shipment_type || '').toUpperCase(),
             expected_reach_date: row.expected_reach_date,
           })),
@@ -560,6 +615,43 @@ export default function DispatchPage({
     }
   }
 
+  async function saveFbaDispatchInputs(token: string, rows: FbaDispatchInputRow[]) {
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!marketplaceId) return
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          marketplace_id: marketplaceId,
+          shipments: rows.map((row) => ({
+            shipment_id: row.shipment_id,
+            dispatch_date: row.dispatch_date,
+            shipment_type: String(row.shipment_type || '').toUpperCase(),
+            expected_reach_date: row.expected_reach_date,
+          })),
+        }),
+      }
+    )
+
+    const text = await response.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || 'Failed to save FBA shipment details')
+    }
+  }
+
   async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
     const [rows, fbaRows] = await Promise.all([
       fetchAwdDispatchInputs(token),
@@ -569,14 +661,22 @@ export default function DispatchPage({
       throw new Error('No AWD or FBA inbound shipments found for dispatch input. Please fetch inbound shipments first.')
     }
 
-    setAwdInputRows(
-      rows.map((row) => ({
-        ...row,
-        shipment_type: row.shipment_type || '',
-        expected_reach_date: row.expected_reach_date || '',
-      }))
-    )
-    setFbaInputRows(fbaRows)
+    const normalizedAwdRows = rows.map((row) => ({
+      ...row,
+      dispatch_date: row.dispatch_date || '',
+      shipment_type: row.shipment_type || '',
+      expected_reach_date: row.expected_reach_date || '',
+    }))
+    const normalizedFbaRows = fbaRows.map((row) => ({
+      ...row,
+      dispatch_date: row.dispatch_date || '',
+      shipment_type: row.shipment_type || '',
+      expected_reach_date: row.expected_reach_date || '',
+    }))
+
+    setAwdInputRows(normalizedAwdRows)
+    setFbaInputRows(normalizedFbaRows)
+    setInboundInputRows(buildInboundDispatchRows(normalizedAwdRows, normalizedFbaRows))
     setAwdInputError('')
     setAwdInputOpen(true)
 
@@ -591,13 +691,14 @@ export default function DispatchPage({
     return savedRows
   }
 
-  function updateAwdInputRow(
+  function updateInboundInputRow(
+    source: InboundDispatchInputRow['source'],
     shipmentId: string,
-    patch: Partial<Pick<AwdDispatchInputRow, 'shipment_type' | 'expected_reach_date'>>
+    patch: Partial<Pick<InboundDispatchInputRow, 'dispatch_date' | 'shipment_type' | 'expected_reach_date'>>
   ) {
-    setAwdInputRows((rows) =>
+    setInboundInputRows((rows) =>
       rows.map((row) =>
-        row.shipment_id === shipmentId
+        row.source === source && row.shipment_id === shipmentId
           ? { ...row, ...patch }
           : row
       )
@@ -606,6 +707,7 @@ export default function DispatchPage({
 
   function closeAwdInputModal(rows: AwdDispatchInputRow[] | null) {
     setAwdInputOpen(false)
+    setInboundInputRows([])
     const resolve = awdInputResolverRef.current
     awdInputResolverRef.current = null
     resolve?.(rows)
@@ -618,23 +720,56 @@ export default function DispatchPage({
       return
     }
 
-    const missing = awdInputRows.find((row) => !row.shipment_type || !row.expected_reach_date)
+    const missing = inboundInputRows.find(
+      (row) => !row.dispatch_date || !row.shipment_type || !row.expected_reach_date
+    )
     if (missing) {
-      setAwdInputError('Please select shipment type and expected reach date for every AWD shipment.')
+      setAwdInputError('Please fill dispatch date, shipment type, and expected reach date for every shipment.')
       return
     }
 
     try {
       setAwdInputSaving(true)
       setAwdInputError('')
-      const normalizedRows = awdInputRows.map((row) => ({
+      const normalizedInboundRows = inboundInputRows.map((row) => ({
         ...row,
         shipment_type: String(row.shipment_type || '').toUpperCase(),
       }))
-      await saveAwdDispatchInputs(token, normalizedRows)
-      closeAwdInputModal(normalizedRows)
+      const normalizedAwdRows = normalizedInboundRows
+        .filter((row) => row.source === 'AWD')
+        .map((row) => ({
+          ...awdInputRows.find((awdRow) => awdRow.shipment_id === row.shipment_id),
+          shipment_id: row.shipment_id,
+          shipment_status: row.shipment_status,
+          sku: row.sku,
+          expected_unit_quantity: row.units,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          dispatch_date: row.dispatch_date,
+          shipment_type: row.shipment_type,
+          expected_reach_date: row.expected_reach_date,
+        }))
+      const normalizedFbaRows = normalizedInboundRows
+        .filter((row) => row.source === 'FBA')
+        .map((row) => ({
+          ...fbaInputRows.find((fbaRow) => fbaRow.shipment_id === row.shipment_id),
+          shipment_id: row.shipment_id,
+          shipment_status: row.shipment_status,
+          sku: row.sku,
+          quantity: row.units,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          dispatch_date: row.dispatch_date,
+          shipment_type: row.shipment_type,
+          expected_reach_date: row.expected_reach_date,
+        }))
+      await Promise.all([
+        normalizedAwdRows.length ? saveAwdDispatchInputs(token, normalizedAwdRows) : Promise.resolve(),
+        normalizedFbaRows.length ? saveFbaDispatchInputs(token, normalizedFbaRows) : Promise.resolve(),
+      ])
+      closeAwdInputModal(normalizedAwdRows)
     } catch (err: any) {
-      setAwdInputError(err?.message || 'Failed to save AWD shipment details')
+      setAwdInputError(err?.message || 'Failed to save shipment details')
     } finally {
       setAwdInputSaving(false)
     }
@@ -1353,14 +1488,11 @@ export default function DispatchPage({
             <div className="border-b border-gray-200 px-5 py-4">
               <h3 className="text-lg font-semibold text-gray-900">Inbound Shipment Details</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Review FBA in-transit units and fill AWD shipment details before opening the dispatch file.
+                Fill dispatch date, shipment type, and expected reach date before opening the dispatch file.
               </p>
             </div>
 
             <div className="max-h-[60vh] overflow-auto px-5 py-4">
-              {awdInputRows.length > 0 && (
-                <>
-              <h4 className="mb-2 text-sm font-semibold text-gray-800">AWD Shipments</h4>
               <table className="min-w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
@@ -1370,29 +1502,40 @@ export default function DispatchPage({
                     <th className="border px-3 py-2">Units</th>
                     <th className="border px-3 py-2">Created At</th>
                     <th className="border px-3 py-2">Updated At</th>
-                    <th className="border px-3 py-2">Ship By</th>
+                    <th className="border px-3 py-2">Dispatch Date</th>
                     <th className="border px-3 py-2">Shipment Type</th>
                     <th className="border px-3 py-2">Expected Reach Date</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {awdInputRows.map((row) => (
-                    <tr key={row.shipment_id} className="text-gray-700">
-                      <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
+                  {inboundInputRows.map((row) => (
+                    <tr key={`${row.source}-${row.shipment_id}`} className="text-gray-700">
+                      <td className="border px-3 py-2 font-medium">{row.display_shipment_id}</td>
                       <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
                       <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
                         {row.sku || '-'}
                       </td>
-                      <td className="border px-3 py-2 text-center">{row.expected_unit_quantity ?? 0}</td>
+                      <td className="border px-3 py-2 text-center">{row.units ?? 0}</td>
                       <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
                       <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
-                      <td className="border px-3 py-2">{formatAwdDate(row.ship_by) || '-'}</td>
+                      <td className="border px-3 py-2">
+                        <input
+                          className="w-full min-w-[135px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          type="date"
+                          value={row.dispatch_date || ''}
+                          onChange={(event) =>
+                            updateInboundInputRow(row.source, row.shipment_id, {
+                              dispatch_date: event.target.value,
+                            })
+                          }
+                        />
+                      </td>
                       <td className="border px-3 py-2">
                         <select
-                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          className="w-full min-w-[105px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
                           value={row.shipment_type || ''}
                           onChange={(event) =>
-                            updateAwdInputRow(row.shipment_id, {
+                            updateInboundInputRow(row.source, row.shipment_id, {
                               shipment_type: event.target.value,
                             })
                           }
@@ -1404,11 +1547,11 @@ export default function DispatchPage({
                       </td>
                       <td className="border px-3 py-2">
                         <input
-                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                          className="w-full min-w-[135px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
                           type="date"
                           value={row.expected_reach_date || ''}
                           onChange={(event) =>
-                            updateAwdInputRow(row.shipment_id, {
+                            updateInboundInputRow(row.source, row.shipment_id, {
                               expected_reach_date: event.target.value,
                             })
                           }
@@ -1418,42 +1561,6 @@ export default function DispatchPage({
                   ))}
                 </tbody>
               </table>
-                </>
-              )}
-
-              {fbaInputRows.length > 0 && (
-                <div className={awdInputRows.length > 0 ? 'mt-6' : ''}>
-                  <h4 className="mb-2 text-sm font-semibold text-gray-800">FBA In-Transit Shipments</h4>
-                  <table className="min-w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                        <th className="border px-3 py-2">Shipment ID</th>
-                        <th className="border px-3 py-2">Status</th>
-                        <th className="border px-3 py-2">Name</th>
-                        <th className="border px-3 py-2">SKU</th>
-                        <th className="border px-3 py-2">Units</th>
-                        <th className="border px-3 py-2">Created At</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fbaInputRows.map((row) => (
-                        <tr key={row.shipment_id} className="text-gray-700">
-                          <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
-                          <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
-                          <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
-                            {row.name || '-'}
-                          </td>
-                          <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
-                            {row.sku || '-'}
-                          </td>
-                          <td className="border px-3 py-2 text-center">{row.quantity ?? 0}</td>
-                          <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
 
             {awdInputError && (
