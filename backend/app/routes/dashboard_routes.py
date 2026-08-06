@@ -390,6 +390,39 @@ def getDispatchfile():
             parsed = datetime.strptime(month_name.strip().title(), "%B")
             return datetime(year_value, parsed.month, 1).strftime("%Y-%m-%d")
 
+        def recalculate_coverage_before_dispatch(df: pd.DataFrame) -> pd.DataFrame:
+            refreshed = df.copy()
+            coverage_col = 'Inventory Coverage Ratio Before Dispatch'
+            if coverage_col not in refreshed.columns:
+                return refreshed
+
+            if 'In stock' not in refreshed.columns:
+                refreshed['In stock'] = (
+                    pd.to_numeric(refreshed.get('FBA', 0), errors='coerce').fillna(0)
+                    + pd.to_numeric(refreshed.get('AWD', 0), errors='coerce').fillna(0)
+                )
+            if 'In transit' not in refreshed.columns:
+                refreshed['In transit'] = (
+                    pd.to_numeric(refreshed.get('In Transit FBA', 0), errors='coerce').fillna(0)
+                    + pd.to_numeric(refreshed.get('In Transit AWD', 0), errors='coerce').fillna(0)
+                )
+
+            stock = pd.to_numeric(refreshed['In stock'], errors='coerce').fillna(0)
+            transit = pd.to_numeric(refreshed['In transit'], errors='coerce').fillna(0)
+
+            if 'Last Month Sales(Units)' in refreshed.columns:
+                divisor = pd.to_numeric(refreshed['Last Month Sales(Units)'], errors='coerce').replace(0, np.nan)
+            else:
+                # Older stored dispatch files did not keep Last Month Sales in the
+                # visible sheet. Their existing coverage used stock / last-month sales,
+                # so derive the same divisor and then include in-transit units.
+                old_ratio = pd.to_numeric(refreshed[coverage_col], errors='coerce').replace(0, np.nan)
+                divisor = (stock / old_ratio).replace(0, np.nan)
+
+            coverage = ((stock + transit) / divisor).round(2)
+            refreshed[coverage_col] = coverage.where(coverage.notna(), "-")
+            return refreshed
+
         def refresh_fba_in_transit_from_db(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             refreshed = df.copy()
             if amazon_engine is None or 'sku' not in refreshed.columns:
@@ -635,12 +668,16 @@ def getDispatchfile():
                 'In stock' in combined_df.columns
             ):
                 def weighted_avg(group):
-                    denom = group['In stock'].sum()
+                    weight = (
+                        pd.to_numeric(group['In stock'], errors='coerce').fillna(0)
+                        + pd.to_numeric(group.get('In transit', 0), errors='coerce').fillna(0)
+                    )
+                    denom = weight.sum()
                     if denom <= 0:
                         return 0
                     return (
                         group['Inventory Coverage Ratio Before Dispatch'] *
-                        group['In stock']
+                        weight
                     ).sum() / denom
 
                 ratio_df = (
@@ -785,6 +822,7 @@ def getDispatchfile():
                 df = clean_dispatch_dataframe(df)
                 df = refresh_fba_in_transit_from_db(df, source_country)
                 df = refresh_awd_in_transit_from_db(df, source_country)
+                df = recalculate_coverage_before_dispatch(df)
 
                 if not df.empty:
                     frames.append(df)
@@ -817,6 +855,7 @@ def getDispatchfile():
         df = clean_dispatch_dataframe(df)
         df = refresh_fba_in_transit_from_db(df, country.lower())
         df = refresh_awd_in_transit_from_db(df, country.lower())
+        df = recalculate_coverage_before_dispatch(df)
         output = build_global_dispatch_file([df])
 
         return send_file(
@@ -1014,11 +1053,15 @@ def merge_dispatch_files(file_uk, file_us):
     # Weighted average coverage ratio (if present)
     if 'Inventory Coverage Ratio Before Dispatch' in df_combined.columns and 'In stock' in df_combined.columns:
         def weighted_avg(df):
-            denom = df['In stock'].sum()
+            weight = (
+                pd.to_numeric(df['In stock'], errors='coerce').fillna(0)
+                + pd.to_numeric(df.get('In transit', 0), errors='coerce').fillna(0)
+            )
+            denom = weight.sum()
             if denom <= 0:
                 return 0
             ratio_num = pd.to_numeric(df['Inventory Coverage Ratio Before Dispatch'], errors='coerce').fillna(0)
-            return (ratio_num * df['In stock']).sum() / denom
+            return (ratio_num * weight).sum() / denom
 
         ratio_df = (
             df_combined

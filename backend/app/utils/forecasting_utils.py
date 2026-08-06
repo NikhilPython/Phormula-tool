@@ -3009,7 +3009,11 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     )
 
     divisor = pd.to_numeric(inventory_forecast[last_month_col], errors="coerce").replace(0, np.nan)
-    coverage = (inventory_forecast["total_sellable_in_stock"] / divisor).round(2)
+    coverage_inventory = (
+        pd.to_numeric(inventory_forecast["total_sellable_in_stock"], errors="coerce").fillna(0)
+        + pd.to_numeric(inventory_forecast["total_sellable_in_transit"], errors="coerce").fillna(0)
+    )
+    coverage = (coverage_inventory / divisor).round(2)
     inventory_forecast["Inventory Coverage Ratio Before Dispatch"] = coverage.where(coverage.notna(), "-")
 
     # totals row
