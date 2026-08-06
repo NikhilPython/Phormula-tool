@@ -6210,7 +6210,7 @@ def get_fba_inbound_dispatch_inputs():
                         asin,
                         COALESCE(quantity, quantity_shipped, 0) AS quantity,
                         "createdAt" AS created_at,
-                        updated_at,
+                        COALESCE("lastUpdatedAt", updated_at::TEXT) AS updated_at,
                         dispatch_date,
                         shipment_type,
                         expected_reach_date,
@@ -6253,10 +6253,10 @@ def get_fba_inbound_dispatch_inputs():
         item["quantity"] = int(item.get("quantity") or 0)
         for key in ("updated_at",):
             value = item.get(key)
-            item[key] = value.isoformat() if value else None
+            item[key] = value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
         for key in ("dispatch_date", "expected_reach_date"):
             value = item.get(key)
-            item[key] = value.isoformat() if value else None
+            item[key] = value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
         items.append(item)
 
     return jsonify({
@@ -6910,6 +6910,7 @@ def _ensure_inventory_fba_inbound_shipments_table(conn) -> None:
             ADD COLUMN IF NOT EXISTS "inboundPlanId" TEXT,
             ADD COLUMN IF NOT EXISTS status TEXT,
             ADD COLUMN IF NOT EXISTS "createdAt" TEXT,
+            ADD COLUMN IF NOT EXISTS "lastUpdatedAt" TEXT,
             ADD COLUMN IF NOT EXISTS "marketplaceIds" JSONB,
             ADD COLUMN IF NOT EXISTS shipment_count BIGINT NOT NULL DEFAULT 0,
             ADD COLUMN IF NOT EXISTS plan_box_count BIGINT NOT NULL DEFAULT 0,
@@ -7668,12 +7669,22 @@ def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
         detail = plan.get("detail") or {}
         status = _first_non_empty(detail.get("status"), summary.get("status"))
         created_at = _first_non_empty(detail.get("createdAt"), summary.get("createdAt"))
+        last_updated_at = _first_non_empty(detail.get("lastUpdatedAt"), summary.get("lastUpdatedAt"))
         marketplace_ids = _first_non_empty(detail.get("marketplaceIds"), summary.get("marketplaceIds"), [])
         name = _first_non_empty(detail.get("name"), summary.get("name"))
         shipment_count = len(plan.get("shipments") or [])
         plan_box_count = len(plan.get("plan_boxes") or [])
 
-        def append_item_row(item: dict, *, shipment_id: str = "", box: dict | None = None, row_name=None, row_status=None, row_created_at=None):
+        def append_item_row(
+            item: dict,
+            *,
+            shipment_id: str = "",
+            box: dict | None = None,
+            row_name=None,
+            row_status=None,
+            row_created_at=None,
+            row_last_updated_at=None,
+        ):
             if not isinstance(item, dict):
                 return
 
@@ -7686,6 +7697,7 @@ def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
                 "inboundPlanId": inbound_plan_id,
                 "status": _first_non_empty(row_status, status),
                 "createdAt": _first_non_empty(row_created_at, created_at),
+                "lastUpdatedAt": _first_non_empty(row_last_updated_at, last_updated_at),
                 "marketplaceIds": marketplace_ids,
                 "shipment_count": shipment_count,
                 "plan_box_count": plan_box_count,
@@ -7705,6 +7717,7 @@ def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
             shipment_status = shipment_detail.get("status")
             shipment_name = shipment_detail.get("name")
             shipment_created_at = shipment_detail.get("createdAt")
+            shipment_last_updated_at = shipment_detail.get("lastUpdatedAt")
             before_shipment_rows = len(rows)
 
             for box in shipment.get("boxes") or []:
@@ -7716,6 +7729,7 @@ def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
                         row_name=shipment_name,
                         row_status=shipment_status,
                         row_created_at=shipment_created_at,
+                        row_last_updated_at=shipment_last_updated_at,
                     )
 
             if len(rows) == before_shipment_rows:
@@ -7726,6 +7740,7 @@ def _collect_fba_2024_inbound_plan_db_rows(plans: list[dict]) -> list[dict]:
                         row_name=shipment_name,
                         row_status=shipment_status,
                         row_created_at=shipment_created_at,
+                        row_last_updated_at=shipment_last_updated_at,
                     )
 
         if not any(str(row.get("inboundPlanId") or "") == inbound_plan_id for row in rows):
@@ -7772,20 +7787,26 @@ def _save_fba_2024_inbound_plan_rows(
             user_id, marketplace_id,
             shipment_id, shipment_status, shipment_name,
             seller_sku, fulfillment_network_sku, quantity_shipped,
-            "inboundPlanId", status, "createdAt", "marketplaceIds",
+            "inboundPlanId", status, "createdAt", "lastUpdatedAt", "marketplaceIds",
             shipment_count, plan_box_count,
             msku, fnsku, asin, quantity,
             "shipmentId", "boxId", "packageId", name,
-            synced_at, updated_at
+            synced_at, created_at, updated_at
         ) VALUES (
             :user_id, :marketplace_id,
             :shipment_id, :status, :name,
             :msku, :fnsku, :quantity,
-            :inboundPlanId, :status, :createdAt, CAST(:marketplaceIds AS JSONB),
+            :inboundPlanId, :status, :createdAt, :lastUpdatedAt, CAST(:marketplaceIds AS JSONB),
             :shipment_count, :plan_box_count,
             :msku, :fnsku, :asin, :quantity,
             :shipmentId, :boxId, :packageId, :name,
-            NOW(), NOW()
+            NOW(),
+            COALESCE(CAST(NULLIF(:createdAt, '') AS TIMESTAMPTZ), NOW()),
+            COALESCE(
+                CAST(NULLIF(:lastUpdatedAt, '') AS TIMESTAMPTZ),
+                CAST(NULLIF(:createdAt, '') AS TIMESTAMPTZ),
+                NOW()
+            )
         )
         ON CONFLICT (user_id, marketplace_id, shipment_id, seller_sku)
         DO UPDATE SET
@@ -7796,6 +7817,7 @@ def _save_fba_2024_inbound_plan_rows(
             "inboundPlanId" = EXCLUDED."inboundPlanId",
             status = EXCLUDED.status,
             "createdAt" = EXCLUDED."createdAt",
+            "lastUpdatedAt" = EXCLUDED."lastUpdatedAt",
             "marketplaceIds" = EXCLUDED."marketplaceIds",
             shipment_count = EXCLUDED.shipment_count,
             plan_box_count = EXCLUDED.plan_box_count,
@@ -7808,7 +7830,8 @@ def _save_fba_2024_inbound_plan_rows(
             "packageId" = EXCLUDED."packageId",
             name = EXCLUDED.name,
             synced_at = NOW(),
-            updated_at = NOW();
+            created_at = EXCLUDED.created_at,
+            updated_at = EXCLUDED.updated_at;
     """)
 
     saved = 0
@@ -7827,6 +7850,7 @@ def _save_fba_2024_inbound_plan_rows(
                 "inboundPlanId": row.get("inboundPlanId"),
                 "status": row.get("status"),
                 "createdAt": row.get("createdAt"),
+                "lastUpdatedAt": row.get("lastUpdatedAt"),
                 "marketplaceIds": json.dumps(row.get("marketplaceIds") or [], default=str),
                 "shipment_count": _safe_int(row.get("shipment_count")),
                 "plan_box_count": _safe_int(row.get("plan_box_count")),

@@ -7,6 +7,7 @@ import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css'
 import { Modal } from '@/components/ui/modal'
 import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
+import DatePicker from '@/components/form/date-picker'
 import GroupedCollapsibleTable, {
   type ColGroup,
   type LeafCol,
@@ -1508,7 +1509,7 @@ export default function DispatchPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {inboundInputRows.map((row) => (
+                  {inboundInputRows.map((row, index) => (
                     <tr key={`${row.source}-${row.shipment_id}`} className="text-gray-700">
                       <td className="border px-3 py-2 font-medium">{row.display_shipment_id}</td>
                       <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
@@ -1519,16 +1520,18 @@ export default function DispatchPage({
                       <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
                       <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
                       <td className="border px-3 py-2">
-                        <input
-                          className="w-full min-w-[135px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                          type="date"
-                          value={row.dispatch_date || ''}
-                          onChange={(event) =>
+                        <div className="min-w-[165px]">
+                          <DatePicker
+                            id={`inbound-dispatch-date-${row.source}-${index}`}
+                            defaultDate={row.dispatch_date || undefined}
+                            placeholder="Select date"
+                            onChange={(_dates, dateStr) =>
                             updateInboundInputRow(row.source, row.shipment_id, {
-                              dispatch_date: event.target.value,
+                              dispatch_date: dateStr,
                             })
                           }
-                        />
+                          />
+                        </div>
                       </td>
                       <td className="border px-3 py-2">
                         <select
@@ -1546,16 +1549,18 @@ export default function DispatchPage({
                         </select>
                       </td>
                       <td className="border px-3 py-2">
-                        <input
-                          className="w-full min-w-[135px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                          type="date"
-                          value={row.expected_reach_date || ''}
-                          onChange={(event) =>
+                        <div className="min-w-[165px]">
+                          <DatePicker
+                            id={`inbound-expected-reach-date-${row.source}-${index}`}
+                            defaultDate={row.expected_reach_date || undefined}
+                            placeholder="Select date"
+                            onChange={(_dates, dateStr) =>
                             updateInboundInputRow(row.source, row.shipment_id, {
-                              expected_reach_date: event.target.value,
+                              expected_reach_date: dateStr,
                             })
                           }
-                        />
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}
