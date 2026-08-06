@@ -767,6 +767,16 @@ export default function PurchaseOrderPage({
 
           if (col === 'Product Name') {
             const normalized = text.trim().toLowerCase();
+
+            // Make "Others" green, but not clickable
+            if (row.__isOthersRow) {
+              return (
+                <span className="text-green-500">
+                  {text}
+                </span>
+              );
+            }
+
             const isClickable =
               !!text &&
               !row.__isTotalRow &&
@@ -781,7 +791,7 @@ export default function PurchaseOrderPage({
                     event.stopPropagation();
                     onProductNameClick?.(text);
                   }}
-                  className="ccursor-zoom-in text-left  text-green-500"
+                  className="cursor-zoom-in text-left text-green-500"
                 >
                   {text}
                 </button>
