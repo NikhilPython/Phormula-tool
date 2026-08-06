@@ -1741,7 +1741,8 @@ def fetch_fba_inbound_in_transit_quantities(
     """
     Overrides In Transit Inventory > FBA from public.inventory_fba_inbound_shipments.
 
-    It uses rows whose status/shipment_status is IN_TRANSIT, grouped by SKU.
+    It uses rows whose status/shipment_status is IN_TRANSIT for US and SHIPPED
+    for UK, grouped by SKU.
     New v2024 rows use msku + quantity; older v0 rows can use seller_sku +
     quantity_shipped as a fallback.
     """
@@ -1754,6 +1755,7 @@ def fetch_fba_inbound_in_transit_quantities(
     marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get((country or "").strip().lower())
     if not marketplace_id:
         return out
+    fba_status = "SHIPPED" if (country or "").strip().lower() in {"uk", "gb", "united kingdom"} else "IN_TRANSIT"
 
     try:
         inspector = inspect(engine1)
@@ -1807,13 +1809,14 @@ def fetch_fba_inbound_in_transit_quantities(
                 FROM public.inventory_fba_inbound_shipments
                 WHERE user_id = :user_id
                   AND marketplace_id = :marketplace_id
-                  AND UPPER(REPLACE({status_expr}, '-', '_')) = 'IN_TRANSIT'
+                  AND UPPER(REPLACE({status_expr}, '-', '_')) = :fba_status
                 GROUP BY {sku_expr}
             """),
             con=engine1,
             params={
                 "user_id": int(user_id),
                 "marketplace_id": marketplace_id,
+                "fba_status": fba_status,
             },
         )
     except Exception as e:

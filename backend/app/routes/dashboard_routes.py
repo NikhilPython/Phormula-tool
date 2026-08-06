@@ -398,6 +398,7 @@ def getDispatchfile():
             marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get(ctry.strip().lower())
             if not marketplace_id:
                 return refreshed
+            fba_status = "SHIPPED" if ctry.strip().lower() in {"uk", "gb", "united kingdom"} else "IN_TRANSIT"
 
             try:
                 inspector = inspect(amazon_engine)
@@ -446,13 +447,14 @@ def getDispatchfile():
                         FROM public.inventory_fba_inbound_shipments
                         WHERE user_id = :user_id
                           AND marketplace_id = :marketplace_id
-                          AND UPPER(REPLACE({status_expr}, '-', '_')) = 'IN_TRANSIT'
+                          AND UPPER(REPLACE({status_expr}, '-', '_')) = :fba_status
                         GROUP BY UPPER(TRIM({sku_expr}))
                     """),
                     con=amazon_engine,
                     params={
                         "user_id": int(user_id),
                         "marketplace_id": marketplace_id,
+                        "fba_status": fba_status,
                     },
                 )
             except Exception:
