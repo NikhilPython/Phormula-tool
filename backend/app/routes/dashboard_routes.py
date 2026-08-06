@@ -411,13 +411,13 @@ def getDispatchfile():
             transit = pd.to_numeric(refreshed['In transit'], errors='coerce').fillna(0)
 
             if 'Last Month Sales(Units)' in refreshed.columns:
-                divisor = pd.to_numeric(refreshed['Last Month Sales(Units)'], errors='coerce').replace(0, np.nan)
+                divisor = pd.to_numeric(refreshed['Last Month Sales(Units)'], errors='coerce').replace(0, pd.NA)
             else:
                 # Older stored dispatch files did not keep Last Month Sales in the
                 # visible sheet. Their existing coverage used stock / last-month sales,
                 # so derive the same divisor and then include in-transit units.
-                old_ratio = pd.to_numeric(refreshed[coverage_col], errors='coerce').replace(0, np.nan)
-                divisor = (stock / old_ratio).replace(0, np.nan)
+                old_ratio = pd.to_numeric(refreshed[coverage_col], errors='coerce').replace(0, pd.NA)
+                divisor = (stock / old_ratio).replace(0, pd.NA)
 
             coverage = ((stock + transit) / divisor).round(2)
             refreshed[coverage_col] = coverage.where(coverage.notna(), "-")
