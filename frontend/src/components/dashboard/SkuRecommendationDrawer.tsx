@@ -556,6 +556,35 @@ export default function SkuRecommendationDrawer({
                   </div>
                 </div>
 
+                {isSkuGroupDrawer &&
+                  (selectedRec?.otherSkuProductNames || []).length > 0 && (
+                    <div>
+                      <PageBreadcrumb
+                        pageTitle="Other SKUs include these SKUs"
+                        variant="page"
+                        align="left"
+                        textSize="xl"
+                        className="mb-2"
+                      />
+
+                      <div className="flex flex-wrap gap-2">
+                        {(selectedRec?.otherSkuProductNames || []).map(
+                          (productName, index) => (
+                            <div
+                              key={`${productName}-${index}`}
+                              title={productName}
+                              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] text-slate-700 2xl:text-xs"
+                            >
+                              <span className="font-semibold text-slate-800">
+                                {productName}
+                              </span>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 {!isSkuGroupDrawer && (
                   <div>
                     <PageBreadcrumb
