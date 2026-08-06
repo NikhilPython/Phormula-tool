@@ -675,9 +675,12 @@ def getDispatchfile():
                     denom = weight.sum()
                     if denom <= 0:
                         return 0
+                    ratio_num = pd.to_numeric(
+                        group['Inventory Coverage Ratio Before Dispatch'],
+                        errors='coerce',
+                    ).fillna(0)
                     return (
-                        group['Inventory Coverage Ratio Before Dispatch'] *
-                        weight
+                        ratio_num * weight
                     ).sum() / denom
 
                 ratio_df = (
