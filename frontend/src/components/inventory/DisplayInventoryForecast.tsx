@@ -907,7 +907,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               )}
           </div>
 
-          <div className="mt-4 w-full overflow-x-auto">
+          <div className="mt-4 rounded-xl w-full overflow-x-auto">
             {hasRenderableData ? (
               <div
                 className="rounded-xl border border-slate-200 bg-white shadow-sm min-w-225 [scrollbar-gutter:stable]"
