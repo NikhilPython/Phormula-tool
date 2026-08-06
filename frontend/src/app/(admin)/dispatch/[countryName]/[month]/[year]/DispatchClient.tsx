@@ -551,11 +551,13 @@ export default function DispatchPage({
   }
 
   async function fetchFbaDispatchInputs(token: string): Promise<FbaDispatchInputRow[]> {
-    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    const countryKey = countryName.trim().toLowerCase()
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
     if (!marketplaceId) return []
+    const shipmentStatuses = ['uk', 'gb'].includes(countryKey) ? 'SHIPPED' : 'IN_TRANSIT'
 
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(marketplaceId)}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=${encodeURIComponent(shipmentStatuses)}`,
       {
         method: 'GET',
         headers: {
@@ -577,6 +579,67 @@ export default function DispatchPage({
     }
 
     return Array.isArray(data?.items) ? data.items : []
+  }
+
+  async function fetchAndStoreInboundShipments(token: string) {
+    const countryKey = countryName.trim().toLowerCase()
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
+    if (!marketplaceId) return
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+    }
+
+    const requests: Promise<Response>[] = []
+
+    if (['uk', 'gb'].includes(countryKey)) {
+      requests.push(
+        fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=SHIPPED&store_in_db=true`,
+          { method: 'GET', headers }
+        )
+      )
+    } else {
+      requests.unshift(
+        fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/awd/inbound-shipments-complete?marketplace_id=${encodeURIComponent(marketplaceId)}&sku_quantities=SHOW&max_results=100&store_in_db=true`,
+          { method: 'GET', headers }
+        )
+      )
+      requests.push(
+        fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-plans-all?marketplace_id=${encodeURIComponent(marketplaceId)}&statuses=ACTIVE,SHIPPED&store_in_db=true&max_plans=50`,
+          { method: 'GET', headers }
+        )
+      )
+    }
+
+    const results = await Promise.allSettled(requests)
+    const errors: string[] = []
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        errors.push(result.reason?.message || 'Inbound shipment fetch failed')
+        continue
+      }
+
+      let data: any = {}
+      try {
+        data = await result.value.json()
+      } catch { }
+
+      if (!result.value.ok || data?.success === false) {
+        const amazonMessage =
+          data?.amazon_error?.response_json?.errors?.[0]?.message ||
+          data?.list_errors?.[0]?.error ||
+          data?.error
+        errors.push(amazonMessage || `Inbound shipment fetch failed (${result.value.status})`)
+      }
+    }
+
+    if (errors.length === results.length) {
+      throw new Error(errors[0] || 'Failed to fetch inbound shipments from Amazon')
+    }
   }
 
   async function saveAwdDispatchInputs(token: string, rows: AwdDispatchInputRow[]) {
@@ -654,12 +717,21 @@ export default function DispatchPage({
   }
 
   async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
-    const [rows, fbaRows] = await Promise.all([
+    let [rows, fbaRows] = await Promise.all([
       fetchAwdDispatchInputs(token),
       fetchFbaDispatchInputs(token),
     ])
+
     if (!rows.length && !fbaRows.length) {
-      throw new Error('No AWD or FBA inbound shipments found for dispatch input. Please fetch inbound shipments first.')
+      await fetchAndStoreInboundShipments(token)
+      ;[rows, fbaRows] = await Promise.all([
+        fetchAwdDispatchInputs(token),
+        fetchFbaDispatchInputs(token),
+      ])
+    }
+
+    if (!rows.length && !fbaRows.length) {
+      throw new Error('No AWD or FBA inbound shipments found for this marketplace after fetching Amazon inbound shipments.')
     }
 
     const normalizedAwdRows = rows.map((row) => ({

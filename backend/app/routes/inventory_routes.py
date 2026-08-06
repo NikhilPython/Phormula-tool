@@ -6197,10 +6197,29 @@ def get_fba_inbound_dispatch_inputs():
     if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
 
+    status_values = [
+        value.strip().upper().replace("-", "_")
+        for value in (request.args.get("shipment_statuses") or request.args.get("statuses") or "IN_TRANSIT").split(",")
+        if value.strip()
+    ]
+    allowed_statuses = {
+        "WORKING", "READY_TO_SHIP", "SHIPPED", "RECEIVING", "CANCELLED",
+        "DELETED", "CLOSED", "ERROR", "IN_TRANSIT", "DELIVERED", "CHECKED_IN",
+    }
+    invalid_statuses = [value for value in status_values if value not in allowed_statuses]
+    if invalid_statuses:
+        return jsonify({
+            "success": False,
+            "error": "Invalid shipment status",
+            "invalid_statuses": invalid_statuses,
+            "allowed_statuses": sorted(allowed_statuses),
+        }), 400
+    status_sql = ", ".join(f"'{value}'" for value in status_values)
+
     try:
         with amazon_conn() as conn:
             _ensure_inventory_fba_inbound_shipments_table(conn)
-            rows = conn.execute(text("""
+            rows = conn.execute(text(f"""
                 WITH normalized AS (
                     SELECT
                         COALESCE(NULLIF(TRIM("shipmentId"), ''), shipment_id) AS shipment_id,
@@ -6219,7 +6238,7 @@ def get_fba_inbound_dispatch_inputs():
                     WHERE user_id = :user_id
                       AND marketplace_id = :marketplace_id
                       AND COALESCE(quantity, quantity_shipped, 0) > 0
-                      AND UPPER(REPLACE(COALESCE(NULLIF(status, ''), shipment_status, ''), '-', '_')) = 'IN_TRANSIT'
+                      AND UPPER(REPLACE(COALESCE(NULLIF(status, ''), shipment_status, ''), '-', '_')) IN ({status_sql})
                 )
                 SELECT
                     shipment_id,
@@ -6262,6 +6281,7 @@ def get_fba_inbound_dispatch_inputs():
     return jsonify({
         "success": True,
         "marketplace_id": marketplace_id,
+        "shipment_statuses": status_values,
         "items": items,
     }), 200
 
