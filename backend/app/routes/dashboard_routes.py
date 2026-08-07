@@ -7,6 +7,7 @@ import jwt
 import os
 import base64
 import re
+import math
 from datetime import datetime 
 import pandas as pd
 from config import Config
@@ -295,7 +296,73 @@ def getDispatchfile():
 
             return df
 
+        def get_forecast_columns(df: pd.DataFrame) -> list[str]:
+            return [
+                c for c in df.columns
+                if re.fullmatch(r"[A-Z][a-z]{2}'\d{2}", str(c).strip())
+            ]
+
+        def get_country_profile_split_policy(ctry: str) -> tuple[int, int]:
+            country_key = ctry.strip().lower()
+            profile = CountryProfile.query.filter_by(
+                user_id=user_id,
+                country=country_key,
+            ).first()
+            if not profile and country_key == "gb":
+                profile = CountryProfile.query.filter_by(user_id=user_id, country="uk").first()
+            if not profile:
+                return 0, 0
+
+            air_time_weeks = int(profile.air_time_weeks or 0)
+            stock_unit_weeks = int(profile.stock_unit_weeks or 0)
+            return air_time_weeks, stock_unit_weeks
+
+        def apply_country_profile_sea_air_split(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
+            split_df = df.copy()
+            forecast_cols = get_forecast_columns(split_df)
+            if not forecast_cols or "To be Dispatch" not in split_df.columns:
+                if "To be Dispatch" in split_df.columns:
+                    split_df["SEA"] = pd.to_numeric(
+                        split_df["To be Dispatch"],
+                        errors="coerce",
+                    ).fillna(0).clip(lower=0)
+                    split_df["AIR"] = 0
+                return split_df
+
+            air_time_weeks, stock_unit_weeks = get_country_profile_split_policy(ctry)
+            air_required_weeks = max(float(air_time_weeks or 0), 0) + max(float(stock_unit_weeks or 0), 0)
+            air_month_count = int(math.ceil(air_required_weeks / 4.345)) if air_required_weeks > 0 else 0
+            air_month_count = min(max(air_month_count, 0), len(forecast_cols))
+
+            total_units = pd.to_numeric(
+                split_df["To be Dispatch"],
+                errors="coerce",
+            ).fillna(0).clip(lower=0)
+
+            if air_month_count > 0:
+                air_demand = (
+                    split_df[forecast_cols[:air_month_count]]
+                    .apply(pd.to_numeric, errors="coerce")
+                    .fillna(0)
+                    .sum(axis=1)
+                )
+            else:
+                air_demand = pd.Series(0, index=split_df.index)
+
+            stock_source = (
+                split_df["In stock"]
+                if "In stock" in split_df.columns
+                else pd.Series(0, index=split_df.index)
+            )
+            available_stock = pd.to_numeric(stock_source, errors="coerce").fillna(0)
+            urgent_air_units = (air_demand - available_stock).clip(lower=0)
+
+            split_df["AIR"] = pd.concat([total_units, urgent_air_units], axis=1).min(axis=1).round().astype(int)
+            split_df["SEA"] = (total_units - split_df["AIR"]).clip(lower=0).round().astype(int)
+            return split_df
+
         def clean_dispatch_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+            forecast_columns = get_forecast_columns(df)
             expected_columns = [
                 'Product Name',
                 'sku',
@@ -311,7 +378,7 @@ def getDispatchfile():
                 'To be Dispatch',
                 'SEA',
                 'AIR'
-            ]
+            ] + forecast_columns
 
             available_columns = [c for c in expected_columns if c in df.columns]
 
@@ -344,7 +411,7 @@ def getDispatchfile():
                 'To be Dispatch',
                 'SEA',
                 'AIR'
-            ]
+            ] + forecast_columns
 
             for col in numeric_cols:
                 if col in cleaned.columns:
@@ -364,13 +431,10 @@ def getDispatchfile():
             ):
                 cleaned['Shortfall Unit'] = (
                     cleaned['Projected Sales Total']
-                    - cleaned['FBA']
-                    - cleaned['AWD']
-                ).clip(lower=0)
-                cleaned['To be Dispatch'] = (
-                    cleaned['Shortfall Unit']
+                    - cleaned['In stock']
                     - cleaned['In transit']
                 ).clip(lower=0)
+                cleaned['To be Dispatch'] = cleaned['Shortfall Unit'].clip(lower=0)
 
             if 'SEA' not in cleaned.columns:
                 cleaned['SEA'] = cleaned['To be Dispatch'].clip(lower=0)
@@ -622,10 +686,9 @@ def getDispatchfile():
                 refreshed["Shortfall Unit"] = (
                     pd.to_numeric(refreshed["Projected Sales Total"], errors="coerce").fillna(0)
                     - refreshed["In stock"]
+                    - refreshed["In transit"]
                 ).clip(lower=0)
-                refreshed["To be Dispatch"] = (
-                    refreshed["Shortfall Unit"] - refreshed["In transit"]
-                ).clip(lower=0)
+                refreshed["To be Dispatch"] = refreshed["Shortfall Unit"].clip(lower=0)
                 refreshed["SEA"] = refreshed["To be Dispatch"].clip(lower=0)
                 refreshed["AIR"] = 0
 
@@ -709,10 +772,9 @@ def getDispatchfile():
                 refreshed["Shortfall Unit"] = (
                     pd.to_numeric(refreshed["Projected Sales Total"], errors="coerce").fillna(0)
                     - refreshed["In stock"]
+                    - refreshed["In transit"]
                 ).clip(lower=0)
-                refreshed["To be Dispatch"] = (
-                    refreshed["Shortfall Unit"] - refreshed["In transit"]
-                ).clip(lower=0)
+                refreshed["To be Dispatch"] = refreshed["Shortfall Unit"].clip(lower=0)
                 refreshed["SEA"] = refreshed["To be Dispatch"].clip(lower=0)
                 refreshed["AIR"] = 0
 
@@ -720,6 +782,7 @@ def getDispatchfile():
 
         def build_global_dispatch_file(frames: list[pd.DataFrame]) -> BytesIO:
             combined_df = pd.concat(frames, ignore_index=True)
+            forecast_columns = get_forecast_columns(combined_df)
 
             # ✅ ADD HERE
             if 'sku' in combined_df.columns:
@@ -746,7 +809,7 @@ def getDispatchfile():
                 'SEA',
                 'AIR',
                 '__coverage_sales_divisor'
-            ]
+            ] + forecast_columns
             agg_spec = {c: 'sum' for c in sum_cols if c in combined_df.columns}
 
             if agg_spec:
@@ -812,11 +875,9 @@ def getDispatchfile():
                 final_df['Shortfall Unit'] = (
                     final_df['Projected Sales Total']
                     - final_df['In stock']
-                ).clip(lower=0)
-                final_df['To be Dispatch'] = (
-                    final_df['Shortfall Unit']
                     - final_df['In transit']
                 ).clip(lower=0)
+                final_df['To be Dispatch'] = final_df['Shortfall Unit'].clip(lower=0)
             if 'SEA' not in final_df.columns and 'Shortfall Unit' in final_df.columns:
                 final_df['SEA'] = final_df['To be Dispatch'].clip(lower=0)
             if 'AIR' not in final_df.columns:
@@ -928,6 +989,7 @@ def getDispatchfile():
                 df = refresh_fba_in_transit_from_db(df, source_country)
                 df = refresh_awd_in_transit_from_db(df, source_country)
                 df = recalculate_coverage_before_dispatch(df, source_country)
+                df = apply_country_profile_sea_air_split(df, source_country)
 
                 if not df.empty:
                     frames.append(df)
@@ -961,6 +1023,7 @@ def getDispatchfile():
         df = refresh_fba_in_transit_from_db(df, country.lower())
         df = refresh_awd_in_transit_from_db(df, country.lower())
         df = recalculate_coverage_before_dispatch(df, country.lower())
+        df = apply_country_profile_sea_air_split(df, country.lower())
         output = build_global_dispatch_file([df])
 
         return send_file(
@@ -1116,13 +1179,10 @@ def merge_dispatch_files(file_uk, file_us):
     ):
         df_combined['Shortfall Unit'] = (
             df_combined['Projected Sales Total']
-            - df_combined['FBA']
-            - df_combined['AWD']
-        ).clip(lower=0)
-        df_combined['To be Dispatch'] = (
-            df_combined['Shortfall Unit']
+            - df_combined['In stock']
             - df_combined['In transit']
         ).clip(lower=0)
+        df_combined['To be Dispatch'] = df_combined['Shortfall Unit'].clip(lower=0)
     if 'SEA' not in df_combined.columns:
         df_combined['SEA'] = df_combined['To be Dispatch'].clip(lower=0)
     if 'AIR' not in df_combined.columns:
@@ -1207,11 +1267,9 @@ def merge_dispatch_files(file_uk, file_us):
         final_df['Shortfall Unit'] = (
             final_df['Projected Sales Total']
             - final_df['In stock']
-        ).clip(lower=0)
-        final_df['To be Dispatch'] = (
-            final_df['Shortfall Unit']
             - final_df['In transit']
         ).clip(lower=0)
+        final_df['To be Dispatch'] = final_df['Shortfall Unit'].clip(lower=0)
     if 'SEA' not in final_df.columns:
         final_df['SEA'] = final_df['To be Dispatch'].clip(lower=0)
     if 'AIR' not in final_df.columns:
@@ -1316,11 +1374,11 @@ def PO_generated():
         if 'In transit' not in inventory_df.columns:
             inventory_df['In transit'] = 0
         inventory_df['Shortfall Unit'] = (
-            inventory_df['Projected Sales Total'] - inventory_df['In stock']
+            inventory_df['Projected Sales Total']
+            - inventory_df['In stock']
+            - inventory_df['In transit']
         ).clip(lower=0)
-        inventory_df['To be Dispatch'] = (
-            inventory_df['Shortfall Unit'] - inventory_df['In transit']
-        ).clip(lower=0)
+        inventory_df['To be Dispatch'] = inventory_df['Shortfall Unit'].clip(lower=0)
         if 'SEA' not in inventory_df.columns:
             inventory_df['SEA'] = inventory_df['To be Dispatch']
         if 'AIR' not in inventory_df.columns:

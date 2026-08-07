@@ -2978,10 +2978,6 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     inventory_forecast["Current Inventory + Dispatch"] = (
         inventory_forecast["Dispatch"] + dispatch_in_stock
     ).astype(int)
-    inventory_forecast["Shortfall Unit"] = (
-        inventory_forecast["Projected Sales Total"]
-        - dispatch_in_stock
-    ).clip(lower=0).round().astype(int)
     in_transit_fba = (
         inventory_forecast["in_transit_fba"]
         if "in_transit_fba" in inventory_forecast.columns
@@ -2996,10 +2992,12 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         pd.to_numeric(in_transit_fba, errors="coerce").fillna(0)
         + pd.to_numeric(in_transit_awd, errors="coerce").fillna(0)
     ).round().astype(int)
-    inventory_forecast["To be Dispatch"] = (
-        inventory_forecast["Shortfall Unit"]
+    inventory_forecast["Shortfall Unit"] = (
+        inventory_forecast["Projected Sales Total"]
+        - dispatch_in_stock
         - inventory_forecast["total_sellable_in_transit"]
     ).clip(lower=0).round().astype(int)
+    inventory_forecast["To be Dispatch"] = inventory_forecast["Shortfall Unit"].clip(lower=0).round().astype(int)
     inventory_forecast = add_air_sea_dispatch_split(
         inventory_forecast,
         all_month_cols,

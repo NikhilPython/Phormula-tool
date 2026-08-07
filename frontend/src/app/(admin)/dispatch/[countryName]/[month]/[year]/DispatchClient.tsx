@@ -341,16 +341,31 @@ function applyAwdShipmentDetails(rows: SkuRow[], awdRows: AwdDispatchInputRow[])
       toNumber(row['Last Month Sales(Units)']) ||
       (oldCoverage > 0 && inStock > 0 ? inStock / oldCoverage : 0)
     const nextInTransit = inTransitFba + nextInTransitAwd
-    const shortfall = toNumber(row['Shortfall Unit'])
-    const nextToDispatch = Math.max(shortfall - nextInTransit, 0)
+    const shortfall = Math.max(
+      toNumber(row['Projected Sales Total']) - inStock - nextInTransit,
+      0,
+    )
+    const nextToDispatch = shortfall
+    const existingSea = toNumber(row['SEA'])
+    const existingAir = toNumber(row['AIR'])
+    const existingSplitTotal = existingSea + existingAir
+    const nextAir =
+      existingSplitTotal > 0
+        ? Math.min(
+          nextToDispatch,
+          Math.round((nextToDispatch * existingAir) / existingSplitTotal),
+        )
+        : 0
+    const nextSea = Math.max(nextToDispatch - nextAir, 0)
 
     return {
       ...row,
       'In Transit AWD': nextInTransitAwd,
       'In transit': nextInTransit,
+      'Shortfall Unit': shortfall,
       'To be Dispatch': nextToDispatch,
-      'SEA': nextToDispatch,
-      'AIR': 0,
+      'SEA': nextSea,
+      'AIR': nextAir,
       'Inventory Coverage Ratio Before Dispatch':
         lastMonthSales > 0
           ? Number(((inStock + nextInTransit) / lastMonthSales).toFixed(2))
@@ -997,17 +1012,15 @@ export default function DispatchPage({
             }
 
             const availableStock = toNumber(obj['FBA']) + toNumber(obj['AWD'])
+            const inTransit = toNumber(obj['In transit'])
             const computedShortfall = Math.max(
-              toNumber(obj['Projected Sales Total']) - availableStock,
+              toNumber(obj['Projected Sales Total']) - availableStock - inTransit,
               0,
             )
 
             obj['In stock'] = availableStock
             obj['Shortfall Unit'] = computedShortfall
-            obj['To be Dispatch'] = Math.max(
-              computedShortfall - toNumber(obj['In transit']),
-              0,
-            )
+            obj['To be Dispatch'] = computedShortfall
 
             if (
               obj['SEA'] === undefined ||
