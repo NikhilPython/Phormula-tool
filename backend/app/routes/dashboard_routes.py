@@ -320,13 +320,7 @@ def getDispatchfile():
         def apply_country_profile_sea_air_split(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             split_df = df.copy()
             forecast_cols = get_forecast_columns(split_df)
-            if not forecast_cols or "To be Dispatch" not in split_df.columns:
-                if "To be Dispatch" in split_df.columns:
-                    split_df["SEA"] = pd.to_numeric(
-                        split_df["To be Dispatch"],
-                        errors="coerce",
-                    ).fillna(0).clip(lower=0)
-                    split_df["AIR"] = 0
+            if "To be Dispatch" not in split_df.columns:
                 return split_df
 
             air_time_weeks, stock_unit_weeks = get_country_profile_split_policy(ctry)
@@ -339,23 +333,38 @@ def getDispatchfile():
                 errors="coerce",
             ).fillna(0).clip(lower=0)
 
-            if air_month_count > 0:
+            if forecast_cols and air_month_count > 0:
                 air_demand = (
                     split_df[forecast_cols[:air_month_count]]
                     .apply(pd.to_numeric, errors="coerce")
                     .fillna(0)
                     .sum(axis=1)
                 )
+                stock_source = (
+                    split_df["In stock"]
+                    if "In stock" in split_df.columns
+                    else pd.Series(0, index=split_df.index)
+                )
+                available_stock = pd.to_numeric(stock_source, errors="coerce").fillna(0)
+                urgent_air_units = (air_demand - available_stock).clip(lower=0)
             else:
-                air_demand = pd.Series(0, index=split_df.index)
-
-            stock_source = (
-                split_df["In stock"]
-                if "In stock" in split_df.columns
-                else pd.Series(0, index=split_df.index)
-            )
-            available_stock = pd.to_numeric(stock_source, errors="coerce").fillna(0)
-            urgent_air_units = (air_demand - available_stock).clip(lower=0)
+                air_threshold_months = air_required_weeks / 4.345 if air_required_weeks > 0 else 0
+                coverage_source = (
+                    split_df["Inventory Coverage Ratio Before Dispatch"]
+                    if "Inventory Coverage Ratio Before Dispatch" in split_df.columns
+                    else pd.Series(0, index=split_df.index)
+                )
+                coverage = pd.to_numeric(
+                    coverage_source,
+                    errors="coerce",
+                ).fillna(0)
+                urgent_air_units = total_units.where(
+                    (total_units > 0) &
+                    (air_threshold_months > 0) &
+                    (coverage > 0) &
+                    (coverage < air_threshold_months),
+                    0,
+                )
 
             split_df["AIR"] = pd.concat([total_units, urgent_air_units], axis=1).min(axis=1).round().astype(int)
             split_df["SEA"] = (total_units - split_df["AIR"]).clip(lower=0).round().astype(int)
