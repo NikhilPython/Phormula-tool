@@ -32,9 +32,10 @@ export type ZeroInventoryInsightsData = {
 };
 
 const buckets = [
-  { label: "0–180 Days", value: "0-180 days", key: "zeroToOneEighty", color: "#7B9A6D" },
-  { label: "181–270 Days", value: "181-270 days", key: "oneEightyOneToTwoSeventy", color: "#ED9F50" },
-  { label: "271–365 Days", value: "271-365 days", key: "twoSeventyOneToThreeSixtyFive", color: "#C49466" },
+  { label: "0-90 Days", value: "0-90 days", key: "zeroToNinety", color: "#7B9A6D" },
+  { label: "91-180 Days", value: "91-180 days", key: "ninetyOneToOneEighty", color: "#FDD36F" },
+  { label: "181-270 Days", value: "181-270 days", key: "oneEightyOneToTwoSeventy", color: "#ED9F50" },
+  { label: "271-365 Days", value: "271-365 days", key: "twoSeventyOneToThreeSixtyFive", color: "#C49466" },
   { label: "365+ Days", value: "365+ days", key: "threeSixtyFivePlus", color: "#B75A5A" },
 ] as const;
 
@@ -46,6 +47,8 @@ export const createZeroInventoryInsightsData = (
   storageCostCurrencySymbol = "$"
 ): ZeroInventoryInsightsData => {
   const zeroHeatmapValues = {
+    zeroToNinety: 0,
+    ninetyOneToOneEighty: 0,
     zeroToOneEighty: 0,
     oneEightyOneToTwoSeventy: 0,
     twoSeventyOneToThreeSixtyFive: 0,
@@ -107,6 +110,8 @@ export const createZeroInventoryInsightsData = (
 
   const inventoryAgeSummaryColumns = Object.fromEntries(
     [
+      "inv-age-0-to-90-days",
+      "inv-age-91-to-180-days",
       "inv-age-0-to-180-days",
       "inv-age-181-to-270-days",
       "inv-age-271-to-365-days",
@@ -118,12 +123,20 @@ export const createZeroInventoryInsightsData = (
     heatmapBuckets: buckets.map(({ key, label, color }) => ({ key, label, color })),
     heatmapData,
     donutSku: "Overall",
-    donutData: buckets.map(({ label, color }) => ({
-      bucket: label,
-      units: 0,
-      percentageShare: 0,
-      color,
-    })),
+    donutData: [
+      ...buckets.map(({ label, color }) => ({
+        bucket: label,
+        units: 0,
+        percentageShare: 0,
+        color,
+      })),
+      {
+        bucket: "Unsellable",
+        units: 0,
+        percentageShare: 0,
+        color: "#3A8EA4",
+      },
+    ],
     donutTotalUnits: 0,
     trendSelectedBucket: "all",
     trendData: zeroMonths,

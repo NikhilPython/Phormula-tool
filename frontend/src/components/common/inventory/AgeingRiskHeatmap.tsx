@@ -232,6 +232,38 @@ const getUnitSalesValue = (
     return Number.isFinite(n) ? n : 0;
 };
 
+const isSummaryHeatmapRow = (row: AgeingRiskHeatmapRow) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        row.isTotalRow === true ||
+        row.isPercentageRow === true ||
+        (row as any).is_percentage_row === true ||
+        productName === "total" ||
+        productName === "grand total" ||
+        productName === "% of total" ||
+        productName === "percentage" ||
+        sku === "total" ||
+        sku === "grand total" ||
+        sku === "% of total" ||
+        sku === "percentage"
+    );
+};
+
+const isTotalHeatmapRow = (row: AgeingRiskHeatmapRow) => {
+    const productName = String(row.productName || "").trim().toLowerCase();
+    const sku = String(row.sku || "").trim().toLowerCase();
+
+    return (
+        row.isTotalRow === true ||
+        productName === "total" ||
+        productName === "grand total" ||
+        sku === "total" ||
+        sku === "grand total"
+    );
+};
+
 const buildAggregateRow = (
     label: string,
     rows: AgeingRiskHeatmapRow[],
@@ -417,96 +449,83 @@ const bucketKeyToApiColumn: Record<string, string> = {
     threeSixtyFivePlus: "inv-age-365-plus-days",
 };
 
-const buildPercentageRow = (
-    totalRow: AgeingRiskHeatmapRow,
+const buildTotalRow = (
+    rows: AgeingRiskHeatmapRow[],
+    data: AgeingRiskHeatmapRow[],
     buckets: AgeingBucket[],
-    inventoryAgeSummary?: AgeingRiskHeatmapProps["inventoryAgeSummary"]
+    inventoryAgeSummary: AgeingRiskHeatmapProps["inventoryAgeSummary"],
+    unitSalesDataKey: AgeingRiskUnitSalesDataKey
 ): AgeingRiskHeatmapRow => {
-    const percentageBaseTotal = Number(
-        inventoryAgeSummary?.percentage_base_total || 0
-    );
+    const calculatedTotalRow = buildAggregateRow("Total", rows, buckets, {
+        isTotalRow: true,
+    }, unitSalesDataKey);
 
-    const percentageRow: AgeingRiskHeatmapRow = {
-        productName: "% of Total",
-        sku: "-",
-        available: 0,
-        totalUnits: 0,
-        inboundUnits: undefined,
-        unsellableUnits: 0,
-        unitsSold: undefined,
-        coverageRatio: undefined,
-        inventoryAlert: "",
-        isPercentageRow: true,
-    };
+    const backendTotalRow = data.find(isTotalHeatmapRow);
 
-    if (percentageBaseTotal > 0) {
+    const totalRow: AgeingRiskHeatmapRow = backendTotalRow
+        ? {
+            ...calculatedTotalRow,
+            ...backendTotalRow,
+            coverageRatio: Number(
+                backendTotalRow.coverageRatio ?? calculatedTotalRow.coverageRatio ?? 0
+            ),
+            coverageCurrentAndTransit: Number(
+                backendTotalRow.coverageCurrentAndTransit ??
+                calculatedTotalRow.coverageCurrentAndTransit ??
+                0
+            ),
+            isTotalRow: true,
+            productName: "Total",
+            sku: "-",
+        }
+        : calculatedTotalRow;
+
+    if (inventoryAgeSummary) {
         buckets.forEach((bucket) => {
             const apiColumn = bucketKeyToApiColumn[bucket.key];
+            const backendTotal = inventoryAgeSummary.columns?.[apiColumn]?.total;
 
-            const backendPercentage =
-                inventoryAgeSummary?.columns?.[apiColumn]?.percentage_share;
-
-            const backendTotal =
-                inventoryAgeSummary?.columns?.[apiColumn]?.total;
-
-            const frontendSplitTotal = Number(totalRow[bucket.key] || 0);
-
-            percentageRow[bucket.key] =
-                typeof backendPercentage === "number"
-                    ? backendPercentage
-                    : typeof backendTotal === "number"
-                        ? (backendTotal / percentageBaseTotal) * 100
-                        : frontendSplitTotal > 0
-                            ? (frontendSplitTotal / percentageBaseTotal) * 100
-                            : 0;
+            if (typeof backendTotal === "number") {
+                totalRow[bucket.key] = backendTotal;
+            }
         });
 
-        percentageRow.available =
-            inventoryAgeSummary?.total_units_summary?.sellable?.percentage_share ??
-            (
-                inventoryAgeSummary?.sellable_total
-                    ? (Number(inventoryAgeSummary.sellable_total) / percentageBaseTotal) * 100
-                    : 0
+        if (backendTotalRow) {
+            totalRow.available = Number(backendTotalRow.available || 0);
+            totalRow.fcTransfer = Number(backendTotalRow.fcTransfer || 0);
+            totalRow.totalUnits = Number(
+                backendTotalRow.totalUnits ??
+                Number(backendTotalRow.available || 0) +
+                Number(backendTotalRow.fcTransfer || 0)
             );
-
-        percentageRow.fcTransfer =
-            percentageBaseTotal > 0
-                ? (Number(totalRow.fcTransfer || 0) / percentageBaseTotal) * 100
-                : 0;
-
-        percentageRow.totalUnits = percentageRow.available;
-
-        percentageRow.unsellableUnits =
-            inventoryAgeSummary?.total_units_summary?.unfulfillable?.percentage_share ??
-            (
-                inventoryAgeSummary?.unfulfillable_total
-                    ? (Number(inventoryAgeSummary.unfulfillable_total) / percentageBaseTotal) * 100
-                    : 0
+            totalRow.currentFba = Number(getCurrentFbaValue(backendTotalRow) ?? 0);
+            totalRow.currentAwd = Number(backendTotalRow.currentAwd || 0);
+            totalRow.transitFba = Number(
+                backendTotalRow.transitFba ?? backendTotalRow.fcTransfer ?? 0
             );
+            totalRow.transitAwd = Number(
+                backendTotalRow.transitAwd ?? backendTotalRow.inboundUnits ?? 0
+            );
+            totalRow.totalInStock = Number(
+                backendTotalRow.totalInStock ?? backendTotalRow.totalUnits ?? 0
+            );
+            totalRow.totalInTransit = Number(
+                backendTotalRow.totalInTransit ?? backendTotalRow.inboundUnits ?? 0
+            );
+            totalRow.storageCostUsd = Number(backendTotalRow.storageCostUsd || 0);
+        }
 
-        return percentageRow;
+        if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
+            totalRow.unsellableUnits = inventoryAgeSummary.unfulfillable_total;
+            totalRow.unsellableFba = inventoryAgeSummary.unfulfillable_total;
+        }
+
+        if (typeof inventoryAgeSummary.current_month_units_sold_total === "number") {
+            totalRow.unitsSold = inventoryAgeSummary.current_month_units_sold_total;
+        }
     }
 
-    // fallback only when backend summary is missing
-    const sellableUnits = Number(totalRow.available ?? totalRow.totalUnits ?? 0);
-    const unfulfillableUnits = Number(totalRow.unsellableUnits || 0);
-    const fallbackBase = sellableUnits + unfulfillableUnits;
-
-    buckets.forEach((bucket) => {
-        const value = Number(totalRow[bucket.key] || 0);
-        percentageRow[bucket.key] =
-            fallbackBase > 0 ? (value / fallbackBase) * 100 : 0;
-    });
-
-    percentageRow.available =
-        fallbackBase > 0 ? (sellableUnits / fallbackBase) * 100 : 0;
-
-    percentageRow.totalUnits = percentageRow.available;
-
-    percentageRow.unsellableUnits =
-        fallbackBase > 0 ? (unfulfillableUnits / fallbackBase) * 100 : 0;
-
-    return percentageRow;
+    return totalRow;
 };
 
 const getUnitSalesSortValue = (
@@ -558,7 +577,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
     const showSellableBreakdown = useMemo(() => {
         return data.some((row) => {
-            if (row.isPercentageRow) return false;
+            if (isSummaryHeatmapRow(row)) return false;
 
             const available = Number(row.available || 0);
             const fcTransfer = Number(row.fcTransfer || 0);
@@ -567,58 +586,28 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         });
     }, [data]);
 
-    const canCollapse = data.length > defaultVisibleRows;
-
-    const displayRows = useMemo<HeatmapTableRow[]>(() => {
-        const backendPercentageRow = data.find((row) => {
-            const productName = String(row.productName || "").trim().toLowerCase();
-            const sku = String(row.sku || "").trim().toLowerCase();
-
-            return (
-                row.isPercentageRow === true ||
-                (row as any).is_percentage_row === true ||
-                productName === "% of total" ||
-                productName === "percentage" ||
-                sku === "% of total" ||
-                sku === "percentage"
-            );
-        });
-
+    const displayableRowCount = useMemo(() => {
         const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
         };
 
-        const backendTotalRow = data.find((row) => {
-            const productName = String(row.productName || "").trim().toLowerCase();
-            const sku = String(row.sku || "").trim().toLowerCase();
+        return data.filter(
+            (row) =>
+                !isSummaryHeatmapRow(row) &&
+                (row.isDummyRow === true || hasAnyDisplayBucketValue(row))
+        ).length;
+    }, [data, buckets]);
 
-            return (
-                row.isTotalRow === true ||
-                productName === "total" ||
-                productName === "grand total" ||
-                sku === "total" ||
-                sku === "grand total"
-            );
-        });
+    const canCollapse = displayableRowCount > defaultVisibleRows;
+
+    const displayRows = useMemo<HeatmapTableRow[]>(() => {
+        const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
+            return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
+        };
 
         const productRows = data.filter((row) => {
-            const productName = String(row.productName || "").trim().toLowerCase();
-            const sku = String(row.sku || "").trim().toLowerCase();
-            const isPercentageRow =
-                row.isPercentageRow === true ||
-                (row as any).is_percentage_row === true ||
-                productName === "% of total" ||
-                productName === "percentage" ||
-                sku === "% of total" ||
-                sku === "percentage";
-
             return (
-                !isPercentageRow &&
-                !row.isTotalRow &&
-                productName !== "total" &&
-                productName !== "grand total" &&
-                sku !== "total" &&
-                sku !== "grand total" &&
+                !isSummaryHeatmapRow(row) &&
                 (row.isDummyRow === true || hasAnyDisplayBucketValue(row))
             );
         });
@@ -632,116 +621,31 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return bUnitSales - aUnitSales;
         });
 
-        const calculatedTotalRow = buildAggregateRow("Total", sortedData, buckets, {
-            isTotalRow: true,
-        }, unitSalesDataKey);
-
-        const totalRow = backendTotalRow
-            ? {
-                ...calculatedTotalRow,
-                ...backendTotalRow,
-
-                // ✅ keep backend coverage ratio only
-                coverageRatio: Number(backendTotalRow.coverageRatio ?? 0),
-                coverageCurrentAndTransit: Number(
-                    backendTotalRow.coverageCurrentAndTransit ?? 0
-                ),
-                isTotalRow: true,
-                productName: "Total",
-                sku: "-",
-            }
-            : calculatedTotalRow;
-
-        if (inventoryAgeSummary) {
-            buckets.forEach((bucket) => {
-                const apiColumn = bucketKeyToApiColumn[bucket.key];
-                const backendTotal = inventoryAgeSummary.columns?.[apiColumn]?.total;
-
-                if (typeof backendTotal === "number") {
-                    totalRow[bucket.key] = backendTotal;
-                }
-            });
-
-            // ✅ Do NOT use inventoryAgeSummary.sellable_total for Available.
-            // Backend "Total" row already has separate available / fc-transfer / Sellable Units.
-            // inventoryAgeSummary.sellable_total can include different sellable base and causes wrong UI total.
-
-            const backendTotalRow = data.find((row) => {
-                const productName = String(row.productName || "").trim().toLowerCase();
-                const sku = String(row.sku || "").trim().toLowerCase();
-
-                return (
-                    row.isTotalRow === true ||
-                    productName === "total" ||
-                    productName === "grand total" ||
-                    sku === "total" ||
-                    sku === "grand total"
-                );
-            });
-
-            if (backendTotalRow) {
-                totalRow.available = Number(backendTotalRow.available || 0);
-                totalRow.fcTransfer = Number(backendTotalRow.fcTransfer || 0);
-                totalRow.totalUnits = Number(
-                    backendTotalRow.totalUnits ??
-                    Number(backendTotalRow.available || 0) + Number(backendTotalRow.fcTransfer || 0)
-                );
-
-                totalRow.currentFba = Number(
-                    getCurrentFbaValue(backendTotalRow) ?? 0
-                );
-                totalRow.currentAwd = Number(backendTotalRow.currentAwd || 0);
-                totalRow.transitFba = Number(
-                    backendTotalRow.transitFba ?? backendTotalRow.fcTransfer ?? 0
-                );
-                totalRow.transitAwd = Number(
-                    backendTotalRow.transitAwd ?? backendTotalRow.inboundUnits ?? 0
-                );
-                totalRow.totalInStock = Number(
-                    backendTotalRow.totalInStock ?? backendTotalRow.totalUnits ?? 0
-                );
-                totalRow.totalInTransit = Number(
-                    backendTotalRow.totalInTransit ?? backendTotalRow.inboundUnits ?? 0
-                );
-                totalRow.storageCostUsd = Number(backendTotalRow.storageCostUsd || 0);
-            }
-
-            if (typeof inventoryAgeSummary.unfulfillable_total === "number") {
-                totalRow.unsellableUnits = inventoryAgeSummary.unfulfillable_total;
-                totalRow.unsellableFba = inventoryAgeSummary.unfulfillable_total;
-            }
-
-            if (typeof inventoryAgeSummary.current_month_units_sold_total === "number") {
-                totalRow.unitsSold = inventoryAgeSummary.current_month_units_sold_total;
-            }
-        }
-
-        const percentageRow = backendPercentageRow
-            ? ({
-                ...backendPercentageRow,
-                productName: "% of Total",
-                sku: backendPercentageRow.sku || "-",
-                isPercentageRow: true,
-            } as HeatmapTableRow)
-            : buildPercentageRow(totalRow, buckets, inventoryAgeSummary);
+        const totalRow = buildTotalRow(
+            sortedData,
+            data,
+            buckets,
+            inventoryAgeSummary,
+            unitSalesDataKey
+        );
 
         if (!canCollapse || isExpanded) {
-            return [...sortedData, totalRow, percentageRow] as HeatmapTableRow[];
+            return [...sortedData, totalRow] as HeatmapTableRow[];
         }
 
         const mainRows = sortedData.slice(0, defaultVisibleRows);
         const otherRows = sortedData.slice(defaultVisibleRows);
 
         if (!otherRows.length) {
-            return [...mainRows, totalRow, percentageRow] as HeatmapTableRow[];
+            return [...mainRows, totalRow] as HeatmapTableRow[];
         }
 
         const othersRow = buildAggregateRow("Others", otherRows, buckets, {
             isOthersRow: true,
         }, unitSalesDataKey);
 
-        return [...mainRows, othersRow, totalRow, percentageRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, useCurrentInventoryTableLayout]);
+        return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
+    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey]);
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};

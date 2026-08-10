@@ -1008,6 +1008,20 @@ type InventoryCurrentApiResponse = {
     sellable_total?: number;
     unfulfillable_total?: number;
     current_month_units_sold_total?: number;
+    total_units_summary?: {
+      current_month_units_sold?: {
+        total?: number;
+        percentage_share?: number;
+      };
+      sellable?: {
+        total?: number;
+        percentage_share?: number;
+      };
+      unfulfillable?: {
+        total?: number;
+        percentage_share?: number;
+      };
+    };
     columns?: Record<
       string,
       {
@@ -1748,6 +1762,15 @@ const toNum = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const pickFirstPositiveInventoryNumber = (...values: any[]) => {
+  for (const value of values) {
+    const n = toNum(value);
+    if (n > 0) return n;
+  }
+
+  return 0;
+};
+
 const normalizeInventoryKey = (key: string) =>
   String(key || '')
     .toLowerCase()
@@ -2403,8 +2426,22 @@ const getSelectedCountryAgeSummaryResponses = (
 const buildDonutDataFromInventoryAgeSummary = (
   inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
 ): DonutChartItem[] => {
-  const columns = inventoryAgeSummary?.columns || {};
+  if (!inventoryAgeSummary) return [];
 
+  const columns = inventoryAgeSummary?.columns || {};
+  const unfulfillableUnits = toNum(
+    inventoryAgeSummary?.unfulfillable_total ??
+    inventoryAgeSummary?.total_units_summary?.unfulfillable?.total
+  );
+  const sellableUnits = toNum(
+    inventoryAgeSummary?.sellable_total ??
+    inventoryAgeSummary?.total_units_summary?.sellable?.total
+  );
+  const totalUnits = pickFirstPositiveInventoryNumber(
+    inventoryAgeSummary?.percentage_base_total,
+    inventoryAgeSummary?.total,
+    sellableUnits + unfulfillableUnits
+  );
   const hasSplitFirst180 =
     toNum(columns["inv-age-0-to-90-days"]?.total) > 0 ||
     toNum(columns["inv-age-91-to-180-days"]?.total) > 0;
@@ -2452,21 +2489,43 @@ const buildDonutDataFromInventoryAgeSummary = (
   ];
 
 
-  return summaryBuckets
-    .map((bucket) => {
-      const item = columns[bucket.column];
+  const computedTotalUnits =
+    summaryBuckets.reduce(
+      (sum, bucket) => sum + toNum(columns[bucket.column]?.total),
+      0
+    ) + unfulfillableUnits;
+  const finalTotalUnits = pickFirstPositiveInventoryNumber(
+    computedTotalUnits,
+    totalUnits
+  );
 
-      return {
-        bucket: bucket.bucket,
-        units: toNum(item?.total),
-        percentageShare:
-          typeof item?.percentage_share === "number"
-            ? item.percentage_share
-            : undefined,
-        color: bucket.color,
-      };
-    })
-    .filter((item) => item.units > 0);
+  const ageingItems = summaryBuckets.map((bucket) => {
+    const item = columns[bucket.column];
+    const units = toNum(item?.total);
+
+    return {
+      bucket: bucket.bucket,
+      units,
+      percentageShare:
+        finalTotalUnits > 0
+          ? (units / finalTotalUnits) * 100
+          : undefined,
+      color: bucket.color,
+    };
+  });
+
+  return [
+    ...ageingItems,
+    {
+      bucket: "Unsellable",
+      units: unfulfillableUnits,
+      percentageShare:
+        finalTotalUnits > 0
+          ? (unfulfillableUnits / finalTotalUnits) * 100
+          : undefined,
+      color: "#3A8EA4",
+    },
+  ];
 };
 
 const buildBackendPercentageHeatmapRow = (
@@ -2887,6 +2946,13 @@ const buildInventoryInsightsFromResponses = (
   const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
     selectedInventoryResponseForDonut?.inventory_age_summary
   );
+  const fallbackUnfulfillableUnits = heatmapData.reduce(
+    (sum, row) =>
+      sum +
+      toNum(row.unsellableFba ?? row.unsellableUnits) +
+      toNum(row.unsellableAwd),
+    0
+  );
 
   const fallbackDonutData: DonutChartItem[] = isUsingSplitFirst180
     ? [
@@ -2940,14 +3006,33 @@ const buildInventoryInsightsFromResponses = (
     ];
 
 
+  const fallbackDonutTotalUnits =
+    fallbackDonutData.reduce((sum, item) => sum + toNum(item.units), 0) +
+    fallbackUnfulfillableUnits;
+
+  const fallbackDonutDataWithUnsellable: DonutChartItem[] = [
+    ...fallbackDonutData,
+    {
+      bucket: "Unsellable",
+      units: fallbackUnfulfillableUnits,
+      percentageShare:
+        fallbackDonutTotalUnits > 0
+          ? (fallbackUnfulfillableUnits / fallbackDonutTotalUnits) * 100
+          : undefined,
+      color: "#3A8EA4",
+    },
+  ];
+
   const donutData: DonutChartItem[] =
     backendSummaryDonutData.length > 0
       ? backendSummaryDonutData
-      : fallbackDonutData.filter((item) => item.units > 0);
+      : fallbackDonutDataWithUnsellable;
 
-  const donutTotalUnits =
-    selectedInventoryResponseForDonut?.inventory_age_summary?.sellable_total ??
-    donutData.reduce((sum, item) => sum + toNum(item.units), 0);
+  const donutTotalUnits = pickFirstPositiveInventoryNumber(
+    donutData.reduce((sum, item) => sum + toNum(item.units), 0),
+    selectedInventoryResponseForDonut?.inventory_age_summary?.percentage_base_total,
+    selectedInventoryResponseForDonut?.inventory_age_summary?.total
+  );
 
   const selectedTrendOption =
     AGEING_TREND_BUCKET_OPTIONS.find(

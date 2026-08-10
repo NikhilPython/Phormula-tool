@@ -174,7 +174,7 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                         <thead>
                             <tr className="text-charcoal-500">
                                 <th className="w-[48%] px-2 py-1.5 text-left font-semibold">
-                                    Ageing Bucket
+                                    Metric
                                 </th>
                                 <th className="w-[24%] px-2 py-1.5 text-center font-semibold">
                                     Units

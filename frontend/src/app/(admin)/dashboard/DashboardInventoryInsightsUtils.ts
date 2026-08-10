@@ -728,8 +728,22 @@ export const getSelectedCountryAgeSummaryResponses = (
 const buildDonutDataFromInventoryAgeSummary = (
     inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"]
 ): DonutChartItem[] => {
-    const columns = inventoryAgeSummary?.columns || {};
+    if (!inventoryAgeSummary) return [];
 
+    const columns = inventoryAgeSummary?.columns || {};
+    const unfulfillableUnits = inventoryToNum(
+        inventoryAgeSummary?.unfulfillable_total ??
+        inventoryAgeSummary?.total_units_summary?.unfulfillable?.total
+    );
+    const sellableUnits = inventoryToNum(
+        inventoryAgeSummary?.sellable_total ??
+        inventoryAgeSummary?.total_units_summary?.sellable?.total
+    );
+    const totalUnits = getFirstPositiveInventoryValue(
+        inventoryAgeSummary?.percentage_base_total,
+        inventoryAgeSummary?.total,
+        sellableUnits + unfulfillableUnits
+    );
     const hasSplitFirst180 =
         inventoryToNum(columns["inv-age-0-to-90-days"]?.total) > 0 ||
         inventoryToNum(columns["inv-age-91-to-180-days"]?.total) > 0;
@@ -774,21 +788,43 @@ const buildDonutDataFromInventoryAgeSummary = (
         },
     ];
 
-    return summaryBuckets
-        .map((bucket) => {
-            const item = columns[bucket.column];
+    const computedTotalUnits =
+        summaryBuckets.reduce(
+            (sum, bucket) => sum + inventoryToNum(columns[bucket.column]?.total),
+            0
+        ) + unfulfillableUnits;
+    const finalTotalUnits = getFirstPositiveInventoryValue(
+        computedTotalUnits,
+        totalUnits
+    );
 
-            return {
-                bucket: bucket.bucket,
-                units: inventoryToNum(item?.total),
-                percentageShare:
-                    typeof item?.percentage_share === "number"
-                        ? item.percentage_share
-                        : undefined,
-                color: bucket.color,
-            };
-        })
-        .filter((item) => item.units > 0);
+    const ageingItems = summaryBuckets.map((bucket) => {
+        const item = columns[bucket.column];
+        const units = inventoryToNum(item?.total);
+
+        return {
+            bucket: bucket.bucket,
+            units,
+            percentageShare:
+                finalTotalUnits > 0
+                    ? (units / finalTotalUnits) * 100
+                    : undefined,
+            color: bucket.color,
+        };
+    });
+
+    return [
+        ...ageingItems,
+        {
+            bucket: "Unsellable",
+            units: unfulfillableUnits,
+            percentageShare:
+                finalTotalUnits > 0
+                    ? (unfulfillableUnits / finalTotalUnits) * 100
+                    : undefined,
+            color: "#3A8EA4",
+        },
+    ];
 };
 
 const buildBackendPercentageHeatmapRow = (
@@ -1204,6 +1240,13 @@ export const buildInventoryInsightsFromResponses = (
     const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
         latestResponse?.inventory_age_summary
     );
+    const fallbackUnfulfillableUnits = mergedRows.reduce(
+        (sum, row) =>
+            sum +
+            getInventoryUnsellableFbaValue(row) +
+            getInventoryUnsellableAwdValue(row),
+        0
+    );
 
     const fallbackDonutData: DonutChartItem[] = isUsingSplitFirst180
         ? [
@@ -1256,15 +1299,35 @@ export const buildInventoryInsightsFromResponses = (
             },
         ];
 
+    const fallbackDonutTotalUnits =
+        fallbackDonutData.reduce(
+            (sum, item) => sum + inventoryToNum(item.units),
+            0
+        ) + fallbackUnfulfillableUnits;
+
+    const fallbackDonutDataWithUnsellable: DonutChartItem[] = [
+        ...fallbackDonutData,
+        {
+            bucket: "Unsellable",
+            units: fallbackUnfulfillableUnits,
+            percentageShare:
+                fallbackDonutTotalUnits > 0
+                    ? (fallbackUnfulfillableUnits / fallbackDonutTotalUnits) * 100
+                    : undefined,
+            color: "#3A8EA4",
+        },
+    ];
+
     const donutData: DonutChartItem[] =
         backendSummaryDonutData.length > 0
             ? backendSummaryDonutData
-            : fallbackDonutData.filter((item) => item.units > 0);
+            : fallbackDonutDataWithUnsellable;
 
-    const donutTotalUnits =
-        latestResponse?.inventory_age_summary?.sellable_total ??
-        latestResponse?.inventory_age_summary?.total_units_summary?.sellable?.total ??
-        donutData.reduce((sum, item) => sum + inventoryToNum(item.units), 0);
+    const donutTotalUnits = getFirstPositiveInventoryValue(
+        donutData.reduce((sum, item) => sum + inventoryToNum(item.units), 0),
+        latestResponse?.inventory_age_summary?.percentage_base_total,
+        latestResponse?.inventory_age_summary?.total
+    );
 
     const isAllTrendSelected = selectedTrendBucketValue === "all";
 
