@@ -154,9 +154,15 @@ const unitsSoldSortValue = (row: AnyRow) => Math.abs(unitsSoldNet(row));
 const displayedMovement = (row: AnyRow, key: string) =>
   Math.abs(toNum(row?.[key]));
 
+const awdInwarded = (row: AnyRow) =>
+  displayedMovement(row, "total_inbound_quantity");
+
+const unitsInwardedTotal = (row: AnyRow) =>
+  displayedMovement(row, "sum_receipts") + awdInwarded(row);
+
 const displayedDifference = (row: AnyRow) =>
   displayedMovement(row, "beginning_total") +
-  displayedMovement(row, "transit_total") -
+  unitsInwardedTotal(row) -
   Math.abs(unitsSoldNet(row)) -
   displayedMovement(row, "other_total") -
   displayedMovement(row, "ending_total");
@@ -1369,6 +1375,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
     return "Inventory at year end";
   }, [range]);
 
+  const isUsReconCountry = useMemo(
+    () => ["us", "usa", "united states"].includes(countryName),
+    [countryName]
+  );
+
   /* ================= MAIN FLOW ================= */
 
   const debounceRef = useRef<number | null>(null);
@@ -1638,25 +1649,37 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: '__beginning_total', label: 'Total', width: 140, align: 'center' }
         ],
         expandedCols: [
-          { key: 'sellable_sum_first', label: 'Sellable', width: 110, align: 'center' },
+          { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(!isUsReconCountry
+            ? [
+              { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
           { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
-          { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
       {
         id: 'units_in_transit',
-        label: 'Units in transit',
+        label: isUsReconCountry ? 'Units Inwarded' : 'Units in transit',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
-          { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 100, align: 'center' },
         ],
         expandedCols: [
-          { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' },
-          { key: 'sum_receipts', label: 'Delivered', width: 110, align: 'center' },
-          { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
+          { key: 'sum_receipts', label: isUsReconCountry ? 'FBA' : 'Delivered', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: '__units_inwarded_awd', label: 'AWD', width: 110, align: 'center' as const },
+              { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
+              { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
+            ]
+            : [
+              { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' as const },
+            ]),
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
@@ -1715,15 +1738,19 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: '__ending_total', label: 'Total', width: 110, align: 'center' },
         ],
         expandedCols: [
-          { key: 'sellable_sum_last', label: 'Sellable', width: 110, align: 'center' },
+          { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(!isUsReconCountry
+            ? [
+              { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
-          { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
     ],
-    [beginningInventoryLabel, endingInventoryLabel]
+    [beginningInventoryLabel, endingInventoryLabel, isUsReconCountry]
   );
 
   // 3) Everything else goes to singleCols for now (optional)
@@ -1749,8 +1776,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
         // group 2 transit
         '__transit_total',
+        '__units_inwarded_awd',
+        '__units_inwarded_total',
         'transit_total',
         'sum_receipts',
+        'total_onhand_quantity',
+        'total_inbound_quantity',
+        'transfer_awd_fba',
+        'transfer_fba_awd',
 
         // group 3 other items
         '__other_items_total',
@@ -1934,6 +1967,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
     }
 
     // Total → DB value
+    if (colKey === '__units_inwarded_awd') {
+      return formatCell(awdInwarded(row));
+    }
+
+    if (colKey === '__units_inwarded_total') {
+      return formatCell(unitsInwardedTotal(row));
+    }
+
     if (colKey === '__transit_total') {
       return formatCell(row?.transit_total);
     }

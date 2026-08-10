@@ -3818,9 +3818,15 @@ const reconUnitsSortValue = (row: AnyRow) => Math.abs(reconUnitsNet(row));
 const reconDisplayedMovement = (row: AnyRow, key: string) =>
   Math.abs(toInventoryInt(row?.[key]));
 
+const reconAwdInwarded = (row: AnyRow) =>
+  reconDisplayedMovement(row, "total_inbound_quantity");
+
+const reconUnitsInwardedTotal = (row: AnyRow) =>
+  reconDisplayedMovement(row, "sum_receipts") + reconAwdInwarded(row);
+
 const reconDisplayedDifference = (row: AnyRow) =>
   reconDisplayedMovement(row, "beginning_total") +
-  reconDisplayedMovement(row, "transit_total") -
+  reconUnitsInwardedTotal(row) -
   Math.abs(reconUnitsNet(row)) -
   reconDisplayedMovement(row, "other_total") -
   reconDisplayedMovement(row, "ending_total");
@@ -6145,7 +6151,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
-          { key: 'sum_in_transit_between_warehouses', label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)', width: 110, align: 'center' },
+          ...(!isUsReconCountry
+            ? [
+              { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
           { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
           { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
@@ -6156,18 +6166,20 @@ export default function InputCostPage({ params }: Params) {
         label: 'Units Inwarded',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
-          { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 100, align: 'center' },
         ],
         expandedCols: [
           { key: 'sum_receipts', label: isUsReconCountry ? 'FBA' : 'Delivered', width: 110, align: 'center' },
-          { key: 'transit_total', label: isUsReconCountry ? 'AWD' : 'In Transit', width: 110, align: 'center' },
           ...(isUsReconCountry
             ? [
+              { key: '__units_inwarded_awd', label: 'AWD', width: 110, align: 'center' as const },
               { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
               { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
             ]
-            : []),
-          { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
+            : [
+              { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' as const },
+            ]),
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
@@ -6224,12 +6236,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
-          {
-            key: isUsReconCountry ? 'total_onhand_quantity' : '__ending_transit_placeholder',
-            label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)',
-            width: 110,
-            align: 'center',
-          },
+          ...(!isUsReconCountry
+            ? [
+              { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
@@ -6436,6 +6447,10 @@ export default function InputCostPage({ params }: Params) {
     if (colKey === 'transit_total') return '-';
 
     if (colKey === 'sum_receipts') return formatReconCell(row?.sum_receipts);
+
+    if (colKey === '__units_inwarded_awd') return formatReconCell(reconAwdInwarded(row));
+
+    if (colKey === '__units_inwarded_total') return formatReconCell(reconUnitsInwardedTotal(row));
 
     if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
 

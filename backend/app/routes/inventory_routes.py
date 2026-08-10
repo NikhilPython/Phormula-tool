@@ -2847,36 +2847,39 @@ def _attach_awd_quantities_to_rows(
     items: list[dict],
     user_id: int,
     marketplace_id: str,
+    period_start: date,
+    period_end: date,
 ) -> None:
-    """Attach the latest AWD inventory values to monthly SKU summary rows.
+    """Attach open AWD inbound shipment quantities to monthly SKU summary rows.
 
-    Values come from public.inventory_awd and are matched by:
-      user_id + marketplace_id + normalized SKU.
+    Values come from public.inventory_awd_inbound_shipments and are matched by:
+      user_id + marketplace_id + normalized SKU + ship_by date in the selected month.
     Missing AWD SKUs receive zero values.
     """
     if not items:
         return
 
+    _ensure_awd_inbound_shipments_table(conn)
+
     awd_rows = conn.execute(text("""
-        SELECT DISTINCT ON (UPPER(TRIM(COALESCE(sku, ''))))
+        SELECT
             UPPER(TRIM(COALESCE(sku, ''))) AS normalized_sku,
-            COALESCE(total_onhand_quantity, 0) AS total_onhand_quantity,
-            COALESCE(total_inbound_quantity, 0) AS total_inbound_quantity,
-            COALESCE(available_distributable_quantity, 0) AS available_distributable_quantity,
-            COALESCE(reserved_distributable_quantity, 0) AS reserved_distributable_quantity,
-            COALESCE(replenishment_quantity, 0) AS replenishment_quantity
-        FROM public.inventory_awd
+            SUM(COALESCE(expected_unit_quantity, 0)) AS total_inbound_quantity
+        FROM public.inventory_awd_inbound_shipments
         WHERE user_id = :user_id
           AND marketplace_id = :marketplace_id
           AND TRIM(COALESCE(sku, '')) <> ''
-        ORDER BY
-            UPPER(TRIM(COALESCE(sku, ''))),
-            synced_at DESC NULLS LAST,
-            updated_at DESC NULLS LAST,
-            id DESC
+          AND COALESCE(expected_unit_quantity, 0) > 0
+          AND UPPER(REPLACE(COALESCE(shipment_status, ''), '-', '_')) NOT IN ('CANCELLED', 'CLOSED', 'DELIVERED')
+          AND ship_by IS NOT NULL
+          AND CAST(ship_by AS DATE) >= :period_start
+          AND CAST(ship_by AS DATE) <= :period_end
+        GROUP BY UPPER(TRIM(COALESCE(sku, '')))
     """), {
         "user_id": int(user_id),
         "marketplace_id": marketplace_id,
+        "period_start": period_start,
+        "period_end": period_end,
     }).mappings().all()
 
     awd_by_sku = {
@@ -2888,11 +2891,11 @@ def _attach_awd_quantities_to_rows(
     for item in items:
         sku = str(item.get("msku") or "").strip().upper()
         awd = awd_by_sku.get(sku, {})
-        item["total_onhand_quantity"] = int(awd.get("total_onhand_quantity") or 0)
+        item["total_onhand_quantity"] = 0
         item["total_inbound_quantity"] = int(awd.get("total_inbound_quantity") or 0)
-        item["available_distributable_quantity"] = int(awd.get("available_distributable_quantity") or 0)
-        item["reserved_distributable_quantity"] = int(awd.get("reserved_distributable_quantity") or 0)
-        item["replenishment_quantity"] = int(awd.get("replenishment_quantity") or 0)
+        item["available_distributable_quantity"] = 0
+        item["reserved_distributable_quantity"] = 0
+        item["replenishment_quantity"] = 0
 
 
 def _ledger_units_fallback(row: dict) -> dict:
@@ -3021,10 +3024,14 @@ def _display_net_units_sold(row: dict) -> int:
     return abs(int(row.get("sold_total") or 0))
 
 
+def _display_units_inwarded_total(row: dict) -> int:
+    return _display_abs_int(row, "transit_total") + _display_abs_int(row, "total_inbound_quantity")
+
+
 def _compute_display_difference(row: dict) -> int:
     return (
         _display_abs_int(row, "beginning_total")
-        + _display_abs_int(row, "transit_total")
+        + _display_units_inwarded_total(row)
         - _display_net_units_sold(row)
         - _display_abs_int(row, "other_total")
         - _display_abs_int(row, "ending_total")
@@ -3482,6 +3489,7 @@ def _create_inventorymonthly_after_fetch(
         for (year, month), month_dates in sorted(month_groups.items()):
             start_date = min(month_dates)
             end_date = max(month_dates)
+            month_start, month_end = _month_range(year, month)
 
             table_name = _monthly_table_name(
                 user_id=user_id,
@@ -3507,12 +3515,14 @@ def _create_inventorymonthly_after_fetch(
                 marketplace_id=mp,
             )
 
-            # Add the latest AWD inventory values by matching inventory_awd.sku to msku.
+            # Add open AWD inbound shipment quantities by matching SKU to MSKU.
             _attach_awd_quantities_to_rows(
                 conn=conn,
                 items=items,
                 user_id=user_id,
                 marketplace_id=mp,
+                period_start=month_start,
+                period_end=month_end,
             )
 
             skuwise_totals = _attach_skuwise_units_to_rows(
@@ -3668,15 +3678,15 @@ def inventory_ledger_summary_store_month():
                 marketplace_id=mp,
             )
 
-            # Attach AWD quantities before calculating the Grand Total and
-            # before upserting the rebuilt inventorymonthly table. Both
-            # inventory_awd and inventorymonthly_* use DATABASE_AMAZON_URL,
-            # and this route already runs inside amazon_conn().
+            # Attach open AWD inbound shipment quantities before calculating
+            # the Grand Total and upserting the rebuilt inventorymonthly table.
             _attach_awd_quantities_to_rows(
                 conn=conn,
                 items=items,
                 user_id=user_id,
                 marketplace_id=mp,
+                period_start=requested_start,
+                period_end=requested_end,
             )
 
             skuwise_totals = _attach_skuwise_units_to_rows(
