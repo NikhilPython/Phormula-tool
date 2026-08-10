@@ -7,6 +7,8 @@ interface DownloadIconButtonProps {
   className?: string;
   size?: "sm" | "md";
   type?: "button" | "submit" | "reset";
+  title?: string;
+  ariaLabel?: string;
 }
 
 const DownloadIconButton: React.FC<DownloadIconButtonProps> = ({
@@ -14,7 +16,9 @@ const DownloadIconButton: React.FC<DownloadIconButtonProps> = ({
   disabled = false,
   className = "",
   size = "sm",
-  type = "button"
+  type = "button",
+  title,
+  ariaLabel,
 }) => {
   // Size styles (matching your Button)
   const sizeClasses = {
@@ -33,6 +37,8 @@ const DownloadIconButton: React.FC<DownloadIconButtonProps> = ({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      title={title}
+      aria-label={ariaLabel || title || "Download"}
       className={`inline-flex items-center justify-center rounded-lg transition 
         ${sizeClasses[size]} 
         ${outlineClasses} 

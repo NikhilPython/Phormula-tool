@@ -14,6 +14,7 @@ import { IoMdLock } from "react-icons/io";
 import WarehouseMultiCountryUpload from "@/components/ui/modal/WarehouseMultiCountryUpload";
 import Loader from '@/components/loader/Loader';
 import {
+  exportAgeingRiskHeatmapExcel,
   exportInventoryReconExcel,
   exportSkuInformationExcel,
   exportWarehouseDataExcel,
@@ -6657,6 +6658,42 @@ export default function InputCostPage({ params }: Params) {
     return formatCountryLabel(countryName) || countryName.toUpperCase() || "Export";
   };
 
+  const handleInventoryInsightsDownloadExcel = () => {
+    const insightsData = displayedInventoryInsightsData;
+
+    if (
+      !insightsData?.heatmapData?.length ||
+      !insightsData?.heatmapBuckets?.length
+    ) {
+      alert("No inventory insights data available to download.");
+      return;
+    }
+
+    const excelRows = insightsData.heatmapData.map((row) => ({
+      ...row,
+      salesLast30Days: row.unitsSold ?? row.salesLast30Days ?? 0,
+    }));
+
+    exportAgeingRiskHeatmapExcel({
+      filename: getInventoryInsightsFileName(),
+      titleLine: "Inventory Insights Report",
+      countryLabel: formatCountryLabel(inventoryInsightsReportCountry),
+      platformLabel: "Phormula",
+      periodLabel: getInventoryInsightsPeriodLabel(),
+      companyName: companyName || userData?.company_name || "",
+      brandName: brandName || userData?.brand_name || "",
+      buckets: insightsData.heatmapBuckets,
+      dataRows: excelRows,
+      showInventoryAlerts: false,
+      salesLast30DaysLabel,
+      useCurrentInventoryTableLayout: showUsCurrentInventoryTable,
+      unitSalesDataKey: inventoryHeatmapUnitSalesDataKey,
+      storageCostCurrencySymbol: getCurrencySymbol(
+        getCurrencyForCountry(inventoryInsightsReportCountry)
+      ),
+    });
+  };
+
   const getExpandedReconExportColumns = () => {
     const cols: { key: string; header: string }[] = [];
 
@@ -7207,10 +7244,26 @@ export default function InputCostPage({ params }: Params) {
                 allowedRanges={["monthly", "quarterly", "yearly"]}
               />
 
+              {activeTab === "inventory-insights" && (
+                <DownloadIconButton
+                  onClick={handleInventoryInsightsDownloadExcel}
+                  size="md"
+                  title="Download Inventory Insights Excel"
+                  ariaLabel="Download Inventory Insights Excel"
+                  disabled={
+                    isNA ||
+                    inventoryInsightsLoading ||
+                    !displayedInventoryInsightsData?.heatmapData?.length
+                  }
+                />
+              )}
+
               {activeTab === "recon-table" && (
                 <DownloadIconButton
                   onClick={handleReconDownloadExcel}
                   size="md"
+                  title="Download Recon Table Excel"
+                  ariaLabel="Download Recon Table Excel"
                   disabled={
                     isNA ||
                     reconFetching ||
@@ -7242,6 +7295,8 @@ export default function InputCostPage({ params }: Params) {
                 <DownloadIconButton
                   onClick={handleLostCompDownloadExcel}
                   size="md"
+                  title="Download Lost vs Compensation Excel"
+                  ariaLabel="Download Lost vs Compensation Excel"
                   disabled={isNA || lostCompLoading || lostCompRows.length === 0}
                 />
               )}
@@ -7359,7 +7414,7 @@ export default function InputCostPage({ params }: Params) {
                     onHeatmapProductClick={handleHeatmapProductClick}
                     showInventoryAlerts={false}
                     inventoryAgeSummary={displayedInventoryInsightsData.inventoryAgeSummary}
-                    showHeatmapExcelDownload={true}
+                    showHeatmapExcelDownload={false}
                     heatmapExcelFilename={getInventoryInsightsFileName()}
                     heatmapExcelTitleLine="Inventory Insights Report"
                     // heatmapExcelCountryLabel={formatCountryLabel(countryName)}
