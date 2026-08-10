@@ -248,6 +248,19 @@ def is_total_row(row):
     return product_name == "total" or sku == ""
 
 
+def is_percentage_row(row):
+    sku = str(row.get("SKU") or "").strip().lower()
+    product_name = str(row.get("Product Name") or "").strip().lower()
+    row_type = str(row.get("row_type") or "").strip().lower()
+
+    return (
+        bool(row.get("is_percentage_row")) or
+        row_type == "percentage" or
+        product_name in {"percentage", "% of total"} or
+        sku in {"percentage", "% of total"}
+    )
+
+
 def build_inventory_item(row, trigger_columns):
     item = {
         "sku": clean_value(row.get("SKU")),
@@ -2959,6 +2972,7 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
         "inv-age-181-to-270-days": 0,
         "inv-age-271-to-365-days": 0,
         "inv-age-365-plus-days": 0,
+        "unfulfillable-quantity": 0,
     }
 
     if not marketplace_id:
@@ -2982,6 +2996,10 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
         "inv-age-181-to-270-days",
         "inv-age-271-to-365-days",
         "inv-age-365-plus-days",
+    ]
+    summary_columns = [
+        *age_columns,
+        "unfulfillable-quantity",
     ]
 
     month_summary = []
@@ -3056,7 +3074,7 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
 
         data_rows = [
             row for row in rows
-            if not is_total_row(row)
+            if not is_total_row(row) and not is_percentage_row(row)
         ]
 
         totals = {
@@ -3064,10 +3082,10 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
                 to_number(row.get(column))
                 for row in data_rows
             )
-            for column in age_columns
+            for column in summary_columns
         }
 
-        sellable_total = sum(totals.values())
+        sellable_total = sum(totals.get(column, 0) for column in age_columns)
 
         month_summary.append({
             "country_key": country_key,
@@ -3089,10 +3107,11 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
         "inv-age-181-to-270-days": "181-270 days",
         "inv-age-271-to-365-days": "271-365 days",
         "inv-age-365-plus-days": "365+ days",
+        "unfulfillable-quantity": "Unsellable",
     }
 
     for month_row in month_summary:
-        for column in age_columns:
+        for column in summary_columns:
             age_summary.append({
                 "country_key": country_key,
                 "month": month_row["month"],
@@ -3124,7 +3143,7 @@ def get_age_summary_for_single_country(user_id, country_key, month_name, year):
             row["totals"][column]
             for row in month_summary
         )
-        for column in age_columns
+        for column in summary_columns
     }
 
     return {

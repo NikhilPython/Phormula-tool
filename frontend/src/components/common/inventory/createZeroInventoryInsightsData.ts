@@ -39,6 +39,11 @@ const buckets = [
   { label: "365+ Days", value: "365+ days", key: "threeSixtyFivePlus", color: "#B75A5A" },
 ] as const;
 
+const trendBuckets = [
+  ...buckets,
+  { label: "Unsellable", value: "unsellable", key: "unfulfillableUnits", color: "#3A8EA4" },
+] as const;
+
 const zeroMonths: AgeingTrendItem[] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"].map(
   (label) => ({ label, value: 0 })
 );
@@ -141,13 +146,13 @@ export const createZeroInventoryInsightsData = (
     trendSelectedBucket: "all",
     trendData: zeroMonths,
     trendLineColor: "#B75A5A",
-    trendAllSeriesData: buckets.map(({ value, label, color }) => ({
+    trendAllSeriesData: trendBuckets.map(({ value, label, color }) => ({
       bucketValue: value,
       bucketLabel: label,
       color,
       data: zeroMonths,
     })),
-    trendBucketOptions: buckets.map(({ label, value, color }) => ({ label, value, color })),
+    trendBucketOptions: trendBuckets.map(({ label, value, color }) => ({ label, value, color })),
     actions,
     actionLogic,
     inventoryAgeSummary: {

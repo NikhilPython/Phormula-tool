@@ -4403,6 +4403,12 @@ const AGEING_TREND_BUCKET_OPTIONS = [
     column: "inv-age-365-plus-days",
     color: "#B75A5A",
   },
+  {
+    label: "Unsellable",
+    value: "unsellable",
+    column: "unfulfillable-quantity",
+    color: "#3A8EA4",
+  },
 ];
 
 const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
@@ -4741,16 +4747,28 @@ const buildAgeingTrendDataFromSummary = (
       value: number;
     }
   >();
+  let foundColumnData = false;
 
   for (const res of ageSummaryResponses || []) {
     if (!res?.success) continue;
 
     // Preferred: your new /inventory_current_age_summary response
     if (Array.isArray(res.month_summary) && res.month_summary.length > 0) {
+      let foundMonthSummaryColumn = false;
+
       for (const item of res.month_summary) {
+        if (
+          !item.totals ||
+          !Object.prototype.hasOwnProperty.call(item.totals, bucketColumn)
+        ) {
+          continue;
+        }
+
         const key = `${item.year}-${item.month_number}`;
 
         const previous = monthMap.get(key);
+        foundColumnData = true;
+        foundMonthSummaryColumn = true;
 
         monthMap.set(key, {
           month: item.month,
@@ -4761,7 +4779,7 @@ const buildAgeingTrendDataFromSummary = (
         });
       }
 
-      continue;
+      if (foundMonthSummaryColumn) continue;
     }
 
     // Fallback: group age_summary if month_summary is not present
@@ -4773,6 +4791,7 @@ const buildAgeingTrendDataFromSummary = (
           item.month_number ?? monthIndexMap[item.month.toLowerCase()] + 1;
 
         const key = `${item.year}-${monthNumber}`;
+        foundColumnData = true;
 
         monthMap.set(key, {
           month: item.month,
@@ -4787,8 +4806,13 @@ const buildAgeingTrendDataFromSummary = (
 
     // Old response fallback
     if (res.month && res.year && res.totals) {
+      if (!Object.prototype.hasOwnProperty.call(res.totals, bucketColumn)) {
+        continue;
+      }
+
       const monthNumber = monthIndexMap[res.month.toLowerCase()] + 1;
       const key = `${res.year}-${monthNumber}`;
+      foundColumnData = true;
 
       monthMap.set(key, {
         month: res.month,
@@ -4798,6 +4822,8 @@ const buildAgeingTrendDataFromSummary = (
       });
     }
   }
+
+  if (!foundColumnData) return [];
 
   return Array.from(monthMap.values())
     .filter((item) => item.month && item.year && item.month_number)
@@ -4838,6 +4864,45 @@ const buildAgeingTrendDataFromInventoryCurrent = (
   inventoryResponses: InventoryCurrentApiResponse[],
   bucketColumn: string
 ): AgeingTrendItem[] => {
+  const getTrendValue = (res: InventoryCurrentApiResponse) => {
+    if (bucketColumn === "unfulfillable-quantity") {
+      const summaryValue =
+        res.inventory_age_summary?.unfulfillable_total ??
+        res.inventory_age_summary?.total_units_summary?.unfulfillable?.total;
+
+      if (summaryValue !== null && summaryValue !== undefined) {
+        return toNum(summaryValue);
+      }
+
+      const categoryRows = res?.categories
+        ? Object.values(res.categories).flatMap((category) =>
+          Array.isArray(category?.items) ? category.items : []
+        )
+        : [];
+      const rows = Array.isArray(res.rows) && res.rows.length > 0
+        ? res.rows
+        : categoryRows;
+
+      return rows
+        .filter(
+          (row) =>
+            !isInventoryTotalRow(row) &&
+            !isInventoryPercentageRow(row)
+        )
+        .reduce(
+          (sum, row) =>
+            sum +
+            getInventoryUnsellableFbaValue(row) +
+            getInventoryUnsellableAwdValue(row),
+          0
+        );
+    }
+
+    return toNum(
+      res.inventory_age_summary?.columns?.[bucketColumn]?.total
+    );
+  };
+
   return (inventoryResponses || [])
     .filter((res) => res?.success)
     .map((res) => {
@@ -4858,9 +4923,7 @@ const buildAgeingTrendDataFromInventoryCurrent = (
         month,
         year,
         month_number,
-        value: toNum(
-          res.inventory_age_summary?.columns?.[bucketColumn]?.total
-        ),
+        value: getTrendValue(res),
       };
     })
     .filter((item) => item.month && item.year && item.month_number)
@@ -6102,6 +6165,21 @@ const trendAllSeriesData = [
     bucketLabel: "365+ Days",
     color: "#B75A5A",
     data: trendData,
+  },
+  {
+    bucketValue: "unsellable",
+    bucketLabel: "Unsellable",
+    color: "#3A8EA4",
+    data: [
+      { label: "Jan", value: 12 },
+      { label: "Feb", value: 16 },
+      { label: "Mar", value: 20 },
+      { label: "Apr", value: 24 },
+      { label: "May", value: 30 },
+      { label: "Jun", value: 28 },
+      { label: "Jul", value: 25 },
+      { label: "Aug", value: 22 },
+    ],
   },
 ];
 

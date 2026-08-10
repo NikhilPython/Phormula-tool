@@ -1714,6 +1714,12 @@ const AGEING_TREND_BUCKET_OPTIONS = [
     column: 'inv-age-365-plus-days',
     color: '#B75A5A',
   },
+  {
+    label: 'Unsellable',
+    value: 'unsellable',
+    column: 'unfulfillable-quantity',
+    color: '#3A8EA4',
+  },
 ];
 
 const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
@@ -3109,6 +3115,67 @@ const buildInventoryInsightsFromResponses = (
         });
       });
     }
+  });
+
+  selectedInventoryResponses.forEach((res) => {
+    if (!res?.success) return;
+
+    const parsedTableName = String(res.table_name || "").match(/_([a-z]+)(\d{4})_table$/i);
+    const monthName = String(
+      res.month ||
+      res.requested_month ||
+      parsedTableName?.[1] ||
+      ""
+    ).toLowerCase();
+    const year = Number(
+      res.year ||
+      res.requested_year ||
+      parsedTableName?.[2] ||
+      0
+    );
+    const monthNumber = allMonths.indexOf(monthName) + 1;
+
+    if (!monthNumber || !year) return;
+
+    const summaryValue =
+      res.inventory_age_summary?.unfulfillable_total ??
+      res.inventory_age_summary?.total_units_summary?.unfulfillable?.total;
+    const categoryRows = res?.categories
+      ? Object.values(res.categories).flatMap((category) =>
+        Array.isArray(category?.items) ? category.items : []
+      )
+      : [];
+    const rows = Array.isArray(res.rows) && res.rows.length > 0
+      ? res.rows
+      : categoryRows;
+    const unsellableTotal =
+      summaryValue !== null && summaryValue !== undefined
+        ? toNum(summaryValue)
+        : rows
+          .filter(
+            (row) =>
+              !isInventoryTotalRow(row) &&
+              !isInventoryPercentageRow(row)
+          )
+          .reduce(
+            (sum, row) =>
+              sum +
+              getInventoryUnsellableFbaValue(row) +
+              getInventoryUnsellableAwdValue(row),
+            0
+          );
+    const key = `${year}-${monthNumber}`;
+    const previous = monthSummaryMap.get(key);
+
+    monthSummaryMap.set(key, {
+      month: previous?.month || monthName,
+      month_number: monthNumber,
+      year,
+      totals: {
+        ...(previous?.totals || {}),
+        "unfulfillable-quantity": unsellableTotal,
+      },
+    });
   });
 
   const maxTrendMonthNumber = (() => {
