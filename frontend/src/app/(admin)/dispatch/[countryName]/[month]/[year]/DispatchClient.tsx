@@ -287,6 +287,32 @@ function toNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0
 }
 
+function getSelectedMonthBounds(monthValue: string, yearValue: string) {
+  const monthIndex = monthNames.findIndex(
+    (monthName) => monthName.toLowerCase() === String(monthValue || '').trim().toLowerCase()
+  )
+  const yearNumber = Number(yearValue)
+  if (monthIndex < 0 || !Number.isFinite(yearNumber)) return null
+
+  return {
+    start: new Date(yearNumber, monthIndex, 1),
+    end: new Date(yearNumber, monthIndex + 1, 0),
+  }
+}
+
+function isReachDateActiveForSelectedMonth(
+  value: string | null | undefined,
+  monthValue: string,
+  yearValue: string
+) {
+  if (!value) return true
+  const bounds = getSelectedMonthBounds(monthValue, yearValue)
+  if (!bounds) return true
+  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return true
+  return parsed >= bounds.start && parsed <= bounds.end
+}
+
 function formatAwdDate(value?: string | null): string {
   if (!value) return ''
   return String(value).slice(0, 10)
@@ -299,79 +325,16 @@ function splitSkuList(value?: string | null): string[] {
     .filter(Boolean)
 }
 
-function applyAwdShipmentDetails(rows: SkuRow[], awdRows: AwdDispatchInputRow[]): SkuRow[] {
-  if (!awdRows.length) return rows
-
-  const unitsBySku = new Map<string, number>()
-  awdRows.forEach((shipment) => {
-    const skuQuantities = Array.isArray(shipment.sku_quantities) ? shipment.sku_quantities : []
-
-    if (skuQuantities.length) {
-      skuQuantities.forEach((item) => {
-        const sku = String(item?.sku ?? '').trim().toUpperCase()
-        if (!sku) return
-        unitsBySku.set(
-          sku,
-          (unitsBySku.get(sku) ?? 0) + toNumber(item?.expected_unit_quantity)
-        )
-      })
-      return
-    }
-
-    const skus = splitSkuList(shipment.sku)
-    if (skus.length === 1) {
-      const sku = skus[0]
-      unitsBySku.set(
-        sku,
-        (unitsBySku.get(sku) ?? 0) + toNumber(shipment.expected_unit_quantity)
-      )
-    }
-  })
-
-  return rows.map((row) => {
-    const sku = String(row.SKU ?? '').trim().toUpperCase()
-    const awdUnits = unitsBySku.get(sku)
-    if (awdUnits === undefined) return row
-
-    const inTransitFba = toNumber(row['In Transit FBA'])
-    const nextInTransitAwd = Math.round(awdUnits)
-    const inStock = toNumber(row['In stock'])
-    const oldCoverage = toNumber(row['Inventory Coverage Ratio Before Dispatch'])
-    const lastMonthSales =
-      toNumber(row['Last Month Sales(Units)']) ||
-      (oldCoverage > 0 && inStock > 0 ? inStock / oldCoverage : 0)
-    const nextInTransit = inTransitFba + nextInTransitAwd
-    const shortfall = Math.max(
-      toNumber(row['Projected Sales Total']) - inStock - nextInTransit,
-      0,
-    )
-    const nextToDispatch = shortfall
-    const existingSea = toNumber(row['SEA'])
-    const existingAir = toNumber(row['AIR'])
-    const existingSplitTotal = existingSea + existingAir
-    const nextAir =
-      existingSplitTotal > 0
-        ? Math.min(
-          nextToDispatch,
-          Math.round((nextToDispatch * existingAir) / existingSplitTotal),
-        )
-        : 0
-    const nextSea = Math.max(nextToDispatch - nextAir, 0)
-
-    return {
-      ...row,
-      'In Transit AWD': nextInTransitAwd,
-      'In transit': nextInTransit,
-      'Shortfall Unit': shortfall,
-      'To be Dispatch': nextToDispatch,
-      'SEA': nextSea,
-      'AIR': nextAir,
-      'Inventory Coverage Ratio Before Dispatch':
-        lastMonthSales > 0
-          ? Number(((inStock + nextInTransit) / lastMonthSales).toFixed(2))
-          : row['Inventory Coverage Ratio Before Dispatch'],
-    }
-  })
+function applyAwdShipmentDetails(
+  rows: SkuRow[],
+  awdRows: AwdDispatchInputRow[],
+  monthValue: string,
+  yearValue: string
+): SkuRow[] {
+  void awdRows
+  void monthValue
+  void yearValue
+  return rows
 }
 
 function buildInboundDispatchRows(
@@ -1012,31 +975,40 @@ export default function DispatchPage({
             }
 
             const availableStock = toNumber(obj['FBA']) + toNumber(obj['AWD'])
-            const inTransit = toNumber(obj['In transit'])
-            const computedShortfall = Math.max(
-              toNumber(obj['Projected Sales Total']) - availableStock - inTransit,
-              0,
-            )
+            const hasBackendDispatchPlan =
+              obj['Shortfall Unit'] !== undefined &&
+              obj['Shortfall Unit'] !== '' &&
+              obj['To be Dispatch'] !== undefined &&
+              obj['To be Dispatch'] !== ''
 
             obj['In stock'] = availableStock
-            obj['Shortfall Unit'] = computedShortfall
-            obj['To be Dispatch'] = computedShortfall
 
-            if (
-              obj['SEA'] === undefined ||
-              obj['SEA'] === '' ||
-              obj['AIR'] === undefined ||
-              obj['AIR'] === '' ||
-              toNumber(obj['SEA']) + toNumber(obj['AIR']) !== toNumber(obj['To be Dispatch'])
-            ) {
-              obj['SEA'] = obj['To be Dispatch']
-              obj['AIR'] = 0
+            if (!hasBackendDispatchPlan) {
+              const inTransit = toNumber(obj['In transit'])
+              const computedShortfall = Math.max(
+                toNumber(obj['Projected Sales Total']) - availableStock - inTransit,
+                0,
+              )
+
+              obj['Shortfall Unit'] = computedShortfall
+              obj['To be Dispatch'] = computedShortfall
+
+              if (
+                obj['SEA'] === undefined ||
+                obj['SEA'] === '' ||
+                obj['AIR'] === undefined ||
+                obj['AIR'] === '' ||
+                toNumber(obj['SEA']) + toNumber(obj['AIR']) !== toNumber(obj['To be Dispatch'])
+              ) {
+                obj['SEA'] = obj['To be Dispatch']
+                obj['AIR'] = 0
+              }
             }
           }
 
           return obj
         })
-        .filter((row) => isMeaningfulRow(row)), awdRows)
+        .filter((row) => isMeaningfulRow(row)), awdRows, monthdpValue, yeardpValue)
 
       if (!jsonData.length) {
         setNoData(true)
@@ -1065,22 +1037,22 @@ export default function DispatchPage({
     const capitalizeMonth = capitalize(month)
     const monthIndex = monthdps.indexOf(capitalizeMonth)
 
-    const nextMonth =
+    const dispatchMonth =
       monthIndex >= 0
         ? monthdps[(monthIndex + 1) % 12]
         : getCurrentMonthPlus1()
 
-    const nextYear =
+    const dispatchYear =
       monthIndex === 11
         ? String(Number(year) + 1)
         : year
 
     setMonthDp((previous) =>
-      previous === nextMonth ? previous : nextMonth
+      previous === dispatchMonth ? previous : dispatchMonth
     )
 
     setYearDp((previous) =>
-      previous === nextYear ? previous : nextYear
+      previous === dispatchYear ? previous : dispatchYear
     )
 
     setIsInitialized(true)

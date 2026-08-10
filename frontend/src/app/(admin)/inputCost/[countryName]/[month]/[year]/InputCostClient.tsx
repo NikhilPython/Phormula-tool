@@ -3736,6 +3736,19 @@ const formatReconCell = (v: any) => {
   return String(v);
 };
 
+const formatReconSignedCell = (v: any) => {
+  if (v === null || v === undefined || v === "") return "-";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+
+  if (isNumericLike(v)) {
+    const n = Math.trunc(Number(v));
+    if (n === 0) return "-";
+    return n.toLocaleString();
+  }
+
+  return String(v);
+};
+
 const sanitizeExportValue = (value: any) => {
   if (value === null || value === undefined || value === "") return "-";
   if (React.isValidElement(value)) return "";
@@ -3783,6 +3796,41 @@ const sumRowForKeys = (rowsToSum: AnyRow[], keys: string[], base: AnyRow = {}) =
 
   return out;
 };
+
+const hasReconField = (row: AnyRow | null | undefined, key: string) =>
+  !!row && Object.prototype.hasOwnProperty.call(row, key);
+
+const reconUnitsValue = (row: AnyRow, key: string, fallbackKey: string) => {
+  if (hasReconField(row, key)) return toInventoryInt(row?.[key]);
+  return Math.abs(toInventoryInt(row?.[fallbackKey]));
+};
+
+const reconUnitsGross = (row: AnyRow) =>
+  reconUnitsValue(row, "quantity", "sum_customer_shipments");
+
+const reconUnitsReturns = (row: AnyRow) =>
+  reconUnitsValue(row, "return_quantity", "sum_customer_returns");
+
+const reconUnitsNet = (row: AnyRow) =>
+  reconUnitsValue(row, "total_quantity", "sold_total");
+
+const reconUnitsSortValue = (row: AnyRow) => Math.abs(reconUnitsNet(row));
+
+const reconDisplayedMovement = (row: AnyRow, key: string) =>
+  Math.abs(toInventoryInt(row?.[key]));
+
+const reconAwdInwarded = (row: AnyRow) =>
+  reconDisplayedMovement(row, "total_inbound_quantity");
+
+const reconUnitsInwardedTotal = (row: AnyRow) =>
+  reconDisplayedMovement(row, "sum_receipts") + reconAwdInwarded(row);
+
+const reconDisplayedDifference = (row: AnyRow) =>
+  reconDisplayedMovement(row, "beginning_total") +
+  reconUnitsInwardedTotal(row) -
+  Math.abs(reconUnitsNet(row)) -
+  reconDisplayedMovement(row, "other_total") -
+  reconDisplayedMovement(row, "ending_total");
 
 const DUMMY_RECON_ROWS: AnyRow[] = [
   {
@@ -6104,7 +6152,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
-          { key: 'sum_in_transit_between_warehouses', label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)', width: 110, align: 'center' },
+          ...(!isUsReconCountry
+            ? [
+              { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__beginning_damaged_total', label: 'Damaged', width: 110, align: 'center' },
           { key: 'expired_sum_first', label: 'Expired', width: 110, align: 'center' },
           { key: 'beginning_total', label: 'Total', width: 110, align: 'center' },
@@ -6115,18 +6167,20 @@ export default function InputCostPage({ params }: Params) {
         label: 'Units Inwarded',
         headerClassName: 'min-w-[120px]',
         collapsedCols: [
-          { key: '__transit_total', label: 'Total', width: 100, align: 'center' },
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 100, align: 'center' },
         ],
         expandedCols: [
           { key: 'sum_receipts', label: isUsReconCountry ? 'FBA' : 'Delivered', width: 110, align: 'center' },
-          { key: 'transit_total', label: isUsReconCountry ? 'AWD' : 'In Transit', width: 110, align: 'center' },
           ...(isUsReconCountry
             ? [
+              { key: '__units_inwarded_awd', label: 'AWD', width: 110, align: 'center' as const },
               { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
               { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
             ]
-            : []),
-          { key: '__transit_total', label: 'Total', width: 110, align: 'center' },
+            : [
+              { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' as const },
+            ]),
+          { key: isUsReconCountry ? '__units_inwarded_total' : '__transit_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
 
@@ -6183,12 +6237,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
-          {
-            key: isUsReconCountry ? 'total_onhand_quantity' : '__ending_transit_placeholder',
-            label: isUsReconCountry ? 'AWD' : 'Transit (Between WH)',
-            width: 110,
-            align: 'center',
-          },
+          ...(!isUsReconCountry
+            ? [
+              { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
+            ]
+            : []),
           { key: '__ending_damaged_lost_total', label: 'Damaged/Lost', width: 110, align: 'center' },
           { key: 'expired_sum_last', label: 'Expired', width: 110, align: 'center' },
           { key: 'ending_total', label: 'Total', width: 110, align: 'center' },
@@ -6243,7 +6296,7 @@ export default function InputCostPage({ params }: Params) {
     const dataRows = reconRows.filter((r) => !isTotalRow(r));
 
     const sortedDataRows = [...dataRows].sort((a, b) => {
-      return Math.abs(toInventoryInt(b?.sold_total)) - Math.abs(toInventoryInt(a?.sold_total));
+      return reconUnitsSortValue(b) - reconUnitsSortValue(a);
     });
 
     const top = showAllReconRows ? sortedDataRows : sortedDataRows.slice(0, 9);
@@ -6396,6 +6449,10 @@ export default function InputCostPage({ params }: Params) {
 
     if (colKey === 'sum_receipts') return formatReconCell(row?.sum_receipts);
 
+    if (colKey === '__units_inwarded_awd') return formatReconCell(reconAwdInwarded(row));
+
+    if (colKey === '__units_inwarded_total') return formatReconCell(reconUnitsInwardedTotal(row));
+
     if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
 
     if (colKey === '__other_items_total') {
@@ -6403,15 +6460,15 @@ export default function InputCostPage({ params }: Params) {
     }
 
     if (colKey === '__units_sold_gross') {
-      return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_shipments)));
+      return formatReconCell(reconUnitsGross(row));
     }
 
     if (colKey === '__units_sold_returns') {
-      return formatReconCell(Math.abs(toInventoryInt(row?.sum_customer_returns)));
+      return formatReconCell(reconUnitsReturns(row));
     }
 
     if (colKey === '__units_sold_net') {
-      return formatReconCell(Math.abs(toInventoryInt(row?.sold_total)));
+      return formatReconCell(reconUnitsNet(row));
     }
 
     if (colKey === '__ending_total') {
@@ -6426,6 +6483,10 @@ export default function InputCostPage({ params }: Params) {
         toInventoryInt(row?.distributor_damaged_sum_last);
 
       return formatReconCell(total);
+    }
+
+    if (colKey === "difference_total" || colKey === "__difference_total") {
+      return formatReconSignedCell(reconDisplayedDifference(row));
     }
 
     if (colKey === "inventory_coverage_ratio") {
@@ -6760,9 +6821,7 @@ export default function InputCostPage({ params }: Params) {
     const dataRows = sourceRows.filter((row) => !isTotalRow(row));
 
     const sortedDataRows = [...dataRows].sort(
-      (a, b) =>
-        Math.abs(toInventoryInt(b?.sold_total)) -
-        Math.abs(toInventoryInt(a?.sold_total))
+      (a, b) => reconUnitsSortValue(b) - reconUnitsSortValue(a)
     );
 
     const exportRows = grandTotalRow
