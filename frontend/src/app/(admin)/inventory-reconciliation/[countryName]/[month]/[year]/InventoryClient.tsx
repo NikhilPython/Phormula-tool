@@ -109,6 +109,21 @@ const formatCell = (v: any) => {
   return String(v);
 };
 
+const formatSignedCell = (v: any) => {
+  if (v === null || v === undefined || v === "") return "-";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+
+  if (isNumericLike(v)) {
+    const n = Math.trunc(Number(v));
+
+    if (n === 0) return "-";
+
+    return n.toLocaleString();
+  }
+
+  return String(v);
+};
+
 const toNum = (v: any) => {
   if (v === null || v === undefined || v === '') return 0;
   const n = Number(v);
@@ -116,6 +131,35 @@ const toNum = (v: any) => {
 };
 
 const sum = (row: AnyRow, keys: string[]) => keys.reduce((acc, k) => acc + toNum(row?.[k]), 0);
+
+const hasOwn = (row: AnyRow | null | undefined, key: string) =>
+  !!row && Object.prototype.hasOwnProperty.call(row, key);
+
+const unitsSoldValue = (row: AnyRow, key: string, fallbackKey: string) => {
+  if (hasOwn(row, key)) return toNum(row?.[key]);
+  return Math.abs(toNum(row?.[fallbackKey]));
+};
+
+const unitsSoldGross = (row: AnyRow) =>
+  unitsSoldValue(row, "quantity", "sum_customer_shipments");
+
+const unitsSoldReturns = (row: AnyRow) =>
+  unitsSoldValue(row, "return_quantity", "sum_customer_returns");
+
+const unitsSoldNet = (row: AnyRow) =>
+  unitsSoldValue(row, "total_quantity", "sold_total");
+
+const unitsSoldSortValue = (row: AnyRow) => Math.abs(unitsSoldNet(row));
+
+const displayedMovement = (row: AnyRow, key: string) =>
+  Math.abs(toNum(row?.[key]));
+
+const displayedDifference = (row: AnyRow) =>
+  displayedMovement(row, "beginning_total") +
+  displayedMovement(row, "transit_total") -
+  Math.abs(unitsSoldNet(row)) -
+  displayedMovement(row, "other_total") -
+  displayedMovement(row, "ending_total");
 
 // localStorage keys
 const seedKey = (country: string, year: string, marketplaceId?: string | null) =>
@@ -1454,9 +1498,9 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // Only actual product rows
     const dataRows = rows.filter((r) => !isTotalRow(r));
 
-    // Sort by absolute sold_total desc, same as your current UI
+    // Sort by displayed net units.
     const sortedDataRows = [...dataRows].sort((a, b) => {
-      return Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total));
+      return unitsSoldSortValue(b) - unitsSoldSortValue(a);
     });
 
     // Collapsed: Top 9 + Others
@@ -1906,19 +1950,19 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // Units Sold (DIRECT DB MAPPING)
     // =======================
 
-    // Gross Sales → sum_customer_shipments
+    // Gross Sales -> quantity
     if (colKey === '__units_sold_gross') {
-      return formatCell(Math.abs(toNum(row?.sum_customer_shipments)));
+      return formatCell(unitsSoldGross(row));
     }
 
-    // Returns → sum_customer_returns
+    // Returns -> return_quantity
     if (colKey === '__units_sold_returns') {
-      return formatCell(Math.abs(toNum(row?.sum_customer_returns)));
+      return formatCell(unitsSoldReturns(row));
     }
 
-    // Net Units → sold_total
+    // Net Units -> total_quantity
     if (colKey === '__units_sold_net') {
-      return formatCell(Math.abs(toNum(row?.sold_total)));
+      return formatCell(unitsSoldNet(row));
     }
 
     // =======================
@@ -1945,8 +1989,8 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // =======================
     // Difference
     // =======================
-    if (colKey === '__difference_total') {
-      return formatCell(row?.difference_total);
+    if (colKey === "difference_total" || colKey === "__difference_total") {
+      return formatSignedCell(displayedDifference(row));
     }
 
     if (colKey === "inventory_coverage_ratio") {
@@ -2081,7 +2125,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
   const pieRows = useMemo(() => {
     const dataOnly = (rows || []).filter((r) => !isTotalRow(r));
     return [...dataOnly].sort(
-      (a, b) => Math.abs(toNum(b?.sold_total)) - Math.abs(toNum(a?.sold_total))
+      (a, b) => unitsSoldSortValue(b) - unitsSoldSortValue(a)
     );
   }, [rows]);
 
@@ -2134,7 +2178,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
     // sort same as UI logic, but keep every row
     const sortedDataRows = [...dataOnly].sort(
-      (a, b) => toNum(b?.ending_total) - toNum(a?.ending_total)
+      (a, b) => unitsSoldSortValue(b) - unitsSoldSortValue(a)
     );
 
     const exportRows = grandTotalRow

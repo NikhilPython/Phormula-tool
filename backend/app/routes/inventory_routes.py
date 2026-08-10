@@ -44,6 +44,9 @@ if not db_url1:
 # AMAZON DB ENGINE (amazon_db)
 # ---------------------------------------------------------------------
 
+user_engine = create_engine(db_url, pool_pre_ping=True)
+admin_engine = create_engine(db_url1, pool_pre_ping=True)
+
 DATABASE_AMAZON_URL = os.getenv("DATABASE_AMAZON_URL") 
 if not DATABASE_AMAZON_URL:
     raise RuntimeError("DATABASE_AMAZON_URL is missing in .env")
@@ -2121,6 +2124,71 @@ def inventory_ledger_summary():
 # ------------------------------------------------------------
 # Helper: SKU-wise MONTHLY (function only)
 # ------------------------------------------------------------
+
+def _unique_names(names: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        safe_name = (name or "").strip().lower()
+        if safe_name and safe_name not in seen:
+            seen.add(safe_name)
+            out.append(safe_name)
+    return out
+
+
+def _skuwise_db_sources():
+    return [
+        ("user", user_engine),
+        ("admin", admin_engine),
+        ("amazon", amazon_engine),
+    ]
+
+
+def _read_skuwise_units_rows(
+    table_candidates: list[str],
+    *,
+    select_sql: str,
+    where_sql: str,
+    order_sql: str,
+    params: dict,
+) -> dict:
+    last_errors: list[str] = []
+
+    for table_name in _unique_names(table_candidates):
+        if not re.fullmatch(r"[a-z0-9_]+", table_name):
+            continue
+
+        sql = text(f"""
+            SELECT
+                {select_sql}
+            FROM public."{table_name}"
+            {where_sql}
+            {order_sql}
+        """)
+
+        for source_name, engine in _skuwise_db_sources():
+            try:
+                with engine.connect() as conn:
+                    rows = conn.execute(sql, params).mappings().all()
+
+                return {
+                    "success": True,
+                    "table": table_name,
+                    "source": source_name,
+                    "rows": rows,
+                }
+            except Exception as exc:
+                if len(last_errors) < 4:
+                    last_errors.append(f"{source_name}:{table_name}: {exc}")
+
+    return {
+        "success": False,
+        "error": "Could not read any SKU-wise units table",
+        "candidates": _unique_names(table_candidates),
+        "details": " | ".join(last_errors),
+    }
+
+
 def get_skuwise_monthly_from_db(
     user_id: int,
     country: str,
@@ -2177,8 +2245,13 @@ def get_skuwise_monthly_from_db(
     if year < 2000 or year > 2100:
         return {"success": False, "error": "Invalid year"}
 
-    table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
-    full_table = f'public."{table_name}"'
+    base_table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
+    table_candidates = [
+        base_table_name,
+        f"{base_table_name}_table",
+        f"skuwisemonthly_{user_id}_{country}_{month_name}_{year}",
+        f"skuwisemonthly_{user_id}_{country}_{month_name}_{year}_table",
+    ]
 
     # ---- optional filters ----
     where_clauses = []
@@ -2194,26 +2267,29 @@ def get_skuwise_monthly_from_db(
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    sql = text(f"""
-        SELECT
+    read_result = _read_skuwise_units_rows(
+        table_candidates,
+        select_sql="""
             sku,
             product_name,
             quantity,
             return_quantity,
             total_quantity
-        FROM {full_table}
-        {where_sql}
-        ORDER BY id ASC
-    """)
+        """,
+        where_sql=where_sql,
+        order_sql="ORDER BY product_name ASC, sku ASC",
+        params=params,
+    )
 
-    try:
-        rows = db.session.execute(sql, params).mappings().all()
-    except Exception as e:
+    if not read_result.get("success"):
         return {
             "success": False,
-            "error": f"Could not read table {table_name}",
-            "details": str(e),
+            "error": f"Could not read table {base_table_name}",
+            "details": read_result.get("details"),
+            "candidates": read_result.get("candidates"),
         }
+
+    rows = read_result["rows"]
 
     items = [{
         "sku": r["sku"],
@@ -2228,7 +2304,8 @@ def get_skuwise_monthly_from_db(
         "country": country,
         "month": month_name,
         "year": year,
-        "table": table_name,
+        "table": read_result["table"],
+        "source": read_result["source"],
         "count": len(items),
         "items": items,
     }
@@ -2292,8 +2369,11 @@ def get_skuwise_quarterly_from_db(
     if year < 2000 or year > 2100:
         return {"success": False, "error": "Invalid year"}
 
-    table_name = f"quarter{quarter}_{user_id}_{country}_{year}_table"
-    full_table = f'public."{table_name}"'
+    base_table_name = f"quarter{quarter}_{user_id}_{country}_{year}"
+    table_candidates = [
+        f"{base_table_name}_table",
+        base_table_name,
+    ]
 
     # ---- optional filters ----
     where_clauses = []
@@ -2309,27 +2389,29 @@ def get_skuwise_quarterly_from_db(
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    # NOTE: Your quarter table (screenshot) contains these extra columns; adjust if needed.
-    sql = text(f"""
-        SELECT
+    read_result = _read_skuwise_units_rows(
+        table_candidates,
+        select_sql="""
             product_name,
             sku,
             quantity,
             return_quantity,
             total_quantity
-        FROM {full_table}
-        {where_sql}
-        ORDER BY product_name ASC, sku ASC
-    """)
+        """,
+        where_sql=where_sql,
+        order_sql="ORDER BY product_name ASC, sku ASC",
+        params=params,
+    )
 
-    try:
-        rows = db.session.execute(sql, params).mappings().all()
-    except Exception as e:
+    if not read_result.get("success"):
         return {
             "success": False,
-            "error": f"Could not read table {table_name}",
-            "details": str(e),
+            "error": f"Could not read table {base_table_name}_table",
+            "details": read_result.get("details"),
+            "candidates": read_result.get("candidates"),
         }
+
+    rows = read_result["rows"]
 
     items = []
     for r in rows:
@@ -2346,7 +2428,8 @@ def get_skuwise_quarterly_from_db(
         "country": country,
         "quarter": quarter,
         "year": year,
-        "table": table_name,
+        "table": read_result["table"],
+        "source": read_result["source"],
         "count": len(items),
         "items": items,
     }
@@ -2386,8 +2469,11 @@ def get_skuwise_yearly_from_db(
     if year < 2000 or year > 2100:
         return {"success": False, "error": "Invalid year"}
 
-    table_name = f"skuwiseyearly_{user_id}_{country}_{year}_table"
-    full_table = f'public."{table_name}"'
+    base_table_name = f"skuwiseyearly_{user_id}_{country}_{year}"
+    table_candidates = [
+        f"{base_table_name}_table",
+        base_table_name,
+    ]
 
     # ---- optional filters ----
     where_clauses = []
@@ -2403,27 +2489,29 @@ def get_skuwise_yearly_from_db(
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    # NOTE: Your yearly table (screenshot) contains these extra columns; adjust if needed.
-    sql = text(f"""
-        SELECT
+    read_result = _read_skuwise_units_rows(
+        table_candidates,
+        select_sql="""
             product_name,
             sku,
             quantity,
             return_quantity,
             total_quantity
-        FROM {full_table}
-        {where_sql}
-        ORDER BY product_name ASC, sku ASC
-    """)
+        """,
+        where_sql=where_sql,
+        order_sql="ORDER BY product_name ASC, sku ASC",
+        params=params,
+    )
 
-    try:
-        rows = db.session.execute(sql, params).mappings().all()
-    except Exception as e:
+    if not read_result.get("success"):
         return {
             "success": False,
-            "error": f"Could not read table {table_name}",
-            "details": str(e),
+            "error": f"Could not read table {base_table_name}_table",
+            "details": read_result.get("details"),
+            "candidates": read_result.get("candidates"),
         }
+
+    rows = read_result["rows"]
 
     items = []
     for r in rows:
@@ -2439,7 +2527,8 @@ def get_skuwise_yearly_from_db(
         "success": True,
         "country": country,
         "year": year,
-        "table": table_name,
+        "table": read_result["table"],
+        "source": read_result["source"],
         "count": len(items),
         "items": items,
     }
@@ -2806,6 +2895,151 @@ def _attach_awd_quantities_to_rows(
         item["replenishment_quantity"] = int(awd.get("replenishment_quantity") or 0)
 
 
+def _ledger_units_fallback(row: dict) -> dict:
+    return {
+        "quantity": abs(int(row.get("sum_customer_shipments") or 0)),
+        "return_quantity": abs(int(row.get("sum_customer_returns") or 0)),
+        "total_quantity": abs(int(row.get("sold_total") or 0)),
+    }
+
+
+def _normalize_sku_key(value) -> str:
+    return str(value or "").strip().upper()
+
+
+def _is_skuwise_total_row(row: dict) -> bool:
+    sku = _normalize_sku_key(row.get("sku"))
+    product_name = _normalize_sku_key(row.get("product_name"))
+    return sku in {"TOTAL", "GRAND TOTAL"} or product_name in {"TOTAL", "GRAND TOTAL"}
+
+
+def _skuwise_units(row: dict) -> dict:
+    return {
+        "quantity": int(row.get("quantity") or 0),
+        "return_quantity": int(row.get("return_quantity") or 0),
+        "total_quantity": int(row.get("total_quantity") or 0),
+    }
+
+
+def _attach_skuwise_units_to_rows(
+    items: list[dict],
+    user_id: int,
+    country: str,
+    *,
+    mode: str,
+    year: int,
+    month: int | None = None,
+    quarter: int | None = None,
+) -> dict | None:
+    """Attach displayed Units Sold values from SKU-wise period tables.
+
+    These values drive the Units Sold group and the displayed Difference column.
+    """
+    if not items:
+        return None
+
+    for item in items:
+        item.update(_ledger_units_fallback(item))
+
+    try:
+        if mode == "month":
+            if not month:
+                return None
+            result = get_skuwise_monthly_from_db(user_id, country, str(month), str(year))
+        elif mode == "quarter":
+            if not quarter:
+                return None
+            result = get_skuwise_quarterly_from_db(user_id, country, str(quarter), str(year))
+        elif mode == "year":
+            result = get_skuwise_yearly_from_db(user_id, country, str(year))
+        else:
+            return None
+    except Exception:
+        logger.exception("Could not read SKU-wise units for inventory reconciliation")
+        return None
+
+    if not result or not result.get("success"):
+        logger.warning(
+            "SKU-wise units unavailable for inventory reconciliation: %s",
+            (result or {}).get("details") or (result or {}).get("error"),
+        )
+        return None
+
+    skuwise_rows = result.get("items") or []
+    if not skuwise_rows:
+        return None
+
+    units_by_sku: dict[str, dict] = {}
+    summed_total = {"quantity": 0, "return_quantity": 0, "total_quantity": 0}
+    source_total = None
+
+    for skuwise_row in skuwise_rows:
+        units = _skuwise_units(skuwise_row)
+
+        if _is_skuwise_total_row(skuwise_row):
+            source_total = units
+            continue
+
+        sku = _normalize_sku_key(skuwise_row.get("sku"))
+        if not sku:
+            continue
+
+        acc = units_by_sku.setdefault(
+            sku,
+            {"quantity": 0, "return_quantity": 0, "total_quantity": 0},
+        )
+        for key in ("quantity", "return_quantity", "total_quantity"):
+            acc[key] += units[key]
+            summed_total[key] += units[key]
+
+    if not units_by_sku and source_total is None:
+        return None
+
+    for item in items:
+        sku = _normalize_sku_key(item.get("msku"))
+        units = units_by_sku.get(sku, {"quantity": 0, "return_quantity": 0, "total_quantity": 0})
+        item.update(units)
+
+    return source_total or summed_total
+
+
+def _apply_skuwise_totals(row: dict, totals: dict | None) -> None:
+    if not totals:
+        return
+
+    for key in ("quantity", "return_quantity", "total_quantity"):
+        row[key] = int(totals.get(key) or 0)
+
+
+def _display_abs_int(row: dict, key: str) -> int:
+    return abs(int(row.get(key) or 0))
+
+
+def _display_net_units_sold(row: dict) -> int:
+    if "total_quantity" in row:
+        return abs(int(row.get("total_quantity") or 0))
+    return abs(int(row.get("sold_total") or 0))
+
+
+def _compute_display_difference(row: dict) -> int:
+    return (
+        _display_abs_int(row, "beginning_total")
+        + _display_abs_int(row, "transit_total")
+        - _display_net_units_sold(row)
+        - _display_abs_int(row, "other_total")
+        - _display_abs_int(row, "ending_total")
+    )
+
+
+def _apply_display_difference(row: dict) -> None:
+    row["difference_total"] = _compute_display_difference(row)
+
+
+def _apply_display_differences(items: list[dict]) -> None:
+    for item in items:
+        _apply_display_difference(item)
+
+
 def _compute_grand_total(items: list[dict]) -> dict:
     gt = {
         "msku": "Grand Total",
@@ -2841,6 +3075,9 @@ def _compute_grand_total(items: list[dict]) -> dict:
         "transit_total": 0,
         "other_total": 0,
         "sold_total": 0,
+        "quantity": 0,
+        "return_quantity": 0,
+        "total_quantity": 0,
         "ending_total": 0,
         "difference_total": 0,
         "inventory_coverage_ratio": 0.0,
@@ -2884,6 +3121,9 @@ def _compute_grand_total(items: list[dict]) -> dict:
         gt["transit_total"] += int(r.get("transit_total") or 0)
         gt["other_total"] += int(r.get("other_total") or 0)
         gt["sold_total"] += int(r.get("sold_total") or 0)
+        gt["quantity"] += int(r.get("quantity") or 0)
+        gt["return_quantity"] += int(r.get("return_quantity") or 0)
+        gt["total_quantity"] += int(r.get("total_quantity") or 0)
         gt["ending_total"] += int(r.get("ending_total") or 0)
         gt["difference_total"] += int(r.get("difference_total") or 0)
         gt["total_onhand_quantity"] += int(r.get("total_onhand_quantity") or 0)
@@ -2942,6 +3182,9 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             transit_total BIGINT DEFAULT 0,
             other_total BIGINT DEFAULT 0,
             sold_total BIGINT DEFAULT 0,
+            quantity BIGINT DEFAULT 0,
+            return_quantity BIGINT DEFAULT 0,
+            total_quantity BIGINT DEFAULT 0,
             ending_total BIGINT DEFAULT 0,
             difference_total BIGINT DEFAULT 0,
             inventory_coverage_ratio DOUBLE PRECISION,
@@ -2984,6 +3227,9 @@ def _ensure_inventory_summary_table_exists(conn, table_name: str) -> None:
             ADD COLUMN IF NOT EXISTS transit_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS other_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS sold_total BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS return_quantity BIGINT DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS total_quantity BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS ending_total BIGINT DEFAULT 0,
             ADD COLUMN IF NOT EXISTS inventory_coverage_ratio DOUBLE PRECISION,
             ADD COLUMN IF NOT EXISTS difference_total BIGINT DEFAULT 0,
@@ -3044,6 +3290,9 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             transit_total,
             other_total,
             sold_total,
+            quantity,
+            return_quantity,
+            total_quantity,
             ending_total,
             difference_total,
             inventory_coverage_ratio,
@@ -3088,6 +3337,9 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             :transit_total,
             :other_total,
             :sold_total,
+            :quantity,
+            :return_quantity,
+            :total_quantity,
             :ending_total,
             :difference_total,
             :inventory_coverage_ratio,
@@ -3131,6 +3383,9 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             transit_total = EXCLUDED.transit_total, 
             other_total = EXCLUDED.other_total,
             sold_total = EXCLUDED.sold_total,   
+            quantity = EXCLUDED.quantity,
+            return_quantity = EXCLUDED.return_quantity,
+            total_quantity = EXCLUDED.total_quantity,
             ending_total = EXCLUDED.ending_total,
             difference_total = EXCLUDED.difference_total,
             inventory_coverage_ratio = EXCLUDED.inventory_coverage_ratio,
@@ -3177,6 +3432,9 @@ def _upsert_inventory_summary_rows(conn, table_name: str, rows: list[dict]) -> i
             "transit_total": int(r.get("transit_total") or 0),
             "other_total": int(r.get("other_total") or 0),
             "sold_total": int(r.get("sold_total") or 0),
+            "quantity": int(r.get("quantity") or 0),
+            "return_quantity": int(r.get("return_quantity") or 0),
+            "total_quantity": int(r.get("total_quantity") or 0),
             "ending_total": int(r.get("ending_total") or 0),
             "difference_total": int(r.get("difference_total") or 0),
             "inventory_coverage_ratio": float(r.get("inventory_coverage_ratio") or 0.0),
@@ -3257,6 +3515,16 @@ def _create_inventorymonthly_after_fetch(
                 marketplace_id=mp,
             )
 
+            skuwise_totals = _attach_skuwise_units_to_rows(
+                items,
+                user_id,
+                country,
+                mode="month",
+                month=month,
+                year=year,
+            )
+            _apply_display_differences(items)
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"),
@@ -3264,6 +3532,8 @@ def _create_inventorymonthly_after_fetch(
                 )
 
             grand_total = _compute_grand_total(items)
+            _apply_skuwise_totals(grand_total, skuwise_totals)
+            _apply_display_difference(grand_total)
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"),
                 grand_total.get("sold_total"),
@@ -3301,7 +3571,7 @@ def _read_inventory_summary_table(conn, table_name: str, sort_order="desc"):
         FROM public."{t}"
         ORDER BY
             CASE WHEN UPPER(COALESCE(msku, '')) = 'GRAND TOTAL' THEN 1 ELSE 0 END,
-            ABS(sold_total) {order_clause}
+            ABS(COALESCE(total_quantity, sold_total)) {order_clause}
     ''')
 
     result = conn.execute(sql)
@@ -3409,12 +3679,24 @@ def inventory_ledger_summary_store_month():
                 marketplace_id=mp,
             )
 
+            skuwise_totals = _attach_skuwise_units_to_rows(
+                items,
+                user_id,
+                country,
+                mode="month",
+                month=month,
+                year=year,
+            )
+            _apply_display_differences(items)
+
             for row in items:
                 row["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     row.get("ending_total"), row.get("sold_total")
                 )
 
             grand_total = _compute_grand_total(items)
+            _apply_skuwise_totals(grand_total, skuwise_totals)
+            _apply_display_difference(grand_total)
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
@@ -3606,12 +3888,24 @@ def inventory_ledger_summary_store_quarter():
                 marketplace_id=mp,
             )
 
+            skuwise_totals = _attach_skuwise_units_to_rows(
+                items,
+                user_id,
+                country,
+                mode="quarter",
+                quarter=quarter,
+                year=year,
+            )
+            _apply_display_differences(items)
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"), r.get("sold_total")
                 )
 
             grand_total = _compute_grand_total(items)
+            _apply_skuwise_totals(grand_total, skuwise_totals)
+            _apply_display_difference(grand_total)
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
@@ -3797,12 +4091,23 @@ def inventory_ledger_summary_store_year():
                 marketplace_id=mp,
             )
 
+            skuwise_totals = _attach_skuwise_units_to_rows(
+                items,
+                user_id,
+                country,
+                mode="year",
+                year=year,
+            )
+            _apply_display_differences(items)
+
             for r in items:
                 r["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                     r.get("ending_total"), r.get("sold_total")
                 )
 
             grand_total = _compute_grand_total(items)
+            _apply_skuwise_totals(grand_total, skuwise_totals)
+            _apply_display_difference(grand_total)
             grand_total["inventory_coverage_ratio"] = _compute_inventory_coverage_ratio(
                 grand_total.get("ending_total"), grand_total.get("sold_total")
             )
