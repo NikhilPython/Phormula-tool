@@ -42,9 +42,9 @@ interface Params {
 type AnyRow = Record<string, any>;
 
 type LedgerDBReadParams =
-  | { range: 'monthly'; month: string; year: string; country?: string }
-  | { range: 'quarterly'; quarter: string; year: string; country?: string }
-  | { range: 'yearly'; year: string; country?: string };
+  | { range: 'monthly'; month: string; year: string; country?: string; marketplaceId?: string | null }
+  | { range: 'quarterly'; quarter: string; year: string; country?: string; marketplaceId?: string | null }
+  | { range: 'yearly'; year: string; country?: string; marketplaceId?: string | null };
 
 const months = [
   'january',
@@ -160,12 +160,45 @@ const awdInwarded = (row: AnyRow) =>
 const unitsInwardedTotal = (row: AnyRow) =>
   displayedMovement(row, "sum_receipts") + awdInwarded(row);
 
+const awdBeginning = (row: AnyRow) =>
+  hasOwn(row, "beginning_awd")
+    ? displayedMovement(row, "beginning_awd")
+    : 0;
+
+const awdEnding = (row: AnyRow) =>
+  hasOwn(row, "ending_awd")
+    ? displayedMovement(row, "ending_awd")
+    : 0;
+
+const awdEventValue = (row: AnyRow, keys: string[]) => {
+  const key = keys.find((candidate) => hasOwn(row, candidate));
+  return key ? displayedMovement(row, key) : 0;
+};
+
+const unknownAwdEvent = (row: AnyRow) =>
+  awdEventValue(row, ["unknown_awd_event", "unknown_awd_events", "awd_unknown_event", "awd_unknown_events"]);
+
+const awdLost = (row: AnyRow) =>
+  awdEventValue(row, ["awd_lost", "lost_awd", "awd_lost_units"]);
+
+const awdFound = (row: AnyRow) =>
+  awdEventValue(row, ["awd_found", "found_awd", "awd_found_units"]);
+
+const beginningTotalWithAwd = (row: AnyRow) =>
+  displayedMovement(row, "beginning_total") + awdBeginning(row);
+
+const otherItemsTotalWithAwd = (row: AnyRow) =>
+  displayedMovement(row, "other_total") + unknownAwdEvent(row) + awdLost(row) - awdFound(row);
+
+const endingTotalWithAwd = (row: AnyRow) =>
+  displayedMovement(row, "ending_total") + awdEnding(row);
+
 const displayedDifference = (row: AnyRow) =>
-  displayedMovement(row, "beginning_total") +
+  beginningTotalWithAwd(row) +
   unitsInwardedTotal(row) -
   Math.abs(unitsSoldNet(row)) -
-  displayedMovement(row, "other_total") -
-  displayedMovement(row, "ending_total");
+  otherItemsTotalWithAwd(row) -
+  endingTotalWithAwd(row);
 
 // localStorage keys
 const seedKey = (country: string, year: string, marketplaceId?: string | null) =>
@@ -1312,13 +1345,14 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
 
   async function fetchLedgerSummaryDB(params: LedgerDBReadParams) {
-    const { range, year, country } = params;
+    const { range, year, country, marketplaceId } = params;
 
     const q: Record<string, any> = {
       year,
       sort: sortOrder, // ✅ ADD THIS
     };
     if (country) q.country = country;
+    if (marketplaceId) q.marketplace_id = marketplaceId;
 
     let endpoint = LEDGER_DB_STORE_YEAR;
 
@@ -1411,11 +1445,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
       let payload: LedgerDBReadParams;
 
       if (range === 'monthly') {
-        payload = { range: 'monthly', month: selectedMonth, year: selectedYear, country };
+        payload = { range: 'monthly', month: selectedMonth, year: selectedYear, country, marketplaceId };
       } else if (range === 'quarterly') {
-        payload = { range: 'quarterly', quarter: selectedQuarter, year: selectedYear, country };
+        payload = { range: 'quarterly', quarter: selectedQuarter, year: selectedYear, country, marketplaceId };
       } else {
-        payload = { range: 'yearly', year: selectedYear, country };
+        payload = { range: 'yearly', year: selectedYear, country, marketplaceId };
       }
 
       const { items, meta } = await fetchLedgerSummaryDB(payload);
@@ -1603,9 +1637,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
         "sum_disposed",
         "sum_damaged",
         "sum_unknown_events",
+        "__unknown_awd_event",
         "sum_other_events",
         "sum_vendor_returns",
         "sum_lost",
+        "__awd_lost",
         // if you want Total to show + too, include "__other_items_total"
         // "__other_items_total",
       ]),
@@ -1616,6 +1652,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
     () =>
       new Set([
         "sum_found", // as per your screenshot (-)
+        "__awd_found",
       ]),
     []
   );
@@ -1650,6 +1687,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: '__beginning_awd', label: 'AWD', width: 110, align: 'center' as const },
+            ]
+            : []),
           ...(!isUsReconCountry
             ? [
               { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
@@ -1674,7 +1716,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
             ? [
               { key: '__units_inwarded_awd', label: 'AWD', width: 110, align: 'center' as const },
               { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
-              { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
             ]
             : [
               { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' as const },
@@ -1694,10 +1735,13 @@ export default function InventoryReconciliationPage({ params }: Params) {
           { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
           { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
           { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
+          { key: '__unknown_awd_event', label: 'Unknown AWD Event', width: 140, align: 'center' },
           { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
           { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
           { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
+          { key: '__awd_lost', label: 'AWD Lost', width: 110, align: 'center' },
           { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
+          { key: '__awd_found', label: 'AWD Found', width: 110, align: 'center' },
           { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
@@ -1717,20 +1761,6 @@ export default function InventoryReconciliationPage({ params }: Params) {
       },
 
       {
-        id: 'open_orders',
-        label: 'Open orders',
-        headerClassName: 'min-w-[120px]',
-        collapsedCols: [
-          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-        ],
-        expandedCols: [
-          { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
-          { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
-          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-        ],
-      },
-
-      {
         id: 'ending',
         label: endingInventoryLabel,
         headerClassName: 'min-w-[120px]',
@@ -1739,6 +1769,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: '__ending_awd', label: 'AWD', width: 110, align: 'center' as const },
+            ]
+            : []),
           ...(!isUsReconCountry
             ? [
               { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
@@ -1764,6 +1799,7 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
         // group 1 beginning
         '__beginning_total',
+        '__beginning_awd',
         '__beginning_damaged_total',
         'sellable_sum_first',
         'expired_sum_first',
@@ -1783,27 +1819,37 @@ export default function InventoryReconciliationPage({ params }: Params) {
         'total_onhand_quantity',
         'total_inbound_quantity',
         'transfer_awd_fba',
-        'transfer_fba_awd',
 
         // group 3 other items
         '__other_items_total',
         'sum_disposed',
         'sum_damaged',
         'sum_unknown_events',
+        '__unknown_awd_event',
+        'unknown_awd_event',
+        'unknown_awd_events',
+        'awd_unknown_event',
+        'awd_unknown_events',
         'sum_other_events',
         'sum_vendor_returns',
         'sum_lost',
+        '__awd_lost',
+        'awd_lost',
+        'lost_awd',
+        'awd_lost_units',
         'sum_found',
+        '__awd_found',
+        'awd_found',
+        'found_awd',
+        'awd_found_units',
         // Units sold computed
         '__units_sold_gross',
         '__units_sold_returns',
         '__units_sold_net',
-        '__open_orders_beginning',
-        '__open_orders_end',
-        '__open_orders_total',
 
         // Ending inventory computed + raw
         '__ending_total',
+        '__ending_awd',
         '__ending_damaged_lost_total',
         'sellable_sum_last',
         'expired_sum_last',
@@ -1914,20 +1960,15 @@ export default function InventoryReconciliationPage({ params }: Params) {
       return '-';
     }
 
-    if (
-      colKey === '__open_orders_beginning' ||
-      colKey === '__open_orders_end' ||
-      colKey === '__open_orders_total'
-    ) {
-      return '-';
-    }
-
     if (colKey === '__ending_transit_placeholder') {
       return '-';
     }
 
 
     // Beginning group computed fields
+    if (colKey === '__beginning_awd') {
+      return formatCell(awdBeginning(row));
+    }
     if (colKey === '__beginning_damaged_total') {
       return formatCell(
         toNum(row?.warehouse_damaged_sum_first) +
@@ -1937,7 +1978,11 @@ export default function InventoryReconciliationPage({ params }: Params) {
       );
     }
     if (colKey === '__beginning_total') {
-      return formatCell(row?.beginning_total);
+      return formatCell(beginningTotalWithAwd(row));
+    }
+
+    if (colKey === 'beginning_total') {
+      return formatCell(beginningTotalWithAwd(row));
     }
 
     // =======================
@@ -1982,9 +2027,19 @@ export default function InventoryReconciliationPage({ params }: Params) {
 
     // Other items total
     if (colKey === '__other_items_total') {
-      const total = toNum(row?.other_total)
+      return formatCell(otherItemsTotalWithAwd(row));
+    }
 
-      return formatCell(total);
+    if (colKey === '__unknown_awd_event') {
+      return formatCell(unknownAwdEvent(row));
+    }
+
+    if (colKey === '__awd_lost') {
+      return formatCell(awdLost(row));
+    }
+
+    if (colKey === '__awd_found') {
+      return formatCell(awdFound(row));
     }
 
     // =======================
@@ -2010,7 +2065,15 @@ export default function InventoryReconciliationPage({ params }: Params) {
     // Ending inventory computed
     // =======================
     if (colKey === '__ending_total') {
-      return formatCell(row?.ending_total);
+      return formatCell(endingTotalWithAwd(row));
+    }
+
+    if (colKey === '__ending_awd') {
+      return formatCell(awdEnding(row));
+    }
+
+    if (colKey === 'ending_total') {
+      return formatCell(endingTotalWithAwd(row));
     }
 
     // =======================
@@ -2559,6 +2622,10 @@ export default function InventoryReconciliationPage({ params }: Params) {
                 leftCols={leftCols}
                 groups={groups}
                 singleCols={singleCols}
+                initialCollapsed={{
+                  beginning: false,
+                  ending: false,
+                }}
                 getValue={getValue}
                 getRowClassName={getRowClassName}
                 onRowClick={(row) => {

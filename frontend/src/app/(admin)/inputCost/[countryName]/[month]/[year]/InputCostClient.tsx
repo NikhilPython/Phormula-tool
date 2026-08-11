@@ -3825,12 +3825,45 @@ const reconAwdInwarded = (row: AnyRow) =>
 const reconUnitsInwardedTotal = (row: AnyRow) =>
   reconDisplayedMovement(row, "sum_receipts") + reconAwdInwarded(row);
 
+const reconAwdBeginning = (row: AnyRow) =>
+  hasReconField(row, "beginning_awd")
+    ? reconDisplayedMovement(row, "beginning_awd")
+    : 0;
+
+const reconAwdEnding = (row: AnyRow) =>
+  hasReconField(row, "ending_awd")
+    ? reconDisplayedMovement(row, "ending_awd")
+    : 0;
+
+const reconAwdEventValue = (row: AnyRow, keys: string[]) => {
+  const key = keys.find((candidate) => hasReconField(row, candidate));
+  return key ? reconDisplayedMovement(row, key) : 0;
+};
+
+const reconUnknownAwdEvent = (row: AnyRow) =>
+  reconAwdEventValue(row, ["unknown_awd_event", "unknown_awd_events", "awd_unknown_event", "awd_unknown_events"]);
+
+const reconAwdLost = (row: AnyRow) =>
+  reconAwdEventValue(row, ["awd_lost", "lost_awd", "awd_lost_units"]);
+
+const reconAwdFound = (row: AnyRow) =>
+  reconAwdEventValue(row, ["awd_found", "found_awd", "awd_found_units"]);
+
+const reconBeginningTotalWithAwd = (row: AnyRow) =>
+  reconDisplayedMovement(row, "beginning_total") + reconAwdBeginning(row);
+
+const reconOtherItemsTotalWithAwd = (row: AnyRow) =>
+  reconDisplayedMovement(row, "other_total") + reconUnknownAwdEvent(row) + reconAwdLost(row) - reconAwdFound(row);
+
+const reconEndingTotalWithAwd = (row: AnyRow) =>
+  reconDisplayedMovement(row, "ending_total") + reconAwdEnding(row);
+
 const reconDisplayedDifference = (row: AnyRow) =>
-  reconDisplayedMovement(row, "beginning_total") +
+  reconBeginningTotalWithAwd(row) +
   reconUnitsInwardedTotal(row) -
   Math.abs(reconUnitsNet(row)) -
-  reconDisplayedMovement(row, "other_total") -
-  reconDisplayedMovement(row, "ending_total");
+  reconOtherItemsTotalWithAwd(row) -
+  reconEndingTotalWithAwd(row);
 
 const DUMMY_RECON_ROWS: AnyRow[] = [
   {
@@ -6152,6 +6185,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_first', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: '__beginning_awd', label: 'AWD', width: 110, align: 'center' as const },
+            ]
+            : []),
           ...(!isUsReconCountry
             ? [
               { key: 'sum_in_transit_between_warehouses', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
@@ -6175,7 +6213,6 @@ export default function InputCostPage({ params }: Params) {
             ? [
               { key: '__units_inwarded_awd', label: 'AWD', width: 110, align: 'center' as const },
               { key: 'transfer_awd_fba', label: 'Transfer from AWD to FBA', width: 170, align: 'center' as const },
-              { key: 'transfer_fba_awd', label: 'Transfer from FBA to AWD', width: 170, align: 'center' as const },
             ]
             : [
               { key: 'transit_total', label: 'In Transit', width: 110, align: 'center' as const },
@@ -6198,19 +6235,6 @@ export default function InputCostPage({ params }: Params) {
         ],
       },
       {
-        id: 'open_orders',
-        label: 'Open orders',
-        headerClassName: 'min-w-[120px]',
-        collapsedCols: [
-          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-        ],
-        expandedCols: [
-          { key: '__open_orders_beginning', label: 'Beginning', width: 110, align: 'center' },
-          { key: '__open_orders_end', label: 'End', width: 110, align: 'center' },
-          { key: '__open_orders_total', label: 'Total', width: 110, align: 'center' },
-        ],
-      },
-      {
         id: 'other_items',
         label: 'Other Items',
         headerClassName: 'min-w-[120px]',
@@ -6221,10 +6245,13 @@ export default function InputCostPage({ params }: Params) {
           { key: 'sum_disposed', label: 'Units Disposed', width: 110, align: 'center' },
           { key: 'sum_damaged', label: 'Damaged', width: 110, align: 'center' },
           { key: 'sum_unknown_events', label: 'Unknown Event', width: 110, align: 'center' },
+          { key: '__unknown_awd_event', label: 'Unknown AWD Event', width: 140, align: 'center' },
           { key: 'sum_other_events', label: 'Other Events', width: 110, align: 'center' },
           { key: 'sum_vendor_returns', label: 'Vendor Return', width: 110, align: 'center' },
           { key: 'sum_lost', label: 'Lost', width: 110, align: 'center' },
+          { key: '__awd_lost', label: 'AWD Lost', width: 110, align: 'center' },
           { key: 'sum_found', label: 'Found', width: 110, align: 'center' },
+          { key: '__awd_found', label: 'AWD Found', width: 110, align: 'center' },
           { key: '__other_items_total', label: 'Total', width: 110, align: 'center' },
         ],
       },
@@ -6237,6 +6264,11 @@ export default function InputCostPage({ params }: Params) {
         ],
         expandedCols: [
           { key: 'sellable_sum_last', label: isUsReconCountry ? 'FBA' : 'Sellable', width: 110, align: 'center' },
+          ...(isUsReconCountry
+            ? [
+              { key: '__ending_awd', label: 'AWD', width: 110, align: 'center' as const },
+            ]
+            : []),
           ...(!isUsReconCountry
             ? [
               { key: '__ending_transit_placeholder', label: 'Transit (Between WH)', width: 110, align: 'center' as const },
@@ -6426,9 +6458,6 @@ export default function InputCostPage({ params }: Params) {
 
     if (
       colKey === 'sum_in_transit_between_warehouses' ||
-      colKey === '__open_orders_beginning' ||
-      colKey === '__open_orders_end' ||
-      colKey === '__open_orders_total' ||
       colKey === '__ending_transit_placeholder'
     ) {
       return '-';
@@ -6443,7 +6472,11 @@ export default function InputCostPage({ params }: Params) {
       );
     }
 
-    if (colKey === '__beginning_total') return formatReconCell(row?.beginning_total);
+    if (colKey === '__beginning_awd') return formatReconCell(reconAwdBeginning(row));
+
+    if (colKey === '__beginning_total') return formatReconCell(reconBeginningTotalWithAwd(row));
+
+    if (colKey === 'beginning_total') return formatReconCell(reconBeginningTotalWithAwd(row));
 
     if (colKey === 'transit_total') return '-';
 
@@ -6456,8 +6489,14 @@ export default function InputCostPage({ params }: Params) {
     if (colKey === '__transit_total') return formatReconCell(row?.transit_total);
 
     if (colKey === '__other_items_total') {
-      return formatReconCell(row?.other_total);
+      return formatReconCell(reconOtherItemsTotalWithAwd(row));
     }
+
+    if (colKey === '__unknown_awd_event') return formatReconCell(reconUnknownAwdEvent(row));
+
+    if (colKey === '__awd_lost') return formatReconCell(reconAwdLost(row));
+
+    if (colKey === '__awd_found') return formatReconCell(reconAwdFound(row));
 
     if (colKey === '__units_sold_gross') {
       return formatReconCell(reconUnitsGross(row));
@@ -6472,8 +6511,12 @@ export default function InputCostPage({ params }: Params) {
     }
 
     if (colKey === '__ending_total') {
-      return formatReconCell(row?.ending_total);
+      return formatReconCell(reconEndingTotalWithAwd(row));
     }
+
+    if (colKey === '__ending_awd') return formatReconCell(reconAwdEnding(row));
+
+    if (colKey === 'ending_total') return formatReconCell(reconEndingTotalWithAwd(row));
 
     if (colKey === '__ending_damaged_lost_total') {
       const total =
@@ -6504,9 +6547,11 @@ export default function InputCostPage({ params }: Params) {
         "sum_disposed",
         "sum_damaged",
         "sum_unknown_events",
+        "__unknown_awd_event",
         "sum_other_events",
         "sum_vendor_returns",
         "sum_lost",
+        "__awd_lost",
       ]),
     []
   );
@@ -6515,6 +6560,7 @@ export default function InputCostPage({ params }: Params) {
     () =>
       new Set([
         "sum_found",
+        "__awd_found",
       ]),
     []
   );
@@ -7588,6 +7634,10 @@ export default function InputCostPage({ params }: Params) {
                   groups={groups}
                   singleCols={singleCols}
                   layout={reconTableLayout}
+                  initialCollapsed={{
+                    beginning: false,
+                    ending: false,
+                  }}
                   getValue={getReconValue}
                   getRowClassName={getReconRowClassName}
                   onRowClick={(row) => {

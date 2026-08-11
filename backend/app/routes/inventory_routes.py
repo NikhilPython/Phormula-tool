@@ -2849,6 +2849,7 @@ def _attach_awd_quantities_to_rows(
     marketplace_id: str,
     period_start: date,
     period_end: date,
+    country: str | None = None,
 ) -> None:
     """Attach open AWD inbound shipment quantities to monthly SKU summary rows.
 
@@ -2888,14 +2889,127 @@ def _attach_awd_quantities_to_rows(
         if row.get("normalized_sku")
     }
 
+    current_inventory_awd_by_sku = _fetch_current_inventory_awd_by_sku(
+        conn=conn,
+        user_id=user_id,
+        country=country,
+        snapshot_date=period_end,
+    )
+    awd_inventory_by_sku = _fetch_awd_inventory_by_sku(conn, user_id, marketplace_id)
+
     for item in items:
         sku = str(item.get("msku") or "").strip().upper()
         awd = awd_by_sku.get(sku, {})
-        item["total_onhand_quantity"] = 0
+        awd_inventory = current_inventory_awd_by_sku.get(sku) or awd_inventory_by_sku.get(sku, {})
+        item["total_onhand_quantity"] = int(awd_inventory.get("total_onhand_quantity") or 0)
         item["total_inbound_quantity"] = int(awd.get("total_inbound_quantity") or 0)
-        item["available_distributable_quantity"] = 0
-        item["reserved_distributable_quantity"] = 0
-        item["replenishment_quantity"] = 0
+        item["available_distributable_quantity"] = int(awd_inventory.get("available_distributable_quantity") or 0)
+        item["reserved_distributable_quantity"] = int(awd_inventory.get("reserved_distributable_quantity") or 0)
+        item["replenishment_quantity"] = int(awd_inventory.get("replenishment_quantity") or 0)
+
+
+def _current_inventory_table_name(user_id: int, country: str, snapshot_date: date) -> str:
+    country_key = _safe_ident((country or "").strip().lower().replace(" ", "_"))
+    month_name = snapshot_date.strftime("%B").lower()
+    return f"currentinventory_{int(user_id)}_{country_key}_{month_name}{snapshot_date.year}_table"
+
+
+def _fetch_current_inventory_awd_by_sku(
+    conn,
+    user_id: int,
+    country: str | None,
+    snapshot_date: date,
+) -> dict[str, dict]:
+    if not country:
+        return {}
+
+    try:
+        table_name = _current_inventory_table_name(user_id, country, snapshot_date)
+    except Exception:
+        return {}
+
+    def read_from(read_conn) -> dict[str, dict]:
+        if not _table_exists(read_conn, "public", table_name):
+            return {}
+
+        columns = {
+            row["column_name"]
+            for row in read_conn.execute(text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = :table_name
+            """), {"table_name": table_name}).mappings().all()
+        }
+
+        sku_col = next((c for c in ["SKU", "sku", "msku", "seller_sku", "merchant_sku"] if c in columns), None)
+        onhand_col = next((
+            c for c in [
+                "total_onhand_quantity",
+                "total_on_hand_quantity",
+                "onhand_quantity",
+                "on_hand_quantity",
+            ] if c in columns
+        ), None)
+
+        if not sku_col or not onhand_col:
+            return {}
+
+        rows = read_conn.execute(text(f"""
+            SELECT
+                UPPER(TRIM(COALESCE("{sku_col}"::text, ''))) AS normalized_sku,
+                SUM(COALESCE("{onhand_col}"::numeric, 0)) AS total_onhand_quantity
+            FROM public."{table_name}"
+            WHERE TRIM(COALESCE("{sku_col}"::text, '')) <> ''
+            GROUP BY UPPER(TRIM(COALESCE("{sku_col}"::text, '')))
+        """)).mappings().all()
+
+        return {
+            str(row["normalized_sku"]): {
+                "total_onhand_quantity": int(row.get("total_onhand_quantity") or 0),
+            }
+            for row in rows
+            if row.get("normalized_sku")
+        }
+
+    from_current_conn = read_from(conn)
+    if from_current_conn:
+        return from_current_conn
+
+    try:
+        with user_engine.connect() as main_conn:
+            return read_from(main_conn)
+    except Exception:
+        logger.exception("Failed reading current inventory AWD snapshot for %s", table_name)
+        return {}
+
+
+def _fetch_awd_inventory_by_sku(conn, user_id: int, marketplace_id: str) -> dict[str, dict]:
+    if not _table_exists(conn, "public", "inventory_awd"):
+        return {}
+
+    rows = conn.execute(text("""
+        SELECT
+            UPPER(TRIM(COALESCE(sku, ''))) AS normalized_sku,
+            SUM(COALESCE(total_onhand_quantity, 0)) AS total_onhand_quantity,
+            SUM(COALESCE(available_distributable_quantity, 0)) AS available_distributable_quantity,
+            SUM(COALESCE(reserved_distributable_quantity, 0)) AS reserved_distributable_quantity,
+            SUM(COALESCE(replenishment_quantity, 0)) AS replenishment_quantity
+        FROM public.inventory_awd
+        WHERE user_id = :user_id
+          AND marketplace_id = :marketplace_id
+          AND TRIM(COALESCE(sku, '')) <> ''
+        GROUP BY UPPER(TRIM(COALESCE(sku, '')))
+    """), {
+        "user_id": int(user_id),
+        "marketplace_id": marketplace_id,
+    }).mappings().all()
+
+    return {
+        str(row["normalized_sku"]): dict(row)
+        for row in rows
+        if row.get("normalized_sku")
+    }
 
 
 def _ledger_units_fallback(row: dict) -> dict:
@@ -3031,10 +3145,12 @@ def _display_units_inwarded_total(row: dict) -> int:
 def _compute_display_difference(row: dict) -> int:
     return (
         _display_abs_int(row, "beginning_total")
+        + _display_abs_int(row, "total_onhand_quantity")
         + _display_units_inwarded_total(row)
         - _display_net_units_sold(row)
         - _display_abs_int(row, "other_total")
         - _display_abs_int(row, "ending_total")
+        - _display_abs_int(row, "total_onhand_quantity")
     )
 
 
@@ -3523,6 +3639,7 @@ def _create_inventorymonthly_after_fetch(
                 marketplace_id=mp,
                 period_start=month_start,
                 period_end=month_end,
+                country=country,
             )
 
             skuwise_totals = _attach_skuwise_units_to_rows(
@@ -3687,6 +3804,7 @@ def inventory_ledger_summary_store_month():
                 marketplace_id=mp,
                 period_start=requested_start,
                 period_end=requested_end,
+                country=country,
             )
 
             skuwise_totals = _attach_skuwise_units_to_rows(
@@ -3898,6 +4016,16 @@ def inventory_ledger_summary_store_quarter():
                 marketplace_id=mp,
             )
 
+            _attach_awd_quantities_to_rows(
+                conn=conn,
+                items=items,
+                user_id=user_id,
+                marketplace_id=mp,
+                period_start=start_date,
+                period_end=end_date,
+                country=country,
+            )
+
             skuwise_totals = _attach_skuwise_units_to_rows(
                 items,
                 user_id,
@@ -4099,6 +4227,16 @@ def inventory_ledger_summary_store_year():
                 user_id,
                 country=country,
                 marketplace_id=mp,
+            )
+
+            _attach_awd_quantities_to_rows(
+                conn=conn,
+                items=items,
+                user_id=user_id,
+                marketplace_id=mp,
+                period_start=start_date,
+                period_end=end_date,
+                country=country,
             )
 
             skuwise_totals = _attach_skuwise_units_to_rows(
