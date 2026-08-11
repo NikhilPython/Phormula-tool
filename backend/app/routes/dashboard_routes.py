@@ -1894,16 +1894,16 @@ def getDispatchfile():
 
         df = read_dispatch_dataframe(data_bytes)
 
-        print("\n========== DISPATCH DEBUG ==========")
-        print("Requested month:", requested_month)
-        print("Requested year:", requested_year)
-        print("Stored file:", filename)
-        print("RAW COLUMNS:")
-        print(df.columns.tolist())
+        # print("\n========== DISPATCH DEBUG ==========")
+        # print("Requested month:", requested_month)
+        # print("Requested year:", requested_year)
+        # print("Stored file:", filename)
+        # print("RAW COLUMNS:")
+        # print(df.columns.tolist())
 
-        print("\nFORECAST COLUMNS FOUND:")
-        print(get_forecast_columns(df))
-        print("====================================\n")
+        # print("\nFORECAST COLUMNS FOUND:")
+        # print(get_forecast_columns(df))
+        # print("====================================\n")
 
         df = clean_dispatch_dataframe(df)
         df = refresh_fba_in_transit_from_db(df, country.lower())
