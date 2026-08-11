@@ -261,46 +261,249 @@ def getDispatchfile():
 
         def read_dispatch_dataframe(data_bytes: bytes) -> pd.DataFrame:
             """
-            Reads uploaded workbook robustly:
-            - prefers sheet named 'Dispatch'
-            - detects actual header row dynamically
+            Read the Dispatch sheet and merge monthly forecast columns
+            from the Inventory sheet internally by SKU.
             """
+
             excel_file = pd.ExcelFile(BytesIO(data_bytes))
-            sheet_name = next(
-                (s for s in excel_file.sheet_names if s.strip().lower() == 'dispatch'),
-                excel_file.sheet_names[0]
-            )
 
-            preview_df = pd.read_excel(
-                BytesIO(data_bytes),
-                sheet_name=sheet_name,
-                header=None
-            )
+            # ---------------------------------------------------------
+            # Helper to read a formatted sheet
+            # ---------------------------------------------------------
+            def read_formatted_sheet(sheet_name: str) -> pd.DataFrame:
 
-            excel_rows = preview_df.fillna('').values.tolist()
-            header_row_index = find_header_row(excel_rows)
-
-            if header_row_index == -1:
-                raise ValueError(
-                    f"Could not find dispatch header row in sheet '{sheet_name}'."
+                preview_df = pd.read_excel(
+                    BytesIO(data_bytes),
+                    sheet_name=sheet_name,
+                    header=None
                 )
 
-            df = pd.read_excel(
-                BytesIO(data_bytes),
-                sheet_name=sheet_name,
-                header=header_row_index
+                excel_rows = preview_df.fillna('').values.tolist()
+                header_row_index = find_header_row(excel_rows)
+
+                if header_row_index == -1:
+                    raise ValueError(
+                        f"Could not find header row in sheet '{sheet_name}'."
+                    )
+
+                sheet_df = pd.read_excel(
+                    BytesIO(data_bytes),
+                    sheet_name=sheet_name,
+                    header=header_row_index
+                )
+
+                sheet_df.columns = [
+                    normalize_col_name(c)
+                    for c in sheet_df.columns
+                ]
+
+                sheet_df = sheet_df.loc[
+                    :,
+                    [
+                        str(c).strip() != ''
+                        and not str(c).startswith('Unnamed:')
+                        for c in sheet_df.columns
+                    ]
+                ]
+
+                return sheet_df
+
+            # ---------------------------------------------------------
+            # 1. Find and read Dispatch sheet
+            # ---------------------------------------------------------
+            dispatch_sheet_name = next(
+                (
+                    s for s in excel_file.sheet_names
+                    if s.strip().lower() == 'dispatch'
+                ),
+                None
             )
 
-            df.columns = [normalize_col_name(c) for c in df.columns]
-            df = df.loc[:, [str(c).strip() != '' and not str(c).startswith('Unnamed:') for c in df.columns]]
+            if not dispatch_sheet_name:
+                raise ValueError(
+                    "Dispatch sheet not found in inventory forecast workbook."
+                )
 
-            return df
+            dispatch_df = read_formatted_sheet(
+                dispatch_sheet_name
+            )
+
+            # ---------------------------------------------------------
+            # 2. Find and read Inventory sheet
+            # ---------------------------------------------------------
+            inventory_sheet_name = next(
+                (
+                    s for s in excel_file.sheet_names
+                    if s.strip().lower() == 'inventory'
+                ),
+                None
+            )
+
+            if not inventory_sheet_name:
+                raise ValueError(
+                    "Inventory sheet not found in inventory forecast workbook."
+                )
+
+            inventory_df = read_formatted_sheet(
+                inventory_sheet_name
+            )
+
+            # ---------------------------------------------------------
+            # 3. Find forecast columns from Inventory sheet
+            # Example:
+            # Aug'26, Sep'26, Oct'26, ...
+            # ---------------------------------------------------------
+            forecast_cols = []
+
+            for col in inventory_df.columns:
+
+                normalized = str(col or "").strip()
+
+                normalized = (
+                    normalized
+                    .replace("’", "'")
+                    .replace("‘", "'")
+                    .replace("`", "'")
+                )
+
+                normalized = re.sub(
+                    r"\s+",
+                    "",
+                    normalized
+                )
+
+                if re.fullmatch(
+                    r"[A-Z][a-z]{2}'\d{2}",
+                    normalized
+                ):
+                    forecast_cols.append(col)
+
+            if not forecast_cols:
+                raise ValueError(
+                    "No monthly forecast columns found in Inventory sheet."
+                )
+
+            # ---------------------------------------------------------
+            # 4. Validate SKU columns
+            # ---------------------------------------------------------
+            if 'sku' not in dispatch_df.columns:
+                raise ValueError(
+                    "SKU column missing from Dispatch sheet."
+                )
+
+            if 'sku' not in inventory_df.columns:
+                raise ValueError(
+                    "SKU column missing from Inventory sheet."
+                )
+
+            # ---------------------------------------------------------
+            # 5. Build monthly forecast dataframe
+            # ---------------------------------------------------------
+            forecast_df = inventory_df[
+                ['sku'] + forecast_cols
+            ].copy()
+
+            dispatch_df['__sku_key'] = (
+                dispatch_df['sku']
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+            forecast_df['__sku_key'] = (
+                forecast_df['sku']
+                .astype(str)
+                .str.strip()
+                .str.upper()
+            )
+
+            # Remove Total row
+            forecast_df = forecast_df[
+                forecast_df['__sku_key'] != 'TOTAL'
+            ].copy()
+
+            # Make forecasts numeric
+            for col in forecast_cols:
+                forecast_df[col] = (
+                    pd.to_numeric(
+                        forecast_df[col],
+                        errors='coerce'
+                    )
+                    .fillna(0)
+                )
+
+            # If same SKU occurs more than once,
+            # combine the forecast values safely.
+            forecast_df = (
+                forecast_df[
+                    ['__sku_key'] + forecast_cols
+                ]
+                .groupby(
+                    '__sku_key',
+                    as_index=False
+                )[forecast_cols]
+                .sum()
+            )
+
+            # ---------------------------------------------------------
+            # 6. Merge forecasts into Dispatch dataframe
+            # ---------------------------------------------------------
+            dispatch_df = dispatch_df.merge(
+                forecast_df,
+                on='__sku_key',
+                how='left'
+            )
+
+            dispatch_df.drop(
+                columns=['__sku_key'],
+                inplace=True,
+                errors='ignore'
+            )
+
+            # Any unmatched forecast becomes zero
+            for col in forecast_cols:
+                dispatch_df[col] = (
+                    pd.to_numeric(
+                        dispatch_df[col],
+                        errors='coerce'
+                    )
+                    .fillna(0)
+                )
+
+            print(
+                "[DISPATCH] Monthly forecast columns merged:",
+                forecast_cols
+            )
+
+            return dispatch_df
+
+        def normalize_forecast_label(value) -> str:
+            label = str(value or "").strip()
+
+            # Normalize different apostrophe characters
+            label = (
+                label
+                .replace("’", "'")
+                .replace("‘", "'")
+                .replace("`", "'")
+            )
+
+            # Remove spaces / hidden whitespace
+            label = re.sub(r"\s+", "", label)
+
+            return label
+
 
         def get_forecast_columns(df: pd.DataFrame) -> list[str]:
-            return [
-                c for c in df.columns
-                if re.fullmatch(r"[A-Z][a-z]{2}'\d{2}", str(c).strip())
-            ]
+            forecast_cols = []
+
+            for col in df.columns:
+                normalized = normalize_forecast_label(col)
+
+                if re.fullmatch(r"[A-Z][a-z]{2}'\d{2}", normalized):
+                    forecast_cols.append(col)
+
+            return forecast_cols
 
         def get_country_profile_split_policy(ctry: str) -> tuple[int, int, int]:
             country_key = ctry.strip().lower()
@@ -338,207 +541,6 @@ def getDispatchfile():
             if saved_type in {"SEA", "AIR"}:
                 return saved_type
             return "SEA"
-
-        def fetch_shipment_transport_split_lookup(
-            ctry: str,
-            ship_time_weeks: int,
-            air_time_weeks: int,
-        ) -> dict[str, dict[str, float]]:
-            if amazon_engine is None:
-                return {}
-
-            marketplace_id = INVENTORY_MARKETPLACE_BY_COUNTRY.get(ctry.strip().lower())
-            if not marketplace_id:
-                return {}
-
-            rows: list[dict] = []
-            try:
-                inspector = inspect(amazon_engine)
-                table_names = set(inspector.get_table_names(schema="public"))
-
-                if "inventory_awd_inbound_shipments" in table_names:
-                    awd_columns = {col["name"] for col in inspector.get_columns("inventory_awd_inbound_shipments", schema="public")}
-                    awd_type_expr = (
-                        "shipment_type"
-                        if "shipment_type" in awd_columns
-                        else '"shipmentType"'
-                        if "shipmentType" in awd_columns
-                        else "NULL"
-                    )
-                    awd_rows = pd.read_sql(
-                        text(f"""
-                            SELECT
-                                UPPER(TRIM(sku)) AS sku_norm,
-                                COALESCE(expected_unit_quantity, 0) AS units,
-                                dispatch_date,
-                                expected_reach_date,
-                                {awd_type_expr} AS shipment_type
-                            FROM public.inventory_awd_inbound_shipments
-                            WHERE user_id = :user_id
-                              AND marketplace_id = :marketplace_id
-                              AND COALESCE(expected_unit_quantity, 0) > 0
-                              AND UPPER(REPLACE(COALESCE(shipment_status, ''), '-', '_')) NOT IN ('CANCELLED', 'CLOSED', 'DELIVERED')
-                        """),
-                        con=amazon_engine,
-                        params={"user_id": int(user_id), "marketplace_id": marketplace_id},
-                    )
-                    rows.extend(awd_rows.to_dict("records"))
-
-                if "inventory_fba_inbound_shipments" in table_names:
-                    columns = {col["name"] for col in inspector.get_columns("inventory_fba_inbound_shipments", schema="public")}
-                    sku_expr = (
-                        "COALESCE(NULLIF(TRIM(msku), ''), NULLIF(TRIM(seller_sku), ''))"
-                        if {"msku", "seller_sku"}.issubset(columns)
-                        else "NULLIF(TRIM(msku), '')"
-                        if "msku" in columns
-                        else "NULLIF(TRIM(seller_sku), '')"
-                        if "seller_sku" in columns
-                        else None
-                    )
-                    quantity_expr = (
-                        "COALESCE(quantity, quantity_shipped, 0)"
-                        if {"quantity", "quantity_shipped"}.issubset(columns)
-                        else "COALESCE(quantity, 0)"
-                        if "quantity" in columns
-                        else "COALESCE(quantity_shipped, 0)"
-                        if "quantity_shipped" in columns
-                        else None
-                    )
-                    status_expr = (
-                        "COALESCE(status, shipment_status, '')"
-                        if {"status", "shipment_status"}.issubset(columns)
-                        else "COALESCE(status, '')"
-                        if "status" in columns
-                        else "COALESCE(shipment_status, '')"
-                        if "shipment_status" in columns
-                        else "''"
-                    )
-                    fba_type_expr = (
-                        "shipment_type"
-                        if "shipment_type" in columns
-                        else '"shipmentType"'
-                        if "shipmentType" in columns
-                        else "NULL"
-                    )
-                    if sku_expr and quantity_expr:
-                        fba_status = "SHIPPED" if ctry.strip().lower() in {"uk", "gb", "united kingdom"} else "IN_TRANSIT"
-                        fba_rows = pd.read_sql(
-                            text(f"""
-                                SELECT
-                                    UPPER(TRIM({sku_expr})) AS sku_norm,
-                                    {quantity_expr} AS units,
-                                    dispatch_date,
-                                    expected_reach_date,
-                                    {fba_type_expr} AS shipment_type
-                                FROM public.inventory_fba_inbound_shipments
-                                WHERE user_id = :user_id
-                                  AND marketplace_id = :marketplace_id
-                                  AND COALESCE({quantity_expr}, 0) > 0
-                                  AND UPPER(REPLACE({status_expr}, '-', '_')) = :fba_status
-                            """),
-                            con=amazon_engine,
-                            params={
-                                "user_id": int(user_id),
-                                "marketplace_id": marketplace_id,
-                                "fba_status": fba_status,
-                            },
-                        )
-                        rows.extend(fba_rows.to_dict("records"))
-            except Exception:
-                return {}
-
-            lookup: dict[str, dict[str, float]] = {}
-            for row in rows:
-                sku_norm = str(row.get("sku_norm") or "").strip().upper()
-                if not sku_norm:
-                    continue
-                units = pd.to_numeric(row.get("units"), errors="coerce")
-                if pd.isna(units) or float(units) <= 0:
-                    continue
-                mode = classify_shipment_transport(
-                    row.get("dispatch_date"),
-                    row.get("expected_reach_date"),
-                    row.get("shipment_type"),
-                    ship_time_weeks,
-                    air_time_weeks,
-                )
-                sku_split = lookup.setdefault(sku_norm, {"SEA": 0.0, "AIR": 0.0})
-                sku_split[mode] += float(units)
-
-            return lookup
-
-        def apply_country_profile_sea_air_split(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
-            split_df = df.copy()
-            forecast_cols = get_forecast_columns(split_df)
-            if "To be Dispatch" not in split_df.columns:
-                return split_df
-
-            ship_time_weeks, air_time_weeks, stock_unit_weeks = get_country_profile_split_policy(ctry)
-            air_required_weeks = max(float(air_time_weeks or 0), 0) + max(float(stock_unit_weeks or 0), 0)
-            air_month_count = int(math.ceil(air_required_weeks / 4.345)) if air_required_weeks > 0 else 0
-            air_month_count = min(max(air_month_count, 0), len(forecast_cols))
-
-            total_units = pd.to_numeric(
-                split_df["To be Dispatch"],
-                errors="coerce",
-            ).fillna(0).clip(lower=0)
-
-            if forecast_cols and air_month_count > 0:
-                air_demand = (
-                    split_df[forecast_cols[:air_month_count]]
-                    .apply(pd.to_numeric, errors="coerce")
-                    .fillna(0)
-                    .sum(axis=1)
-                )
-                stock_source = (
-                    split_df["In stock"]
-                    if "In stock" in split_df.columns
-                    else pd.Series(0, index=split_df.index)
-                )
-                available_stock = pd.to_numeric(stock_source, errors="coerce").fillna(0)
-                urgent_air_units = (air_demand - available_stock).clip(lower=0)
-            else:
-                air_threshold_months = air_required_weeks / 4.345 if air_required_weeks > 0 else 0
-                coverage_source = (
-                    split_df["Inventory Coverage Ratio Before Dispatch"]
-                    if "Inventory Coverage Ratio Before Dispatch" in split_df.columns
-                    else pd.Series(0, index=split_df.index)
-                )
-                coverage = pd.to_numeric(
-                    coverage_source,
-                    errors="coerce",
-                ).fillna(0)
-                urgent_air_units = total_units.where(
-                    (total_units > 0) &
-                    (air_threshold_months > 0) &
-                    (coverage > 0) &
-                    (coverage < air_threshold_months),
-                    0,
-                )
-
-            shipment_split_lookup = fetch_shipment_transport_split_lookup(
-                ctry,
-                ship_time_weeks,
-                air_time_weeks,
-            )
-            sku_source = split_df["sku"] if "sku" in split_df.columns else split_df.get("SKU")
-            if sku_source is not None and shipment_split_lookup:
-                sku_norm = sku_source.astype(str).str.strip().str.upper()
-                shipment_air_ratio = sku_norm.map(
-                    lambda sku: (
-                        shipment_split_lookup[sku]["AIR"] /
-                        (shipment_split_lookup[sku]["AIR"] + shipment_split_lookup[sku]["SEA"])
-                    )
-                    if sku in shipment_split_lookup and
-                    (shipment_split_lookup[sku]["AIR"] + shipment_split_lookup[sku]["SEA"]) > 0
-                    else None
-                )
-                shipment_air_units = (total_units * pd.to_numeric(shipment_air_ratio, errors="coerce")).round()
-                urgent_air_units = shipment_air_units.where(shipment_air_units.notna(), urgent_air_units)
-
-            split_df["AIR"] = pd.concat([total_units, urgent_air_units], axis=1).min(axis=1).round().astype(int)
-            split_df["SEA"] = (total_units - split_df["AIR"]).clip(lower=0).round().astype(int)
-            return split_df
 
         def clean_dispatch_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             forecast_columns = get_forecast_columns(df)
@@ -648,7 +650,8 @@ def getDispatchfile():
 
         def forecast_label_month_start(label: str):
             try:
-                return datetime.strptime(str(label).strip(), "%b'%y")
+                normalized = normalize_forecast_label(label)
+                return datetime.strptime(normalized, "%b'%y")
             except Exception:
                 return None
 
@@ -821,211 +824,462 @@ def getDispatchfile():
 
         def apply_rolling_dispatch_plan(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             planned = df.copy()
+
+            # ---------------------------------------------------------
+            # 1. Get month-wise forecast columns in chronological order
+            # ---------------------------------------------------------
             forecast_cols = [
                 col for col in get_forecast_columns(planned)
                 if forecast_label_month_start(col) is not None
             ]
-            forecast_cols = sorted(forecast_cols, key=lambda col: forecast_label_month_start(col))
 
-            inbound_rows = fetch_inbound_shipment_rows(ctry)
-            validate_inbound_expected_reach_dates(inbound_rows, ctry)
+            forecast_cols = sorted(
+                forecast_cols,
+                key=lambda col: forecast_label_month_start(col)
+            )
 
+            # We want ONLY the timing-based SEA/AIR logic.
+            # Do not fall back to historical shipment ratios.
             if not forecast_cols:
-                return apply_country_profile_sea_air_split(recompute_dispatch_quantities(planned), ctry)
+                raise ValueError(
+                    "Monthly forecast columns are required for SEA/AIR dispatch planning."
+                )
 
-            ship_time_weeks, air_time_weeks, stock_unit_weeks = get_country_profile_split_policy(ctry)
-            first_month_start = forecast_label_month_start(forecast_cols[0])
-            last_month_end = forecast_label_month_end(forecast_cols[-1])
-            planning_horizon_weeks = max(
-                float(ship_time_weeks or 0)
-                + float(air_time_weeks or 0)
-                + float(stock_unit_weeks or 0),
-                0.0,
-            )
-            planning_month_count = int(math.ceil(planning_horizon_weeks / 4.345)) if planning_horizon_weeks > 0 else 1
-            planning_month_count = min(max(planning_month_count, 1), len(forecast_cols))
-            planning_horizon_end = forecast_label_month_end(forecast_cols[planning_month_count - 1])
-            planning_horizon_end_ts = (
-                pd.Timestamp(planning_horizon_end).normalize()
-                if planning_horizon_end is not None
-                else pd.Timestamp(last_month_end).normalize()
-                if last_month_end is not None
-                else None
+            # ---------------------------------------------------------
+            # 2. Country profile
+            # ---------------------------------------------------------
+            ship_time_weeks, air_time_weeks, stock_unit_weeks = (
+                get_country_profile_split_policy(ctry)
             )
 
-            inbound_by_sku_month: dict[str, dict[int, dict[str, float]]] = {}
-            inbound_events_by_sku: dict[str, list[tuple[pd.Timestamp, float]]] = {}
-            inbound_totals_by_sku: dict[str, dict[str, float]] = {}
+            ship_time_weeks = max(float(ship_time_weeks or 0), 0)
+            air_time_weeks = max(float(air_time_weeks or 0), 0)
+            stock_unit_weeks = max(float(stock_unit_weeks or 0), 0)
 
-            for inbound in inbound_rows:
-                sku_norm = str(inbound.get("sku_norm") or "").strip().upper()
-                if not sku_norm:
-                    continue
-
-                units = pd.to_numeric(inbound.get("units"), errors="coerce")
-                if pd.isna(units) or float(units) <= 0:
-                    continue
-
-                source_key = "FBA" if str(inbound.get("source") or "").upper() == "FBA" else "AWD"
-                sku_totals = inbound_totals_by_sku.setdefault(sku_norm, {"FBA": 0.0, "AWD": 0.0})
-                sku_totals[source_key] += float(units)
-
-                reach_dt = pd.to_datetime(inbound.get("expected_reach_date"), errors="coerce")
-                if pd.isna(reach_dt):
-                    continue
-                reach_dt = reach_dt.normalize()
-                inbound_events_by_sku.setdefault(sku_norm, []).append((reach_dt, float(units)))
-
-                if first_month_start is None or last_month_end is None:
-                    continue
-                if reach_dt < pd.Timestamp(first_month_start):
-                    month_index = 0
-                elif reach_dt > pd.Timestamp(last_month_end):
-                    continue
-                else:
-                    month_index = None
-                    for idx, forecast_col in enumerate(forecast_cols):
-                        month_start = forecast_label_month_start(forecast_col)
-                        month_end = forecast_label_month_end(forecast_col)
-                        if month_start is None or month_end is None:
-                            continue
-                        if pd.Timestamp(month_start) <= reach_dt <= pd.Timestamp(month_end):
-                            month_index = idx
-                            break
-                    if month_index is None:
-                        continue
-
-                sku_arrivals = inbound_by_sku_month.setdefault(sku_norm, {})
-                month_arrivals = sku_arrivals.setdefault(month_index, {"FBA": 0.0, "AWD": 0.0})
-                month_arrivals[source_key] += float(units)
-
-            selected_dispatch_start = pd.to_datetime(
+            # ---------------------------------------------------------
+            # 3. Determine actual planning/dispatch date
+            # ---------------------------------------------------------
+            selected_month_start = pd.to_datetime(
                 month_start_date(requested_month, requested_year),
                 errors="coerce",
             )
-            if pd.isna(selected_dispatch_start):
-                selected_dispatch_start = pd.Timestamp(datetime(requested_year, 1, 1))
 
-            for col in ["FBA", "AWD", "In Transit FBA", "In Transit AWD"]:
-                if col not in planned.columns:
-                    planned[col] = 0
-                planned[col] = pd.to_numeric(planned[col], errors="coerce").fillna(0)
+            if pd.isna(selected_month_start):
+                selected_month_start = pd.Timestamp(
+                    datetime(requested_year, 1, 1)
+                )
 
+            # Dispatch planning always starts from the first day
+            # of the selected forecast month.
+            #
+            # Example:
+            # August 2026 -> 01-Aug-2026
+            #
+            # Opening FBA/AWD stock belongs to this date, so the
+            # recommendation stays fixed throughout the month.
+            planning_dispatch_date = selected_month_start.normalize()
+
+            # ---------------------------------------------------------
+            # 4. Calculate earliest arrival date of NEW shipments
+            # ---------------------------------------------------------
+            air_arrival_date = (
+                planning_dispatch_date
+                + pd.Timedelta(weeks=air_time_weeks)
+            )
+
+            sea_arrival_date = (
+                planning_dispatch_date
+                + pd.Timedelta(weeks=ship_time_weeks)
+            )
+
+            # ---------------------------------------------------------
+            # 5. Planning horizon
+            #
+            # Plan until SEA arrival + required safety/buffer stock.
+            #
+            # Example:
+            # SEA = 16 weeks
+            # Buffer = 8 weeks
+            #
+            # Need inventory coverage for 24 weeks from dispatch.
+            # ---------------------------------------------------------
+            planning_horizon_end = (
+                sea_arrival_date
+                + pd.Timedelta(weeks=stock_unit_weeks)
+            )
+
+            last_forecast_end = forecast_label_month_end(
+                forecast_cols[-1]
+            )
+
+            if last_forecast_end is not None:
+                last_forecast_end = pd.Timestamp(
+                    last_forecast_end
+                ).normalize()
+
+                # We cannot calculate beyond available forecast.
+                planning_horizon_end = min(
+                    planning_horizon_end,
+                    last_forecast_end,
+                )
+
+            # ---------------------------------------------------------
+            # 6. Fetch EXISTING inbound shipments
+            # ---------------------------------------------------------
+            inbound_rows = fetch_inbound_shipment_rows(ctry)
+
+            validate_inbound_expected_reach_dates(
+                inbound_rows,
+                ctry,
+            )
+
+            inbound_events_by_sku = {}
+            inbound_totals_by_sku = {}
+
+            for inbound in inbound_rows:
+
+                sku_norm = str(
+                    inbound.get("sku_norm") or ""
+                ).strip().upper()
+
+                if not sku_norm:
+                    continue
+
+                units = pd.to_numeric(
+                    inbound.get("units"),
+                    errors="coerce",
+                )
+
+                if pd.isna(units) or float(units) <= 0:
+                    continue
+
+                units = float(units)
+
+                source_key = (
+                    "FBA"
+                    if str(inbound.get("source") or "").upper() == "FBA"
+                    else "AWD"
+                )
+
+                # Total inbound for display
+                sku_totals = inbound_totals_by_sku.setdefault(
+                    sku_norm,
+                    {
+                        "FBA": 0.0,
+                        "AWD": 0.0,
+                    },
+                )
+
+                sku_totals[source_key] += units
+
+                # Exact arrival event for stock simulation
+                reach_dt = pd.to_datetime(
+                    inbound.get("expected_reach_date"),
+                    errors="coerce",
+                )
+
+                if pd.isna(reach_dt):
+                    continue
+
+                reach_dt = reach_dt.normalize()
+
+                inbound_events_by_sku.setdefault(
+                    sku_norm,
+                    []
+                ).append(
+                    (reach_dt, units)
+                )
+
+            # ---------------------------------------------------------
+            # Helpers
+            # ---------------------------------------------------------
             def scalar_number(value) -> float:
-                parsed = pd.to_numeric(value, errors="coerce")
+                parsed = pd.to_numeric(
+                    value,
+                    errors="coerce",
+                )
+
                 return 0.0 if pd.isna(parsed) else float(parsed)
 
-            def forecast_value(row_data: pd.Series, forecast_col: str) -> float:
-                parsed = pd.to_numeric(row_data.get(forecast_col, 0), errors="coerce")
-                return 0.0 if pd.isna(parsed) else float(parsed)
+            def forecast_value(
+                row_data: pd.Series,
+                forecast_col: str,
+            ) -> float:
 
-            def dispatch_mode_for_need(need_dt: pd.Timestamp, dispatch_dt: pd.Timestamp) -> str:
-                if pd.isna(need_dt) or pd.isna(dispatch_dt):
-                    return "AIR"
-                weeks_until_need = (need_dt.normalize() - dispatch_dt.normalize()).days / 7
-                if ship_time_weeks > 0 and weeks_until_need >= ship_time_weeks:
-                    return "SEA"
-                return "AIR"
+                parsed = pd.to_numeric(
+                    row_data.get(forecast_col, 0),
+                    errors="coerce",
+                )
 
-            def dispatch_mode_for_next_shipment(dispatch_dt: pd.Timestamp) -> str:
-                if planning_horizon_end_ts is None:
-                    return "AIR"
-                return dispatch_mode_for_need(planning_horizon_end_ts, dispatch_dt)
+                return 0.0 if pd.isna(parsed) else max(float(parsed), 0.0)
 
+            # ---------------------------------------------------------
+            # 7. Process every SKU independently
+            # ---------------------------------------------------------
             for idx, row in planned.iterrows():
-                sku_norm = str(row.get("sku") or row.get("SKU") or "").strip().upper()
-                sku_inbound_totals = inbound_totals_by_sku.get(sku_norm, {})
-                fba_inbound_total = sku_inbound_totals.get("FBA", 0.0)
-                awd_inbound_total = sku_inbound_totals.get("AWD", 0.0)
-                if fba_inbound_total <= 0:
-                    fba_inbound_total = scalar_number(row.get("In Transit FBA", 0))
-                if awd_inbound_total <= 0:
-                    awd_inbound_total = scalar_number(row.get("In Transit AWD", 0))
 
-                opening_stock = scalar_number(row.get("FBA", 0)) + scalar_number(row.get("AWD", 0))
+                sku_norm = str(
+                    row.get("sku")
+                    or row.get("SKU")
+                    or ""
+                ).strip().upper()
 
-                planning_dispatch_date = selected_dispatch_start
-
-                displayed_sales = pd.to_numeric(row.get("Projected Sales Total"), errors="coerce")
-                if pd.isna(displayed_sales):
-                    displayed_sales = pd.to_numeric(row.get(forecast_cols[0], 0), errors="coerce")
-                displayed_sales = 0.0 if pd.isna(displayed_sales) else float(displayed_sales)
-                displayed_shortfall = max(
-                    displayed_sales - opening_stock - fba_inbound_total - awd_inbound_total,
-                    0.0,
+                # ---------------------------------------------
+                # Current inventory
+                # ---------------------------------------------
+                opening_stock = (
+                    scalar_number(row.get("FBA", 0))
+                    + scalar_number(row.get("AWD", 0))
                 )
 
                 inventory = opening_stock
-                rolling_dispatch_total = 0.0
-                arrival_events = sorted(inbound_events_by_sku.get(sku_norm, []), key=lambda item: item[0])
 
-                def add_dispatch_units(quantity: float):
-                    nonlocal inventory, rolling_dispatch_total
-                    quantity = max(float(quantity or 0), 0.0)
-                    if quantity <= 0:
-                        return
-                    rolling_dispatch_total += quantity
-                    inventory += quantity
+                # ---------------------------------------------
+                # Existing inbound totals
+                # ---------------------------------------------
+                sku_inbound_totals = inbound_totals_by_sku.get(
+                    sku_norm,
+                    {},
+                )
 
-                # stock_unit_weeks is already included in planning_month_count,
-                # so the forecast horizon covers buffer demand once.
-                for month_index, forecast_col in enumerate(forecast_cols[:planning_month_count]):
-                    month_start = forecast_label_month_start(forecast_col)
-                    month_end = forecast_label_month_end(forecast_col)
+                fba_inbound_total = sku_inbound_totals.get(
+                    "FBA",
+                    0.0,
+                )
+
+                awd_inbound_total = sku_inbound_totals.get(
+                    "AWD",
+                    0.0,
+                )
+
+                # Keep old sheet values as fallback only if DB has
+                # no inbound quantity for this SKU.
+                if fba_inbound_total <= 0:
+                    fba_inbound_total = scalar_number(
+                        row.get("In Transit FBA", 0)
+                    )
+
+                if awd_inbound_total <= 0:
+                    awd_inbound_total = scalar_number(
+                        row.get("In Transit AWD", 0)
+                    )
+
+                # ---------------------------------------------
+                # Existing inbound events by exact date
+                # ---------------------------------------------
+                arrival_events = sorted(
+                    inbound_events_by_sku.get(
+                        sku_norm,
+                        [],
+                    ),
+                    key=lambda item: item[0],
+                )
+
+                arrivals_by_date = {}
+
+                for event_dt, event_units in arrival_events:
+
+                    event_dt = event_dt.normalize()
+
+                    arrivals_by_date[event_dt] = (
+                        arrivals_by_date.get(
+                            event_dt,
+                            0.0,
+                        )
+                        + float(event_units)
+                    )
+
+                # ---------------------------------------------
+                # NEW recommended shipment quantities
+                # ---------------------------------------------
+                air_units = 0.0
+                sea_units = 0.0
+
+                first_stockout_date = None
+                stockout_before_air_arrival = False
+
+                # -----------------------------------------------------
+                # 8. Simulate forecast DAY BY DAY
+                # -----------------------------------------------------
+                for forecast_col in forecast_cols:
+
+                    month_start = forecast_label_month_start(
+                        forecast_col
+                    )
+
+                    month_end = forecast_label_month_end(
+                        forecast_col
+                    )
+
                     if month_start is None or month_end is None:
                         continue
 
-                    month_start_ts = pd.Timestamp(month_start).normalize()
-                    month_end_exclusive = pd.Timestamp(month_end).normalize() + pd.Timedelta(days=1)
-                    sales = forecast_value(row, forecast_col)
-                    month_days = max((month_end_exclusive - month_start_ts).days, 1)
-                    daily_sales = sales / month_days if month_days > 0 else 0.0
-                    cursor = month_start_ts
+                    month_start = pd.Timestamp(
+                        month_start
+                    ).normalize()
 
-                    month_events = [
-                        (event_dt, units)
-                        for event_dt, units in arrival_events
-                        if month_start_ts <= event_dt < month_end_exclusive
-                    ]
+                    month_end = pd.Timestamp(
+                        month_end
+                    ).normalize()
 
-                    for event_dt, units in month_events + [(month_end_exclusive, 0.0)]:
-                        event_dt = event_dt.normalize()
-                        segment_days = max((event_dt - cursor).days, 0)
-                        segment_demand = daily_sales * segment_days
+                    # Ignore dates before current planning date
+                    simulation_start = max(
+                        month_start,
+                        planning_dispatch_date,
+                    )
 
-                        if daily_sales > 0 and inventory < segment_demand:
-                            stockout_days = inventory / daily_sales if inventory > 0 else 0
-                            need_dt = cursor + pd.Timedelta(days=int(math.floor(stockout_days)))
-                            inventory -= daily_sales * max(stockout_days, 0)
-                            remaining_segment_demand = daily_sales * max(segment_days - stockout_days, 0)
-                            add_dispatch_units(remaining_segment_demand)
-                            inventory -= remaining_segment_demand
-                        else:
-                            inventory -= segment_demand
+                    simulation_end = min(
+                        month_end,
+                        planning_horizon_end,
+                    )
 
-                        inventory += float(units or 0)
-                        cursor = event_dt
+                    if simulation_start > simulation_end:
+                        continue
 
-                total_dispatch = max(rolling_dispatch_total, displayed_shortfall)
-                if total_dispatch > 0:
-                    if dispatch_mode_for_next_shipment(planning_dispatch_date) == "SEA":
-                        sea_units = total_dispatch
-                        air_units = 0.0
-                    else:
-                        sea_units = 0.0
-                        air_units = total_dispatch
-                else:
-                    sea_units = 0.0
-                    air_units = 0.0
+                    monthly_sales = forecast_value(
+                        row,
+                        forecast_col,
+                    )
 
-                planned.at[idx, "In Transit FBA"] = round(fba_inbound_total)
-                planned.at[idx, "In Transit AWD"] = round(awd_inbound_total)
-                planned.at[idx, "In stock"] = round(opening_stock)
-                planned.at[idx, "In transit"] = round(fba_inbound_total + awd_inbound_total)
-                planned.at[idx, "Shortfall Unit"] = round(max(displayed_shortfall, 0.0))
-                planned.at[idx, "To be Dispatch"] = round(max(sea_units + air_units, 0.0))
-                planned.at[idx, "SEA"] = round(max(sea_units, 0.0))
-                planned.at[idx, "AIR"] = round(max(air_units, 0.0))
+                    days_in_month = (
+                        month_end - month_start
+                    ).days + 1
+
+                    daily_sales = (
+                        monthly_sales / days_in_month
+                        if days_in_month > 0
+                        else 0.0
+                    )
+
+                    current_day = simulation_start
+
+                    while current_day <= simulation_end:
+
+                        # -----------------------------------------
+                        # Existing shipments arrive FIRST
+                        # on their Expected Reach Date
+                        # -----------------------------------------
+                        inventory += arrivals_by_date.get(
+                            current_day,
+                            0.0,
+                        )
+
+                        demand_today = daily_sales
+
+                        # -----------------------------------------
+                        # Do we have enough stock for today's sales?
+                        # -----------------------------------------
+                        if inventory < demand_today:
+
+                            shortage_today = (
+                                demand_today - inventory
+                            )
+
+                            need_date = current_day
+
+                            if first_stockout_date is None:
+                                first_stockout_date = need_date
+
+                            # =========================================
+                            # CORE SEA / AIR DECISION
+                            # =========================================
+
+                            # SEA can physically arrive before
+                            # this stock is required.
+                            if (
+                                ship_time_weeks > 0
+                                and sea_arrival_date <= need_date
+                            ):
+                                sea_units += shortage_today
+
+                            # SEA is too late.
+                            # Check AIR.
+                            elif (
+                                air_time_weeks > 0
+                                and air_arrival_date <= need_date
+                            ):
+                                air_units += shortage_today
+
+                            else:
+                                # Even AIR arrives after the shortage.
+                                # AIR is still the fastest possible mode,
+                                # so recommend AIR and flag internally.
+                                air_units += shortage_today
+                                stockout_before_air_arrival = True
+
+                            # Add recommended quantity to the
+                            # simulated inventory so we can continue
+                            # forecasting future demand.
+                            inventory += shortage_today
+
+                        # Consume today's demand
+                        inventory -= demand_today
+
+                        current_day += pd.Timedelta(days=1)
+
+                # ---------------------------------------------------------
+                # 9. Round while guaranteeing:
+                #
+                # AIR + SEA == To be Dispatch
+                # ---------------------------------------------------------
+                air_units = max(air_units, 0.0)
+                sea_units = max(sea_units, 0.0)
+
+                air_units_int = int(round(air_units))
+                sea_units_int = int(round(sea_units))
+
+                total_dispatch = (
+                    air_units_int
+                    + sea_units_int
+                )
+
+                # ---------------------------------------------------------
+                # 10. Store final results
+                # ---------------------------------------------------------
+                planned.at[
+                    idx,
+                    "In Transit FBA"
+                ] = round(fba_inbound_total)
+
+                planned.at[
+                    idx,
+                    "In Transit AWD"
+                ] = round(awd_inbound_total)
+
+                planned.at[
+                    idx,
+                    "In stock"
+                ] = round(opening_stock)
+
+                planned.at[
+                    idx,
+                    "In transit"
+                ] = round(
+                    fba_inbound_total
+                    + awd_inbound_total
+                )
+
+                # This is now a TIMING-AWARE shortfall,
+                # not just projected sales - total inbound.
+                planned.at[
+                    idx,
+                    "Shortfall Unit"
+                ] = total_dispatch
+
+                planned.at[
+                    idx,
+                    "To be Dispatch"
+                ] = total_dispatch
+
+                planned.at[
+                    idx,
+                    "SEA"
+                ] = sea_units_int
+
+                planned.at[
+                    idx,
+                    "AIR"
+                ] = air_units_int
 
             return planned
 
@@ -1632,11 +1886,30 @@ def getDispatchfile():
         if not data_bytes:
             return jsonify({'error': 'Stored file is empty/corrupt'}), 500
 
+        # df = read_dispatch_dataframe(data_bytes)
+        # df = clean_dispatch_dataframe(df)
+        # df = refresh_fba_in_transit_from_db(df, country.lower())
+        # df = refresh_awd_in_transit_from_db(df, country.lower())
+        # df = apply_rolling_dispatch_plan(df, country.lower())
+
         df = read_dispatch_dataframe(data_bytes)
+
+        print("\n========== DISPATCH DEBUG ==========")
+        print("Requested month:", requested_month)
+        print("Requested year:", requested_year)
+        print("Stored file:", filename)
+        print("RAW COLUMNS:")
+        print(df.columns.tolist())
+
+        print("\nFORECAST COLUMNS FOUND:")
+        print(get_forecast_columns(df))
+        print("====================================\n")
+
         df = clean_dispatch_dataframe(df)
         df = refresh_fba_in_transit_from_db(df, country.lower())
         df = refresh_awd_in_transit_from_db(df, country.lower())
         df = apply_rolling_dispatch_plan(df, country.lower())
+
         df = recalculate_coverage_before_dispatch(df, country.lower())
         output = build_global_dispatch_file([df])
 
