@@ -920,7 +920,7 @@ export default function WorkspaceSetupOnboarding({
                 </div>
               ) : isCompanyEditing ? (
                 <>
-                  <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
                     <div>
                       <Label>Company Name <span className="text-[#B75A5A]">*</span></Label>
                       <Input type="text" value={form.company_name} onChange={handleCompanyChange("company_name")} onBlur={() => markCompanyTouched("company_name")} maxLength={80} error={Boolean(companyTouched.company_name && companyErrors.company_name)} />
