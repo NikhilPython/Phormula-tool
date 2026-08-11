@@ -94,7 +94,7 @@ export default function LandingNavbar() {
             width={132}
             height={36}
             priority
-            className="h-auto w-[132px] dark:hidden"
+            className="h-auto w-[162px] dark:hidden"
           />
         </Link>
 
@@ -121,7 +121,7 @@ export default function LandingNavbar() {
         {/* Desktop right actions */}
         <div className="hidden shrink-0 items-center gap-3 lg:flex">
           <Link
-            href="/signin"
+            href="#demo"
             className="
               inline-flex items-center justify-center
               whitespace-nowrap rounded-xl

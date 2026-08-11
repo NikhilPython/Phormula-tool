@@ -11,7 +11,7 @@ from config import Config
 from dotenv import find_dotenv, load_dotenv
 from flask import Blueprint, jsonify, make_response, request
 from app import db
-from app.models.user_models import amazon_user, Product, CountryProfile
+from app.models.user_models import amazon_user, Product, CountryProfile, User
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
@@ -225,6 +225,12 @@ def amazon_oauth_callback():
 
         if seller_id:
             au.seller_id = seller_id
+
+    # Track successful SP-API connection/reconnection.
+    # Amazon Ads is intentionally not included in this timestamp flow.
+    activity_user = User.query.get(user_id)
+    if activity_user:
+        activity_user.integration_updated_at = datetime.now(timezone.utc)
 
     db.session.commit()
 

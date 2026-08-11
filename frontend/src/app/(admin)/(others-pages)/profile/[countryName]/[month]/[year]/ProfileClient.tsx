@@ -2,8 +2,7 @@
 
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import UserInfoCard from "@/components/user-profile/UserInfoCard";
-import UserAddressCard from "@/components/user-profile/UserAddressCard";
+import WorkspaceSetupOnboarding, { type WorkspaceActivity } from "@/components/user-profile/WorkspaceSetupOnboarding";
 import Button from "@/components/ui/button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import AddMemberModal from "@/components/header/AddMemberModal";
@@ -12,7 +11,7 @@ import EditMemberModal from "@/components/header/EditMemberModal";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 import { IoEyeOutline } from "react-icons/io5";
-import { FiEdit, FiCheck, FiX } from "react-icons/fi";
+import { FiEdit, FiCheck, FiX, FiClock } from "react-icons/fi";
 import { MdOutlineDeleteOutline } from "react-icons/md";
 import { FiSearch } from "react-icons/fi";
 
@@ -27,8 +26,31 @@ type TeamMemberRow = Row & {
   actions: React.ReactNode;
 };
 
+function getLatestWorkspaceActivity(userData: any): WorkspaceActivity | null {
+  const candidates = [
+    { label: "Company information", at: userData?.company_updated_at },
+    { label: "SKU sheet", at: userData?.sku_updated_at },
+    { label: "Marketplace integration", at: userData?.integration_updated_at },
+  ]
+    .filter((item) => item.at)
+    .map((item) => ({ ...item, time: new Date(item.at).getTime() }))
+    .filter((item) => !Number.isNaN(item.time));
+
+  if (!candidates.length) return null;
+
+  const latest = candidates.reduce((current, item) =>
+    item.time > current.time ? item : current
+  );
+
+  return {
+    label: latest.label,
+    at: latest.at,
+    currency: String(userData?.homeCurrency || "USD").toUpperCase(),
+  };
+}
+
 export default function ProfileClient() {
-  const [tab, setTab] = React.useState<"personal" | "objectives" | "teamMembers">("personal");
+  const [tab, setTab] = React.useState<"personal" | "teamMembers">("personal");
   const [isMember, setIsMember] = React.useState<boolean | null>(null);
   const [members, setMembers] = React.useState<any[]>([]);
   const [membersLoading, setMembersLoading] = React.useState(false);
@@ -42,6 +64,7 @@ export default function ProfileClient() {
   const [ownerName, setOwnerName] = React.useState("");
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
   const [memberToDelete, setMemberToDelete] = React.useState<any | null>(null);
+  const [lastActivity, setLastActivity] = React.useState<WorkspaceActivity | null>(null);
 
   const params = useParams();
   const router = useRouter();
@@ -74,6 +97,7 @@ export default function ProfileClient() {
       setOwnerName(String(data?.name || ""));
       setIsMember(!!data?.is_member);
       setMembers(Array.isArray(data?.members) ? data.members : []);
+      setLastActivity(getLatestWorkspaceActivity(data));
     } catch (e: any) {
       setMembersError(e?.message || "Failed to load members");
       setIsMember(true); // safe default: tab hide
@@ -93,6 +117,30 @@ export default function ProfileClient() {
       setIsAddMemberOpen(true);
     }
   }, [shouldOpenAddMember, isMember, isPreviewMode]);
+
+  const activityTimeZone = React.useMemo(() => {
+    const currency = String(lastActivity?.currency || "USD").toUpperCase();
+    if (currency === "USD") return "America/Los_Angeles";
+    if (currency === "GBP") return "Europe/London";
+    if (currency === "CAD") return "America/Toronto";
+    if (currency === "INR") return "Asia/Kolkata";
+    return "UTC";
+  }, [lastActivity?.currency]);
+
+  const formattedLastActivity = React.useMemo(() => {
+    if (!lastActivity?.at) return null;
+    const date = new Date(lastActivity.at);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: activityTimeZone,
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(date);
+  }, [activityTimeZone, lastActivity?.at]);
 
   const filteredMembers = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -409,24 +457,44 @@ export default function ProfileClient() {
       <div className="rounded-2xl">
         {/* <div className="sticky top-0 z-40 w-full flex flex-col bg-white  md:flex-row md:items-center md:justify-between gap-4 border-b border-gray-200"> */}
 
-        {/* LEFT: Title + Subtitle */}
-        <div className="flex flex-col leading-tight w-full md:w-auto md:mb-5">
-          <PageBreadcrumb
-            pageTitle="Account Settings"
-            variant="page"
-            align="left"
-            textSize="2xl"
-          />
+        <div className="flex w-full flex-col gap-4 md:mb-5 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col leading-tight">
+            <PageBreadcrumb
+              pageTitle="Account Settings"
+              variant="page"
+              align="left"
+              textSize="2xl"
+            />
+            <p className="mt-1 text-xs text-charcoal-500 2xl:text-sm">
+              Manage your profile, country, integrations and performance targets
+            </p>
+          </div>
 
-
-
-          <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
-            Manage your profile, country, integrations and performance targets
-          </p>
+          <div className="w-full rounded-2xl border border-[#DCE8E2] bg-[#F7FBF9] px-4 py-3 md:w-auto md:min-w-[310px]">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#159A67] shadow-sm">
+                <FiClock size={17} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#159A67]">Last workspace activity</p>
+                {lastActivity && formattedLastActivity ? (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-[#33413A]">{lastActivity.label} updated</p>
+                    <p className="mt-0.5 text-xs text-[#78847E]">{formattedLastActivity}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-[#33413A]">No workspace updates yet</p>
+                    <p className="mt-0.5 text-xs text-[#78847E]">Backend update times will appear here.</p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-3">
-          <SegmentedToggle<"personal" | "objectives" | "teamMembers">
+          <SegmentedToggle<"personal" | "teamMembers">
             value={tab}
             options={[
               { value: "personal", label: "User Details" },
@@ -445,20 +513,8 @@ export default function ProfileClient() {
 
         <div className="mt-4 space-y-4 ">
           {tab === "personal" && (
-            <>
-              <UserInfoCard
-                activeTab="personal"
-              />
-            </>
+            <WorkspaceSetupOnboarding onActivityChange={setLastActivity} />
           )}
-
-          {tab === "objectives" && (
-            <UserInfoCard
-              activeTab="objectives"
-            />
-          )}
-
-          {/* {tab === "integrations" && <UserInfoCard activeTab="integrations" />} */}
         </div>
 
         {tab === "teamMembers" && isMember === false && (

@@ -45,11 +45,11 @@ export default function LandingFooter() {
           className=""
           src="/images/logo/Logo_Phormula.png"
           alt="Phormula"
-          width={132}
+          width={162}
           height={36}
         />
 
-        <nav
+        {/* <nav
           aria-label="Footer navigation"
           className="
             flex flex-wrap items-center justify-center gap-7
@@ -71,7 +71,7 @@ export default function LandingFooter() {
               {link.label}
             </a>
           ))}
-        </nav>
+        </nav> */}
 
         <p
           className="
@@ -81,30 +81,6 @@ export default function LandingFooter() {
         >
           © 2026 Phormula. All rights reserved.
         </p>
-      </div>
-
-      <div
-        aria-hidden="true"
-        className="
-          pointer-events-none relative z-1
-          mt-5 w-full select-none
-          whitespace-nowrap px-5 pb-4.5
-          text-center
-          text-[clamp(8rem,19vw,21rem)]
-          font-normal leading-[0.82]
-          tracking-[-0.075em]
-          text-white/7.5
-
-          max-[820px]:text-[clamp(6.2rem,25vw,12rem)]
-          max-[820px]:leading-[0.78]
-
-          max-[620px]:mb-[-0.08em]
-          max-[620px]:mt-4
-          max-[620px]:text-[25vw]
-          max-[620px]:tracking-[-0.065em]
-        "
-      >
-        phormula
       </div>
     </footer>
   );
