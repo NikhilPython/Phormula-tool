@@ -196,6 +196,7 @@ def fetch_currentinventory_dispatch_quantities(
 ) -> pd.DataFrame:
     out = forecast_totals.copy()
     value_columns = {
+        "total_onhand_quantity": "total_onhand_quantity",
         "inbound-shipped": "in_transit_fba",
         "total_inbound_quantity": "in_transit_awd",
         "total_stock": "total_sellable_in_stock",
@@ -1282,9 +1283,11 @@ def generate_manual_forecast(
     inventory_forecast["Shortfall Unit"] = (
         inventory_forecast["Projected Sales Total"]
         - dispatch_in_stock
+    ).clip(lower=0).round().astype(int)
+    inventory_forecast["To be Dispatch"] = (
+        inventory_forecast["Shortfall Unit"]
         - inventory_forecast["total_sellable_in_transit"]
     ).clip(lower=0).round().astype(int)
-    inventory_forecast["To be Dispatch"] = inventory_forecast["Shortfall Unit"].clip(lower=0).round().astype(int)
     inventory_forecast = add_air_sea_dispatch_split(
         inventory_forecast,
         forecast_cols,
@@ -1300,10 +1303,10 @@ def generate_manual_forecast(
         else pd.Series(0, index=inventory_forecast.index)
     )
     divisor = pd.to_numeric(last_month_source, errors="coerce").replace(0, np.nan)
-    coverage_inventory = (
-        pd.to_numeric(inventory_forecast["total_sellable_in_stock"], errors="coerce").fillna(0)
-        + pd.to_numeric(inventory_forecast["total_sellable_in_transit"], errors="coerce").fillna(0)
-    )
+    coverage_inventory = pd.to_numeric(
+        inventory_forecast["total_sellable_in_stock"],
+        errors="coerce",
+    ).fillna(0)
     coverage = (coverage_inventory / divisor).round(2)
     inventory_forecast["Inventory Coverage Ratio Before Dispatch"] = coverage.where(coverage.notna(), "-")
 

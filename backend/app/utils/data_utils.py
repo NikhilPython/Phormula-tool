@@ -44,6 +44,36 @@ from app.models.user_models import StoredFile
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
+def _inventory_sheet_only_bytes(file_bytes):
+    try:
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        raw_bytes = file_bytes.tobytes() if isinstance(file_bytes, memoryview) else bytes(file_bytes)
+        workbook = load_workbook(BytesIO(raw_bytes))
+        inventory_sheet = next(
+            (
+                sheet_name
+                for sheet_name in workbook.sheetnames
+                if sheet_name.strip().lower() == "inventory"
+            ),
+            None,
+        )
+        if not inventory_sheet:
+            return raw_bytes
+
+        for sheet_name in list(workbook.sheetnames):
+            if sheet_name != inventory_sheet:
+                del workbook[sheet_name]
+
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output.getvalue()
+    except Exception as exc:
+        print(f"[EMAIL][WARN] Could not build inventory-only attachment: {exc}")
+        return file_bytes.tobytes() if isinstance(file_bytes, memoryview) else file_bytes
+
 def _guess_kind_from_filename(file_name: str) -> str:
     name = (file_name or "").lower()
     if name.startswith("inventory_forecast_"):
@@ -142,7 +172,7 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
                     vertical-align:middle;
                     white-space:nowrap;
                   ">
-                    Inventory &amp; Dispatch Report
+                    Inventory Report
                   </td>
                 </tr>
               </table>
@@ -192,9 +222,9 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
               </p>
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
-                Please find attached your inventory forecast and dispatch report for
-                {month_title} {year_text}. It covers your current stock positions,
-                demand projections, and dispatch performance for the period.
+                Please find attached your inventory forecast report for
+                {month_title} {year_text}. It covers your current stock positions
+                and demand projections for the period.
               </p>
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
@@ -271,7 +301,10 @@ def send_forecast_email(user_id, file_name, month, year, *, country=None):
             )
 
         content_type = stored.content_type or XLSX_MIME
-        msg.attach(file_name, content_type, stored.data)
+        attachment_data = stored.data
+        if str(file_name or "").lower().endswith(".xlsx"):
+            attachment_data = _inventory_sheet_only_bytes(attachment_data)
+        msg.attach(file_name, content_type, attachment_data)
 
         mail.send(msg)
         print(f"✅ Forecast email sent to {user_email} (attached from DB: {file_name})")
