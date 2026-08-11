@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 import jwt
 from io import BytesIO
 import calendar
+from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
 import pandas as pd
 from sqlalchemy import create_engine, Table, MetaData, Column, Integer, String, Float, text
@@ -1764,6 +1765,14 @@ def multiCountry():
                 sku_rows=inserts
             )
 
+            # Track the successful SKU upload/re-upload in the main User record.
+            # This is intentionally after the SKU insert + sync succeeds.
+            activity_user = User.query.get(user_id)
+            if activity_user:
+                activity_user.sku_sheet_exists = True
+                activity_user.sku_updated_at = datetime.now(timezone.utc)
+                db.session.commit()
+
             msg = 'SKU file uploaded and sku/product_name synced successfully'
         else:
             msg = 'File processed, but no valid rows found to insert.'
@@ -1773,7 +1782,12 @@ def multiCountry():
         return jsonify({
             'success': True,
             'message': msg,
-            'sync_result': sync_result
+            'sync_result': sync_result,
+            'sku_updated_at': (
+                activity_user.sku_updated_at.isoformat()
+                if inserts and 'activity_user' in locals() and activity_user and activity_user.sku_updated_at
+                else None
+            )
         }), 200
 
     except Exception as e:

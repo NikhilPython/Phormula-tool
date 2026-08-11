@@ -499,6 +499,11 @@ def get_user_data():
         "target_sales": float(user.target_sales) if user.target_sales is not None else None,
         "tax_id": user.tax_id,
         "address": user.address,
+
+        # Workspace activity timestamps. Keep them as ISO UTC values; frontend chooses display timezone.
+        "company_updated_at": user.company_updated_at.isoformat() if user.company_updated_at else None,
+        "sku_updated_at": user.sku_updated_at.isoformat() if user.sku_updated_at else None,
+        "integration_updated_at": user.integration_updated_at.isoformat() if user.integration_updated_at else None,
     }
 
     if not is_member:
@@ -617,6 +622,26 @@ def add_sales():
     if annual_sales_range:
         user.annual_sales_range = annual_sales_range
 
+    # =========================================================
+    # AMAZON MARKETPLACE INTEGRATION UPDATED TIME
+    # =========================================================
+    # Only update this timestamp when the marketplace involved in this
+    # /selectform request has a real Amazon refresh token and is connected.
+    # This avoids changing the time on simple status/read requests.
+    valid_marketplace_ids = [mp_id for mp_id in marketplace_ids if mp_id]
+
+    if valid_marketplace_ids:
+        connected_amazon = amazon_user.query.filter(
+            amazon_user.user_id == user_id,
+            amazon_user.marketplace_id.in_(valid_marketplace_ids),
+            amazon_user.is_connected.is_(True),
+            amazon_user.refresh_token.isnot(None),
+            amazon_user.refresh_token != ""
+        ).first()
+
+        if connected_amazon:
+            user.integration_updated_at = datetime.now(timezone.utc)
+
     db.session.commit()
     db.session.refresh(user)
     update_amazon_connection_summary(user_id)
@@ -625,6 +650,11 @@ def add_sales():
         'success': True,
         'message': 'Sales data submitted successfully.',
         'marketplace_id': marketplace_ids,
+        'integration_updated_at': (
+            user.integration_updated_at.isoformat()
+            if user.integration_updated_at
+            else None
+        ),
     }), 201
 
 
@@ -812,6 +842,18 @@ def profileupdate():
     # ---------- STEPS EXISTS ----------
     if 'steps_exists' in data:
         user.steps_exists = bool(data.get('steps_exists'))
+
+    # ---------- COMPANY ACTIVITY TIMESTAMP ----------
+    # Update only for company/business fields, not for unrelated profile changes.
+    company_activity_fields = {
+        'company_name',
+        'brand_name',
+        'homeCurrency',
+        'tax_id',
+        'address',
+    }
+    if any(field in data for field in company_activity_fields):
+        user.company_updated_at = datetime.now(timezone.utc)
 
 
     # ---------- COMMIT ----------

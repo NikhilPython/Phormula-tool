@@ -176,6 +176,11 @@ class User(db.Model):
     amazon_connected = db.Column(db.Boolean, default=False)
     connected_marketplaces_count = db.Column(db.Integer, default=0)
 
+    # Workspace activity timestamps (stored in UTC; formatted by frontend using homeCurrency)
+    company_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    sku_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    integration_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
 
 class Category(db.Model):
     __tablename__ = 'category'
