@@ -95,6 +95,8 @@ type FetchEtaUnitType =
   | "inventorySurcharge"
   | "inventoryAged"
   | "inventoryLedger"
+  | "awdInbound"
+  | "fbaInbound"
   | "historicMonth"
   | "liveMtd"
   | "liveBi"
@@ -155,6 +157,8 @@ const DEFAULT_FETCH_ETA_SECONDS: Record<FetchEtaUnitType, number> = {
   inventorySurcharge: 25,
   inventoryAged: 45,
   inventoryLedger: 90,
+  awdInbound: 90,
+  fbaInbound: 180,
   historicMonth: 60,
   liveMtd: 35,
   liveBi: 30,
@@ -340,6 +344,50 @@ async function fetchInventoryLedgerSummary(params: {
   return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
     method: "GET",
   });
+}
+
+async function syncAwdInboundShipments(params: { marketplaceId: string }) {
+  const qs = new URLSearchParams({
+    marketplace_id: params.marketplaceId,
+    sku_quantities: "SHOW",
+    store_in_db: "true",
+  });
+
+  const data = await apiJson(
+    `/amazon_api/awd/inbound-shipments-complete?${qs.toString()}`,
+    { method: "GET" }
+  );
+
+  if (data?.success === false) {
+    throw new Error(data?.error || "AWD inbound shipment sync failed");
+  }
+
+  return data;
+}
+
+async function syncFbaInboundPlans(params: { marketplaceId: string }) {
+  const token = getAuthToken();
+  const qs = new URLSearchParams({
+    marketplace_id: params.marketplaceId,
+    statuses: "SHIPPED",
+    format: "excel",
+  });
+
+  const url = `${API_BASE}/amazon_api/fba/inbound-plans-all?${qs.toString()}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const message = await readErrorMessage(res);
+    throw new Error(`FBA inbound plan sync failed: ${message}`);
+  }
+
+  await res.arrayBuffer();
+  return { ok: true, url };
 }
 
 /** ---------------- localStorage run-once guards ---------------- */
@@ -1041,6 +1089,7 @@ function parseForecastLabelToMonthName(label?: string) {
 
 async function runForecastAndPoSequence(params: {
   country: string;
+  marketplaceId: string;
   year: number | string;
   month: number | string;
   setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
@@ -1062,6 +1111,28 @@ async function runForecastAndPoSequence(params: {
   const dispatchPeriod = getNextMonthAndYear(
     currentGoingMonthName,
     currentGoingYearStr
+  );
+
+  params.setStep(
+    8,
+    "Forecast",
+    0,
+    "Syncing complete AWD inbound shipments..."
+  );
+
+  await runMeasured("awdInbound", () =>
+    syncAwdInboundShipments({ marketplaceId: params.marketplaceId })
+  );
+
+  params.setStep(
+    8,
+    "Forecast",
+    0,
+    "Syncing all FBA inbound plans..."
+  );
+
+  await runMeasured("fbaInbound", () =>
+    syncFbaInboundPlans({ marketplaceId: params.marketplaceId })
   );
 
   params.setStep(
@@ -1553,6 +1624,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       if (params.includeForecast) {
         units.push(
+          makeEtaUnit("awdInbound", "awdInbound", "AWD inbound shipments"),
+          makeEtaUnit("fbaInbound", "fbaInbound", "FBA inbound plans"),
           makeEtaUnit("forecast", "forecast", "Inventory forecast"),
           makeEtaUnit("dispatch", "dispatch", "Dispatch file"),
           makeEtaUnit("purchaseOrder", "purchaseOrder", "Purchase order")
@@ -2025,6 +2098,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       if (selectedPeriod && selectedPeriod >= 6) {
         const forecastResult = await runForecastAndPoSequence({
           country: countryUsed,
+          marketplaceId: marketplaceIdUsed,
           year: y,
           month: mNum,
           setStep,
@@ -2299,6 +2373,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       if (selectedPeriod && selectedPeriod >= 6) {
         const forecastResult = await runForecastAndPoSequence({
           country: countryUsed,
+          marketplaceId: marketplaceIdUsed,
           year: last.y,
           month: last.mNum,
           setStep,
@@ -2383,6 +2458,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       await runForecastAndPoSequence({
         country: countryUsed,
+        marketplaceId: marketplaceIdUsed,
         year: lastMonth.y,
         month: lastMonth.mNum,
         setStep,
