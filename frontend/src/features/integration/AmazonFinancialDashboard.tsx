@@ -102,8 +102,6 @@ type FetchEtaUnitType =
   | "liveBi"
   | "finalize"
   | "forecast"
-  | "dispatch"
-  | "purchaseOrder"
   | "plottingGraph";
 
 type FetchEtaUnit = {
@@ -164,8 +162,6 @@ const DEFAULT_FETCH_ETA_SECONDS: Record<FetchEtaUnitType, number> = {
   liveBi: 30,
   finalize: 2,
   forecast: 75,
-  dispatch: 30,
-  purchaseOrder: 60,
   plottingGraph: 2,
 };
 
@@ -341,9 +337,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-    method: "GET",
-  });
+  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 }
 
 async function syncAwdInboundShipments(params: { marketplaceId: string }) {
@@ -468,9 +464,9 @@ async function syncInventoryAgedSurchargeOnce(params: {
   qs.set("year", String(params.year));
   qs.set("store_in_db", String(params.store_in_db ?? true));
 
-  await apiJson(`/amazon_api/inventory/aged-surcharge?${qs.toString()}`, {
-    method: "GET",
-  });
+  // await apiJson(`/amazon_api/inventory/aged-surcharge?${qs.toString()}`, {
+  //   method: "GET",
+  // });
 
   markDone(key);
 }
@@ -513,14 +509,14 @@ async function ensureFeesPrimedOnce(params: {
 
   const uploadKey = lsKeyFeeUpload(country);
   if (!wasDone(uploadKey)) {
-    await apiJson(`/amazon_api/fees/sync_and_upload`, {
-      method: "POST",
-      body: JSON.stringify({
-        country,
-        marketplace_id: marketplaceId,
-        region: regionUsed,
-      }),
-    });
+    // await apiJson(`/amazon_api/fees/sync_and_upload`, {
+    //   method: "POST",
+    //   body: JSON.stringify({
+    //     country,
+    //     marketplace_id: marketplaceId,
+    //     region: regionUsed,
+    //   }),
+    // });
 
     // ✅ NEW: Immediately after fees sync/upload, call inventory aged with NO params
     // (run-once per country; does not affect existing flow)
@@ -534,16 +530,16 @@ async function ensureFeesPrimedOnce(params: {
     // backend requires a month/year, so we send the current selection
     // but we only do this ONCE per country
     const monthParam = `${year}-${two(month)}`;
-    await apiJson(`/fetch_fees`, {
-      method: "POST",
-      body: JSON.stringify({
-        region: regionUsed,
-        marketplace_id: marketplaceId,
-        month: monthParam,
-        year: String(year),
-        country,
-      }),
-    });
+    // await apiJson(`/fetch_fees`, {
+    //   method: "POST",
+    //   body: JSON.stringify({
+    //     region: regionUsed,
+    //     marketplace_id: marketplaceId,
+    //     month: monthParam,
+    //     year: String(year),
+    //     country,
+    //   }),
+    // });
 
     markDone(feesKey);
   }
@@ -828,36 +824,6 @@ async function fetchForecastMonthRange(params: { country: string }) {
   return data;
 }
 
-async function fetchDispatchFile(params: {
-  country: string;
-  month: string; // full month name
-  year: number | string;
-}) {
-  const token = getAuthToken();
-
-  const qs = new URLSearchParams({
-    country: params.country,
-    month: params.month,
-    year: String(params.year),
-  });
-
-  const url = `${API_BASE}/getDispatchfile?${qs.toString()}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (!res.ok) {
-    const msg = await readErrorMessage(res);
-    throw new Error(`Dispatch file API ${res.status} ${res.statusText}\nURL: ${url}\n\n${msg}`);
-  }
-
-  const blob = await res.blob();
-  return { ok: true, url, blob };
-}
 
 async function fetchAwdDispatchInputs(params: {
   marketplaceId: string;
@@ -890,146 +856,44 @@ async function fetchAwdDispatchInputs(params: {
   return Array.isArray(data?.items) ? data.items as AwdDispatchInputRow[] : [];
 }
 
-async function saveAwdDispatchInputs(params: {
-  marketplaceId: string;
-  shipments: Array<{
-    shipment_id: string;
-    shipment_type: string;
-    expected_reach_date: string;
-  }>;
-}) {
-  const token = getAuthToken();
-  const url = `${API_BASE}/amazon_api/awd/inbound-shipments/dispatch-inputs`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      marketplace_id: params.marketplaceId,
-      shipments: params.shipments,
-    }),
-  });
+// async function saveAwdDispatchInputs(params: {
+//   marketplaceId: string;
+//   shipments: Array<{
+//     shipment_id: string;
+//     shipment_type: string;
+//     expected_reach_date: string;
+//   }>;
+// }) {
+//   const token = getAuthToken();
+//   const url = `${API_BASE}/amazon_api/awd/inbound-shipments/dispatch-inputs`;
+//   const res = await fetch(url, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+//     },
+//     body: JSON.stringify({
+//       marketplace_id: params.marketplaceId,
+//       shipments: params.shipments,
+//     }),
+//   });
 
-  const text = await res.text();
-  let data: any = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text };
-  }
+//   const text = await res.text();
+//   let data: any = {};
+//   try {
+//     data = text ? JSON.parse(text) : {};
+//   } catch {
+//     data = { raw: text };
+//   }
 
-  if (!res.ok || data?.success === false) {
-    throw new Error(data?.error || `Saving AWD dispatch inputs failed: ${res.status}`);
-  }
+//   if (!res.ok || data?.success === false) {
+//     throw new Error(data?.error || `Saving AWD dispatch inputs failed: ${res.status}`);
+//   }
 
-  return data;
-}
+//   return data;
+// }
 
 
-async function fetchGeneratedPOFile(params: {
-  country: string;
-  month: string;
-  year: number | string;
-}) {
-  const token = getAuthToken();
-
-  const qs = new URLSearchParams({
-    country: params.country,
-    month: String(params.month).trim().toLowerCase(),
-    year: String(params.year),
-  });
-
-  const url = `${API_BASE}/getDispatchfile2?${qs.toString()}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  return res;
-}
-
-async function runPurchaseOrder(params: {
-  country: string;
-  year: number | string;
-  month: number | string;
-}) {
-  const token = getAuthToken();
-
-  let monthValue = String(params.month).trim().toLowerCase();
-
-  const numericMonth = parseInt(monthValue, 10);
-  if (!Number.isNaN(numericMonth) && numericMonth >= 1 && numericMonth <= 12) {
-    monthValue = fullMonthNames[numericMonth - 1].toLowerCase();
-  }
-
-  const formData = new FormData();
-  formData.append("month", monthValue);
-  formData.append("year", String(params.year));
-  formData.append("country", params.country.toLowerCase());
-
-  const url = `${API_BASE}/purchase_order`;
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      Accept: "application/json",
-    },
-    body: formData,
-  });
-
-  const text = await res.text().catch(() => "");
-  let data: any = {};
-  try {
-    data = text ? JSON.parse(text) : {};
-  } catch {
-    data = { raw: text };
-  }
-
-  if (!res.ok) {
-    const msg =
-      data?.error || data?.message || text || `Purchase order failed: ${res.status}`;
-    throw new Error(msg);
-  }
-
-  return data;
-}
-
-async function fetchPurchaseOrderFile(params: {
-  country: string;
-  month: string; // must match stored month, e.g. "april"
-  year: number | string;
-}) {
-  const token = getAuthToken();
-
-  const qs = new URLSearchParams({
-    country: params.country,
-    month: params.month.toLowerCase(),
-    year: String(params.year),
-  });
-
-  const url = `${API_BASE}/getDispatchfile2?${qs.toString()}`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-
-  if (!res.ok) {
-    const msg = await readErrorMessage(res);
-    throw new Error(`Purchase order file API ${res.status} ${res.statusText}\nURL: ${url}\n\n${msg}`);
-  }
-
-  const blob = await res.blob();
-  return { ok: true, url, blob };
-}
 
 function getMonthNameFromInput(month: number | string) {
   const raw = String(month).trim();
@@ -1092,9 +956,13 @@ async function runForecastAndPoSequence(params: {
   marketplaceId: string;
   year: number | string;
   month: number | string;
-  setStep: (step: number, label: string, percentage?: number, detail?: string) => void;
+  setStep: (
+    step: number,
+    label: string,
+    percentage?: number,
+    detail?: string
+  ) => void;
   runEtaUnit?: <T>(unitId: string, fn: () => Promise<T>) => Promise<T>;
-  prepareAwdDispatchInputs?: () => Promise<void>;
 }) {
   const runMeasured =
     params.runEtaUnit ?? (async <T,>(_unitId: string, fn: () => Promise<T>) => fn());
@@ -1108,10 +976,7 @@ async function runForecastAndPoSequence(params: {
   const currentGoingYearStr = currentGoingPeriod.year;
 
   // dispatch month = current going month + 1
-  const dispatchPeriod = getNextMonthAndYear(
-    currentGoingMonthName,
-    currentGoingYearStr
-  );
+
 
   params.setStep(
     8,
@@ -1120,9 +985,18 @@ async function runForecastAndPoSequence(params: {
     "Syncing complete AWD inbound shipments..."
   );
 
-  await runMeasured("awdInbound", () =>
-    syncAwdInboundShipments({ marketplaceId: params.marketplaceId })
-  );
+  if (params.marketplaceId === "ATVPDKIKX0DER") {
+    await runMeasured("awdInbound", () =>
+      syncAwdInboundShipments({
+        marketplaceId: params.marketplaceId,
+      })
+    );
+  } else {
+    console.info(
+      "AWD inbound sync skipped for marketplace:",
+      params.marketplaceId
+    );
+  }
 
   params.setStep(
     8,
@@ -1135,16 +1009,16 @@ async function runForecastAndPoSequence(params: {
     syncFbaInboundPlans({ marketplaceId: params.marketplaceId })
   );
 
-  params.setStep(
-    8,
-    "Forecast",
-    0,
-    "Reviewing AWD in-transit shipment details..."
-  );
+  // params.setStep(
+  //   8,
+  //   "Forecast",
+  //   0,
+  //   "Reviewing AWD in-transit shipment details..."
+  // );
 
-  if (params.prepareAwdDispatchInputs) {
-    await params.prepareAwdDispatchInputs();
-  }
+  // if (params.prepareAwdDispatchInputs) {
+  //   await params.prepareAwdDispatchInputs();
+  // }
 
   params.setStep(
     8,
@@ -1162,75 +1036,11 @@ async function runForecastAndPoSequence(params: {
   );
 
   params.setStep(
-    8,
-    "Forecast",
-    25,
-    `Fetching dispatch file for ${dispatchPeriod.month} ${dispatchPeriod.year}...`
-  );
-
-  await runMeasured("dispatch", () =>
-    fetchDispatchFile({
-      country: params.country,
-      month: dispatchPeriod.month,
-      year: dispatchPeriod.year,
-    })
-  );
-
-  params.setStep(
-    8,
-    "Forecast",
-    55,
-    `Checking purchase order file for ${currentGoingMonthName} ${currentGoingYearStr}...`
-  );
-
-  const poRes = await runMeasured("purchaseOrder", async () => {
-    let response = await fetchGeneratedPOFile({
-      country: params.country,
-      month: currentGoingMonthLower,
-      year: currentGoingYearStr,
-    });
-
-    if (!response.ok && response.status === 404) {
-      params.setStep(
-        8,
-        "Forecast",
-        75,
-        `Generating purchase order for ${currentGoingMonthName} ${currentGoingYearStr}...`
-      );
-
-      await runPurchaseOrder({
-        country: params.country,
-        year: currentGoingYearStr,
-        month: currentGoingMonthLower,
-      });
-
-      params.setStep(8, "Forecast", 90, "Fetching purchase order file...");
-
-      response = await fetchGeneratedPOFile({
-        country: params.country,
-        month: currentGoingMonthLower,
-        year: currentGoingYearStr,
-      });
-    }
-
-    return response;
-  });
-
-  if (!poRes.ok) {
-    const msg = await readErrorMessage(poRes);
-    throw new Error(
-      `Purchase order file API ${poRes.status} ${poRes.statusText}\n\n${msg}`
-    );
-  }
-
-  await poRes.blob();
-
-  params.setStep(
-    8,
-    "Forecast",
-    100,
-    "Forecast, dispatch, and purchase order ready"
-  );
+  8,
+  "Forecast",
+  100,
+  "Inventory forecast ready"
+);
 
   return {
     redirectMonthSlug: currentGoingMonthLower,
@@ -1627,8 +1437,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           makeEtaUnit("awdInbound", "awdInbound", "AWD inbound shipments"),
           makeEtaUnit("fbaInbound", "fbaInbound", "FBA inbound plans"),
           makeEtaUnit("forecast", "forecast", "Inventory forecast"),
-          makeEtaUnit("dispatch", "dispatch", "Dispatch file"),
-          makeEtaUnit("purchaseOrder", "purchaseOrder", "Purchase order")
         );
       }
 
@@ -1836,14 +1644,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     try {
       setAwdInputSaving(true);
       setAwdInputError("");
-      await saveAwdDispatchInputs({
-        marketplaceId: marketplaceIdUsed,
-        shipments: awdInputRows.map((row) => ({
-          shipment_id: row.shipment_id,
-          shipment_type: String(row.shipment_type || "").toUpperCase(),
-          expected_reach_date: String(row.expected_reach_date || ""),
-        })),
-      });
+      // await saveAwdDispatchInputs({
+      //   marketplaceId: marketplaceIdUsed,
+      //   shipments: awdInputRows.map((row) => ({
+      //     shipment_id: row.shipment_id,
+      //     shipment_type: String(row.shipment_type || "").toUpperCase(),
+      //     expected_reach_date: String(row.expected_reach_date || ""),
+      //   })),
+      // });
       closeAwdInputModal(true);
     } catch (error: any) {
       setAwdInputError(error?.message || "Failed to save AWD shipment details.");
@@ -2103,7 +1911,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           month: mNum,
           setStep,
           runEtaUnit,
-          prepareAwdDispatchInputs: requestAwdDispatchInputs,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -2133,7 +1940,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       setMessage(
         selectedPeriod && selectedPeriod >= 6
-          ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast and purchase order generated successfully.`
+          ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast generated successfully.`
           : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.`
       );
 
@@ -2378,7 +2185,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           month: last.mNum,
           setStep,
           runEtaUnit,
-          prepareAwdDispatchInputs: requestAwdDispatchInputs,
         });
 
         redirectMonthSlug = forecastResult.redirectMonthSlug;
@@ -2462,7 +2268,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         year: lastMonth.y,
         month: lastMonth.mNum,
         setStep,
-        prepareAwdDispatchInputs: requestAwdDispatchInputs,
       });
 
       setMessage(
