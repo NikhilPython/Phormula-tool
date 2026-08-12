@@ -29,7 +29,53 @@ type ParsedAI = {
   weeks: ParsedWeek[]
 }
 
-export default function ChatbotCore() {
+type ChatbotCoreProps = {
+  compact?: boolean
+}
+
+const isMarkdownTableRow = (line: string) => {
+  const trimmed = line.trim()
+  return trimmed.includes("|") && trimmed.split("|").filter((cell) => cell.trim()).length >= 2
+}
+
+const isMarkdownTableSeparator = (line: string) => {
+  const cells = line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+
+  return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell))
+}
+
+export const removeMarkdownTables = (text: string) => {
+  const lines = text.split(/\r?\n/)
+  const output: string[] = []
+
+  for (let index = 0; index < lines.length;) {
+    const nextLine = lines[index + 1]
+    const startsTable =
+      isMarkdownTableRow(lines[index]) &&
+      typeof nextLine === "string" &&
+      isMarkdownTableSeparator(nextLine)
+
+    if (!startsTable) {
+      output.push(lines[index])
+      index += 1
+      continue
+    }
+
+    index += 2
+    while (index < lines.length && isMarkdownTableRow(lines[index])) {
+      index += 1
+    }
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+}
+
+export default function ChatbotCore({ compact = false }: ChatbotCoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [actionMessage, setActionMessage] = useState<{ id: string; text: string } | null>(null);
 
@@ -338,11 +384,12 @@ const text = rawText || ''
             >
              {msg.sender !== "user" && msg.text ? (
   (() => {
-    const parsed = parseAIResponse(msg.text)
+    const displayText = compact ? removeMarkdownTables(msg.text) : msg.text
+    const parsed = parseAIResponse(displayText)
     const isStructured =
       parsed.weeks.length > 0 ||
-      /Title:/i.test(msg.text) ||
-      /Week\s+\d+/i.test(msg.text)
+      /Title:/i.test(displayText) ||
+      /Week\s+\d+/i.test(displayText)
 
     if (isStructured && (parsed.title || parsed.details.length > 0)) {
       return (
@@ -385,7 +432,7 @@ const text = rawText || ''
     return (
       <div className="markdown-body">
         <ReactMarkdown>
-         {convertPlainTextToMarkdown(msg.text)}
+         {convertPlainTextToMarkdown(displayText)}
         </ReactMarkdown>
       </div>
     )

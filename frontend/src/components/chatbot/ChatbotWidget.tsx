@@ -240,7 +240,7 @@ export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
               </div>
             </div>
 
-            <ChatbotCore />
+            <ChatbotCore compact />
           </div>
         </div>
       )}
