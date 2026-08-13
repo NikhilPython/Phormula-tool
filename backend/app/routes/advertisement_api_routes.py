@@ -1665,6 +1665,90 @@ def monthly_sp_sd_to_db():
                     SET {", ".join(set_clauses)}
                 """))
 
+                # Productwise CM2 total must be the sum of SKU rows. The
+                # account-level value stays in total_cm2_profit, where brand
+                # ads, deals/voucher ads, platform fee, and shipment fee are
+                # also deducted.
+                if total_conditions:
+                    total_net_sales_expr = (
+                        "COALESCE(s.net_sales, 0.0)"
+                        if "net_sales" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_units_expr = (
+                        "ABS(COALESCE(s.total_quantity, 0.0))"
+                        if "total_quantity" in skuwise_columns
+                        else (
+                            "GREATEST(COALESCE(s.quantity, 0.0) "
+                            "- COALESCE(s.return_quantity, 0.0), 0.0)"
+                            if "quantity" in skuwise_columns and "return_quantity" in skuwise_columns
+                            else (
+                                "ABS(COALESCE(s.quantity, 0.0))"
+                                if "quantity" in skuwise_columns
+                                else "0.0"
+                            )
+                        )
+                    )
+                    total_brand_expr = (
+                        "ABS(COALESCE(s.brand_spend, 0.0))"
+                        if "brand_spend" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_deals_expr = (
+                        "ABS(COALESCE(s.dealsvouchar_ads, 0.0))"
+                        if "dealsvouchar_ads" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_platform_expr = (
+                        "ABS(COALESCE(s.platform_fee, 0.0))"
+                        if "platform_fee" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_shipment_expr = (
+                        "ABS(COALESCE(s.shipment_fees, 0.0))"
+                        if "shipment_fees" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_cm2_expr = (
+                        f"(pt.cm2_profit - {total_brand_expr} - {total_deals_expr} "
+                        f"- {total_platform_expr} - {total_shipment_expr})"
+                    )
+
+                    db.session.execute(text(f"""
+                        WITH product_totals AS (
+                            SELECT
+                                COALESCE(SUM(COALESCE(cm2_profit, 0.0)), 0.0) AS cm2_profit
+                            FROM public.{skuwise_table_name}
+                            WHERE NOT ({total_where_sql})
+                        )
+                        UPDATE public.{skuwise_table_name} AS s
+                        SET
+                            cm2_profit = ROUND(pt.cm2_profit::numeric, 2),
+                            cm2_profit_percentage = ROUND((CASE
+                                WHEN {total_net_sales_expr} <> 0 THEN
+                                    (pt.cm2_profit / {total_net_sales_expr}) * 100.0
+                                ELSE 0.0
+                            END)::numeric, 2),
+                            cm2_margins = ROUND((CASE
+                                WHEN {total_net_sales_expr} <> 0 THEN
+                                    (pt.cm2_profit / {total_net_sales_expr}) * 100.0
+                                ELSE 0.0
+                            END)::numeric, 2),
+                            cm2_profit_per_unit = ROUND((CASE
+                                WHEN {total_units_expr} <> 0 THEN
+                                    pt.cm2_profit / {total_units_expr}
+                                ELSE 0.0
+                            END)::numeric, 2),
+                            total_cm2_profit = ROUND(({total_cm2_expr})::numeric, 2),
+                            total_cm2_margins = ROUND((CASE
+                                WHEN {total_net_sales_expr} <> 0 THEN
+                                    ({total_cm2_expr} / {total_net_sales_expr}) * 100.0
+                                ELSE 0.0
+                            END)::numeric, 2)
+                        FROM product_totals AS pt
+                        WHERE {total_where_sql}
+                    """))
+
             db.session.commit()
 
         except Exception:
