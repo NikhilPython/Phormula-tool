@@ -1576,7 +1576,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         { key: "net_taxes", label: "Net Taxes", align: "center" as const },
         { key: "net_credits", label: "Net Credits", align: "center" as const },
-        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
         { key: "other_transactions", label: "Other Transactions", align: "center" as const },
 
         { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
