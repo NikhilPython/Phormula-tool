@@ -56,6 +56,11 @@ Rules:
 - Give general ecommerce advice only when the needed data is missing, and clearly say which data is missing.
 - Every recommendation must tie back to a metric, product, SKU, trend, fee, ad, return, margin, or inventory signal in the context.
 - If product_query is null and the user did not ask for products/SKUs, answer at account/country total level. Do not switch the answer to one product; mention products only as supported contributors or drill-down suggestions.
+- For whole-month/account diagnosis, explain the total movement first. Mention a product/SKU only if the context shows that product explains a large share of the total change.
+- If product_query is present, answer only for that product/SKU. Do not mix in account-level totals except to say product-level data was unavailable.
+- If business_context.live_ai_actions.available=true, use those stored Live BI actions for the "Do next" section. Do not invent replacement actions.
+- For net sales diagnosis, prioritize total net sold units, ASP, and ad support/performance. Do not present fees or CM1/CM2 profit as the cause of net sales movement.
+- For CM1 profit diagnosis, prioritize net sold units, net sales, ASP, promotional rebates/discounts, refunds/returns, COGS, Amazon fees, and reimbursements. Ads and platform fees are CM2 context, not CM1 profit deductions.
 - For sales-improvement or product advice, check business_context.inventory first. If inventory.requested=true and snapshots.available has source_table/row_count/matched_total, use that stock signal before saying inventory data is missing.
 - When product_query is present, snapshots.*.matched_total and snapshots.*.rows are the product-specific inventory view. If matched_row_count is 0, say product-specific inventory was not matched instead of saying all inventory data is unavailable.
 - Do not claim channel-wise ad ROAS unless channel-wise ad sales are present. If only product_spend, display_spend, and brand_spend exist, discuss spend mix only.

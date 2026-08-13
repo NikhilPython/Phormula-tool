@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+import json
+import re
+from calendar import monthrange
+from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
+from config import Config
 from app.ai_agent.db import (
     INVENTORY_METRICS,
     MonthKey,
@@ -443,6 +448,60 @@ def _load_period_frames(
     return frames
 
 
+def _period_date_bounds(months: List[MonthKey]) -> tuple[Optional[date], Optional[date]]:
+    if not months:
+        return None, None
+    first = months[0]
+    last = months[-1]
+    return (
+        date(first.year, first.month, 1),
+        date(last.year, last.month, monthrange(last.year, last.month)[1]),
+    )
+
+
+def _filter_frame_for_product(frame: pd.DataFrame, product_query: Optional[str]) -> pd.DataFrame:
+    query = str(product_query or "").strip().lower()
+    if not query:
+        return frame
+
+    try:
+        rows = fetch_non_total_rows(frame).copy()
+    except Exception:
+        return frame.iloc[0:0].copy()
+
+    if rows.empty:
+        return rows
+
+    mask = pd.Series(False, index=rows.index)
+    for column in ["sku", "product_name"]:
+        if column not in rows.columns:
+            continue
+        mask = mask | rows[column].astype(str).str.lower().str.contains(query, na=False, regex=False)
+    return rows[mask].copy()
+
+
+def _filter_period_frames_for_product(
+    period_frames: List[tuple[MonthKey, pd.DataFrame]],
+    product_query: Optional[str],
+) -> List[tuple[MonthKey, pd.DataFrame]]:
+    if not product_query:
+        return period_frames
+    return [
+        (month_key, _filter_frame_for_product(frame, product_query))
+        for month_key, frame in period_frames
+    ]
+
+
+def _sku_row_count(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> int:
+    count = 0
+    for _, frame in period_frames:
+        try:
+            count += int(len(fetch_non_total_rows(frame)))
+        except Exception:
+            continue
+    return count
+
+
 def _totals_from_frames(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> Dict[str, float]:
     totals: Dict[str, float] = {column: 0.0 for column in CORE_BUSINESS_COLUMNS}
 
@@ -497,6 +556,351 @@ def _totals_from_frames(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> D
         100.0,
     ) or 0.0
     return {key: _round(value) or 0.0 for key, value in totals.items()}
+
+
+def _safe_json_load(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if value is None:
+        return {}
+    try:
+        return json.loads(str(value))
+    except Exception:
+        return {}
+
+
+def _plain_action_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        parts = []
+        for item in value:
+            text_value = _plain_action_text(item)
+            if text_value:
+                parts.append(text_value)
+        return " ".join(parts).strip()
+    if isinstance(value, dict):
+        parts = []
+        for key in ["recommendation", "action", "weekly_action", "ads_recommendation", "inventory_recommendation"]:
+            text_value = _plain_action_text(value.get(key))
+            if text_value:
+                parts.append(text_value)
+        return " ".join(parts).strip()
+
+    text_value = re.sub(r"<[^>]+>", " ", str(value))
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    text_value = re.sub(r"^\s*[-*\u2022]\s*", "", text_value).strip()
+    return text_value
+
+
+def _append_unique_action(actions: List[Dict[str, Any]], action: Dict[str, Any]) -> None:
+    text_value = _plain_action_text(action.get("action"))
+    if not text_value:
+        return
+    scope = str(action.get("scope") or "").strip().lower()
+    sku = str(action.get("sku") or "").strip().lower()
+    product_name = str(action.get("product_name") or "").strip().lower()
+    identity = (sku or product_name) if scope == "sku" else ""
+    normalized = re.sub(r"\W+", "", f"{scope}:{identity}:{text_value}").lower()
+    if not normalized:
+        return
+    if any(item.get("_key") == normalized for item in actions):
+        return
+    clean_action = dict(action)
+    clean_action["action"] = text_value
+    clean_action["_key"] = normalized
+    actions.append(clean_action)
+
+
+def _sku_action_metric_lookup(sku_rows: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    if sku_rows.empty or "sku" not in sku_rows.columns:
+        return {}
+
+    metric_columns = [
+        "sku",
+        "product_name",
+        "net_sales",
+        "total_quantity",
+        "profit",
+        "cm2_profit",
+        "ads_spend",
+        "ad_roas",
+    ]
+    existing = [column for column in metric_columns if column in sku_rows.columns]
+    lookup: Dict[str, Dict[str, Any]] = {}
+    for row in sku_rows[existing].to_dict(orient="records"):
+        sku = str(row.get("sku") or "").strip()
+        if not sku:
+            continue
+        lookup[sku.lower()] = _clean_record(row)
+    return lookup
+
+
+def _enrich_live_ai_action(
+    action: Dict[str, Any],
+    *,
+    product_name_lookup: Dict[str, str],
+    sku_metric_lookup: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    enriched = dict(action)
+    sku_key = str(enriched.get("sku") or "").strip().lower()
+    metrics = sku_metric_lookup.get(sku_key) or {}
+
+    if not enriched.get("product_name"):
+        enriched["product_name"] = metrics.get("product_name") or product_name_lookup.get(sku_key)
+
+    for metric in ["net_sales", "total_quantity", "profit", "cm2_profit", "ads_spend", "ad_roas"]:
+        if metric in metrics and enriched.get(metric) in (None, ""):
+            enriched[metric] = metrics.get(metric)
+
+    return enriched
+
+
+def _merge_live_ai_sku_actions(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    merged: List[Dict[str, Any]] = []
+    by_sku: Dict[str, Dict[str, Any]] = {}
+
+    for action in actions:
+        if action.get("scope") != "sku":
+            merged.append(action)
+            continue
+
+        sku_key = str(action.get("sku") or "").strip().lower()
+        product_key = str(action.get("product_name") or "").strip().lower()
+        key = sku_key or product_key
+        if not key:
+            merged.append(action)
+            continue
+
+        existing = by_sku.get(key)
+        if not existing:
+            by_sku[key] = action
+            merged.append(action)
+            continue
+
+        current_text = str(existing.get("action") or "")
+        new_text = str(action.get("action") or "")
+        if len(new_text) > len(current_text):
+            existing["action"] = new_text
+
+        for field in ["product_name", "net_sales", "total_quantity", "profit", "cm2_profit", "ads_spend", "ad_roas"]:
+            if existing.get(field) in (None, "") and action.get(field) not in (None, ""):
+                existing[field] = action.get(field)
+
+    return merged
+
+
+def _sort_live_ai_actions_by_sales(actions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    portfolio_actions = [action for action in actions if action.get("scope") == "portfolio"]
+    sku_actions = [action for action in actions if action.get("scope") == "sku"]
+    remaining_actions = [action for action in actions if action.get("scope") not in {"portfolio", "sku"}]
+
+    sku_actions = sorted(
+        sku_actions,
+        key=lambda action: (
+            _safe_float(action.get("net_sales")),
+            _safe_float(action.get("total_quantity")),
+            str(action.get("product_name") or action.get("sku") or "").lower(),
+        ),
+        reverse=True,
+    )
+    return [*portfolio_actions, *sku_actions, *remaining_actions]
+
+
+def _sku_action_matches_product(
+    action: Dict[str, Any],
+    product_query: Optional[str],
+    product_skus: Optional[List[str]] = None,
+) -> bool:
+    sku = str(action.get("sku") or "").strip().lower()
+    if sku and sku in {str(item or "").strip().lower() for item in product_skus or []}:
+        return True
+
+    query = str(product_query or "").strip().lower()
+    if not query:
+        return False
+    haystack = " ".join(
+        str(action.get(key) or "")
+        for key in ["sku", "product_name", "action"]
+    ).lower()
+    return query in haystack
+
+
+def _extract_live_ai_actions(
+    *,
+    record: Dict[str, Any],
+    product_query: Optional[str],
+    product_skus: Optional[List[str]] = None,
+    sku_product_names: Optional[Dict[str, str]] = None,
+    sku_metric_lookup: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    strategy = _safe_json_load(record.get("strategy"))
+    weekly = _safe_json_load(record.get("weekly_email_summary_json"))
+    summary = _safe_json_load(record.get("summary"))
+    product_name_lookup = {
+        str(sku or "").strip().lower(): str(name or "").strip()
+        for sku, name in (sku_product_names or {}).items()
+        if str(sku or "").strip()
+    }
+    sku_metric_lookup = sku_metric_lookup or {}
+
+    actions: List[Dict[str, Any]] = []
+    portfolio_action = (
+        _plain_action_text((weekly.get("portfolio_summary") or {}).get("weekly_action"))
+        or _plain_action_text(strategy.get("portfolio_recommendation"))
+        or _plain_action_text(strategy.get("recommendation"))
+        or _plain_action_text(summary.get("recommended_action"))
+    )
+    if portfolio_action:
+        _append_unique_action(actions, {"scope": "portfolio", "action": portfolio_action})
+
+    for item in weekly.get("priority_skus") or []:
+        if not isinstance(item, dict):
+            continue
+        _append_unique_action(
+            actions,
+            _enrich_live_ai_action(
+                {
+                    "scope": "sku",
+                    "sku": item.get("sku"),
+                    "product_name": item.get("product_name") or product_name_lookup.get(str(item.get("sku") or "").strip().lower()),
+                    "action": item.get("action"),
+                    "severity": item.get("severity"),
+                },
+                product_name_lookup=product_name_lookup,
+                sku_metric_lookup=sku_metric_lookup,
+            ),
+        )
+
+    for sku, block in (strategy.get("sku_actions") or {}).items():
+        if not isinstance(block, dict):
+            continue
+        action_parts = [
+            _plain_action_text(block.get("recommendation")),
+            _plain_action_text(block.get("ads_recommendation")),
+            _plain_action_text(block.get("inventory_recommendation")),
+        ]
+        _append_unique_action(
+            actions,
+            _enrich_live_ai_action(
+                {
+                    "scope": "sku",
+                    "sku": sku,
+                    "product_name": block.get("product_name") or product_name_lookup.get(str(sku or "").strip().lower()),
+                    "action": " ".join(part for part in action_parts if part).strip(),
+                },
+                product_name_lookup=product_name_lookup,
+                sku_metric_lookup=sku_metric_lookup,
+            ),
+        )
+
+    remaining_action_parts = [
+        _plain_action_text(strategy.get("remaining_skus_recommendation")),
+        _plain_action_text(strategy.get("remaining_skus_ads_recommendation")),
+        _plain_action_text(strategy.get("remaining_skus_inventory_recommendation")),
+    ]
+    _append_unique_action(
+        actions,
+        {
+            "scope": "remaining_skus",
+            "action": " ".join(part for part in remaining_action_parts if part).strip(),
+        },
+    )
+
+    actions = _sort_live_ai_actions_by_sales(_merge_live_ai_sku_actions(actions))
+
+    for action in actions:
+        action.pop("_key", None)
+
+    product_actions = [
+        action
+        for action in actions
+        if action.get("scope") == "sku" and _sku_action_matches_product(action, product_query, product_skus)
+    ]
+    missing_product_action = bool(product_query and actions and not product_actions)
+    selected_actions = _sort_live_ai_actions_by_sales(product_actions if product_query else actions)
+
+    return {
+        "available": bool(selected_actions or missing_product_action),
+        "source": "live_ai_summary",
+        "record": {
+            "id": record.get("id"),
+            "start_date": str(record.get("start_date") or ""),
+            "end_date": str(record.get("end_date") or ""),
+            "created_at": str(record.get("created_at") or ""),
+        },
+        "portfolio_action": portfolio_action,
+        "actions": selected_actions,
+        "all_actions_available": bool(actions),
+        "product_actions": product_actions,
+        "is_product_specific": bool(product_actions),
+        "missing_product_action": missing_product_action,
+        "product_query": product_query,
+    }
+
+
+def _fetch_live_ai_summary_actions(
+    *,
+    user_id: int,
+    country: str,
+    months: List[MonthKey],
+    product_query: Optional[str],
+    product_skus: Optional[List[str]] = None,
+    sku_product_names: Optional[Dict[str, str]] = None,
+    sku_metric_lookup: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    database_url = getattr(Config, "SQLALCHEMY_DATABASE_CHATBOT_URL", None)
+    if not database_url:
+        return {"available": False}
+
+    start_date, end_date = _period_date_bounds(months)
+    country_key = (country or "").strip().lower()
+    params = {"user_id": user_id, "country": country_key}
+
+    overlap_filter = ""
+    if start_date and end_date:
+        params.update({"start_date": start_date, "end_date": end_date})
+        overlap_filter = """
+          AND end_date >= :start_date
+          AND start_date <= :end_date
+        """
+
+    query = text(f"""
+        SELECT id, start_date, end_date, strategy, summary, weekly_email_summary_json, created_at
+        FROM public.live_ai_summary
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+          {overlap_filter}
+        ORDER BY end_date DESC, created_at DESC, id DESC
+        LIMIT 1
+    """)
+
+    fallback_query = text("""
+        SELECT id, start_date, end_date, strategy, summary, weekly_email_summary_json, created_at
+        FROM public.live_ai_summary
+        WHERE user_id = :user_id
+          AND LOWER(country) = :country
+        ORDER BY end_date DESC, created_at DESC, id DESC
+        LIMIT 1
+    """)
+
+    try:
+        engine = create_engine(database_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            row = conn.execute(query, params).mappings().first()
+            if not row and overlap_filter:
+                row = conn.execute(fallback_query, {"user_id": user_id, "country": country_key}).mappings().first()
+        if not row:
+            return {"available": False}
+        return _extract_live_ai_actions(
+            record=dict(row),
+            product_query=product_query,
+            product_skus=product_skus,
+            sku_product_names=sku_product_names,
+            sku_metric_lookup=sku_metric_lookup,
+        )
+    except Exception:
+        return {"available": False}
 
 
 def _product_breakdown_availability(period_frames: List[tuple[MonthKey, pd.DataFrame]]) -> Dict[str, Any]:
@@ -1039,6 +1443,7 @@ def _comparison_context(
     country: str,
     payload: Optional[Dict[str, Any]],
     metric_names: List[str],
+    product_query: Optional[str] = None,
 ) -> Dict[str, Any]:
     payload = payload or {}
     if payload.get("type") != "comparison":
@@ -1052,6 +1457,8 @@ def _comparison_context(
     right_frames = _load_period_frames(engine, user_id, country, right_months)
     left_loaded = [month_key for month_key, _ in left_frames]
     right_loaded = [month_key for month_key, _ in right_frames]
+    left_frames = _filter_period_frames_for_product(left_frames, product_query)
+    right_frames = _filter_period_frames_for_product(right_frames, product_query)
     left_totals = _totals_from_frames(left_frames)
     right_totals = _totals_from_frames(right_frames)
     breakdown_availability = _product_breakdown_availability([*left_frames, *right_frames])
@@ -1119,6 +1526,12 @@ def _comparison_context(
         "driver_scan_note": "Drivers are ranked across sales, units, ASP, rebates/discounts, refunds, returns, COGS, Amazon/FBA/selling/platform fees, ad spend/performance, CM2, and margins.",
         "total_only_metrics": breakdown_availability.get("total_only_metrics", []),
         "productwise_available_metrics": breakdown_availability.get("productwise_available_metrics", []),
+        "product_scope": {
+            "requested": bool(product_query),
+            "query": product_query,
+            "left_matched_rows": _sku_row_count(left_frames),
+            "right_matched_rows": _sku_row_count(right_frames),
+        },
         "top_negative_profit_drivers": top_negative_profit_drivers,
         "top_positive_profit_drivers": top_positive_profit_drivers,
         "top_unit_loss_drivers": top_unit_loss_drivers,
@@ -1390,17 +1803,50 @@ def build_business_context(
         months = [latest]
 
     loaded_months = [month_key for month_key, _ in period_frames]
-    totals = _totals_from_frames(period_frames)
-    sku_rows = _sku_frame(period_frames)
+    scoped_period_frames = _filter_period_frames_for_product(period_frames, product_query)
+    totals = _totals_from_frames(scoped_period_frames)
+    sku_rows = _sku_frame(scoped_period_frames)
+    action_lookup_rows = _sku_frame(period_frames)
     selected_metric_names = [metric for metric in (metric_names or []) if metric]
     if metric_name and metric_name not in selected_metric_names:
         selected_metric_names.insert(0, metric_name)
-    comparison = _comparison_context(engine, user_id, country, period_payload, selected_metric_names)
+    comparison = _comparison_context(
+        engine,
+        user_id,
+        country,
+        period_payload,
+        selected_metric_names,
+        product_query=product_query,
+    )
 
     latest_month = loaded_months[-1] if loaded_months else latest_available_month(engine, user_id, country)
     inventory_month = requested_months[-1] if requested_months else latest_month
     available_columns = sorted({column for _, frame in period_frames for column in frame.columns})
-    product_breakdown = _product_breakdown_availability(period_frames)
+    product_breakdown = _product_breakdown_availability(scoped_period_frames)
+    sku_product_names = {
+        str(row.get("sku") or ""): str(row.get("product_name") or "")
+        for row in action_lookup_rows[["sku", "product_name"]].to_dict(orient="records")
+        if str(row.get("sku") or "").strip()
+    } if not action_lookup_rows.empty and {"sku", "product_name"}.issubset(action_lookup_rows.columns) else {}
+    sku_metric_lookup = _sku_action_metric_lookup(action_lookup_rows)
+    product_skus = (
+        [
+            str(sku or "")
+            for sku in sku_rows["sku"].tolist()
+            if str(sku or "").strip()
+        ]
+        if product_query and not sku_rows.empty and "sku" in sku_rows.columns
+        else []
+    )
+    live_ai_actions = _fetch_live_ai_summary_actions(
+        user_id=user_id,
+        country=country,
+        months=requested_months or loaded_months,
+        product_query=product_query,
+        product_skus=product_skus,
+        sku_product_names=sku_product_names,
+        sku_metric_lookup=sku_metric_lookup,
+    )
 
     return {
         "scope": {
@@ -1447,11 +1893,17 @@ def build_business_context(
         "rankings": _rankings(sku_rows),
         "comparison": comparison,
         "focus_products": _focus_products(sku_rows, product_query),
+        "live_ai_actions": live_ai_actions,
         "history": _history(engine, user_id, country, loaded_months),
         "inventory": _inventory_context(user_id, country, inventory_month, metric_name, user_query, product_query),
         "data_quality": {
             "row_count": int(len(sku_rows)),
             "has_sku_rows": bool(not sku_rows.empty),
+            "product_scope": {
+                "requested": bool(product_query),
+                "query": product_query,
+                "matched_row_count": int(len(sku_rows)),
+            },
             "total_only_metrics": product_breakdown.get("total_only_metrics", []),
             "productwise_available_metrics": product_breakdown.get("productwise_available_metrics", []),
             "notes": [

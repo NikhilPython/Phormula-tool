@@ -387,6 +387,7 @@ def _compact_business_context_for_verification(context: Dict[str, Any]) -> Dict[
     context = context or {}
     comparison = context.get("comparison") or {}
     totals = context.get("totals") or {}
+    history = context.get("history") or {}
     left = comparison.get("left") or {}
     right = comparison.get("right") or {}
     important_total_keys = [
@@ -421,6 +422,11 @@ def _compact_business_context_for_verification(context: Dict[str, Any]) -> Dict[
         "period": context.get("period"),
         "totals": {key: totals.get(key) for key in important_total_keys if key in totals},
         "derived": context.get("derived"),
+        "history": {
+            "movement": history.get("movement"),
+            "months": (history.get("months") or [])[-3:],
+            "note": history.get("note"),
+        },
         "comparison": {
             "requested": comparison.get("requested"),
             "left": {
@@ -451,6 +457,7 @@ def _compact_business_context_for_verification(context: Dict[str, Any]) -> Dict[
             "driver_scan_note": comparison.get("driver_scan_note"),
         },
         "inventory": context.get("inventory"),
+        "live_ai_actions": context.get("live_ai_actions"),
         "data_quality": context.get("data_quality"),
     }
 
@@ -691,8 +698,54 @@ def _validate_deterministic_table_answer(result: Dict[str, Any]) -> bool:
     return not issues
 
 
+FALSE_NO_COMPARISON_NOTE_RE = re.compile(
+    r"(?:\s*\*\*Note:\*\*|\s*Note:)?\s*No month[- ]over[- ]month comparison data is available[^.\n]*(?:\.)?",
+    re.IGNORECASE,
+)
+
+
+def _strip_false_no_comparison_note(value: Any) -> str:
+    text_value = str(value or "")
+    text_value = FALSE_NO_COMPARISON_NOTE_RE.sub("", text_value)
+    text_value = re.sub(r"\n{3,}", "\n\n", text_value)
+    return text_value.strip()
+
+
+def _validate_deterministic_live_ai_actions(result: Dict[str, Any]) -> bool:
+    analysis = result.get("analysis_result") or {}
+    context = analysis.get("context") or result.get("business_context") or {}
+    live_actions = context.get("live_ai_actions") or {}
+    answer = result.get("final_response") or ""
+
+    if analysis.get("type") != "business_advisor":
+        return False
+    if not live_actions.get("available"):
+        return False
+    if "do next" not in answer.lower():
+        return False
+
+    cleaned_answer = _strip_false_no_comparison_note(answer)
+    if cleaned_answer != answer:
+        result["final_response"] = cleaned_answer
+
+    result["answer_validation"] = {
+        "status": "passed",
+        "reason": "deterministic_live_ai_actions",
+        "is_valid": True,
+        "confidence": 1.0,
+        "issues": [],
+        "corrected": cleaned_answer != answer,
+    }
+    logger.info(
+        "[ANSWER_VALIDATION] status=passed corrected=%s reason=deterministic_live_ai_actions",
+        cleaned_answer != answer,
+    )
+    return True
+
+
 def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[str, Any]:
-    answer = (result.get("final_response") or "").strip()
+    answer = _strip_false_no_comparison_note(result.get("final_response") or "")
+    result["final_response"] = answer
     if not answer:
         result["answer_validation"] = {
             "status": "skipped",
@@ -721,6 +774,9 @@ def verify_and_correct_answer(result: Dict[str, Any], user_query: str) -> Dict[s
         return result
 
     if _validate_deterministic_table_answer(result):
+        return result
+
+    if _validate_deterministic_live_ai_actions(result):
         return result
 
     if not _verifier_llm:
@@ -752,6 +808,11 @@ Rules:
 - If business_context.comparison.metric_drivers or unfavorable_metric_drivers contains rows, the comparison has driver evidence. Do not say the data lacks month-over-month breakdowns; use those drivers if correction is needed.
 - If semantic_resolution.is_broad_business_analysis=true, the answer must not focus on only one narrow metric unless the data shows that metric is the dominant issue.
 - Accounting definitions: always call profit "CM1 profit" in user-facing text. CM1 profit does not subtract ads or platform fees; CM2 profit subtracts ads and platform fees. Do not rename CM2 profit as CM1 profit. total_quantity is net sold units after refund quantity. promotional_rebates are sign-aware: negative means discount/rebate paid out, positive means amount received back.
+- For account/month diagnosis, the answer must explain total KPI movement before product/SKU drill-downs. A product/SKU should be named as the main reason only when the context supports a large product-level contribution, or when product_query is present.
+- If product_query is present, the answer must stay product-specific and must not explain the result using unrelated account-level products.
+- If business_context.live_ai_actions.available=true for a recommendation answer, the "Do next" actions must come from those stored actions, not newly invented LLM actions.
+- For net_sales diagnosis, valid primary drivers are net sold units, ASP, and ad support/performance; fees or profit movement should not be stated as causes of net sales movement.
+- For CM1 profit diagnosis, valid primary drivers include net sold units, net sales, ASP, promotional rebates/discounts, refunds/returns, COGS, Amazon fees, and reimbursements. Ads and platform fees are CM2 context, not CM1 deductions.
 - If business_context.data_quality.total_only_metrics contains a metric, monthly totals are usable but SKU-level attribution for that metric is unavailable.
 - For inventory forecasts, `stored_month`/`stored_year` identify when the forecast file was stored/generated, not every target month inside the workbook. If `requested_forecast_available=true` or `requested_forecast_column` is present, do not say the requested forecast month is unavailable only because `exact_period_match=false`.
 - Preserve useful headings, bullets, and numbered actions when correcting. Do not collapse a structured business diagnosis into one paragraph.
@@ -769,8 +830,14 @@ Context JSON:
         corrected = False
 
         if not verdict.is_valid and corrected_answer and corrected_answer != answer:
+            corrected_answer = _strip_false_no_comparison_note(corrected_answer)
             result["final_response"] = corrected_answer
             corrected = True
+        else:
+            cleaned_answer = _strip_false_no_comparison_note(result.get("final_response") or "")
+            if cleaned_answer != result.get("final_response"):
+                result["final_response"] = cleaned_answer
+                corrected = True
 
         result["answer_validation"] = {
             "status": "corrected" if corrected else ("passed" if verdict.is_valid else "flagged"),

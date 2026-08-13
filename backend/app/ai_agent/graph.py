@@ -7503,6 +7503,58 @@ COMPARISON_TABLE_ALIASES = {
 
 COMPARISON_TABLE_MAX_ROWS = 9
 
+NET_SALES_PRIMARY_DRIVER_METRICS = {
+    "net_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "ads_spend",
+    "total_ads",
+    "product_spend",
+    "brand_spend",
+    "display_spend",
+    "ads_sale_amount",
+    "ads_sale_units",
+    "ads_roas",
+    "ads_acos",
+    "tacos_total_advertising_cost_of_sale",
+    "promotional_rebates",
+    "refund_sales",
+    "return_quantity",
+    "return_rate",
+    "available",
+    "inbound_quantity",
+    "days_of_supply",
+}
+
+CM1_PROFIT_PRIMARY_DRIVER_METRICS = {
+    "profit",
+    "net_sales",
+    "gross_sales",
+    "total_quantity",
+    "quantity",
+    "asp",
+    "profit_percentage",
+    "promotional_rebates",
+    "refund_sales",
+    "return_quantity",
+    "return_rate",
+    "cogs",
+    "selling_fees",
+    "fba_fees",
+    "amazon_fees",
+    "current_net_reimbursement",
+    "misc_transaction",
+    "other",
+}
+
+PRIMARY_COMPARISON_DRIVER_METRICS = {
+    "net_sales": NET_SALES_PRIMARY_DRIVER_METRICS,
+    "profit": CM1_PROFIT_PRIMARY_DRIVER_METRICS,
+}
+
+PRODUCT_DRILLDOWN_MIN_TOTAL_RATIO = 0.30
+
 NET_REPLACEMENT_METRICS = {
     "gross_sales": "net_sales",
     "quantity": "total_quantity",
@@ -7789,6 +7841,10 @@ def _comparison_row_is_relevant(
     if metric_name == primary_metric or metric_name in requested:
         return True
 
+    primary_driver_metrics = PRIMARY_COMPARISON_DRIVER_METRICS.get(str(primary_metric or ""))
+    if primary_driver_metrics is not None and metric_name not in primary_driver_metrics:
+        return False
+
     replacement = NET_REPLACEMENT_METRICS.get(metric_name)
     if replacement and replacement in row_lookup:
         return False
@@ -7929,6 +7985,82 @@ def _cm1_profit_comparison_summary(
     return None
 
 
+def _net_sales_comparison_summary(
+    rows: List[Dict[str, Any]],
+    primary: Dict[str, Any],
+    first_label: str,
+    second_label: str,
+) -> Optional[str]:
+    if primary.get("metric") != "net_sales":
+        return None
+
+    sales_delta = _safe_float(primary.get("business_delta"))
+    sales_amount = _comparison_change_amount(primary)
+    if not sales_amount:
+        return None
+
+    net_units = _comparison_row_by_metric(rows, "total_quantity")
+    gross_units = _comparison_row_by_metric(rows, "quantity")
+    asp = _comparison_row_by_metric(rows, "asp")
+    ad_sales = _comparison_row_by_metric(rows, "ads_sale_amount")
+    ad_units = _comparison_row_by_metric(rows, "ads_sale_units")
+    ad_spend = _comparison_row_by_metric(rows, "ads_spend", "total_ads")
+    ad_roas = _comparison_row_by_metric(rows, "ads_roas")
+    ad_acos = _comparison_row_by_metric(rows, "ads_acos", "tacos_total_advertising_cost_of_sale")
+
+    if sales_delta < -0.005:
+        reason_parts: List[str] = []
+        if net_units and _safe_float(net_units.get("business_delta")) < -0.005:
+            reason_parts.append(f"**Net Sold Units** fell by **{_comparison_change_amount(net_units)}**")
+        elif gross_units and _safe_float(gross_units.get("business_delta")) < -0.005:
+            reason_parts.append(f"**Gross Units** fell by **{_comparison_change_amount(gross_units)}**")
+        if asp and _safe_float(asp.get("business_delta")) < -0.005:
+            reason_parts.append(f"**ASP** fell by **{_comparison_change_amount(asp)}**")
+
+        if reason_parts:
+            summary = (
+                f"Net Sales **fell by {sales_amount}** from **{first_label}** to **{second_label}** "
+                f"because " + " and ".join(reason_parts[:2]) + "."
+            )
+        else:
+            summary = f"Net Sales **fell by {sales_amount}** from **{first_label}** to **{second_label}**."
+
+        offsets: List[str] = []
+        if asp and _safe_float(asp.get("business_delta")) > 0.005:
+            offsets.append(f"ASP improved by **{_comparison_change_amount(asp)}**, but not enough to offset lower volume")
+        if ad_sales and _safe_float(ad_sales.get("business_delta")) < -0.005:
+            offsets.append(f"ad sales also fell by **{_comparison_change_amount(ad_sales)}**")
+        elif ad_units and _safe_float(ad_units.get("business_delta")) < -0.005:
+            offsets.append(f"ad sales units fell by **{_comparison_change_amount(ad_units)}**")
+        elif ad_spend and _safe_float(ad_spend.get("business_delta")) < -0.005:
+            offsets.append(f"ad support fell by **{_comparison_change_amount(ad_spend)}**")
+        if ad_roas and _safe_float(ad_roas.get("business_delta")) < -0.005:
+            offsets.append(f"ad ROAS weakened by **{_comparison_change_amount(ad_roas)}**")
+        elif ad_acos and ad_acos.get("effect") == "unfavorable":
+            offsets.append(f"ad cost efficiency worsened by **{_comparison_change_amount(ad_acos)}**")
+        if offsets:
+            summary += " " + "; ".join(offsets[:2]) + "."
+        return summary
+
+    if sales_delta > 0.005:
+        driver_parts: List[str] = []
+        if net_units and _safe_float(net_units.get("business_delta")) > 0.005:
+            driver_parts.append(f"**Net Sold Units** rose by **{_comparison_change_amount(net_units)}**")
+        elif gross_units and _safe_float(gross_units.get("business_delta")) > 0.005:
+            driver_parts.append(f"**Gross Units** rose by **{_comparison_change_amount(gross_units)}**")
+        if asp and _safe_float(asp.get("business_delta")) > 0.005:
+            driver_parts.append(f"**ASP** improved by **{_comparison_change_amount(asp)}**")
+        if ad_sales and _safe_float(ad_sales.get("business_delta")) > 0.005:
+            driver_parts.append(f"ad sales rose by **{_comparison_change_amount(ad_sales)}**")
+
+        summary = f"Net Sales **improved by {sales_amount}** from **{first_label}** to **{second_label}**."
+        if driver_parts:
+            summary += " Main reason: " + " and ".join(driver_parts[:2]) + "."
+        return summary
+
+    return None
+
+
 CM1_PROFIT_SUMMARY_DRIVER_PRIORITY = {
     "net_sales": 0,
     "total_quantity": 1,
@@ -7944,6 +8076,23 @@ CM1_PROFIT_SUMMARY_DRIVER_PRIORITY = {
 }
 
 
+NET_SALES_SUMMARY_DRIVER_PRIORITY = {
+    "total_quantity": 0,
+    "quantity": 1,
+    "asp": 2,
+    "ads_sale_amount": 3,
+    "ads_sale_units": 4,
+    "ads_spend": 5,
+    "total_ads": 5,
+    "ads_roas": 6,
+    "ads_acos": 7,
+    "tacos_total_advertising_cost_of_sale": 8,
+    "promotional_rebates": 9,
+    "refund_sales": 10,
+    "return_quantity": 11,
+}
+
+
 def _comparison_summary_driver_sort_key(
     row: Dict[str, Any],
     primary_metric: Optional[str],
@@ -7954,6 +8103,12 @@ def _comparison_summary_driver_sort_key(
     if primary_metric == "profit":
         return (
             float(CM1_PROFIT_SUMMARY_DRIVER_PRIORITY.get(metric_name, 50)),
+            delta_weight,
+            pct_weight,
+        )
+    if primary_metric == "net_sales":
+        return (
+            float(NET_SALES_SUMMARY_DRIVER_PRIORITY.get(metric_name, 50)),
             delta_weight,
             pct_weight,
         )
@@ -8086,6 +8241,9 @@ def _comparison_table_summary(
     cm1_summary = _cm1_profit_comparison_summary(rows, primary, first_label, second_label)
     if cm1_summary:
         return cm1_summary
+    net_sales_summary = _net_sales_comparison_summary(rows, primary, first_label, second_label)
+    if net_sales_summary:
+        return net_sales_summary
 
     summary = f"From **{first_label}** to **{second_label}**, {_comparison_row_plain_change(primary)}."
     if primary.get("effect") in {"unfavorable", "favorable"}:
@@ -8107,6 +8265,85 @@ def _comparison_table_summary(
     if drivers:
         summary += " Main signal: " + " and ".join(_comparison_row_plain_change(row) for row in drivers[:2]) + "."
     return summary
+
+
+def _comparison_driver_label_list(
+    rows: List[Dict[str, Any]],
+    primary: Dict[str, Any],
+    effect: str,
+    *,
+    limit: int = 2,
+) -> List[str]:
+    drivers: List[Dict[str, Any]] = []
+    for row in rows:
+        if row is primary:
+            continue
+        if row.get("effect") != effect:
+            continue
+        if abs(_safe_float(row.get("business_delta"))) < 0.005:
+            continue
+        if primary.get("metric") == "profit" and row.get("metric") in CM1_SECONDARY_ONLY_METRICS:
+            continue
+        drivers.append(row)
+
+    drivers = sorted(drivers, key=lambda row: _comparison_summary_driver_sort_key(row, primary.get("metric")))
+    labels: List[str] = []
+    for row in drivers:
+        label = str(row.get("label") or humanize_metric(row.get("metric") or "")).strip()
+        if label and label not in labels:
+            labels.append(label)
+        if len(labels) >= limit:
+            break
+    return labels
+
+
+def _bold_label_join(labels: List[str]) -> str:
+    bolded = [f"**{label}**" for label in labels if label]
+    if not bolded:
+        return ""
+    if len(bolded) == 1:
+        return bolded[0]
+    return ", ".join(bolded[:-1]) + f" and {bolded[-1]}"
+
+
+def _comparison_table_next_check(
+    rows: List[Dict[str, Any]],
+    primary_metric: Optional[str],
+    comparison_context: Dict[str, Any],
+) -> Optional[str]:
+    if not rows:
+        return None
+
+    primary = next((row for row in rows if row.get("metric") == primary_metric), None) or rows[0]
+    metric = str(primary.get("metric") or "")
+    primary_delta = _safe_float(primary.get("business_delta"))
+    product_scoped = bool((comparison_context.get("product_scope") or {}).get("requested"))
+
+    if metric == "profit":
+        if primary_delta > 0.005:
+            drivers = _comparison_driver_label_list(rows, primary, "favorable")
+            offsets = _comparison_driver_label_list(rows, primary, "unfavorable", limit=1)
+            driver_text = _bold_label_join(drivers) or "the total CM1 profit drivers"
+            offset_text = f"; monitor {_bold_label_join(offsets)} separately" if offsets else ""
+            return (
+                f"Validate the total CM1 profit bridge first: {driver_text} explain the improvement"
+                f"{offset_text}; open product checks only if one product is material."
+            )
+        if primary_delta < -0.005 and not product_scoped:
+            return (
+                "Start with the total CM1 profit bridge: units, net sales, ASP, promo rebates, "
+                "refunds, reimbursements, Amazon fees, and COGS before opening product checks."
+            )
+
+    if metric == "net_sales":
+        if primary_delta > 0.005:
+            drivers = _comparison_driver_label_list(rows, primary, "favorable")
+            driver_text = _bold_label_join(drivers) or "**Net Sold Units**, **ASP**, and ad performance"
+            return f"Validate the total sales bridge first: {driver_text}; product checks come after the total drivers."
+        if primary_delta < -0.005 and not product_scoped:
+            return "Start with total sales drivers: net sold units, ASP, and ad support/performance before product drill-down."
+
+    return None
 
 
 def _render_comparison_table_markdown(
@@ -8197,6 +8434,22 @@ def _render_business_comparison_table_response(state: AgentState, analysis: Dict
     if not comparison_context.get("metrics"):
         return None
 
+    product_scope = comparison_context.get("product_scope") or {}
+    product_query = (
+        product_scope.get("query")
+        or state.get("product_query")
+        or (context.get("scope") or {}).get("product_query")
+    )
+    if product_scope.get("requested") and not (
+        int(product_scope.get("left_matched_rows") or 0)
+        + int(product_scope.get("right_matched_rows") or 0)
+    ):
+        country_label = _country_display_name(analysis.get("country") or state.get("country"))
+        return (
+            f"I could not find matching SKU rows for **{_display_product_name(product_query)}** "
+            f"in **{country_label}** for the selected periods."
+        )
+
     primary_metric = _select_primary_comparison_metric(state, analysis, comparison_context)
     rows, first_label, second_label = _build_comparison_table_rows(state, comparison_context, primary_metric)
     if not rows:
@@ -8204,12 +8457,22 @@ def _render_business_comparison_table_response(state: AgentState, analysis: Dict
 
     country_label = _country_display_name(analysis.get("country") or state.get("country"))
     title_metric = humanize_metric(primary_metric or rows[0].get("metric") or "business")
-    title = f"{country_label}: {title_metric} change ({first_label} to {second_label})"
+    if product_scope.get("requested") and product_query:
+        title = f"{country_label}: {_display_product_name(product_query)} {title_metric} change ({first_label} to {second_label})"
+    else:
+        title = f"{country_label}: {title_metric} change ({first_label} to {second_label})"
 
     summary = _comparison_table_summary(rows, primary_metric, first_label, second_label)
-    ranked = comparison_context.get("unfavorable_metric_drivers") or comparison_context.get("metric_drivers") or []
-    actions = _render_diagnosis_actions(state, comparison_context, [driver for driver in ranked if isinstance(driver, dict)][:6])
-    next_check = actions[0] if actions else None
+    next_check = _comparison_table_next_check(rows, primary_metric, comparison_context)
+    if not next_check:
+        primary = next((row for row in rows if row.get("metric") == primary_metric), None) or rows[0]
+        primary_effect = primary.get("effect")
+        if primary_effect == "favorable":
+            ranked = comparison_context.get("favorable_metric_drivers") or comparison_context.get("metric_drivers") or []
+        else:
+            ranked = comparison_context.get("unfavorable_metric_drivers") or comparison_context.get("metric_drivers") or []
+        actions = _render_diagnosis_actions(state, comparison_context, [driver for driver in ranked if isinstance(driver, dict)][:6])
+        next_check = actions[0] if actions else None
     return _render_comparison_table_markdown(title, rows, first_label, second_label, summary=summary, next_check=next_check)
 
 
@@ -8271,6 +8534,104 @@ def _unique_records(*groups: List[Dict[str, Any]], limit: int = 3) -> List[Dict[
     return out
 
 
+def _comparison_is_product_scoped(state: AgentState, comparison_context: Dict[str, Any]) -> bool:
+    scope = (state.get("business_context") or {}).get("scope") or {}
+    product_scope = comparison_context.get("product_scope") or {}
+    return bool(
+        state.get("product_query")
+        or scope.get("product_query")
+        or product_scope.get("requested")
+    )
+
+
+def _comparison_primary_metric_for_actions(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+) -> Optional[str]:
+    metrics = comparison_context.get("metrics") or {}
+    scope = (state.get("business_context") or {}).get("scope") or {}
+    candidates = [
+        state.get("metric_name"),
+        scope.get("metric_name"),
+        *((state.get("metric_names") or [])),
+        *((scope.get("metric_names") or [])),
+        "profit",
+        "net_sales",
+    ]
+    for candidate in candidates:
+        key = _resolve_available_comparison_metric(candidate, metrics)
+        if key in metrics:
+            return key
+    return None
+
+
+def _comparison_total_delta_abs(comparison_context: Dict[str, Any], metric: str) -> float:
+    comp = (comparison_context.get("metrics") or {}).get(metric) or {}
+    delta = comp.get("delta")
+    if delta is None:
+        delta = _safe_float(comp.get("left")) - _safe_float(comp.get("right"))
+    return abs(_safe_float(delta))
+
+
+def _product_record_delta_abs(record: Dict[str, Any], metric: str) -> float:
+    if metric in BURDEN_DISPLAY_METRICS:
+        left_value = _safe_float(record.get(f"{metric}_left"))
+        right_value = _safe_float(record.get(f"{metric}_right"))
+        return abs(_display_burden_delta(metric, left_value, right_value))
+    return abs(_safe_float(record.get(f"{metric}_delta")))
+
+
+def _product_record_is_material_for_metric(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+    record: Optional[Dict[str, Any]],
+    metric: str,
+) -> bool:
+    if not record:
+        return False
+    if _comparison_is_product_scoped(state, comparison_context):
+        return True
+
+    record_delta = _product_record_delta_abs(record, metric)
+    if record_delta < 0.005:
+        return False
+
+    total_delta = _comparison_total_delta_abs(comparison_context, metric)
+    if total_delta < 0.005:
+        return False
+    return record_delta >= total_delta * PRODUCT_DRILLDOWN_MIN_TOTAL_RATIO
+
+
+def _first_material_product(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+    group_name: str,
+    metric: str,
+) -> Optional[Dict[str, Any]]:
+    for record in comparison_context.get(group_name) or []:
+        if _product_record_is_material_for_metric(state, comparison_context, record, metric):
+            return record
+    return None
+
+
+def _record_has_material_product_delta(
+    state: AgentState,
+    comparison_context: Dict[str, Any],
+    record: Dict[str, Any],
+) -> bool:
+    for metric in [
+        "profit",
+        "net_sales",
+        "total_quantity",
+        "quantity",
+        "cm2_profit",
+        "promotional_rebates",
+    ]:
+        if _product_record_is_material_for_metric(state, comparison_context, record, metric):
+            return True
+    return False
+
+
 def _find_inventory_signal(inventory: Dict[str, Any], record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     sku, product = _record_identity(record)
     for row in inventory.get("rows") or []:
@@ -8311,6 +8672,12 @@ def _render_sku_diagnosis_lines(state: AgentState, comparison_context: Dict[str,
         comparison_context.get("top_rebate_burden_drivers") or [],
         limit=3,
     )
+    if not _comparison_is_product_scoped(state, comparison_context):
+        records = [
+            record
+            for record in records
+            if _record_has_material_product_delta(state, comparison_context, record)
+        ]
     lines: List[str] = []
 
     for record in records:
@@ -8346,19 +8713,63 @@ def _render_sku_diagnosis_lines(state: AgentState, comparison_context: Dict[str,
 
 def _render_diagnosis_actions(state: AgentState, comparison_context: Dict[str, Any], shown_drivers: List[Dict[str, Any]]) -> List[str]:
     actions: List[str] = []
-    top_profit = _first_product(comparison_context.get("top_negative_profit_drivers") or [])
-    top_units = _first_product(comparison_context.get("top_unit_loss_drivers") or [])
-    top_cm2 = _first_product(comparison_context.get("top_cm2_loss_drivers") or [])
-    top_rebate = _first_product(comparison_context.get("top_rebate_burden_drivers") or [])
+    top_profit = _first_material_product(state, comparison_context, "top_negative_profit_drivers", "profit")
+    top_units = _first_material_product(state, comparison_context, "top_unit_loss_drivers", "total_quantity")
+    top_sales = _first_material_product(state, comparison_context, "top_sales_loss_drivers", "net_sales")
+    top_cm2 = _first_material_product(state, comparison_context, "top_cm2_loss_drivers", "cm2_profit")
+    top_rebate = _first_material_product(state, comparison_context, "top_rebate_burden_drivers", "promotional_rebates")
     inventory = comparison_context.get("diagnosis_inventory") or {}
     lookup = _driver_lookup(comparison_context)
     total_only_metrics = set(comparison_context.get("total_only_metrics") or [])
+    primary_metric = _comparison_primary_metric_for_actions(state, comparison_context)
+    product_scoped = _comparison_is_product_scoped(state, comparison_context)
+    material_product_found = any([top_profit, top_units, top_sales, top_cm2, top_rebate])
+    unit_driver = lookup.get("total_quantity") or lookup.get("quantity")
+    sales_driver = lookup.get("net_sales")
+    asp_driver = lookup.get("asp")
+    promo_driver = lookup.get("promotional_rebates")
+
+    ads_driver = None
+    if primary_metric != "profit":
+        ads_driver = next((lookup.get(metric) for metric in ["ads_spend", "product_spend", "display_spend", "brand_spend", "tacos_total_advertising_cost_of_sale"] if lookup.get(metric)), None)
+
+    fee_metric_candidates: List[str] = []
+    if primary_metric == "profit":
+        fee_metric_candidates = ["selling_fees", "fba_fees", "amazon_fees"]
+    elif primary_metric != "net_sales":
+        fee_metric_candidates = [
+            "platform_fee",
+            "platformfeenew",
+            "platform_fee_inventory_storage",
+            "selling_fees",
+            "fba_fees",
+            "amazon_fees",
+        ]
+
+    if not product_scoped and not material_product_found:
+        if primary_metric == "net_sales":
+            if unit_driver:
+                actions.append("Check total traffic, conversion, Buy Box, price, and stock because units are the first sales driver.")
+            if asp_driver:
+                actions.append("Review account-level ASP and discount mix before drilling into SKU-level price changes.")
+            if ads_driver:
+                actions.append("Compare total ad support, ad sales, and ROAS against the net sales movement.")
+        elif primary_metric == "profit":
+            if sales_driver or unit_driver:
+                actions.append("Start with the total profit bridge: units, net sales, ASP, rebates, refunds, COGS, and Amazon fees.")
+            if promo_driver:
+                actions.append("Audit total promo rebates and discounts to confirm they created enough units to protect CM1 profit.")
 
     if top_units:
         inventory_text = _inventory_signal_text(_find_inventory_signal(inventory, top_units))
         extra = f" Inventory shows {inventory_text}." if inventory_text else ""
         actions.append(
             f"Open **{_product_label_from_record(top_units)}** first; check sessions, conversion, price/Buy Box, and stock because it had the biggest unit drop.{extra}"
+        )
+
+    if top_sales and _record_identity(top_sales) != _record_identity(top_units or {}):
+        actions.append(
+            f"Review **{_product_label_from_record(top_sales)}** because it explains a large share of the sales movement; check units, ASP, ads, and stock."
         )
 
     if top_profit and _record_identity(top_profit) != _record_identity(top_units or {}):
@@ -8376,7 +8787,7 @@ def _render_diagnosis_actions(state: AgentState, comparison_context: Dict[str, A
         product_text = f" on **{_product_label_from_record(top_rebate)}**" if top_rebate else ""
         actions.append(f"Audit coupons/deals/rebates{product_text}; stop discounts that did not lift units or protect margin.")
 
-    fee_driver = next((lookup.get(metric) for metric in ["platform_fee", "platformfeenew", "platform_fee_inventory_storage", "selling_fees", "fba_fees", "amazon_fees"] if lookup.get(metric)), None)
+    fee_driver = next((lookup.get(metric) for metric in fee_metric_candidates if lookup.get(metric)), None)
     if fee_driver:
         label = str(fee_driver.get("label") or "fees").lower()
         fee_metric = str(fee_driver.get("metric") or "").strip().lower()
@@ -8385,9 +8796,24 @@ def _render_diagnosis_actions(state: AgentState, comparison_context: Dict[str, A
         else:
             actions.append(f"Reconcile the **{label}** change by SKU/transaction and separate one-off charges from recurring cost increases.")
 
-    ads_driver = next((lookup.get(metric) for metric in ["ads_spend", "product_spend", "display_spend", "brand_spend", "tacos_total_advertising_cost_of_sale"] if lookup.get(metric)), None)
     if ads_driver:
         actions.append("Review campaigns where spend rose while sales or CM2 fell; pause wasted spend before scaling budgets.")
+
+    if not actions:
+        if primary_metric == "net_sales":
+            if unit_driver:
+                actions.append("Check total traffic, conversion, Buy Box, price, and stock because units are the first sales driver.")
+            if asp_driver:
+                actions.append("Review account-level ASP and discount mix before drilling into SKU-level price changes.")
+            if ads_driver:
+                actions.append("Compare total ad support, ad sales, and ROAS against the net sales movement.")
+        elif primary_metric == "profit":
+            if sales_driver or unit_driver:
+                actions.append("Start with the total profit bridge: units, net sales, ASP, rebates, refunds, COGS, and Amazon fees.")
+            if promo_driver:
+                actions.append("Audit total promo rebates and discounts to confirm they created enough units to protect CM1 profit.")
+        elif unit_driver:
+            actions.append("Check total demand signals first: sessions, conversion, Buy Box, pricing, and stock availability.")
 
     if not actions:
         for driver in shown_drivers[:3]:
@@ -8407,13 +8833,27 @@ def _render_interpretation_lines(state: AgentState, comparison_context: Dict[str
     lookup = _driver_lookup(comparison_context)
     inventory = comparison_context.get("diagnosis_inventory") or {}
     lines: List[str] = []
+    product_scoped = _comparison_is_product_scoped(state, comparison_context)
+    has_material_product = any(
+        [
+            _first_material_product(state, comparison_context, "top_negative_profit_drivers", "profit"),
+            _first_material_product(state, comparison_context, "top_unit_loss_drivers", "total_quantity"),
+            _first_material_product(state, comparison_context, "top_sales_loss_drivers", "net_sales"),
+            _first_material_product(state, comparison_context, "top_cm2_loss_drivers", "cm2_profit"),
+            _first_material_product(state, comparison_context, "top_rebate_burden_drivers", "promotional_rebates"),
+        ]
+    )
+    can_name_products = product_scoped or has_material_product
 
     unit_driver = lookup.get("total_quantity") or lookup.get("quantity")
     if unit_driver and unit_driver.get("business_effect") == "unfavorable":
-        lines.append("- Lower units point to a demand, stock, conversion, price, or Buy Box problem. The SKU checks below show where to start.")
+        if can_name_products:
+            lines.append("- Lower units point to a demand, stock, conversion, price, or Buy Box problem. The SKU checks below show where to start.")
+        else:
+            lines.append("- Lower total units point to a demand, stock, conversion, price, or Buy Box problem; start with account-level traffic and availability before SKU drill-down.")
 
     inventory_rows = inventory.get("rows") or []
-    if inventory_rows:
+    if inventory_rows and can_name_products:
         constrained = []
         for row in inventory_rows:
             metrics = row.get("metrics") or {}
@@ -8532,6 +8972,223 @@ def _render_business_comparison_diagnosis(state: AgentState, analysis: Dict[str,
     return "\n".join(lines)
 
 
+def _live_ai_action_label(action: Dict[str, Any]) -> str:
+    product = str(action.get("product_name") or "").strip()
+    sku = str(action.get("sku") or "").strip()
+    if product and sku and sku.lower() not in product.lower():
+        return f"{product} ({sku})"
+    return product or sku
+
+
+FALSE_NO_COMPARISON_NOTE_RE = re.compile(
+    r"(?:\s*\*\*Note:\*\*|\s*Note:)?\s*No month[- ]over[- ]month comparison data is available[^.\n]*(?:\.)?",
+    re.IGNORECASE,
+)
+
+
+def _clean_live_ai_action_text(value: Any) -> str:
+    text_value = str(value or "")
+    text_value = FALSE_NO_COMPARISON_NOTE_RE.sub("", text_value)
+    text_value = re.sub(r"\s+", " ", text_value).strip()
+    return text_value.strip(" -;")
+
+
+def _shorten_live_ai_action_text(text_value: str, *, max_chars: int = 220) -> str:
+    text_value = text_value.strip()
+    if len(text_value) <= max_chars:
+        return text_value
+
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text_value) if part.strip()]
+    if len(sentences) > 1:
+        out: List[str] = []
+        for sentence in sentences:
+            candidate = " ".join([*out, sentence]).strip()
+            if len(candidate) > max_chars:
+                break
+            out.append(sentence)
+        if out:
+            return " ".join(out)
+
+    clipped = text_value[: max_chars + 1].rsplit(" ", 1)[0].strip()
+    return clipped.rstrip(",;:") + "."
+
+
+def _live_ai_action_core_and_notes(text_value: str) -> Tuple[str, List[str]]:
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", text_value) if part.strip()]
+    if not sentences:
+        return text_value, []
+
+    core: List[str] = []
+    notes: List[str] = []
+    note_markers = [
+        "coverage ratio",
+        "cross check inventory",
+        "stock-out",
+        "stock out",
+        "send stock",
+        "storage cost",
+    ]
+
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(marker in lowered for marker in note_markers):
+            notes.append(sentence)
+        else:
+            core.append(sentence)
+
+    core_text = " ".join(core).strip() or text_value
+    return core_text, notes
+
+
+def _live_ai_recommendation_group_key(text_value: str) -> str:
+    text_value = re.sub(r"\basp\b", "average selling price", text_value, flags=re.IGNORECASE)
+    text_value = re.sub(r"\bcm1\b", "cm one", text_value, flags=re.IGNORECASE)
+    text_value = re.sub(r"\bcm2\b", "cm two", text_value, flags=re.IGNORECASE)
+    return re.sub(r"\W+", "", text_value).lower()
+
+
+def _note_count_text(count: int, label: str) -> str:
+    suffix = "" if count == 1 else "s"
+    return f"{count} {label}{suffix}"
+
+
+def _clean_single_inventory_note(note: str) -> str:
+    note_text = re.sub(r"^[^:]{1,90}:\s*", "", str(note or "")).strip()
+    note_text = re.sub(r"\byour coverage ratio is\b", "coverage", note_text, flags=re.IGNORECASE)
+    note_text = re.sub(
+        r",?\s*which may increase storage cost\.?",
+        ", storage risk",
+        note_text,
+        flags=re.IGNORECASE,
+    )
+    note_text = re.sub(
+        r"\bPlease immediately send stock to avoid stock-out\.?",
+        "send stock to avoid stock-out",
+        note_text,
+        flags=re.IGNORECASE,
+    )
+    note_text = re.sub(
+        r"\bCritical Alert Please Cross Check Inventory\.?",
+        "cross-check inventory",
+        note_text,
+        flags=re.IGNORECASE,
+    )
+    note_text = re.sub(r"\s+", " ", note_text).strip(" .;")
+    return note_text
+
+
+def _inventory_note_summary(labels: List[str], notes: List[Tuple[str, str]]) -> str:
+    if not notes:
+        return ""
+
+    if len(labels) <= 1:
+        clean_notes: List[str] = []
+        for _, note in notes:
+            note_text = _clean_single_inventory_note(note)
+            if note_text and note_text not in clean_notes:
+                clean_notes.append(note_text)
+        if not clean_notes:
+            return ""
+        shown = clean_notes[:3]
+        suffix = f"; plus {len(clean_notes) - 3} more" if len(clean_notes) > 3 else ""
+        return " Inventory: " + "; ".join(shown) + suffix + "."
+
+    storage_risk = 0
+    stockout = 0
+    inventory_check = 0
+    ageing = 0
+    coverage = 0
+    for _, note in notes:
+        lowered = str(note or "").lower()
+        if "storage cost" in lowered:
+            storage_risk += 1
+        elif "coverage ratio" in lowered:
+            coverage += 1
+        if "stock-out" in lowered or "stock out" in lowered or "send stock" in lowered:
+            stockout += 1
+        if "cross check inventory" in lowered or "critical alert" in lowered:
+            inventory_check += 1
+        if "ageing" in lowered or "aging" in lowered:
+            ageing += 1
+
+    parts: List[str] = []
+    if storage_risk:
+        parts.append(_note_count_text(storage_risk, "storage-risk coverage note"))
+    if stockout:
+        parts.append(_note_count_text(stockout, "stock-out note"))
+    if coverage:
+        parts.append(_note_count_text(coverage, "coverage note"))
+    if inventory_check:
+        parts.append(_note_count_text(inventory_check, "inventory check note"))
+    if ageing:
+        parts.append(_note_count_text(ageing, "ageing inventory note"))
+
+    if not parts:
+        parts.append(_note_count_text(len(notes), "inventory note"))
+    return " Inventory: " + "; ".join(parts) + "."
+
+
+def _format_live_ai_sku_action(label: str, action_text: str, notes: List[str]) -> str:
+    action_text = _shorten_live_ai_action_text(action_text, max_chars=175)
+    line = f"**{label}**\n   - Action: {action_text}"
+    inventory_text = _inventory_note_summary([label], [(label, note) for note in notes]).strip()
+    if inventory_text:
+        line += f"\n   - {inventory_text}"
+    return line
+
+
+def _format_live_ai_general_action(label: str, action_text: str) -> str:
+    action_text = _shorten_live_ai_action_text(action_text, max_chars=190)
+    return f"**{label}**\n   - Action: {action_text}"
+
+
+def _render_live_ai_action_lines(context: Dict[str, Any], *, limit: Optional[int] = None) -> List[str]:
+    live_actions = context.get("live_ai_actions") or {}
+    if not live_actions.get("available"):
+        return []
+
+    if live_actions.get("missing_product_action"):
+        product_query = _display_product_name(live_actions.get("product_query") or "that product")
+        return [f"No stored Live BI action matched **{product_query}** for this period; refresh Live BI actions or choose a SKU that has a stored action."]
+
+    portfolio_lines: List[str] = []
+    sku_lines: List[str] = []
+    other_lines: List[str] = []
+    for action in live_actions.get("actions") or []:
+        if not isinstance(action, dict):
+            continue
+        text_value = _clean_live_ai_action_text(action.get("action"))
+        if not text_value:
+            continue
+
+        label = _live_ai_action_label(action)
+        if label and action.get("scope") == "sku":
+            core_text, notes = _live_ai_action_core_and_notes(text_value)
+            sku_lines.append(_format_live_ai_sku_action(label, core_text, notes))
+            continue
+
+        if action.get("scope") == "portfolio":
+            portfolio_lines.append(_format_live_ai_general_action("Portfolio", text_value))
+        elif action.get("scope") == "remaining_skus":
+            other_lines.append(_format_live_ai_general_action("Remaining SKUs", text_value))
+        else:
+            other_lines.append(_shorten_live_ai_action_text(text_value))
+
+    out: List[str] = list(portfolio_lines)
+    for line in sku_lines:
+        out.append(line)
+        if limit is not None and len(out) >= limit:
+            break
+
+    if limit is None or len(out) < limit:
+        for line in other_lines:
+            out.append(line)
+            if limit is not None and len(out) >= limit:
+                break
+
+    return out
+
+
 def _render_business_advisor_fallback(state: AgentState, analysis: Dict[str, Any]) -> str:
     context = analysis.get("context") or {}
     period = (context.get("period") or {}).get("label") or "selected period"
@@ -8541,29 +9198,39 @@ def _render_business_advisor_fallback(state: AgentState, analysis: Dict[str, Any
     history = context.get("history") or {}
     movement = history.get("movement") or {}
     comparison_context = context.get("comparison") or {}
+    live_action_lines = _render_live_ai_action_lines(context)
 
     if comparison_context.get("requested") and comparison_context.get("metrics"):
         return _render_business_comparison_diagnosis(state, analysis)
 
-    lines = [f"Business read for {period}:", "", "What I see:"]
+    lines = [f"Business read for {period}:", "", "Key signals:"]
+    units_text = _format_metric_for_display(totals.get("total_quantity"), "total_quantity", state.get("country"))
+    asp_text = _fmt_business_money(state, totals.get("asp"), "asp")
     lines.append(
-        "- Sales were "
-        f"{_fmt_business_money(state, totals.get('net_sales'), 'net_sales')}, "
-        f"profit was {_fmt_business_money(state, totals.get('profit'), 'profit')}, "
-        f"and CM2 profit was {_fmt_business_money(state, totals.get('total_cm2_profit') or totals.get('cm2_profit'), 'cm2_profit')}."
+        "- Net sales: "
+        f"{_fmt_business_money(state, totals.get('net_sales'), 'net_sales')}; "
+        f"units: {units_text}; ASP: {asp_text}."
+    )
+    lines.append(
+        "- CM1 profit: "
+        f"{_fmt_business_money(state, totals.get('profit'), 'profit')}; "
+        f"CM2 profit: {_fmt_business_money(state, totals.get('total_cm2_profit') or totals.get('cm2_profit'), 'cm2_profit')}."
     )
 
     if totals.get("ads_spend") or totals.get("total_ads"):
-        lines.append(
-            "- Advertising spend was "
+        ad_line = (
+            "- Ad spend: "
             f"{_fmt_business_money(state, totals.get('ads_spend') or totals.get('total_ads'), 'ads_spend')} "
-            f"({float(derived.get('ad_to_sales_pct') or 0.0):.2f}% of sales), "
-            f"with ROAS {float(derived.get('ad_roas') or 0.0):.2f}."
+            f"({float(derived.get('ad_to_sales_pct') or 0.0):.2f}% of sales)."
         )
+        ad_roas = _safe_float(derived.get("ad_roas"))
+        if ad_roas > 0.005:
+            ad_line = ad_line[:-1] + f"; ROAS: {ad_roas:.2f}."
+        lines.append(ad_line)
 
     if totals.get("selling_fees") or totals.get("fba_fees") or totals.get("platform_fee"):
         lines.append(
-            "- Fee burden was "
+            "- Fee burden: "
             f"{float(derived.get('fee_ratio_pct') or 0.0):.2f}% of sales across selling, FBA, and platform fees."
         )
 
@@ -8572,13 +9239,20 @@ def _render_business_advisor_fallback(state: AgentState, analysis: Dict[str, Any
         profit_move = movement.get("profit") or {}
         if sales_move or profit_move:
             lines.append(
-                "- Latest movement: sales "
-                f"{float(sales_move.get('pct_change') or 0.0):.2f}% and profit "
-                f"{float(profit_move.get('pct_change') or 0.0):.2f}% versus the previous available month."
+                "- Latest movement vs previous available month: net sales "
+                f"{float(sales_move.get('pct_change') or 0.0):.2f}% and CM1 profit "
+                f"{float(profit_move.get('pct_change') or 0.0):.2f}%."
             )
 
     lines.append("")
-    lines.append("What to do next:")
+    lines.append("Do next:" if live_action_lines else "What to do next:")
+
+    if live_action_lines:
+        for idx, action in enumerate(live_action_lines, start=1):
+            lines.append(f"{idx}. {action}")
+            if idx < len(live_action_lines):
+                lines.append("")
+        return "\n".join(lines)
 
     weak_cm2 = _first_product(rankings.get("weak_cm2_profit") or [])
     if weak_cm2:
@@ -9790,6 +10464,11 @@ def _render_response(state: AgentState) -> AgentState:
         comparison_context = (analysis.get("context") or {}).get("comparison") or {}
         if comparison_context.get("requested") and comparison_context.get("metrics"):
             state["final_response"] = _render_business_comparison_diagnosis(state, analysis)
+            return state
+
+        live_actions = (analysis.get("context") or {}).get("live_ai_actions") or {}
+        if live_actions.get("available") and _query_asks_recommendation(state):
+            state["final_response"] = _render_business_advisor_fallback(state, analysis)
             return state
 
         if advisor_llm:
