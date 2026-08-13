@@ -9130,16 +9130,16 @@ def _inventory_note_summary(labels: List[str], notes: List[Tuple[str, str]]) -> 
 
 def _format_live_ai_sku_action(label: str, action_text: str, notes: List[str]) -> str:
     action_text = _shorten_live_ai_action_text(action_text, max_chars=175)
-    line = f"**{label}**\n   - Action: {action_text}"
+    line = f"**{label}**\nAction: {action_text}"
     inventory_text = _inventory_note_summary([label], [(label, note) for note in notes]).strip()
     if inventory_text:
-        line += f"\n   - {inventory_text}"
+        line += f"\n{inventory_text}"
     return line
 
 
 def _format_live_ai_general_action(label: str, action_text: str) -> str:
     action_text = _shorten_live_ai_action_text(action_text, max_chars=190)
-    return f"**{label}**\n   - Action: {action_text}"
+    return f"**{label}**\nAction: {action_text}"
 
 
 def _render_live_ai_action_lines(context: Dict[str, Any], *, limit: Optional[int] = None) -> List[str]:
@@ -9153,6 +9153,7 @@ def _render_live_ai_action_lines(context: Dict[str, Any], *, limit: Optional[int
 
     portfolio_lines: List[str] = []
     sku_lines: List[str] = []
+    remaining_lines: List[str] = []
     other_lines: List[str] = []
     for action in live_actions.get("actions") or []:
         if not isinstance(action, dict):
@@ -9170,7 +9171,7 @@ def _render_live_ai_action_lines(context: Dict[str, Any], *, limit: Optional[int
         if action.get("scope") == "portfolio":
             portfolio_lines.append(_format_live_ai_general_action("Portfolio", text_value))
         elif action.get("scope") == "remaining_skus":
-            other_lines.append(_format_live_ai_general_action("Remaining SKUs", text_value))
+            remaining_lines.append(_format_live_ai_general_action("Remaining SKUs", text_value))
         else:
             other_lines.append(_shorten_live_ai_action_text(text_value))
 
@@ -9179,6 +9180,9 @@ def _render_live_ai_action_lines(context: Dict[str, Any], *, limit: Optional[int
         out.append(line)
         if limit is not None and len(out) >= limit:
             break
+
+    if not sku_lines:
+        other_lines.extend(remaining_lines)
 
     if limit is None or len(out) < limit:
         for line in other_lines:
@@ -9249,7 +9253,7 @@ def _render_business_advisor_fallback(state: AgentState, analysis: Dict[str, Any
 
     if live_action_lines:
         for idx, action in enumerate(live_action_lines, start=1):
-            lines.append(f"{idx}. {action}")
+            lines.append(f"{idx} - {action}")
             if idx < len(live_action_lines):
                 lines.append("")
         return "\n".join(lines)
