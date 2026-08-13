@@ -68,6 +68,37 @@ REPORT_COMPAT_COLUMNS = [
 REPORT_TEXT_COLUMNS = {"ad_type", "generated_at_utc"}
 
 
+def _numeric_series(df_: pd.DataFrame, col: str) -> pd.Series:
+    if col in df_.columns:
+        return pd.to_numeric(df_[col], errors="coerce").fillna(0.0)
+    return pd.Series(0.0, index=df_.index)
+
+
+def _numeric_value(value) -> float:
+    return float(pd.to_numeric(pd.Series([value]), errors="coerce").fillna(0.0).iloc[0])
+
+
+def _other_transaction_fees_series(
+    df_: pd.DataFrame,
+    net_taxes_col: str,
+    net_credits_col: str,
+    misc_transaction_col: str = "misc_transaction",
+) -> pd.Series:
+    return (
+        _numeric_series(df_, net_credits_col)
+        + _numeric_series(df_, misc_transaction_col).abs()
+        - _numeric_series(df_, net_taxes_col).abs()
+    ).abs()
+
+
+def _other_transaction_fees_value(net_taxes, net_credits, misc_transaction) -> float:
+    return abs(
+        _numeric_value(net_credits)
+        + abs(_numeric_value(misc_transaction))
+        - abs(_numeric_value(net_taxes))
+    )
+
+
 def add_report_compat_columns(df_: pd.DataFrame) -> pd.DataFrame:
     """Add the July report schema to any monthly/quarterly/yearly dataframe."""
     df_ = df_.copy()
@@ -987,9 +1018,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             & ~df["type_key"].isin(exclude_type_keys)
         )
 
-        # Logic 1: TOTAL misc_transaction
-        # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = (
+        all_misc_transaction_total = (
             pd.to_numeric(
                 df.loc[leftout_mask, "total"],
                 errors="coerce"
@@ -998,8 +1027,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             .sum()
         )
 
-        # Logic 2: SKU-wise misc_transaction
-        # Only rows with SKU can merge into SKU table.
+        # misc_transaction is SKU-wise only; blank/unassigned misc rows move to other_adjustment.
         tmp_misc = df.loc[
             leftout_mask
             & df["sku"].notna()
@@ -1020,6 +1048,8 @@ def process_skuwise_us_data(user_id, country, month, year):
             errors="coerce"
         ).fillna(0.0)
 
+        misc_transaction_total = float(misc_transaction_df["misc_transaction"].sum())
+        unassigned_misc_transaction_total = all_misc_transaction_total - misc_transaction_total
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
 
@@ -1069,9 +1099,10 @@ def process_skuwise_us_data(user_id, country, month, year):
             "COMPENSATED_CLAWBACK",
         ])
 
-        other_adjustment_total = abs(sum_total_where_desc_contains(df, [
-            "FBAStorageFeeAdjustment"
-        ]))
+        other_adjustment_total = (
+            abs(sum_total_where_desc_contains(df, ["FBAStorageFeeAdjustment"]))
+            + abs(unassigned_misc_transaction_total)
+        )
 
         other_adjustment_df = sku_sum_total_where_desc_contains(
             df,
@@ -1438,16 +1469,21 @@ def process_skuwise_us_data(user_id, country, month, year):
                 sku_grouped[col] = 0.0
             sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
-        sku_grouped["other_transaction_fees"] = sku_grouped["Net Taxes"].abs() - sku_grouped["Net Credits"]
+        sku_grouped["other_transaction_fees"] = _other_transaction_fees_series(
+            sku_grouped,
+            "Net Taxes",
+            "Net Credits",
+        )
 
-        # Profit formula aligned with UK helper:
-        # profit = net_sales - cogs - amazon_fee - net_taxes + net_credits
+        # Profit includes misc_transaction as a positive adjustment.
+        # profit = net_sales - cogs - amazon_fee - net_taxes + net_credits + abs(misc_transaction)
         sku_grouped["profit"] = (
             sku_grouped["Net Sales"]
             - sku_grouped["cost_of_unit_sold"].abs()
             - sku_grouped["amazon_fee"].abs()
             - sku_grouped["Net Taxes"].abs()
             + sku_grouped["Net Credits"]
+            + sku_grouped["misc_transaction"].abs()
         )
 
         sku_grouped["profit%"] = np.where(
@@ -1832,6 +1868,22 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["placement_fee"] = placement_fee_total
         sum_row["customs_fee"] = customs_fee_total
         sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["profit"] = (
+            sum_row["Net Sales"]
+            - abs(sum_row["cost_of_unit_sold"])
+            - abs(sum_row["amazon_fee"])
+            - abs(sum_row["Net Taxes"])
+            + sum_row["Net Credits"]
+            + abs(sum_row["misc_transaction"])
+        )
+        sum_row["profit%"] = (
+            sum_row["profit"] / sum_row["Net Sales"]
+        ) * 100 if sum_row["Net Sales"] != 0 else 0
+        sum_row["other_transaction_fees"] = _other_transaction_fees_value(
+            sum_row.get("Net Taxes", 0.0),
+            sum_row.get("Net Credits", 0.0),
+            sum_row.get("misc_transaction", 0.0),
+        )
         sum_row["lost_total"] = lost_total_amount
         sum_row["inventory_charges_and_reimbursement"] = (
             abs(fba_disposal_total) - abs(lost_total_amount)
@@ -2496,9 +2548,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             & ~df["type_key"].isin(exclude_type_keys)
         )
 
-        # Logic 1: TOTAL misc_transaction
-        # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = (
+        all_misc_transaction_total = (
             pd.to_numeric(
                 df.loc[leftout_mask, "total"],
                 errors="coerce"
@@ -2507,8 +2557,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             .sum()
         )
 
-        # Logic 2: SKU-wise misc_transaction
-        # Only rows with SKU can merge into SKU table.
+        # misc_transaction is SKU-wise only; blank/unassigned misc rows move to other_adjustment.
         tmp_misc = df.loc[
             leftout_mask
             & df["sku"].notna()
@@ -2528,6 +2577,9 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             misc_transaction_df["misc_transaction"],
             errors="coerce"
         ).fillna(0.0)
+
+        misc_transaction_total = float(misc_transaction_df["misc_transaction"].sum())
+        unassigned_misc_transaction_total = all_misc_transaction_total - misc_transaction_total
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
 
@@ -2576,9 +2628,10 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             "COMPENSATED_CLAWBACK",
         ])
 
-        other_adjustment_total = abs(sum_total_where_desc_contains(df, [
-            "FBAStorageFeeAdjustment"
-        ]))
+        other_adjustment_total = (
+            abs(sum_total_where_desc_contains(df, ["FBAStorageFeeAdjustment"]))
+            + abs(unassigned_misc_transaction_total)
+        )
 
         other_adjustment_df = sku_sum_total_where_desc_contains(
             df,
@@ -2846,9 +2899,10 @@ def process_us_yearly_skuwise_data(user_id, country, year):
                 sku_grouped[col] = 0.0
             sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
-        sku_grouped["other_transaction_fees"] = (
-            sku_grouped["net_taxes"].abs()
-            - sku_grouped["net_credits"]
+        sku_grouped["other_transaction_fees"] = _other_transaction_fees_series(
+            sku_grouped,
+            "net_taxes",
+            "net_credits",
         )
 
         sku_grouped["asp"] = np.where(
@@ -2878,6 +2932,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             - safe_series(sku_grouped, "amazon_fee").abs()
             - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
+            + safe_series(sku_grouped, "misc_transaction").abs()
         )
 
         sku_grouped["profit_percentage"] = np.where(
@@ -3047,6 +3102,23 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sum_row["placement_fee"] = placement_fee_total
         sum_row["customs_fee"] = customs_fee_total
         sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["profit"] = (
+            sum_row["net_sales"]
+            - abs(sum_row["cost_of_unit_sold"])
+            - abs(sum_row["amazon_fee"])
+            - abs(sum_row["net_taxes"])
+            + sum_row["net_credits"]
+            + abs(sum_row["misc_transaction"])
+        )
+        sum_row["profit_percentage"] = (
+            (sum_row["profit"] / sum_row["net_sales"]) * 100
+            if sum_row["net_sales"] != 0 else 0
+        )
+        sum_row["other_transaction_fees"] = _other_transaction_fees_value(
+            sum_row.get("net_taxes", 0.0),
+            sum_row.get("net_credits", 0.0),
+            sum_row.get("misc_transaction", 0.0),
+        )
         sum_row["lost_total"] = lost_total_amount
         sum_row["inventory_charges_and_reimbursement"] = (
             abs(fba_disposal_total) - abs(lost_total_amount)
@@ -3476,9 +3548,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             & ~df["type_key"].isin(exclude_type_keys)
         )
 
-        # Logic 1: TOTAL misc_transaction
-        # Includes rows with SKU and rows without SKU.
-        misc_transaction_total = (
+        all_misc_transaction_total = (
             pd.to_numeric(
                 df.loc[leftout_mask, "total"],
                 errors="coerce"
@@ -3487,8 +3557,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             .sum()
         )
 
-        # Logic 2: SKU-wise misc_transaction
-        # Only rows with SKU can merge into SKU table.
+        # misc_transaction is SKU-wise only; blank/unassigned misc rows move to other_adjustment.
         tmp_misc = df.loc[
             leftout_mask
             & df["sku"].notna()
@@ -3508,6 +3577,9 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             misc_transaction_df["misc_transaction"],
             errors="coerce"
         ).fillna(0.0)
+
+        misc_transaction_total = float(misc_transaction_df["misc_transaction"].sum())
+        unassigned_misc_transaction_total = all_misc_transaction_total - misc_transaction_total
 
         platformfeenew_total = abs(sum_total_where_desc_contains(df, ["Subscription"]))
 
@@ -3555,9 +3627,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             "COMPENSATED_CLAWBACK",
         ])
 
-        other_adjustment_total = abs(sum_total_where_desc_contains(df, [
-            "FBAStorageFeeAdjustment"
-        ]))
+        other_adjustment_total = (
+            abs(sum_total_where_desc_contains(df, ["FBAStorageFeeAdjustment"]))
+            + abs(unassigned_misc_transaction_total)
+        )
 
         other_adjustment_df = sku_sum_total_where_desc_contains(
             df,
@@ -3826,9 +3899,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
                 sku_grouped[col] = 0.0
             sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0)
 
-        sku_grouped["other_transaction_fees"] = (
-            sku_grouped["net_taxes"].abs()
-            - sku_grouped["net_credits"]
+        sku_grouped["other_transaction_fees"] = _other_transaction_fees_series(
+            sku_grouped,
+            "net_taxes",
+            "net_credits",
         )
 
         sku_grouped["asp"] = np.where(
@@ -3858,6 +3932,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             - safe_series(sku_grouped, "amazon_fee").abs()
             - safe_series(sku_grouped, "net_taxes").abs()
             + safe_series(sku_grouped, "net_credits")
+            + safe_series(sku_grouped, "misc_transaction").abs()
         )
 
         sku_grouped["profit_percentage"] = np.where(
@@ -4024,6 +4099,23 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sum_row["placement_fee"] = placement_fee_total
         sum_row["customs_fee"] = customs_fee_total
         sum_row["misc_transaction"] = misc_transaction_total
+        sum_row["profit"] = (
+            sum_row["net_sales"]
+            - abs(sum_row["cost_of_unit_sold"])
+            - abs(sum_row["amazon_fee"])
+            - abs(sum_row["net_taxes"])
+            + sum_row["net_credits"]
+            + abs(sum_row["misc_transaction"])
+        )
+        sum_row["profit_percentage"] = (
+            (sum_row["profit"] / sum_row["net_sales"]) * 100
+            if sum_row["net_sales"] != 0 else 0
+        )
+        sum_row["other_transaction_fees"] = _other_transaction_fees_value(
+            sum_row.get("net_taxes", 0.0),
+            sum_row.get("net_credits", 0.0),
+            sum_row.get("misc_transaction", 0.0),
+        )
         sum_row["lost_total"] = lost_total_amount
         sum_row["inventory_charges_and_reimbursement"] = (
             abs(fba_disposal_total) - abs(lost_total_amount)
@@ -4171,4 +4263,3 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
 
     finally:
         conn.close()
-

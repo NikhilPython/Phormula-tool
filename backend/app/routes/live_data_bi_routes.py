@@ -4177,6 +4177,12 @@ def live_mtd_vs_previous():
             reviving_skus_total_row = None
             other_total_row = other_products_total_row
 
+            global_net_sales_pie = build_net_sales_pie_slices(
+                growth_data,
+                min_named=5,
+            )
+            global_compare_top5_net_sales = global_net_sales_pie.get("slices", [])
+
 
             # ✅ Weekly email-only short JSON for GLOBAL
             global_weekly_email_summary_json = build_weekly_email_summary_json(
@@ -4253,6 +4259,8 @@ def live_mtd_vs_previous():
                 "reviving_skus_total": reviving_skus_total_row,
                 "other_total": other_total_row,
             },
+                "net_sales_pie": global_net_sales_pie,
+                "compare_top5_net_sales": global_compare_top5_net_sales,
                 # ✅ ADD THIS BACK FOR GLOBAL CHARTS
                 "daily_series": {
                     "current_mtd_global": current_mtd_global,

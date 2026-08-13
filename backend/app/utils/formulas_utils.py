@@ -1794,6 +1794,15 @@ def us_profit(
     fee_total, fee_by, _ = us_amazon_fee(df, country=country)
     tax_total, tax_by, _ = us_tax(df, country=country)
     credits_total, credits_by, _ = us_credits(df, country=country)
+    if "misc_transaction" in df.columns and "sku" in df.columns:
+        misc_source = df.copy()
+        misc_source["sku"] = misc_source["sku"].astype(str).str.strip()
+        misc_by = (
+            agg_by(misc_source.loc[sku_mask(misc_source)].copy(), "sku", ["misc_transaction"])
+            .rename(columns={"misc_transaction": "misc_transaction"})
+        )
+    else:
+        misc_by = pd.DataFrame(columns=["sku", "misc_transaction"])
 
     per = (
         sales_by[["sku", "__metric__"]]
@@ -1822,6 +1831,11 @@ def us_profit(
             on="sku",
             how="outer",
         )
+        .merge(
+            misc_by[["sku", "misc_transaction"]],
+            on="sku",
+            how="outer",
+        )
         .fillna(0.0)
     )
 
@@ -1831,18 +1845,20 @@ def us_profit(
         "amazon_fee",
         "net_taxes",
         "net_credits",
+        "misc_transaction",
     ):
         per[col] = safe_num(per[col])
 
     # Profit formula:
     # Sales - absolute COGS - absolute Amazon fees
-    #       - absolute taxes + credits
+    #       - absolute taxes + credits + absolute misc transactions
     per["__metric__"] = (
         per["sales"]
         - per["cogs"].abs()
         - per["amazon_fee"].abs()
         - per["net_taxes"].abs()
         + per["net_credits"]
+        + per["misc_transaction"].abs()
     )
 
     comps = [
@@ -1851,6 +1867,7 @@ def us_profit(
         "amazon_fee",
         "net_taxes",
         "net_credits",
+        "misc_transaction",
     ]
 
     total = float(per["__metric__"].sum())

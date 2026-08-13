@@ -99,6 +99,8 @@ type FetchEtaUnitType =
   | "fbaInbound"
   | "historicMonth"
   | "liveMtd"
+  | "liveCurrentInventory"
+  | "liveInventoryInsights"
   | "liveBi"
   | "finalize"
   | "forecast"
@@ -159,11 +161,32 @@ const DEFAULT_FETCH_ETA_SECONDS: Record<FetchEtaUnitType, number> = {
   fbaInbound: 180,
   historicMonth: 60,
   liveMtd: 35,
+  liveCurrentInventory: 45,
+  liveInventoryInsights: 20,
   liveBi: 30,
   finalize: 2,
   forecast: 75,
   plottingGraph: 2,
 };
+
+function toDashboardCountryKey(country: string) {
+  const normalized = String(country || "").toLowerCase().trim();
+
+  if (normalized === "canada") return "ca";
+  if (normalized === "united kingdom" || normalized === "gb") return "uk";
+  if (normalized === "united states" || normalized === "usa") return "us";
+
+  return normalized;
+}
+
+function liveDataApiKey(
+  name: string,
+  ...parts: Array<string | number | boolean | null | undefined>
+) {
+  return [name, ...parts.filter((part) => part !== null && part !== undefined)]
+    .map((part) => String(part).toLowerCase())
+    .join(":");
+}
 
 function clampEtaSeconds(value: number) {
   if (!Number.isFinite(value) || value <= 0) return MIN_ACTIVE_ETA_SECONDS;
@@ -337,9 +360,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 async function syncAwdInboundShipments(params: { marketplaceId: string }) {
@@ -509,14 +532,14 @@ async function ensureFeesPrimedOnce(params: {
 
   const uploadKey = lsKeyFeeUpload(country);
   if (!wasDone(uploadKey)) {
-    // await apiJson(`/amazon_api/fees/sync_and_upload`, {
-    //   method: "POST",
-    //   body: JSON.stringify({
-    //     country,
-    //     marketplace_id: marketplaceId,
-    //     region: regionUsed,
-    //   }),
-    // });
+    await apiJson(`/amazon_api/fees/sync_and_upload`, {
+      method: "POST",
+      body: JSON.stringify({
+        country,
+        marketplace_id: marketplaceId,
+        region: regionUsed,
+      }),
+    });
 
     // ✅ NEW: Immediately after fees sync/upload, call inventory aged with NO params
     // (run-once per country; does not affect existing flow)
@@ -530,16 +553,16 @@ async function ensureFeesPrimedOnce(params: {
     // backend requires a month/year, so we send the current selection
     // but we only do this ONCE per country
     const monthParam = `${year}-${two(month)}`;
-    // await apiJson(`/fetch_fees`, {
-    //   method: "POST",
-    //   body: JSON.stringify({
-    //     region: regionUsed,
-    //     marketplace_id: marketplaceId,
-    //     month: monthParam,
-    //     year: String(year),
-    //     country,
-    //   }),
-    // });
+    await apiJson(`/fetch_fees`, {
+      method: "POST",
+      body: JSON.stringify({
+        region: regionUsed,
+        marketplace_id: marketplaceId,
+        month: monthParam,
+        year: String(year),
+        country,
+      }),
+    });
 
     markDone(feesKey);
   }
@@ -611,76 +634,17 @@ async function fetchMonthlyTransactionsExcel(params: {
   return { ok: true, url };
 }
 
-/** ---------------- Amazon Ads monthly + daily DB sync ---------------- */
-async function syncMonthlyAdsToDb(params: {
-  country: string;
-  year: number;
-  month: number;
-}) {
-  return apiJson(`/api/ads/monthly_sp_sd_to_db`, {
-    method: "POST",
-    body: JSON.stringify({
-      country: params.country.trim().toUpperCase(),
-      month: params.month,
-      year: params.year,
-      include: ["SP", "SD", "SB"],
-    }),
-  });
-}
-
-async function syncDailyAdsToDb(params: {
-  country: string;
-  year: number;
-  month: number;
-}) {
-  return apiJson(`/api/ads/daily_sp_sd_sb_to_db`, {
-    method: "POST",
-    body: JSON.stringify({
-      country: params.country.trim().toUpperCase(),
-      month: params.month,
-      year: params.year,
-      include: ["SP", "SD", "SB"],
-    }),
-  });
-}
-
-async function fetchMonthlyFinanceAndAds(params: {
-  year: number;
-  month: number;
-  marketplace_id: string;
-  country: string;
-  run_upload_pipeline: boolean;
-  store_in_db: boolean;
-}) {
-  // Required order for every month:
-  // 1. Monthly finance
-  // 2. Monthly ads
-  // 3. Daily ads
-  await fetchMonthlyTransactionsExcel(params);
-
-  await syncMonthlyAdsToDb({
-    country: params.country,
-    year: params.year,
-    month: params.month,
-  });
-
-  await syncDailyAdsToDb({
-    country: params.country,
-    year: params.year,
-    month: params.month,
-  });
-}
-
 async function fetchMtdTransactions(params: {
   marketplace_id: string;
   country: string;
   store_in_db?: boolean;
 }) {
   const token = getAuthToken();
+  const countryKey = toDashboardCountryKey(params.country);
 
   const qs = new URLSearchParams({
     marketplace_id: params.marketplace_id,
-    country: params.country,
+    country: countryKey,
     store_in_db: String(params.store_in_db ?? true),
     format: "json",
   });
@@ -706,16 +670,35 @@ async function fetchLiveMtdBi(params: {
   country: string;
   month: string;
   year: number;
+  dataOnlyRefresh?: boolean;
+  manualAiRefresh?: boolean;
+  startDay?: number;
+  endDay?: number;
 }) {
   const token = getAuthToken();
+  const countryKey = toDashboardCountryKey(params.country);
 
   const qs = new URLSearchParams({
-    countryName: params.country,
+    countryName: countryKey,
     ranged: "MTD",
     month: params.month.toLowerCase(),
     year: String(params.year),
     generate_ai_insights: "false",
+    manual_ai_refresh: params.manualAiRefresh ? "true" : "false",
+    data_only_refresh: params.manualAiRefresh
+      ? "false"
+      : params.dataOnlyRefresh
+        ? "true"
+        : "false",
   });
+
+  if (params.startDay != null) {
+    qs.set("start_day", String(params.startDay));
+  }
+
+  if (params.endDay != null) {
+    qs.set("end_day", String(params.endDay));
+  }
 
   const url = `${API_BASE}/live_mtd_bi?${qs.toString()}`;
 
@@ -743,6 +726,66 @@ async function fetchLiveMtdBi(params: {
   }
 
   throw new Error("Live BI processing timeout");
+}
+
+async function syncDashboardAwdInventory(params: {
+  marketplace_id: string;
+}) {
+  const qs = new URLSearchParams({
+    marketplace_id: params.marketplace_id,
+    store_in_db: "true",
+  });
+
+  return apiJson(`/amazon_api/inventory/awd?${qs.toString()}`, {
+    method: "GET",
+  });
+}
+
+async function refreshDashboardCurrentInventory(params: {
+  country: string;
+  month: string;
+  year: number | string;
+}) {
+  return apiJson(`/current_inventory`, {
+    method: "POST",
+    body: JSON.stringify({
+      country: toDashboardCountryKey(params.country),
+      month: params.month.toLowerCase(),
+      year: String(params.year),
+    }),
+  });
+}
+
+async function fetchDashboardInventoryCurrent(params: {
+  country: string;
+  month: string;
+  year: number | string;
+}) {
+  const qs = new URLSearchParams({
+    country_key: toDashboardCountryKey(params.country),
+    month_name: params.month.toLowerCase(),
+    year: String(params.year),
+  });
+
+  return apiJson(`/inventory_current?${qs.toString()}`, {
+    method: "GET",
+  });
+}
+
+async function fetchDashboardInventoryAgeSummary(params: {
+  country: string;
+  month: string;
+  year: number | string;
+}) {
+  const qs = new URLSearchParams({
+    country_key: toDashboardCountryKey(params.country),
+    month_name: params.month.toLowerCase(),
+    year: String(params.year),
+  });
+
+  return apiJson(`/inventory_current_age_summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 /** ---------------- Forecast fetch (backend expects month name, not 03) ---------------- */
@@ -1424,6 +1467,16 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       if (params.includeLiveData) {
         units.push(
           makeEtaUnit("liveMtd", "liveMtd", "MTD transactions"),
+          makeEtaUnit(
+            "liveCurrentInventory",
+            "liveCurrentInventory",
+            "Current inventory"
+          ),
+          makeEtaUnit(
+            "liveInventoryInsights",
+            "liveInventoryInsights",
+            "Inventory insights"
+          ),
           makeEtaUnit("liveBi", "liveBi", "Live BI")
         );
       }
@@ -1697,6 +1750,143 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     });
   };
 
+  const runLiveDataRefreshApis = async (params: {
+    step: number;
+    country: string;
+    marketplaceId: string;
+    year: number;
+    monthNum: number;
+    alreadyHitApiKeys: Set<string>;
+  }) => {
+    const monthName = fullMonthNames[params.monthNum - 1];
+    const monthSlug = monthName.toLowerCase();
+    const dashboardCountry = toDashboardCountryKey(params.country);
+
+    const runIfNotHit = async <T,>(
+      key: string,
+      fn: () => Promise<T>
+    ): Promise<T | null> => {
+      if (params.alreadyHitApiKeys.has(key)) return null;
+
+      const result = await fn();
+      params.alreadyHitApiKeys.add(key);
+      return result;
+    };
+
+    setStep(params.step, "Live Data", 0, "Preparing live dashboard data...");
+
+    setStep(params.step, "Live Data", 15, "Fetching Amazon MTD transactions...");
+    await runEtaUnit("liveMtd", () =>
+      runIfNotHit(
+        liveDataApiKey("amazon_mtd_transactions", dashboardCountry),
+        () =>
+          fetchMtdTransactions({
+            marketplace_id: params.marketplaceId,
+            country: dashboardCountry,
+            store_in_db: true,
+          })
+      )
+    );
+
+    setStep(params.step, "Live Data", 40, "Refreshing current inventory data...");
+    try {
+      await runEtaUnit("liveCurrentInventory", async () => {
+        await runIfNotHit(
+          liveDataApiKey(
+            "amazon_inventory_aged",
+            dashboardCountry,
+            params.marketplaceId
+          ),
+          () => syncInventoryAgedOnce(params.country)
+        );
+
+        await runIfNotHit(
+          liveDataApiKey(
+            "amazon_inventory_awd",
+            dashboardCountry,
+            params.marketplaceId
+          ),
+          () =>
+            syncDashboardAwdInventory({
+              marketplace_id: params.marketplaceId,
+            })
+        );
+
+        await runIfNotHit(
+          liveDataApiKey(
+            "current_inventory",
+            dashboardCountry,
+            monthSlug,
+            params.year
+          ),
+          () =>
+            refreshDashboardCurrentInventory({
+              country: dashboardCountry,
+              month: monthSlug,
+              year: params.year,
+            })
+        );
+      });
+    } catch (e) {
+      console.error("Live Data current inventory refresh failed", e);
+    }
+
+    setStep(params.step, "Live Data", 60, "Fetching inventory insight data...");
+    try {
+      await runEtaUnit("liveInventoryInsights", async () => {
+        await Promise.all([
+          runIfNotHit(
+            liveDataApiKey(
+              "inventory_current",
+              dashboardCountry,
+              monthSlug,
+              params.year
+            ),
+            () =>
+              fetchDashboardInventoryCurrent({
+                country: dashboardCountry,
+                month: monthSlug,
+                year: params.year,
+              })
+          ),
+          runIfNotHit(
+            liveDataApiKey(
+              "inventory_current_age_summary",
+              dashboardCountry,
+              monthSlug,
+              params.year
+            ),
+            () =>
+              fetchDashboardInventoryAgeSummary({
+                country: dashboardCountry,
+                month: monthSlug,
+                year: params.year,
+              })
+          ),
+        ]);
+      });
+    } catch (e) {
+      console.error("Live Data inventory insight fetch failed", e);
+    }
+
+    setStep(params.step, "Live Data", 80, "Fetching live MTD BI data...");
+    await runEtaUnit("liveBi", () =>
+      runIfNotHit(
+        liveDataApiKey("live_mtd_bi", dashboardCountry, monthSlug, params.year),
+        () =>
+          fetchLiveMtdBi({
+            country: dashboardCountry,
+            month: monthName,
+            year: params.year,
+            dataOnlyRefresh: true,
+          })
+      )
+    );
+
+    setStep(params.step, "Live Data", 100, "Live dashboard data ready");
+    markStepComplete(params.step);
+  };
+
 
 
   const wrap = async (fn: () => Promise<void>) => {
@@ -1739,6 +1929,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         setSelYear(String(y));
         setSelMonth(two(mNum));
       }
+
+      const alreadyHitApiKeys = new Set<string>();
+      const dashboardCountry = toDashboardCountryKey(countryUsed);
 
       // Reset progress
       setCurrentStep(1);
@@ -1819,20 +2012,39 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
       // 1) Hit aged-surcharge FIRST
-      await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, () =>
-        syncInventoryAgedSurchargeOnce({
+      await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
+        await syncInventoryAgedSurchargeOnce({
           country: countryUsed,
           marketplace_id: marketplaceIdUsed,
           month: mNum,
           year: y,
           store_in_db: true,
-        })
-      );
+        });
+
+        alreadyHitApiKeys.add(
+          liveDataApiKey(
+            "amazon_inventory_aged_surcharge",
+            dashboardCountry,
+            marketplaceIdUsed,
+            y,
+            two(mNum)
+          )
+        );
+      });
 
       setStep(5, "Inventory", 35, "Syncing aged inventory data...");
 
       // 2) Existing aged inventory API
-      await runEtaUnit("inventoryAged", () => syncInventoryAgedOnce(countryUsed));
+      await runEtaUnit("inventoryAged", async () => {
+        await syncInventoryAgedOnce(countryUsed);
+        alreadyHitApiKeys.add(
+          liveDataApiKey(
+            "amazon_inventory_aged",
+            dashboardCountry,
+            marketplaceIdUsed
+          )
+        );
+      });
 
       setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
 
@@ -1860,7 +2072,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         })
       );
       await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-        fetchMonthlyFinanceAndAds({
+        fetchMonthlyTransactionsExcel({
           year: y,
           month: mNum,
           marketplace_id: marketplaceIdUsed,
@@ -1872,30 +2084,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       markStepComplete(6);
 
       // Step 7: Live Data
-      setStep(7, "Live Data", 0, "Fetching MTD transactions...");
-
-      await runEtaUnit("liveMtd", () =>
-        fetchMtdTransactions({
-          marketplace_id: marketplaceIdUsed,
-          country: countryUsed,
-          store_in_db: true,
-        })
-      );
-
-      setStep(7, "Live Data", 50, "Fetching live MTD BI data...");
-
-      const monthName = fullMonthNames[mNum - 1]; // convert 3 → March
-
-      await runEtaUnit("liveBi", () =>
-        fetchLiveMtdBi({
-          country: countryUsed,
-          month: monthName,
-          year: y,
-        })
-      );
-
-      setStep(7, "Live Data", 100, "Live BI data ready");
-      markStepComplete(7);
+      await runLiveDataRefreshApis({
+        step: 7,
+        country: countryUsed,
+        marketplaceId: marketplaceIdUsed,
+        year: y,
+        monthNum: mNum,
+        alreadyHitApiKeys,
+      });
 
       // Step 8: Inventory Forecast + Purchase Order
       const latestMonthSlug = fullMonthNames[mNum - 1].toLowerCase();
@@ -1979,6 +2175,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         return;
       }
 
+      const alreadyHitApiKeys = new Set<string>();
+      const dashboardCountry = toDashboardCountryKey(countryUsed);
+
+      
+
       // Reset progress
       setCurrentStep(1);
       setCompletedSteps(new Set());
@@ -1987,7 +2188,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         buildFetchEtaUnits({
           months,
           surchargeMonths: selectedPeriod === 24 ? months.slice(-12) : months,
-          includeFinalize: true,
+          includeLiveData: true,
           includeForecast: !!(selectedPeriod && selectedPeriod >= 6),
         })
       );
@@ -2079,21 +2280,40 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${surchargeMonths.length})...`
           );
 
-          await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, () =>
-            syncInventoryAgedSurchargeOnce({
+          await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
+            await syncInventoryAgedSurchargeOnce({
               country: countryUsed,
               marketplace_id: marketplaceIdUsed,
               month: mNum,
               year: y,
               store_in_db: true,
-            })
-          );
+            });
+
+            alreadyHitApiKeys.add(
+              liveDataApiKey(
+                "amazon_inventory_aged_surcharge",
+                dashboardCountry,
+                marketplaceIdUsed,
+                y,
+                two(mNum)
+              )
+            );
+          });
         }
 
         setStep(5, "Inventory", 35, "Syncing aged inventory data...");
 
         // 2) Existing aged inventory API
-        await runEtaUnit("inventoryAged", () => syncInventoryAgedOnce(countryUsed));
+        await runEtaUnit("inventoryAged", async () => {
+          await syncInventoryAgedOnce(countryUsed);
+          alreadyHitApiKeys.add(
+            liveDataApiKey(
+              "amazon_inventory_aged",
+              dashboardCountry,
+              marketplaceIdUsed
+            )
+          );
+        });
 
         setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
 
@@ -2139,7 +2359,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
         try {
           await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-            fetchMonthlyFinanceAndAds({
+            fetchMonthlyTransactionsExcel({
               year: y,
               month: mNum,
               marketplace_id: marketplaceIdUsed,
@@ -2161,17 +2381,20 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       }
       markStepComplete(6);
 
+      const last = months[months.length - 1];
+
       // Step 7: Live Data
-      setStep(7, "Live Data", 100, "Finalizing data sync...");
-      await runEtaUnit(
-        "finalize",
-        () => new Promise<void>((resolve) => setTimeout(resolve, 500))
-      );
-      markStepComplete(7);
+      await runLiveDataRefreshApis({
+        step: 7,
+        country: countryUsed,
+        marketplaceId: marketplaceIdUsed,
+        year: last.y,
+        monthNum: last.mNum,
+        alreadyHitApiKeys,
+      });
 
       // Step 8: Inventory Forecast + Purchase Order
 
-      const last = months[months.length - 1];
       const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
 
       let redirectMonthSlug = latestMonthSlug;
@@ -2250,7 +2473,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       for (let i = 0; i < months.length; i++) {
         const { y, mNum } = months[i];
 
-        await fetchMonthlyFinanceAndAds({
+        await fetchMonthlyTransactionsExcel({
           year: y,
           month: mNum,
           marketplace_id: marketplaceIdUsed,

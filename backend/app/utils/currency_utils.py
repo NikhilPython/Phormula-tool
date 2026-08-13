@@ -67,11 +67,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "other_adjustment", "profit", "unit_wise_profitability",
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
-        "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
+        "advertising_total", "advertising_total_final", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
-        "shipping_charges", "shipment_fees", "cm2_profit",
+        "shipping_charges", "shipment_fees", "cm2_profit", "total_cm2_profit",
         "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
@@ -85,11 +85,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "promotional_rebates", "cost_of_unit_sold", "selling_fees", "fba_fees",
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "other_adjustment", "profit", "visible_ads", "dealsvouchar_ads",
-        "advertising_total", "lost_total", "platformfeenew", "platform_management_fees",
+        "advertising_total", "advertising_total_final", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
-        "shipping_charges", "cm2_profit", "debt_payment", "disbursement",
+        "shipping_charges", "cm2_profit", "total_cm2_profit", "debt_payment", "disbursement",
         "rembursement_fee"
     ]
 
@@ -169,6 +169,12 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 if isinstance(column_data, pd.DataFrame):
                     column_data = column_data.bfill(axis=1).iloc[:, 0]
                 df[col] = pd.to_numeric(column_data, errors="coerce").fillna(0)
+
+            df["advertising_total_final"] = np.where(
+                df["advertising_total_final"] != 0,
+                df["advertising_total_final"],
+                df["advertising_total"],
+            )
 
             if f"skuwisemonthly_{user_id}_uk_" in table_name:
                 table_month, table_year = _extract_month_year_from_table(table_name)
@@ -273,8 +279,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_quantity = float(total_row["quantity"] or 0)
     total_profit_value = float(total_row["profit"] or 0)
     total_ads = float(total_row["advertising_total"] or 0)
+    if not float(total_row.get("advertising_total_final", 0) or 0):
+        total_row["advertising_total_final"] = total_ads
     total_cm2 = float(total_row["cm2_profit"] or 0)
     total_reimbursement = float(total_row["rembursement_fee"] or 0)
+    total_row["total_cm2_profit"] = total_cm2
 
     total_row["asp"] = total_net_sales / total_quantity if total_quantity else 0
     total_row["unit_wise_profitability"] = total_profit_value / total_quantity if total_quantity else 0
@@ -334,6 +343,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             visible_ads DOUBLE PRECISION,
             dealsvouchar_ads DOUBLE PRECISION,
             advertising_total DOUBLE PRECISION,
+            advertising_total_final DOUBLE PRECISION,
             lost_total DOUBLE PRECISION,
             platformfeenew DOUBLE PRECISION,
             platform_management_fees DOUBLE PRECISION,
@@ -348,6 +358,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             shipping_charges DOUBLE PRECISION,
             shipment_fees DOUBLE PRECISION,
             cm2_profit DOUBLE PRECISION,
+            total_cm2_profit DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,
             acos DOUBLE PRECISION,
             debt_payment DOUBLE PRECISION,

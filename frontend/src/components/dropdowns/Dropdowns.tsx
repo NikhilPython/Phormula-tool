@@ -65,6 +65,7 @@ type Summary = {
   total_expense: number;
   cm2_profit: number;
   cm2_profit_total?: number;
+  total_cm2_profit?: number;
   cm2_margins?: number;
   cm2_profit_percentage?: number;
   cm2_profit_per?: number;
@@ -98,6 +99,7 @@ type UploadRow = {
   profit?: number;
   cm2_profit: number;
   cm2_profit_total?: number;
+  total_cm2_profit?: number;
   cm2_margins?: number;
   cm2_profit_percentage?: number;
   cm2_profit_per?: number;
@@ -1442,13 +1444,18 @@ const getAdvertisingBaseValue = (row: any, hasCm2Columns = true) => {
   return childTotal !== 0 ? childTotal : directValue;
 };
 
-const getCm2ProfitValue = (row: any) =>
-  pickFirstNonZeroNum(
-    row?.cm2_profit_total,
-    row?.total_cm2_profit,
-    row?.cm2_profit,
-    row?.profit
-  );
+const getProductCm2ProfitValue = (row: Partial<TableRow> | null | undefined) =>
+  toNum(row?.cm2_profit);
+
+const getTotalCm2ProfitValue = (row: Partial<TableRow> | null | undefined) => {
+  const totalCm2Profit = row?.total_cm2_profit as unknown;
+
+  return totalCm2Profit === null ||
+    totalCm2Profit === undefined ||
+    totalCm2Profit === ""
+    ? toNum(row?.cm2_profit)
+    : toNum(totalCm2Profit);
+};
 
 const getCm2MarginValue = (row: any, netSales: any, cm2Profit: any) =>
   pickFirstNonZeroNum(
@@ -7356,7 +7363,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const netSales = toNum(row?.net_sales);
     const advertisingTotal = Math.abs(getAdvertisingBaseValue(row, hasCm2Columns));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row, hasCm2Columns));
-    const cm2ProfitTotal = getCm2ProfitValue(row);
+    const cm2ProfitTotal = getTotalCm2ProfitValue(row);
     const cm2Margins = getCm2MarginValue(row, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(row, netSales, cm2ProfitTotal);
 
@@ -7380,6 +7387,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       cm2_profit: cm2ProfitTotal,
       cm2_profit_total: cm2ProfitTotal,
+      total_cm2_profit: cm2ProfitTotal,
 
       cm2_margins: cm2Margins,
       cm2_profit_percentage: cm2Margins,
@@ -7418,7 +7426,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const cm1Profit = toNum(row?.profit);
 
-    const cm2ProfitTotal = getCm2ProfitValue(row);
+    const cm2ProfitTotal = getTotalCm2ProfitValue(row);
     const cm2Margins = getCm2MarginValue(row, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(row, netSales, cm2ProfitTotal);
 
@@ -7459,6 +7467,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       // CM2 Profit
       cm2_profit: cm2ProfitTotal,
       cm2_profit_total: cm2ProfitTotal,
+      total_cm2_profit: cm2ProfitTotal,
 
       cm2_margins: cm2Margins,
       cm2_profit_percentage: cm2Margins,
@@ -9389,7 +9398,8 @@ lines.push(
       const netSales = toNum(row.net_sales);
       const advertisingTotal = Math.abs(getAdvertisingBaseValue(row, hasCm2Columns));
       const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(row, hasCm2Columns));
-      const cm2Profit = getCm2ProfitValue(row);
+      const cm2Profit = getProductCm2ProfitValue(row);
+      const totalCm2Profit = getTotalCm2ProfitValue(row);
       const cm2Margin = getCm2MarginValue(row, netSales, cm2Profit);
       const cm2ProfitPer = getCm2PerValue(row, netSales, cm2Profit);
 
@@ -9444,7 +9454,8 @@ lines.push(
         profit_percentage: toNum(row.profit_percentage),
         unit_wise_profitability: toNum(row.unit_wise_profitability),
         cm2_profit: cm2Profit,
-        cm2_profit_total: cm2Profit,
+        cm2_profit_total: toNum(row.cm2_profit_total),
+        total_cm2_profit: totalCm2Profit,
 
         cm2_profit_per: cm2ProfitPer,
 
@@ -9532,7 +9543,7 @@ lines.push(
     const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow, hasCm2Columns));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow, hasCm2Columns));
 
-    const cm2 = getCm2ProfitValue(totalRow);
+    const cm2 = getTotalCm2ProfitValue(totalRow);
 
     const promotionalRebates =
       toNum((totalRow as any)?.promotional_rebates) ||
@@ -9554,6 +9565,7 @@ lines.push(
 
       cm2_profit: cm2,
       cm2_profit_total: cm2,
+      total_cm2_profit: cm2,
       cm2_margins: cm2Margin,
       cm2_profit_percentage: cm2Margin,
       promotional_rebates: promotionalRebates,
@@ -9598,7 +9610,7 @@ lines.push(
 
     const cm1Profit = toNum((totalRow as any)?.profit);
 
-    const cm2ProfitTotal = getCm2ProfitValue(totalRow);
+    const cm2ProfitTotal = getTotalCm2ProfitValue(totalRow);
 
     const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
     const promotionalRebatesPercentage =
@@ -9642,6 +9654,7 @@ lines.push(
         // CM2 Profit
         cm2_profit: cm2ProfitTotal,
         cm2_profit_total: cm2ProfitTotal,
+        total_cm2_profit: cm2ProfitTotal,
         cm2_margins: cm2Margins,
         cm2_profit_percentage: cm2Margins,
         cm2_profit_per: cm2ProfitPer,
@@ -9678,7 +9691,7 @@ lines.push(
     const netSales = toNum((totalRow as any)?.net_sales);
     const advertisingTotal = Math.abs(getAdvertisingBaseValue(totalRow, hasCm2Columns));
     const advertisingTotalFinal = Math.abs(getAdvertisingTotalValue(totalRow, hasCm2Columns));
-    const cm2ProfitTotal = getCm2ProfitValue(totalRow);
+    const cm2ProfitTotal = getTotalCm2ProfitValue(totalRow);
     const cm2Margins = getCm2MarginValue(totalRow, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(totalRow, netSales, cm2ProfitTotal);
     const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
@@ -9715,6 +9728,7 @@ lines.push(
         // CM2 Profit
         cm2_profit: cm2ProfitTotal,
         cm2_profit_total: cm2ProfitTotal,
+        total_cm2_profit: cm2ProfitTotal,
 
         cm2_margins: cm2Margins,
         cm2_profit_percentage: cm2Margins,

@@ -115,6 +115,7 @@ export type TableRow = {
   display_spend?: number;
   brand_spend?: number;
   cm2_profit_total?: number;
+  total_cm2_profit?: number;
   cm2_profit_per?: number;
   cm2_profit_per_unit?: number;
   debt_payment?: number;
@@ -143,7 +144,7 @@ export type TableRow = {
   misc_transaction?: number;
   other_transaction_fees?: number;
   platform_fee?: number; // backend sometimes sends this
-  other_transactions?: number; // derived mapping
+  other_transactions?: number; // backend alias / display key
   other_adjustment?: number;
 
   profit?: number;
@@ -212,6 +213,7 @@ type Totals = {
   reimbursement_vs_sales: number;
   cm2_profit: number;
   cm2_profit_total: number;
+  total_cm2_profit: number;
   cm2_margins: number;
   cm2_profit_per: number;
   acos: number;
@@ -420,9 +422,9 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Other / Misc
       misc_transaction: toNumber(row.misc_transaction),
-      other_transaction_fees: toNumber(row.other_transaction_fees),
+      other_transaction_fees: toNumber(row.other_transaction_fees ?? row.other_transactions),
 
-      other_transactions: toNumber(row.other_transaction_fees),
+      other_transactions: toNumber(row.other_transactions ?? row.other_transaction_fees),
 
       // CM1
       profit: toNumber(row.profit),
@@ -452,7 +454,7 @@ function normalizeRows(data: any[]): TableRow[] {
 
       advertising_total: toNumber(row.advertising_total),
       advertising_total_final: toNumber(
-        row.advertising_total_final ?? row.advertising_total
+        nonZeroOrNull(row.advertising_total_final) ?? row.advertising_total
       ),
       advertising_fees: toNumber(row.advertising_fees),
       total_ads: toNumber(row.total_ads),
@@ -469,6 +471,7 @@ function normalizeRows(data: any[]): TableRow[] {
       acos: toNumber(row.acos),
 
       cm2_profit: toNumber(row.cm2_profit),
+      total_cm2_profit: toNumber(row.total_cm2_profit ?? row.cm2_profit),
       cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
       cm2_profit_per: toNumber(
@@ -555,7 +558,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     disbursement: toNumber(totalRow.disbursement),
     // final card / TACoS value: 21,138.82
     advertising_total_final: toNumber(
-      totalRow.advertising_total_final ?? totalRow.advertising_total
+      nonZeroOrNull(totalRow.advertising_total_final) ?? totalRow.advertising_total
     ),
 
     visible_ads: toNumber(totalRow.visible_ads),
@@ -565,7 +568,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
       totalRow.dealvouchars_ads ??
       totalRow.dealsvoucher_ads
     ),
-    other_transactions: toNumber(totalRow.platform_fee),
+    other_transactions: toNumber(totalRow.other_transactions ?? totalRow.other_transaction_fees),
     platform_fee: platformFees,
 
     inventory_storage_fees: inventoryStorageFees,
@@ -581,6 +584,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     shipment_charges: toNumber(totalRow.shipment_charges ?? totalRow.shipment_fees),
     reimbursement_vs_sales: toNumber(totalRow.reimbursement_vs_sales),
     cm2_profit: toNumber(totalRow.cm2_profit),
+    total_cm2_profit: toNumber(totalRow.total_cm2_profit ?? totalRow.cm2_profit),
     cm2_profit_total: toNumber(totalRow.cm2_profit_total ?? totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     cm2_profit_per: cm2ProfitPerValue,
@@ -731,20 +735,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return sales !== 0 ? (ads / sales) * 100 : 0;
   };
 
-  const getOtherTransactionsTotal = useCallback(
+  const getBackendOtherTransactionsValue = useCallback(
     (row: Partial<TableRow>) => {
-      const fallback = toNumber((row as any).other_transactions ?? (row as any).other_transaction_fees);
-
-      if (!isUsCountry) return fallback;
-
-      const computed =
-        toNumber((row as any).net_credits) +
-        toNumber((row as any).misc_transaction) -
-        Math.abs(toNumber((row as any).net_taxes));
-
-      return computed !== 0 || fallback === 0 ? computed : fallback;
+      return toNumber((row as any).other_transaction_fees ?? (row as any).other_transactions);
     },
-    [isUsCountry]
+    []
   );
 
   const totals = useMemo(() => {
@@ -780,7 +775,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const requestedAdSpend =
       nonZeroOrNull(totals.advertising_fees) ??
       nonZeroOrNull(totals.ads_spend) ??
-      nonZeroOrNull(totals.total_ads);
+      nonZeroOrNull(totals.total_ads) ??
+      nonZeroOrNull(totals.advertising_total_final) ??
+      nonZeroOrNull(totals.advertising_total);
 
     if (requestedAdSpend !== null) return requestedAdSpend;
 
@@ -796,6 +793,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     hasCm2Data,
     rawTotalRow,
     totals.advertising_total,
+    totals.advertising_total_final,
     totals.advertising_fees,
     totals.ads_spend,
     totals.total_ads,
@@ -871,20 +869,32 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ];
   }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
-  const computeAspFrom = (row: Partial<TableRow>) => {
+  const computeAspFrom = useCallback((row: Partial<TableRow>) => {
     const sales = toNumber((row as any).net_sales);
     const units = toNumber((row as any).net_units_sold);
     return units > 0 ? sales / units : 0;
-  };
+  }, []);
+
+  const resolveAspForRow = useCallback(
+    (row: Partial<TableRow>, isTotalRow = false) => {
+      if (isGlobalPage && isTotalRow) {
+        const backendTotalAsp = getOptionalNumber(rawTotalRow, ["asp", "ASP"]);
+        if (backendTotalAsp !== null) return backendTotalAsp;
+      }
+
+      return computeAspFrom(row);
+    },
+    [computeAspFrom, isGlobalPage, rawTotalRow]
+  );
 
   const getSortableValue = useCallback((row: TableRow, key: string) => {
     if (key === "net_units_sold") return toNumber(row.net_units_sold);
     if (key === "net_sales") return toNumber(row.net_sales);
     if (key === "profit") return toNumber(row.profit);
-    if (key === "other_transactions") return getOtherTransactionsTotal(row);
+    if (key === "other_transactions") return getBackendOtherTransactionsValue(row);
 
     return toNumber((row as any)[key]);
-  }, [getOtherTransactionsTotal]);
+  }, [getBackendOtherTransactionsValue]);
 
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -914,7 +924,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) {
       totalRow.product_name = "Total";
       totalRow.sku = "Total";
-      totalRow.asp = computeAspFrom(totalRow);
+      totalRow.asp = resolveAspForRow(totalRow, true);
     }
 
     // Expanded: show all rows, no Others row
@@ -932,7 +942,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : null;
 
     if (othersRow) {
-      othersRow.asp = computeAspFrom(othersRow);
+      othersRow.asp = resolveAspForRow(othersRow);
     }
 
     const outputRows: TableRow[] = [...topRows];
@@ -941,7 +951,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue, showAllRows]);
+  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow]);
 
   const excelRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -971,11 +981,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) {
       totalRow.product_name = "Total";
       totalRow.sku = "Total";
-      totalRow.asp = computeAspFrom(totalRow);
+      totalRow.asp = resolveAspForRow(totalRow, true);
     }
 
     return totalRow ? [...sorted, totalRow] : sorted;
-  }, [tableData, tableSort, getSortableValue]);
+  }, [tableData, tableSort, getSortableValue, resolveAspForRow]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -1566,7 +1576,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         { key: "net_taxes", label: "Net Taxes", align: "center" as const },
         { key: "net_credits", label: "Net Credits", align: "center" as const },
-        { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
         { key: "other_transactions", label: "Other Transactions", align: "center" as const },
 
         { key: "unit_wise_profitability", label: "CM1 Profit Per Unit", align: "center" as const },
@@ -1886,7 +1895,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           }
 
           if (key === "other_transactions") {
-            value = getOtherTransactionsTotal(row);
+            value = getBackendOtherTransactionsValue(row);
           }
 
           if (key === "quantity") {
@@ -1932,11 +1941,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
             value = getCm2Percentage(row);
           }
 
-          // ✅ ASP always computed properly
+          // Keep Global total ASP aligned with the backend summary value.
           if (key === "asp") {
-            const sales = toNumber((row as any).net_sales);
-            const units = toNumber((row as any).net_units_sold);
-            value = units > 0 ? sales / units : 0;
+            const isTotalAspRow =
+              String(getDisplayProductNameFromRow(row)).trim().toLowerCase() === "total" ||
+              String((row as any)?.sku || "").trim().toLowerCase() === "total";
+
+            value = resolveAspForRow(row, isTotalAspRow);
           }
 
           if (typeof value === "number") {
@@ -2053,7 +2064,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {
             product_name: "CM2 Profit",
-            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
           },
           spacerSummaryRow(),
           {
@@ -2131,7 +2142,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {
             product_name: "CM2 Profit/Loss",
-            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
           },
           {
             product_name: "CM2 Margins",
@@ -2208,7 +2219,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       getDisplayProductNameFromRow,
       buildExcelColumnsFromUI,
       getSignForCol,
-      getOtherTransactionsTotal,
+      getBackendOtherTransactionsValue,
+      resolveAspForRow,
     ]
   );
 
@@ -2591,7 +2603,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         type: "fixed" as const,
         id: "cm2_profit",
         label: "CM2 Profit",
-        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+        endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
       },
       {
         type: "fixed" as const,
@@ -2726,7 +2738,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         type: "fixed" as const,
         id: "cm2_profit",
         label: "CM2 Profit/Loss",
-        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+        endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
       },
       {
         type: "fixed" as const,
@@ -2882,7 +2894,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "product_spend") return toNumber((row as any).product_spend);
                   if (colKey === "display_spend") return toNumber((row as any).display_spend);
                   if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
-                  if (colKey === "other_transactions") return getOtherTransactionsTotal(row);
+                  if (colKey === "other_transactions") return getBackendOtherTransactionsValue(row);
                   return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
@@ -3028,7 +3040,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   }
 
                   if (colKey === "other_transactions") {
-                    return formatValue(getOtherTransactionsTotal(row), colKey);
+                    return formatValue(getBackendOtherTransactionsValue(row), colKey);
                   }
 
                   if (colKey === "promotional_rebates_percentage") {
