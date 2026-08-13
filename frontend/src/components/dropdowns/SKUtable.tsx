@@ -454,7 +454,7 @@ function normalizeRows(data: any[]): TableRow[] {
 
       advertising_total: toNumber(row.advertising_total),
       advertising_total_final: toNumber(
-        row.advertising_total_final ?? row.advertising_total
+        nonZeroOrNull(row.advertising_total_final) ?? row.advertising_total
       ),
       advertising_fees: toNumber(row.advertising_fees),
       total_ads: toNumber(row.total_ads),
@@ -558,7 +558,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     disbursement: toNumber(totalRow.disbursement),
     // final card / TACoS value: 21,138.82
     advertising_total_final: toNumber(
-      totalRow.advertising_total_final ?? totalRow.advertising_total
+      nonZeroOrNull(totalRow.advertising_total_final) ?? totalRow.advertising_total
     ),
 
     visible_ads: toNumber(totalRow.visible_ads),
@@ -784,7 +784,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const requestedAdSpend =
       nonZeroOrNull(totals.advertising_fees) ??
       nonZeroOrNull(totals.ads_spend) ??
-      nonZeroOrNull(totals.total_ads);
+      nonZeroOrNull(totals.total_ads) ??
+      nonZeroOrNull(totals.advertising_total_final) ??
+      nonZeroOrNull(totals.advertising_total);
 
     if (requestedAdSpend !== null) return requestedAdSpend;
 
@@ -800,6 +802,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     hasCm2Data,
     rawTotalRow,
     totals.advertising_total,
+    totals.advertising_total_final,
     totals.advertising_fees,
     totals.ads_spend,
     totals.total_ads,
