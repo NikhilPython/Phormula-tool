@@ -49,6 +49,15 @@ type AdsEtaPlan = {
     groups: AdsEtaGroup[];
 };
 
+type AdsSyncPeriod = {
+    id: "currentMtd" | "previousMonth";
+    label: string;
+    start_date: string;
+    end_date: string;
+    month: number;
+    year: number;
+};
+
 type AdsEtaHistory = Record<
     string,
     {
@@ -210,6 +219,42 @@ const getIstMonthStartISO = () => {
     return `${y}-${String(m).padStart(2, "0")}-01`;
 };
 
+const formatISODateParts = (year: number, month: number, day: number) =>
+    `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+const getAdsSyncPeriodsIST = (): AdsSyncPeriod[] => {
+    const now = new Date();
+    const ist = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+
+    const currentYear = ist.getFullYear();
+    const currentMonth = ist.getMonth() + 1;
+    const currentDay = ist.getDate();
+
+    const previousMonthDate = new Date(currentYear, currentMonth - 2, 1);
+    const previousYear = previousMonthDate.getFullYear();
+    const previousMonth = previousMonthDate.getMonth() + 1;
+    const previousLastDay = new Date(previousYear, previousMonth, 0).getDate();
+
+    return [
+        {
+            id: "currentMtd",
+            label: "Current MTD",
+            start_date: formatISODateParts(currentYear, currentMonth, 1),
+            end_date: formatISODateParts(currentYear, currentMonth, currentDay),
+            month: currentMonth,
+            year: currentYear,
+        },
+        {
+            id: "previousMonth",
+            label: "Previous month",
+            start_date: formatISODateParts(previousYear, previousMonth, 1),
+            end_date: formatISODateParts(previousYear, previousMonth, previousLastDay),
+            month: previousMonth,
+            year: previousYear,
+        },
+    ];
+};
+
 const decodeJwtUserId = (jwt: string): string | null => {
     try {
         const payloadPart = jwt.split(".")[1];
@@ -363,69 +408,98 @@ async function seedAdsReportsOnConnect(
     const runEtaUnit =
         hooks?.runEtaUnit ?? (async <T,>(_unitId: string, fn: () => Promise<T>) => fn());
 
-    const start_date = getIstMonthStartISO();
-    const end_date = getIstTodayISO();
+    const syncPeriods = getAdsSyncPeriodsIST();
+    const previousPeriod = syncPeriods.find((period) => period.id === "previousMonth");
+    const previousPeriodPayload = previousPeriod
+        ? {
+            previous_start_date: previousPeriod.start_date,
+            previous_end_date: previousPeriod.end_date,
+            previous_month: previousPeriod.month,
+            previous_year: previousPeriod.year,
+        }
+        : {};
 
     onActiveSteps?.([1, 2, 3]);
-    onStep?.(1, "Amazon Ads reports", 20, "Starting Sponsored Product, Display, and Brand sync...");
+    onStep?.(1, "Amazon Ads reports", 20, "Starting current MTD and previous month ads sync...");
     const spSyncTask = runEtaUnit("spReport", () =>
-        postJson(`/api/ads/manager/sp_advertised_product_report`, {
-            start_date,
-            end_date,
-            time_unit: "DAILY",
-            countries: [country],
-            return_excel: false,
-        })
+        Promise.all(syncPeriods.map((period) =>
+            postJson(`/api/ads/manager/sp_advertised_product_report`, {
+                start_date: period.start_date,
+                end_date: period.end_date,
+                time_unit: "DAILY",
+                countries: [country],
+                return_excel: false,
+                period: period.id,
+                ...previousPeriodPayload,
+            })
+        ))
     ).then(() => {
         onCompleteStep?.(1);
     });
 
     const sdSyncTask = runEtaUnit("sdReport", () =>
-        postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
-            start_date,
-            end_date,
-            time_unit: "DAILY",
-            countries: [country],
-            max_wait_seconds: 1800,
-            poll_every_seconds: 10,
-        })
+        Promise.all(syncPeriods.map((period) =>
+            postJson(`/api/ads/manager/sd_advertised_product_report/sync`, {
+                start_date: period.start_date,
+                end_date: period.end_date,
+                time_unit: "DAILY",
+                countries: [country],
+                max_wait_seconds: 1800,
+                poll_every_seconds: 10,
+                period: period.id,
+                ...previousPeriodPayload,
+            })
+        ))
     ).then(() => {
         onCompleteStep?.(2);
     });
 
     const sbSyncTask = runEtaUnit("sbReport", () =>
-        postJson(`/api/ads/manager/sb_keyword_report`, {
-            start_date,
-            end_date,
-            time_unit: "SUMMARY",
-            countries: [country],
-            return_excel: false,
-        })
+        Promise.all(syncPeriods.map((period) =>
+            postJson(`/api/ads/manager/sb_keyword_report`, {
+                start_date: period.start_date,
+                end_date: period.end_date,
+                time_unit: "DAILY",
+                countries: [country],
+                return_excel: false,
+                period: period.id,
+                ...previousPeriodPayload,
+            })
+        ))
     );
 
     await Promise.all([spSyncTask, sdSyncTask, sbSyncTask]);
 
     onActiveSteps?.([3]);
-    onStep?.(3, "Ads summary", 75, "Building monthly and daily ads tables...");
-
-    const { month, year } = getCurrentMonthYearIST();
-
-    const adsDbPayload = {
-        month: monthToNumber(month),
-        year,
-        country,
-        include: ["SP", "SD", "SB"],
-    };
+    onStep?.(3, "Ads summary", 75, "Building current and previous month ads tables...");
 
     await runEtaUnit("monthlyAdsDb", () =>
-        postJson(`/api/ads/monthly_sp_sd_to_db`, adsDbPayload)
+        Promise.all(syncPeriods.map((period) =>
+            postJson(`/api/ads/monthly_sp_sd_to_db`, {
+                month: period.month,
+                year: period.year,
+                country,
+                include: ["SP", "SD", "SB"],
+                period: period.id,
+                ...previousPeriodPayload,
+            })
+        ))
     );
 
     await runEtaUnit("dailyAdsDb", () =>
-        postJson(`/api/ads/daily_sp_sd_sb_to_db`, adsDbPayload)
+        Promise.all(syncPeriods.map((period) =>
+            postJson(`/api/ads/daily_sp_sd_sb_to_db`, {
+                month: period.month,
+                year: period.year,
+                country,
+                include: ["SP", "SD", "SB"],
+                period: period.id,
+                ...previousPeriodPayload,
+            })
+        ))
     );
 
-    onStep?.(3, "Sponsored Brand", 100, "Sponsored Brand and monthly sync complete");
+    onStep?.(3, "Sponsored Brand", 100, "Current and previous ads sync complete");
     onCompleteStep?.(3);
 }
 
