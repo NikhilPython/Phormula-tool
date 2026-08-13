@@ -459,7 +459,7 @@ async function seedAdsReportsOnConnect(
             postJson(`/api/ads/manager/sb_keyword_report`, {
                 start_date: period.start_date,
                 end_date: period.end_date,
-                time_unit: "SUMMARY",
+                time_unit: "DAILY",
                 countries: [country],
                 return_excel: false,
                 period: period.id,
