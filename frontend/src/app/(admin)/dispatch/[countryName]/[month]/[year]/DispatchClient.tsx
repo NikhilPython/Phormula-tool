@@ -110,6 +110,13 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   usa: 'ATVPDKIKX0DER',
 }
 
+const AWD_SUPPORTED_COUNTRIES = new Set(['us', 'usa'])
+
+const normalizeCountryKey = (country: string) => country.trim().toLowerCase()
+
+const isAwdSupportedCountry = (country: string) =>
+  AWD_SUPPORTED_COUNTRIES.has(normalizeCountryKey(country))
+
 const monthNames = [
   'January',
   'February',
@@ -515,7 +522,9 @@ export default function DispatchPage({
     onShowAllRowsChange ?? setLocalShowAllDispatchRows
 
   async function fetchAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
-    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!isAwdSupportedCountry(countryName)) return []
+
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[normalizeCountryKey(countryName)]
     if (!marketplaceId) return []
 
     const response = await fetch(
@@ -636,7 +645,9 @@ export default function DispatchPage({
   }
 
   async function saveAwdDispatchInputs(token: string, rows: AwdDispatchInputRow[]) {
-    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryName.trim().toLowerCase()]
+    if (!isAwdSupportedCountry(countryName)) return
+
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[normalizeCountryKey(countryName)]
     if (!marketplaceId) return
 
     const response = await fetch(
@@ -710,21 +721,26 @@ export default function DispatchPage({
   }
 
   async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
+    const shouldFetchAwd = isAwdSupportedCountry(countryName)
     let [rows, fbaRows] = await Promise.all([
-      fetchAwdDispatchInputs(token),
+      shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
       fetchFbaDispatchInputs(token),
     ])
 
     if (!rows.length && !fbaRows.length) {
       await fetchAndStoreInboundShipments(token)
       ;[rows, fbaRows] = await Promise.all([
-        fetchAwdDispatchInputs(token),
+        shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
         fetchFbaDispatchInputs(token),
       ])
     }
 
     if (!rows.length && !fbaRows.length) {
-      throw new Error('No AWD or FBA inbound shipments found for this marketplace after fetching Amazon inbound shipments.')
+      throw new Error(
+        shouldFetchAwd
+          ? 'No AWD or FBA inbound shipments found for this marketplace after fetching Amazon inbound shipments.'
+          : 'No FBA inbound shipments found for this marketplace after fetching Amazon inbound shipments.'
+      )
     }
 
     const normalizedAwdRows = rows.map((row) => ({
