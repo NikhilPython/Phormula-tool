@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import { Message, useChatbotStore } from "@/lib/store/chatbotStore";
 import WindowSendButton from "@/components/chatbot/WindowSendButton";
 import './style.css';
-import { Copy, Share2, ThumbsDown, ThumbsUp } from "lucide-react";
+import { ArrowUpRight, Copy, Maximize2, Share2, ThumbsDown, ThumbsUp } from "lucide-react";
 import { Fragment } from "react";
 
 
@@ -31,6 +32,7 @@ type ParsedAI = {
 
 type ChatbotCoreProps = {
   compact?: boolean
+  fullPageHref?: string
 }
 
 const isMarkdownTableRow = (line: string) => {
@@ -47,6 +49,20 @@ const isMarkdownTableSeparator = (line: string) => {
     .map((cell) => cell.trim())
 
   return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell))
+}
+
+const hasMarkdownTable = (text: string) => {
+  const lines = text.split(/\r?\n/)
+
+  return lines.some((line, index) => {
+    const nextLine = lines[index + 1]
+
+    return (
+      isMarkdownTableRow(line) &&
+      typeof nextLine === "string" &&
+      isMarkdownTableSeparator(nextLine)
+    )
+  })
 }
 
 export const removeMarkdownTables = (text: string) => {
@@ -75,7 +91,7 @@ export const removeMarkdownTables = (text: string) => {
   return output.join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
-export default function ChatbotCore({ compact = false }: ChatbotCoreProps) {
+export default function ChatbotCore({ compact = false, fullPageHref }: ChatbotCoreProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [actionMessage, setActionMessage] = useState<{ id: string; text: string } | null>(null);
 
@@ -384,15 +400,48 @@ const text = rawText || ''
             >
              {msg.sender !== "user" && msg.text ? (
   (() => {
-    const displayText = compact ? removeMarkdownTables(msg.text) : msg.text
+    const tableHiddenInCompact = compact && hasMarkdownTable(msg.text)
+    const displayText = tableHiddenInCompact ? removeMarkdownTables(msg.text) : msg.text
     const parsed = parseAIResponse(displayText)
     const isStructured =
       parsed.weeks.length > 0 ||
       /Title:/i.test(displayText) ||
       /Week\s+\d+/i.test(displayText)
+   const compactDetailsLink = tableHiddenInCompact && fullPageHref ? (
+  <Link
+    href={fullPageHref}
+    className="
+      group mt-2 inline-flex w-fit items-center gap-1.5
+      rounded-full
+      border border-[#5EA68E]/35
+      bg-[#5EA68E]/8
+      px-2.5 py-1
+      text-[10px] font-medium text-[#477866]
+      transition
+      hover:border-[#5EA68E]/55
+      hover:bg-[#5EA68E]/12
+      hover:text-[#2E765F]
+    "
+  >
+    <Maximize2
+      size={11}
+      strokeWidth={2}
+      className="shrink-0"
+    />
+
+    <span>View full details</span>
+
+    {/* <ArrowUpRight
+      size={10}
+      strokeWidth={2}
+      className="shrink-0 opacity-70"
+    /> */}
+  </Link>
+) : null;
 
     if (isStructured && (parsed.title || parsed.details.length > 0)) {
       return (
+        <>
         <div className="space-y-1 markdown-body">
           {parsed.title && (
             <h3 className="font-semibold text-gray-800">{parsed.title}</h3>
@@ -424,17 +473,22 @@ const text = rawText || ''
             ))}
           </ul>
         </div>
+        {compactDetailsLink}
+        </>
       )
     }
 
   
 
     return (
+      <>
       <div className="markdown-body">
         <ReactMarkdown>
          {convertPlainTextToMarkdown(displayText)}
         </ReactMarkdown>
       </div>
+      {compactDetailsLink}
+      </>
     )
   })()
 ) : (

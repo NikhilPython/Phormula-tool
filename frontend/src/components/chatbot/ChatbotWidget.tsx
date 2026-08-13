@@ -139,6 +139,9 @@ type ChatbotWidgetProps = {
   hide?: boolean;
 };
 
+const firstRouteParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
 export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
   const [open, setOpen] = useState(false);
   const { data: userData } = useGetUserDataQuery();
@@ -147,10 +150,13 @@ export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
   const params = useParams();
   const pathname = usePathname();
 
-  const ranged = params?.ranged;
-  const countryName = params?.countryName;
-  const month = params?.month;
-  const year = params?.year;
+  const ranged = firstRouteParam(params?.ranged);
+  const countryName = firstRouteParam(params?.countryName);
+  const month = firstRouteParam(params?.month);
+  const year = firstRouteParam(params?.year);
+  const now = new Date();
+  const fullChatbotPath = `/chatbot/${ranged ?? "QTD"}/${countryName ?? "uk"}/${month ?? String(now.getMonth() + 1).padStart(2, "0")}/${year ?? String(now.getFullYear())}`;
+  const openFullChatbot = () => router.push(fullChatbotPath);
 
   if (pathname?.startsWith("/chatbot") || hide) {
     return null;
@@ -218,17 +224,7 @@ export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
               <div className="flex gap-4 items-center cursor-pointer">
                 <RiExpandDiagonalSLine
                   size={20}
-                  onClick={() => {
-                    const now = new Date();
-
-                    const finalRanged = ranged ?? "QTD";
-                    const finalCountry = countryName ?? "uk";
-                    const finalMonth = month ?? String(now.getMonth() + 1).padStart(2, "0");
-                    const finalYear = year ?? String(now.getFullYear());
-
-                    const newPath = `/chatbot/${finalRanged}/${finalCountry}/${finalMonth}/${finalYear}`;
-                    router.push(newPath);
-                  }}
+                  onClick={openFullChatbot}
                 />
 
                 <button
@@ -240,7 +236,7 @@ export default function ChatbotWidget({ hide = false }: ChatbotWidgetProps) {
               </div>
             </div>
 
-            <ChatbotCore compact />
+            <ChatbotCore compact fullPageHref={fullChatbotPath} />
           </div>
         </div>
       )}
