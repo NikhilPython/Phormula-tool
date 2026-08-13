@@ -634,66 +634,6 @@ async function fetchMonthlyTransactionsExcel(params: {
   return { ok: true, url };
 }
 
-/** ---------------- Amazon Ads monthly + daily DB sync ---------------- */
-async function syncMonthlyAdsToDb(params: {
-  country: string;
-  year: number;
-  month: number;
-}) {
-  return apiJson(`/api/ads/monthly_sp_sd_to_db`, {
-    method: "POST",
-    body: JSON.stringify({
-      country: params.country.trim().toUpperCase(),
-      month: params.month,
-      year: params.year,
-      include: ["SP", "SD", "SB"],
-    }),
-  });
-}
-
-async function syncDailyAdsToDb(params: {
-  country: string;
-  year: number;
-  month: number;
-}) {
-  return apiJson(`/api/ads/daily_sp_sd_sb_to_db`, {
-    method: "POST",
-    body: JSON.stringify({
-      country: params.country.trim().toUpperCase(),
-      month: params.month,
-      year: params.year,
-      include: ["SP", "SD", "SB"],
-    }),
-  });
-}
-
-async function fetchMonthlyFinanceAndAds(params: {
-  year: number;
-  month: number;
-  marketplace_id: string;
-  country: string;
-  run_upload_pipeline: boolean;
-  store_in_db: boolean;
-}) {
-  // Required order for every month:
-  // 1. Monthly finance
-  // 2. Monthly ads
-  // 3. Daily ads
-  await fetchMonthlyTransactionsExcel(params);
-
-  await syncMonthlyAdsToDb({
-    country: params.country,
-    year: params.year,
-    month: params.month,
-  });
-
-  await syncDailyAdsToDb({
-    country: params.country,
-    year: params.year,
-    month: params.month,
-  });
-}
-
 async function fetchMtdTransactions(params: {
   marketplace_id: string;
   country: string;
@@ -2132,7 +2072,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         })
       );
       await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-        fetchMonthlyFinanceAndAds({
+        fetchMonthlyTransactionsExcel({
           year: y,
           month: mNum,
           marketplace_id: marketplaceIdUsed,
@@ -2237,6 +2177,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
+
+      
 
       // Reset progress
       setCurrentStep(1);
@@ -2417,7 +2359,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
         try {
           await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-            fetchMonthlyFinanceAndAds({
+            fetchMonthlyTransactionsExcel({
               year: y,
               month: mNum,
               marketplace_id: marketplaceIdUsed,
@@ -2531,7 +2473,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       for (let i = 0; i < months.length; i++) {
         const { y, mNum } = months[i];
 
-        await fetchMonthlyFinanceAndAds({
+        await fetchMonthlyTransactionsExcel({
           year: y,
           month: mNum,
           marketplace_id: marketplaceIdUsed,
