@@ -144,7 +144,7 @@ export type TableRow = {
   misc_transaction?: number;
   other_transaction_fees?: number;
   platform_fee?: number; // backend sometimes sends this
-  other_transactions?: number; // derived mapping
+  other_transactions?: number; // backend alias / display key
   other_adjustment?: number;
 
   profit?: number;
@@ -422,9 +422,9 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Other / Misc
       misc_transaction: toNumber(row.misc_transaction),
-      other_transaction_fees: toNumber(row.other_transaction_fees),
+      other_transaction_fees: toNumber(row.other_transaction_fees ?? row.other_transactions),
 
-      other_transactions: toNumber(row.other_transaction_fees),
+      other_transactions: toNumber(row.other_transactions ?? row.other_transaction_fees),
 
       // CM1
       profit: toNumber(row.profit),
@@ -568,7 +568,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
       totalRow.dealvouchars_ads ??
       totalRow.dealsvoucher_ads
     ),
-    other_transactions: toNumber(totalRow.platform_fee),
+    other_transactions: toNumber(totalRow.other_transactions ?? totalRow.other_transaction_fees),
     platform_fee: platformFees,
 
     inventory_storage_fees: inventoryStorageFees,
@@ -735,20 +735,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     return sales !== 0 ? (ads / sales) * 100 : 0;
   };
 
-  const getOtherTransactionsTotal = useCallback(
+  const getBackendOtherTransactionsValue = useCallback(
     (row: Partial<TableRow>) => {
-      const fallback = toNumber((row as any).other_transactions ?? (row as any).other_transaction_fees);
-
-      if (!isUsCountry) return fallback;
-
-      const computed =
-        toNumber((row as any).net_credits) +
-        toNumber((row as any).misc_transaction) -
-        Math.abs(toNumber((row as any).net_taxes));
-
-      return computed !== 0 || fallback === 0 ? computed : fallback;
+      return toNumber((row as any).other_transaction_fees ?? (row as any).other_transactions);
     },
-    [isUsCountry]
+    []
   );
 
   const totals = useMemo(() => {
@@ -900,10 +891,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (key === "net_units_sold") return toNumber(row.net_units_sold);
     if (key === "net_sales") return toNumber(row.net_sales);
     if (key === "profit") return toNumber(row.profit);
-    if (key === "other_transactions") return getOtherTransactionsTotal(row);
+    if (key === "other_transactions") return getBackendOtherTransactionsValue(row);
 
     return toNumber((row as any)[key]);
-  }, [getOtherTransactionsTotal]);
+  }, [getBackendOtherTransactionsValue]);
 
   const displayRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -1905,7 +1896,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           }
 
           if (key === "other_transactions") {
-            value = getOtherTransactionsTotal(row);
+            value = getBackendOtherTransactionsValue(row);
           }
 
           if (key === "quantity") {
@@ -2229,7 +2220,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       getDisplayProductNameFromRow,
       buildExcelColumnsFromUI,
       getSignForCol,
-      getOtherTransactionsTotal,
+      getBackendOtherTransactionsValue,
       resolveAspForRow,
     ]
   );
@@ -2904,7 +2895,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "product_spend") return toNumber((row as any).product_spend);
                   if (colKey === "display_spend") return toNumber((row as any).display_spend);
                   if (colKey === "ads_spend") return toNumber((row as any).ads_spend);
-                  if (colKey === "other_transactions") return getOtherTransactionsTotal(row);
+                  if (colKey === "other_transactions") return getBackendOtherTransactionsValue(row);
                   return toNumber((row as any)[colKey]);
                 }}
                 isTotalRow={(row) => {
@@ -3050,7 +3041,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   }
 
                   if (colKey === "other_transactions") {
-                    return formatValue(getOtherTransactionsTotal(row), colKey);
+                    return formatValue(getBackendOtherTransactionsValue(row), colKey);
                   }
 
                   if (colKey === "promotional_rebates_percentage") {
