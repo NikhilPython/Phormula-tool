@@ -464,9 +464,9 @@ async function syncInventoryAgedSurchargeOnce(params: {
   qs.set("year", String(params.year));
   qs.set("store_in_db", String(params.store_in_db ?? true));
 
-  // await apiJson(`/amazon_api/inventory/aged-surcharge?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  await apiJson(`/amazon_api/inventory/aged-surcharge?${qs.toString()}`, {
+    method: "GET",
+  });
 
   markDone(key);
 }
