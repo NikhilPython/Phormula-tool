@@ -471,7 +471,7 @@ function normalizeRows(data: any[]): TableRow[] {
       acos: toNumber(row.acos),
 
       cm2_profit: toNumber(row.cm2_profit),
-      total_cm2_profit: toNumber(row.total_cm2_profit),
+      total_cm2_profit: toNumber(row.total_cm2_profit ?? row.cm2_profit),
       cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
       cm2_profit_per: toNumber(
@@ -584,7 +584,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     shipment_charges: toNumber(totalRow.shipment_charges ?? totalRow.shipment_fees),
     reimbursement_vs_sales: toNumber(totalRow.reimbursement_vs_sales),
     cm2_profit: toNumber(totalRow.cm2_profit),
-    total_cm2_profit: toNumber(totalRow.total_cm2_profit),
+    total_cm2_profit: toNumber(totalRow.total_cm2_profit ?? totalRow.cm2_profit),
     cm2_profit_total: toNumber(totalRow.cm2_profit_total ?? totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     cm2_profit_per: cm2ProfitPerValue,
@@ -875,11 +875,23 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ];
   }, [countryName, currencySymbol, getTitle, isGlobalPage, userData?.brand_name, userData?.company_name]);
 
-  const computeAspFrom = (row: Partial<TableRow>) => {
+  const computeAspFrom = useCallback((row: Partial<TableRow>) => {
     const sales = toNumber((row as any).net_sales);
     const units = toNumber((row as any).net_units_sold);
     return units > 0 ? sales / units : 0;
-  };
+  }, []);
+
+  const resolveAspForRow = useCallback(
+    (row: Partial<TableRow>, isTotalRow = false) => {
+      if (isGlobalPage && isTotalRow) {
+        const backendTotalAsp = getOptionalNumber(rawTotalRow, ["asp", "ASP"]);
+        if (backendTotalAsp !== null) return backendTotalAsp;
+      }
+
+      return computeAspFrom(row);
+    },
+    [computeAspFrom, isGlobalPage, rawTotalRow]
+  );
 
   const getSortableValue = useCallback((row: TableRow, key: string) => {
     if (key === "net_units_sold") return toNumber(row.net_units_sold);
@@ -918,7 +930,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) {
       totalRow.product_name = "Total";
       totalRow.sku = "Total";
-      totalRow.asp = computeAspFrom(totalRow);
+      totalRow.asp = resolveAspForRow(totalRow, true);
     }
 
     // Expanded: show all rows, no Others row
@@ -936,7 +948,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : null;
 
     if (othersRow) {
-      othersRow.asp = computeAspFrom(othersRow);
+      othersRow.asp = resolveAspForRow(othersRow);
     }
 
     const outputRows: TableRow[] = [...topRows];
@@ -945,7 +957,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue, showAllRows]);
+  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow]);
 
   const excelRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -975,11 +987,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) {
       totalRow.product_name = "Total";
       totalRow.sku = "Total";
-      totalRow.asp = computeAspFrom(totalRow);
+      totalRow.asp = resolveAspForRow(totalRow, true);
     }
 
     return totalRow ? [...sorted, totalRow] : sorted;
-  }, [tableData, tableSort, getSortableValue]);
+  }, [tableData, tableSort, getSortableValue, resolveAspForRow]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -1936,11 +1948,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
             value = getCm2Percentage(row);
           }
 
-          // ✅ ASP always computed properly
+          // Keep Global total ASP aligned with the backend summary value.
           if (key === "asp") {
-            const sales = toNumber((row as any).net_sales);
-            const units = toNumber((row as any).net_units_sold);
-            value = units > 0 ? sales / units : 0;
+            const isTotalAspRow =
+              String(getDisplayProductNameFromRow(row)).trim().toLowerCase() === "total" ||
+              String((row as any)?.sku || "").trim().toLowerCase() === "total";
+
+            value = resolveAspForRow(row, isTotalAspRow);
           }
 
           if (typeof value === "number") {
@@ -2213,6 +2227,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       buildExcelColumnsFromUI,
       getSignForCol,
       getOtherTransactionsTotal,
+      resolveAspForRow,
     ]
   );
 

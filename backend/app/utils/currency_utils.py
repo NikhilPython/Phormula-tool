@@ -71,7 +71,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
-        "shipping_charges", "shipment_fees", "cm2_profit",
+        "shipping_charges", "shipment_fees", "cm2_profit", "total_cm2_profit",
         "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
@@ -89,7 +89,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
-        "shipping_charges", "cm2_profit", "debt_payment", "disbursement",
+        "shipping_charges", "cm2_profit", "total_cm2_profit", "debt_payment", "disbursement",
         "rembursement_fee"
     ]
 
@@ -275,6 +275,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_ads = float(total_row["advertising_total"] or 0)
     total_cm2 = float(total_row["cm2_profit"] or 0)
     total_reimbursement = float(total_row["rembursement_fee"] or 0)
+    total_row["total_cm2_profit"] = total_cm2
 
     total_row["asp"] = total_net_sales / total_quantity if total_quantity else 0
     total_row["unit_wise_profitability"] = total_profit_value / total_quantity if total_quantity else 0
@@ -348,6 +349,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             shipping_charges DOUBLE PRECISION,
             shipment_fees DOUBLE PRECISION,
             cm2_profit DOUBLE PRECISION,
+            total_cm2_profit DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,
             acos DOUBLE PRECISION,
             debt_payment DOUBLE PRECISION,

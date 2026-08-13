@@ -360,9 +360,9 @@ async function fetchInventoryLedgerSummary(params: {
     qs.set("end_date", params.end_date);
   }
 
-  // return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
-  //   method: "GET",
-  // });
+  return apiJson(`/amazon_api/inventory/ledger-summary?${qs.toString()}`, {
+    method: "GET",
+  });
 }
 
 async function syncAwdInboundShipments(params: { marketplaceId: string }) {
@@ -532,14 +532,14 @@ async function ensureFeesPrimedOnce(params: {
 
   const uploadKey = lsKeyFeeUpload(country);
   if (!wasDone(uploadKey)) {
-    // await apiJson(`/amazon_api/fees/sync_and_upload`, {
-    //   method: "POST",
-    //   body: JSON.stringify({
-    //     country,
-    //     marketplace_id: marketplaceId,
-    //     region: regionUsed,
-    //   }),
-    // });
+    await apiJson(`/amazon_api/fees/sync_and_upload`, {
+      method: "POST",
+      body: JSON.stringify({
+        country,
+        marketplace_id: marketplaceId,
+        region: regionUsed,
+      }),
+    });
 
     // ✅ NEW: Immediately after fees sync/upload, call inventory aged with NO params
     // (run-once per country; does not affect existing flow)
@@ -553,16 +553,16 @@ async function ensureFeesPrimedOnce(params: {
     // backend requires a month/year, so we send the current selection
     // but we only do this ONCE per country
     const monthParam = `${year}-${two(month)}`;
-    // await apiJson(`/fetch_fees`, {
-    //   method: "POST",
-    //   body: JSON.stringify({
-    //     region: regionUsed,
-    //     marketplace_id: marketplaceId,
-    //     month: monthParam,
-    //     year: String(year),
-    //     country,
-    //   }),
-    // });
+    await apiJson(`/fetch_fees`, {
+      method: "POST",
+      body: JSON.stringify({
+        region: regionUsed,
+        marketplace_id: marketplaceId,
+        month: monthParam,
+        year: String(year),
+        country,
+      }),
+    });
 
     markDone(feesKey);
   }

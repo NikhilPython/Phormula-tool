@@ -1447,8 +1447,15 @@ const getAdvertisingBaseValue = (row: any, hasCm2Columns = true) => {
 const getProductCm2ProfitValue = (row: Partial<TableRow> | null | undefined) =>
   toNum(row?.cm2_profit);
 
-const getTotalCm2ProfitValue = (row: Partial<TableRow> | null | undefined) =>
-  toNum(row?.total_cm2_profit);
+const getTotalCm2ProfitValue = (row: Partial<TableRow> | null | undefined) => {
+  const totalCm2Profit = row?.total_cm2_profit as unknown;
+
+  return totalCm2Profit === null ||
+    totalCm2Profit === undefined ||
+    totalCm2Profit === ""
+    ? toNum(row?.cm2_profit)
+    : toNum(totalCm2Profit);
+};
 
 const getCm2MarginValue = (row: any, netSales: any, cm2Profit: any) =>
   pickFirstNonZeroNum(
