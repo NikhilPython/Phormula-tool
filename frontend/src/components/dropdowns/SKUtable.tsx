@@ -115,6 +115,7 @@ export type TableRow = {
   display_spend?: number;
   brand_spend?: number;
   cm2_profit_total?: number;
+  total_cm2_profit?: number;
   cm2_profit_per?: number;
   cm2_profit_per_unit?: number;
   debt_payment?: number;
@@ -212,6 +213,7 @@ type Totals = {
   reimbursement_vs_sales: number;
   cm2_profit: number;
   cm2_profit_total: number;
+  total_cm2_profit: number;
   cm2_margins: number;
   cm2_profit_per: number;
   acos: number;
@@ -469,6 +471,7 @@ function normalizeRows(data: any[]): TableRow[] {
       acos: toNumber(row.acos),
 
       cm2_profit: toNumber(row.cm2_profit),
+      total_cm2_profit: toNumber(row.total_cm2_profit),
       cm2_profit_total: toNumber(row.cm2_profit_total ?? row.cm2_profit),
 
       cm2_profit_per: toNumber(
@@ -581,6 +584,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     shipment_charges: toNumber(totalRow.shipment_charges ?? totalRow.shipment_fees),
     reimbursement_vs_sales: toNumber(totalRow.reimbursement_vs_sales),
     cm2_profit: toNumber(totalRow.cm2_profit),
+    total_cm2_profit: toNumber(totalRow.total_cm2_profit),
     cm2_profit_total: toNumber(totalRow.cm2_profit_total ?? totalRow.cm2_profit),
     cm2_margins: cm2MarginsValue,
     cm2_profit_per: cm2ProfitPerValue,
@@ -2053,7 +2057,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {
             product_name: "CM2 Profit",
-            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
           },
           spacerSummaryRow(),
           {
@@ -2131,7 +2135,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {
             product_name: "CM2 Profit/Loss",
-            [summaryValueColumnKey]: Number(totals.cm2_profit_total || 0),
+            [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
           },
           {
             product_name: "CM2 Margins",
@@ -2591,7 +2595,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         type: "fixed" as const,
         id: "cm2_profit",
         label: "CM2 Profit",
-        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+        endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
       },
       {
         type: "fixed" as const,
@@ -2726,7 +2730,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         type: "fixed" as const,
         id: "cm2_profit",
         label: "CM2 Profit/Loss",
-        endValue: formatValue(totals.cm2_profit_total, "cm2_profit"),
+        endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
       },
       {
         type: "fixed" as const,
