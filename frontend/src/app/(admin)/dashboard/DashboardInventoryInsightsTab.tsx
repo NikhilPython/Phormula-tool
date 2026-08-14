@@ -17,6 +17,7 @@ export default function DashboardInventoryInsightsTab({
     platform,
     selectedGlobalInventoryCountry,
     setSelectedGlobalInventoryCountry,
+    globalInventoryCountryOptions = [],
     selectedAgeingTrendBucket,
     handleAgeingTrendBucketChange,
     handleInventoryInsightsExcelDownload,
@@ -93,16 +94,13 @@ export default function DashboardInventoryInsightsTab({
                                 <div className="mb-4 flex items-center justify-between gap-4">
                                     <PageBreadcrumb pageTitle="Inventory Insights" variant="page" align="left" textSize="2xl" />
 
-                                    {platform === "global" && (
+                                    {platform === "global" && globalInventoryCountryOptions.length > 0 && (
                                         <SegmentedToggle
                                             value={selectedGlobalInventoryCountry}
                                             onChange={(val) =>
                                                 setSelectedGlobalInventoryCountry(String(val) as "uk" | "us")
                                             }
-                                            options={[
-                                                { value: "uk", label: "UK" },
-                                                { value: "us", label: "US" },
-                                            ]}
+                                            options={globalInventoryCountryOptions}
                                             compact
                                             textSizeClass="text-xs"
                                         />

@@ -6502,6 +6502,56 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     inventory: InventoryCurrentApiResponse[];
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
+
+  // Only show countries that are actually present in the Global inventory response.
+  const availableGlobalInventoryCountries = useMemo(() => {
+    if (!isGlobalPage) return [];
+
+    const latestGlobalResponse = [...(inventoryRawResponses?.inventory ?? [])]
+      .reverse()
+      .find((response) => response?.success && isGlobalInventoryResponse(response));
+
+    if (!latestGlobalResponse) return [];
+
+    const countryResults = latestGlobalResponse.country_results ?? {};
+
+    const connectedCountryKeys = Object.entries(countryResults)
+      .filter(([, response]) => response?.success !== false)
+      .map(([country]) => country.toLowerCase());
+
+    const combinedCountryKeys = (latestGlobalResponse.combined_countries ?? [])
+      .map((country) => String(country).toLowerCase());
+
+    const availableKeys = new Set(
+      connectedCountryKeys.length > 0
+        ? connectedCountryKeys
+        : combinedCountryKeys
+    );
+
+    return [
+      { value: "uk", label: "UK" },
+      { value: "us", label: "US" },
+    ].filter((option) => availableKeys.has(option.value));
+  }, [isGlobalPage, inventoryRawResponses]);
+
+  useEffect(() => {
+    if (!isGlobalPage || availableGlobalInventoryCountries.length === 0) return;
+
+    const selectedCountryStillAvailable = availableGlobalInventoryCountries.some(
+      (option) => option.value === selectedGlobalInventoryCountry
+    );
+
+    if (!selectedCountryStillAvailable) {
+      setSelectedGlobalInventoryCountry(
+        availableGlobalInventoryCountries[0].value
+      );
+    }
+  }, [
+    isGlobalPage,
+    availableGlobalInventoryCountries,
+    selectedGlobalInventoryCountry,
+  ]);
+
   const [allDropdownsSelected, setAllDropdownsSelected] = useState(() => {
     if (isDemoMode) return true;
 
@@ -11315,14 +11365,11 @@ lines.push(
                       textSize="2xl"
                     />
 
-                    {isGlobalPage && (
+                    {isGlobalPage && availableGlobalInventoryCountries.length > 0 && (
                       <SegmentedToggle
                         value={selectedGlobalInventoryCountry}
                         onChange={(val) => setSelectedGlobalInventoryCountry(String(val))}
-                        options={[
-                          { value: "uk", label: "UK" },
-                          { value: "us", label: "US" },
-                        ]}
+                        options={availableGlobalInventoryCountries}
                         compact
                         textSizeClass="text-xs"
                       />

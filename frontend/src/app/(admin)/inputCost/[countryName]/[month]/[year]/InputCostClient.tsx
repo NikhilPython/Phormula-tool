@@ -20,6 +20,7 @@ import {
   exportWarehouseDataExcel,
 } from '@/lib/excel/exportCurrentInventoryExcel';
 import { useGetUserDataQuery } from '@/lib/api/profileApi';
+import { useAmazonConnections } from '@/lib/utils/useAmazonConnections';
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import GroupedCollapsibleTable, {
@@ -3985,6 +3986,7 @@ export default function InputCostPage({ params }: Params) {
     useState<ProductBestPerformanceData | null>(null);
 
   const { data: userData } = useGetUserDataQuery();
+  const { connections: amazonConnections } = useAmazonConnections();
   const router = useRouter();
 
   const companyName =
@@ -4191,6 +4193,50 @@ export default function InputCostPage({ params }: Params) {
     inventory: InventoryCurrentApiResponse[];
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
+
+  // Global Inventory Insights toggle must reflect the user's ACTUAL Amazon
+  // connections. The global inventory API can include UK/US keys even when a
+  // marketplace is not connected, so country_results/combined_countries are
+  // not reliable for deciding which toggle buttons should be visible.
+  const globalInventoryCountryOptions = useMemo(() => {
+    if (countryName !== "global") return [];
+
+    const connectedCountries = new Set(
+      (amazonConnections || [])
+        .map((connection: any) =>
+          String(connection?.country || "").trim().toLowerCase()
+        )
+        .filter(Boolean)
+    );
+
+    const options: { value: "uk" | "us"; label: string }[] = [];
+
+    if (connectedCountries.has("uk")) {
+      options.push({ value: "uk", label: "UK" });
+    }
+
+    if (connectedCountries.has("us")) {
+      options.push({ value: "us", label: "US" });
+    }
+
+    return options;
+  }, [countryName, amazonConnections]);
+
+  useEffect(() => {
+    if (countryName !== "global" || !globalInventoryCountryOptions.length) return;
+
+    const selectedStillAvailable = globalInventoryCountryOptions.some(
+      (option) => option.value === selectedGlobalInventoryCountry
+    );
+
+    if (!selectedStillAvailable) {
+      setSelectedGlobalInventoryCountry(globalInventoryCountryOptions[0].value);
+    }
+  }, [
+    countryName,
+    globalInventoryCountryOptions,
+    selectedGlobalInventoryCountry,
+  ]);
 
   const formatMonthName = (month?: string) => {
     const value = String(month || "").trim();
@@ -7487,20 +7533,20 @@ export default function InputCostPage({ params }: Params) {
                       textSize="2xl"
                     />
 
-                    {countryName === "global" && (
-                      <SegmentedToggle
-                        value={selectedGlobalInventoryCountry}
-                        onChange={(val) =>
-                          setSelectedGlobalInventoryCountry(String(val) as "uk" | "us")
-                        }
-                        options={[
-                          { value: "uk", label: "UK" },
-                          { value: "us", label: "US" },
-                        ]}
-                        compact
-                        textSizeClass="text-xs"
-                      />
-                    )}
+                    {countryName === "global" &&
+                      globalInventoryCountryOptions.length > 0 && (
+                        <SegmentedToggle
+                          value={selectedGlobalInventoryCountry}
+                          onChange={(val) =>
+                            setSelectedGlobalInventoryCountry(
+                              String(val) as "uk" | "us"
+                            )
+                          }
+                          options={globalInventoryCountryOptions}
+                          compact
+                          textSizeClass="text-xs"
+                        />
+                      )}
                   </div>
 
                   <InventoryInsightsSection

@@ -2276,6 +2276,45 @@ export default function DashboardPage() {
         return `${selected.time} ${selected.abbreviation || ""}`.trim();
     }, [countryTime]);
 
+    const globalInventoryCountryOptions = useMemo(() => {
+        const connected = new Set(
+            (amazonConnections || [])
+                .map((connection: any) =>
+                    String(connection?.country || "").trim().toLowerCase()
+                )
+                .filter(Boolean)
+        );
+
+        const options: { value: "uk" | "us"; label: string }[] = [];
+
+        if (connected.has("uk")) {
+            options.push({ value: "uk", label: "UK" });
+        }
+
+        if (connected.has("us")) {
+            options.push({ value: "us", label: "US" });
+        }
+
+        return options;
+    }, [amazonConnections]);
+
+    useEffect(() => {
+        if (platform !== "global") return;
+        if (!globalInventoryCountryOptions.length) return;
+
+        const selectedStillAvailable = globalInventoryCountryOptions.some(
+            (option) => option.value === selectedGlobalInventoryCountry
+        );
+
+        if (!selectedStillAvailable) {
+            setSelectedGlobalInventoryCountry(globalInventoryCountryOptions[0].value);
+        }
+    }, [
+        platform,
+        globalInventoryCountryOptions,
+        selectedGlobalInventoryCountry,
+    ]);
+
     const globalMtdViewOptions = useMemo(() => {
         if (shouldShowDummyUi) {
             return [
@@ -12260,6 +12299,7 @@ export default function DashboardPage() {
                         platform={platform}
                         selectedGlobalInventoryCountry={selectedGlobalInventoryCountry}
                         setSelectedGlobalInventoryCountry={setSelectedGlobalInventoryCountry}
+                        globalInventoryCountryOptions={globalInventoryCountryOptions}
                         selectedAgeingTrendBucket={selectedAgeingTrendBucket}
                         handleAgeingTrendBucketChange={handleAgeingTrendBucketChange}
                         handleInventoryInsightsExcelDownload={handleInventoryInsightsExcelDownload}
