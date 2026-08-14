@@ -341,6 +341,7 @@ export default function DashboardProductwisePnlSection({
                     reimbursementForSummary,
                     "net_reimbursement"
                 ),
+                bold: true,
                 defaultCollapsed: true,
                 children: [
                     {
@@ -512,6 +513,7 @@ export default function DashboardProductwisePnlSection({
                     reimbursementForSummary,
                     "net_reimbursement"
                 ),
+                bold: true,
                 defaultCollapsed: true,
                 children: [
                     {

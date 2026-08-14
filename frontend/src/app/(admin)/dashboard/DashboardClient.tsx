@@ -9716,7 +9716,7 @@ export default function DashboardPage() {
                 { label: "CM2 Profit/Loss", value: cm2ProfitLoss, bold: true },
                 { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0) },
                 { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
-                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0) },
+                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
                 { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0) },
                 { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0) },
             ];
@@ -9765,7 +9765,7 @@ export default function DashboardPage() {
                 spacerSummaryRow(),
                 { label: "CM2 Profit %", value: Number(cm2MarginPctForSummary ?? 0) },
                 { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
-                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0) },
+                { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0), bold: true },
                 { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0) },
                 { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0) },
             ];
