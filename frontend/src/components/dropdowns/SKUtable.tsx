@@ -2121,6 +2121,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Net Reimbursement",
             [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
+            __bold: true,
           },
           {
             product_name: "Reimbursement vs Sales",
@@ -2200,6 +2201,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "Net Reimbursement",
             [summaryValueColumnKey]: toNumber(totals.net_reimbursement),
+            __bold: true,
           },
           {
             product_name: "Reimbursement vs CM2 Margins",
@@ -2684,6 +2686,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         id: "net_reimb",
         label: "Net Reimbursement",
         endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+        bold: true,
         defaultCollapsed: true,
         children: [
           {
@@ -2821,6 +2824,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         id: "net_reimb",
         label: "Net Reimbursement",
         endValue: formatValue(Math.abs(totals.net_reimbursement), "net_reimbursement"),
+        bold: true,
         defaultCollapsed: true,
         children: [
           {
