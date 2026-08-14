@@ -1032,13 +1032,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
       ],
       expandedCols: [
-        {
-          key: "sku",
-          label: "SKU",
-          align: "left",
-          width: "11%",
-          wideMinWidth: 155,
-        },
+        ...(!isGlobalPage
+          ? [
+            {
+              key: "sku",
+              label: "SKU",
+              align: "left" as const,
+              width: "11%",
+              wideMinWidth: 155,
+            },
+          ]
+          : []),
+
         {
           key: "units_sold",
           label: "Units Sold",
@@ -1406,7 +1411,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         } as ColGroup<TableRow>,
       ]
       : []),
-  ], [hasCm2Data, isUsCountry]);
+  ], [hasCm2Data, isUsCountry, isGlobalPage]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -1528,11 +1533,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ? [
         { key: "sno", label: "Sno.", align: "center" as const },
         { key: "product_name", label: "Product Name", align: "left" as const },
-        { key: "sku", label: "SKU", align: "left" as const },
+
+        ...(!isGlobalPage
+          ? [
+            {
+              key: "sku",
+              label: "SKU",
+              align: "left" as const,
+            },
+          ]
+          : []),
 
         { key: "units_sold", label: "Units Sold", align: "center" as const },
         { key: "return_units", label: "Return", align: "center" as const },
         { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
+
 
         { key: "asp", label: "ASP", align: "center" as const },
 
@@ -1563,8 +1578,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { key: "sno", label: "S. no", align: "center" as const },
 
         { key: "product_name", label: "Product Name", align: "left" as const },
-        { key: "sku", label: "SKU", align: "left" as const },
 
+        ...(!isGlobalPage
+          ? [
+            {
+              key: "sku",
+              label: "SKU",
+              align: "left" as const,
+            },
+          ]
+          : []),
         { key: "units_sold", label: "Units Sold", align: "center" as const },
         { key: "return_units", label: "Return", align: "center" as const },
         { key: "net_units_sold", label: "Net Units Sold", align: "center" as const },
@@ -1604,7 +1627,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       seen.add(c.key);
       return true;
     });
-  }, [hasCm2Data, isUsCountry]);
+}, [hasCm2Data, isUsCountry, isGlobalPage]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);

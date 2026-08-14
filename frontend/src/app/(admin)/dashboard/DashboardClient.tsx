@@ -7511,8 +7511,12 @@ export default function DashboardPage() {
     ]);
 
     const { SKUWISE_LEFT_COLS, SKUWISE_GROUPS, SKUWISE_SINGLE_COLS } = useMemo(
-        () => buildSkuwiseTableColumns(formatDisplayAmount, { isUsSkuLayout: isUsPnlSkuLayout }),
-        [formatDisplayAmount, isUsPnlSkuLayout]
+        () =>
+            buildSkuwiseTableColumns(formatDisplayAmount, {
+                isUsSkuLayout: isUsPnlSkuLayout,
+                hideSku: platform === "global",
+            }),
+        [formatDisplayAmount, isUsPnlSkuLayout, platform]
     );
 
     const PRODUCTWISE_GROUP_IDS = useMemo(
@@ -9444,8 +9448,18 @@ export default function DashboardPage() {
                 if (isUsPnlSkuLayout) {
                     return {
                         "Sno.": r.isTotal ? "" : r.sno ?? "",
-                        "Product Name": r.isTotal ? "Total" : r.isOthers ? "Others" : r.product_name,
-                        "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+
+                        "Product Name": r.isTotal
+                            ? "Total"
+                            : r.isOthers
+                                ? "Others"
+                                : r.product_name,
+
+                        ...(platform !== "global"
+                            ? {
+                                "SKU": r.isOthers || r.isTotal ? "-" : r.sku || "-",
+                            }
+                            : {}),
 
                         "Units Sold": n(r.quantity),
                         "Return": n(r.return_quantity),
@@ -9793,6 +9807,7 @@ export default function DashboardPage() {
         monthlySkuwiseRowsDisplay,
         formattedMonthYear,
         countryName,
+        platform,
         isUsPnlSkuLayout,
         getProductwiseOtherTransactionsTotal,
         plSummaryTotals,

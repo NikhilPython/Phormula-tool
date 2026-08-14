@@ -32,9 +32,13 @@ type FormatDisplayAmount = (value: any, label?: string) => React.ReactNode;
 
 export function buildSkuwiseTableColumns(
     formatDisplayAmount: FormatDisplayAmount,
-    options: { isUsSkuLayout?: boolean } = {}
+    options: {
+        isUsSkuLayout?: boolean;
+        hideSku?: boolean;
+    } = {}
 ) {
     const isUsSkuLayout = Boolean(options.isUsSkuLayout);
+    const hideSku = Boolean(options.hideSku);
 
     const SKUWISE_LEFT_COLS: LeafCol<MonthlySkuwiseTableRow>[] = [
         {
@@ -94,13 +98,18 @@ export function buildSkuwiseTableColumns(
             ],
 
             expandedCols: [
-                {
-                    key: "sku",
-                    label: "SKU",
-                    align: "left" as const,
-                    width: "7%",
-                    wideMinWidth: 155,
-                },
+                ...(!hideSku
+                    ? [
+                        {
+                            key: "sku",
+                            label: "SKU",
+                            align: "left" as const,
+                            width: "7%",
+                            wideMinWidth: 155,
+                        },
+                    ]
+                    : []),
+
                 {
                     key: "quantity",
                     label: "Units Sold",
