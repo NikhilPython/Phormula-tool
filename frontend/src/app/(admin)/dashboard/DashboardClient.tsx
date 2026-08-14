@@ -1848,8 +1848,9 @@ export default function DashboardPage() {
     }, [globalMtdView]);
 
     const isUsPnlSkuLayout = useMemo(() => {
-        return countryName === "us" || (platform === "global" && globalMtdView === "us");
-    }, [countryName, platform, globalMtdView]);
+        const normalizedCountry = String(countryName || "").trim().toLowerCase();
+        return normalizedCountry === "us" || normalizedCountry === "global" || platform === "global";
+    }, [countryName, platform]);
 
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
     const [fxReady, setFxReady] = useState(false);

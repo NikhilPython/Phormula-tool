@@ -646,7 +646,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const normalizedCountryName = (countryName || "").trim().toLowerCase();
   const isGlobalPage = normalizedCountryName === "global";
-  const isUsCountry = normalizedCountryName === "us" || normalizedCountryName === "usa";
+  const isUsCountry =
+    normalizedCountryName === "us" ||
+    normalizedCountryName === "usa" ||
+    isGlobalPage;
 
   const tableData = useMemo(() => {
     return normalizeRows(rows || []);
