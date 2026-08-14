@@ -1836,12 +1836,22 @@ def get_current_global_data_for_live_bi(user_id: int):
             - abs(float(row_df.iloc[0].get("platformfeenew", 0.0) or 0.0))
         )
 
+        inventory_reimbursement_total = (
+            abs(float(row_df.iloc[0].get("lost_total", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("fba_disposal", 0.0) or 0.0))
+        )
+        other_fees_total = (
+            abs(float(row_df.iloc[0].get("platform_management_fees", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("other_adjustment", 0.0) or 0.0))
+        )
+
         total_cm2_profit = (
             cm2_profit_productwise
-            - abs(float(row_df.iloc[0].get("brand_spend", 0.0) or 0.0))
-            - abs(float(row_df.iloc[0].get("dealsvouchar_ads", 0.0) or 0.0))
-            - abs(other_transactions_total)
-            - abs(float(row_df.iloc[0].get("shipment_fees", 0.0) or 0.0))
+            - cost_ads_total
+            - abs(float(row_df.iloc[0].get("shipping_charges", 0.0) or 0.0))
+            - abs(float(row_df.iloc[0].get("storage_fee", 0.0) or 0.0))
+            + inventory_reimbursement_total
+            - other_fees_total
         )
 
         row_df.loc[:, "total_ads"] = round(total_ads, 2)
@@ -2304,7 +2314,6 @@ def get_current_global_data_for_live_bi(user_id: int):
         + abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
     )
 
-    shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
     total_ads = product_ads_total + cost_ads_total
 
     # Productwise CM2 Profit
@@ -2314,14 +2323,25 @@ def get_current_global_data_for_live_bi(user_id: int):
         - float(total_row.get("ads_spend", 0.0) or 0.0)
     )
 
-    # Global Total CM2 Profit
-    # total_cm2_profit = cm2_profit - brand_spend - dealsvouchar_ads - abs(platform_fee) - shipment_fees
+    inventory_reimbursement_total = (
+        abs(float(total_row.get("lost_total", 0.0) or 0.0))
+        - abs(float(total_row.get("fba_disposal", 0.0) or 0.0))
+    )
+    other_fees_total = (
+        abs(float(total_row.get("platform_management_fees", 0.0) or 0.0))
+        - abs(float(total_row.get("other_adjustment", 0.0) or 0.0))
+    )
+
+    # Global Total CM2 follows the lower P&L section:
+    # productwise CM2 - cost ads - shipping - storage
+    # + inventory reimbursement - other fees.
     total_cm2_profit = (
         cm2_profit_productwise
-        - abs(float(total_row.get("brand_spend", 0.0) or 0.0))
-        - abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
-        - abs(float(total_row.get("platform_fee", 0.0) or 0.0))
-        - abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
+        - cost_ads_total
+        - abs(float(total_row.get("shipping_charges", 0.0) or 0.0))
+        - abs(float(total_row.get("storage_fee", 0.0) or 0.0))
+        + inventory_reimbursement_total
+        - other_fees_total
     )
 
     total_row["cm2_profit"] = round(cm2_profit_productwise, 2)
@@ -4006,7 +4026,7 @@ def finances_mtd_transactions():
             - abs(float(total_row.get("platformfeenew", 0.0) or 0.0))
         )
 
-        # Keep platform_fee negative because later total_cm2_profit subtracts abs(platform_fee)
+        # Keep platform_fee negative for UI display.
         total_row["platform_fee"] = round(-other_transactions_value, 2)
 
         total_row["ad_type"] = "All"

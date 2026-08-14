@@ -67,12 +67,16 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "other_adjustment", "profit", "unit_wise_profitability",
         "profit_percentage", "visible_ads", "dealsvouchar_ads",
+        "product_spend", "display_spend", "ads_spend", "ads_spend_raw",
+        "brand_spend", "advertising_fees", "total_ads",
         "advertising_total", "advertising_total_final", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
         "shipping_charges", "shipment_fees", "cm2_profit", "total_cm2_profit",
-        "cm2_profit_percentage", "acos", "debt_payment", "disbursement","rembursement_fee",
+        "total_cm2_margins", "cm2_profit_percentage", "acos",
+        "tacos_total_advertising_cost_of_sale",
+        "debt_payment", "disbursement", "current_net_reimbursement", "rembursement_fee",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix", "user_id"
     ]
@@ -85,11 +89,14 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "promotional_rebates", "cost_of_unit_sold", "selling_fees", "fba_fees",
         "amazon_fee", "net_taxes", "net_credits", "misc_transaction",
         "other_transaction_fees", "other_adjustment", "profit", "visible_ads", "dealsvouchar_ads",
+        "product_spend", "display_spend", "ads_spend", "ads_spend_raw",
+        "brand_spend", "advertising_fees", "total_ads",
         "advertising_total", "advertising_total_final", "lost_total", "platformfeenew", "platform_management_fees",
         "platform_fee", "platform_fee_inventory_storage",
         "short_term_storage_fee", "long_term_storage_fee", "storage_fee",
         "fba_disposal", "placement_fee", "customs_fee",
         "shipping_charges", "cm2_profit", "total_cm2_profit", "debt_payment", "disbursement",
+        "current_net_reimbursement",
         "rembursement_fee"
     ]
 
@@ -98,7 +105,8 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     percentage_cols = [
         "promotional_rebates_percentage", "unit_wise_profitability",
-        "profit_percentage", "cm2_profit_percentage", "acos",
+        "profit_percentage", "total_cm2_margins", "cm2_profit_percentage", "acos",
+        "tacos_total_advertising_cost_of_sale",
         "rembursment_vs_cm2_margins", "reimbursement_vs_sales",
         "sales_mix", "profit_mix"
     ]
@@ -120,7 +128,6 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 "disbursement_total": "disbursement",
                 "visible_ads_cost": "visible_ads",
                 "visible_ads_amount": "visible_ads",
-                "ads_spend": "advertising_total",
                 "ads_total": "advertising_total",
                 "advertisement_total": "advertising_total",
                 "dealsvoucher_ads": "dealsvouchar_ads",
@@ -170,10 +177,20 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                     column_data = column_data.bfill(axis=1).iloc[:, 0]
                 df[col] = pd.to_numeric(column_data, errors="coerce").fillna(0)
 
+            df["ads_spend"] = np.where(
+                df["ads_spend"] != 0,
+                df["ads_spend"],
+                df["advertising_total"],
+            )
+            df["advertising_total"] = np.where(
+                df["advertising_total"] != 0,
+                df["advertising_total"],
+                df["ads_spend"],
+            )
             df["advertising_total_final"] = np.where(
                 df["advertising_total_final"] != 0,
                 df["advertising_total_final"],
-                df["advertising_total"],
+                df["ads_spend"],
             )
 
             if f"skuwisemonthly_{user_id}_uk_" in table_name:
@@ -230,11 +247,26 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         .reset_index()
     )
 
+    for col in ["product_spend", "display_spend", "ads_spend", "advertising_total"]:
+        global_df[col] = pd.to_numeric(global_df[col], errors="coerce").fillna(0)
+
+    product_display_ads = global_df["product_spend"] + global_df["display_spend"]
+    global_df["ads_spend"] = np.where(
+        product_display_ads != 0,
+        product_display_ads,
+        np.where(global_df["ads_spend"] != 0, global_df["ads_spend"], global_df["advertising_total"]),
+    )
+    global_df["advertising_total"] = np.where(
+        global_df["advertising_total"] != 0,
+        global_df["advertising_total"],
+        global_df["ads_spend"],
+    )
+
     net_sales = pd.to_numeric(global_df["net_sales"], errors="coerce").fillna(0)
     quantity = pd.to_numeric(global_df["quantity"], errors="coerce").fillna(0)
     total_quantity = pd.to_numeric(global_df["total_quantity"], errors="coerce").fillna(0)
     profit = pd.to_numeric(global_df["profit"], errors="coerce").fillna(0)
-    ads = pd.to_numeric(global_df["advertising_total"], errors="coerce").fillna(0)
+    ads = pd.to_numeric(global_df["ads_spend"], errors="coerce").fillna(0)
     cm2_profit = pd.to_numeric(global_df["cm2_profit"], errors="coerce").fillna(0)
     reimbursement = pd.to_numeric(global_df["rembursement_fee"], errors="coerce").fillna(0)
 
@@ -257,6 +289,19 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     global_df["sales_mix"] = np.where(total_sales != 0, (net_sales / total_sales) * 100, 0)
     global_df["profit_mix"] = np.where(total_profit != 0, (profit / total_profit) * 100, 0)
 
+    total_only_columns = [
+        "total_ads",
+        "total_cm2_profit",
+        "total_cm2_margins",
+        "tacos_total_advertising_cost_of_sale",
+        "current_net_reimbursement",
+        "debt_payment",
+        "disbursement",
+    ]
+    for col in total_only_columns:
+        if col in global_df.columns:
+            global_df[col] = 0
+
     total_row = {
         "sku": "TOTAL",
         "product_name": "TOTAL",
@@ -275,22 +320,76 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         float(total_row.get("disbursement", 0) or 0)
         - float(total_row.get("debt_payment", 0) or 0)
     )
+    total_row["current_net_reimbursement"] = total_row["rembursement_fee"]
 
     total_net_sales = float(total_row["net_sales"] or 0)
     total_quantity = float(total_row["total_quantity"] or 0)
     total_profit_value = float(total_row["profit"] or 0)
-    total_ads = float(total_row["advertising_total"] or 0)
-    if not float(total_row.get("advertising_total_final", 0) or 0):
-        total_row["advertising_total_final"] = total_ads
-    total_cm2 = float(total_row["cm2_profit"] or 0)
-    total_reimbursement = float(total_row["rembursement_fee"] or 0)
+
+    product_ads_total = (
+        abs(float(total_row.get("product_spend", 0) or 0))
+        + abs(float(total_row.get("display_spend", 0) or 0))
+    )
+    fallback_ads_total = abs(
+        float(total_row.get("ads_spend", 0) or 0)
+        or float(total_row.get("advertising_total", 0) or 0)
+    )
+    if not product_ads_total:
+        product_ads_total = fallback_ads_total
+
+    cost_ads_total = (
+        abs(float(total_row.get("brand_spend", 0) or 0))
+        + abs(float(total_row.get("dealsvouchar_ads", 0) or 0))
+    )
+    total_ads = product_ads_total + cost_ads_total
+
+    total_row["ads_spend"] = product_ads_total
+    total_row["ads_spend_raw"] = product_ads_total
+    total_row["advertising_total"] = product_ads_total
+    total_row["advertising_total_final"] = (
+        float(total_row.get("advertising_total_final", 0) or 0)
+        or product_ads_total
+    )
+    total_row["advertising_fees"] = total_ads
+    total_row["total_ads"] = total_ads
+
+    other_transactions_total = (
+        abs(float(total_row.get("misc_transaction", 0) or 0))
+        + abs(float(total_row.get("lost_total", 0) or 0))
+        - abs(float(total_row.get("platform_fee_inventory_storage", 0) or 0))
+        - abs(float(total_row.get("platformfeenew", 0) or 0))
+    )
+    total_row["platform_fee"] = -other_transactions_total
+
+    cm2_profit_productwise = total_profit_value - product_ads_total
+    inventory_reimbursement_total = (
+        abs(float(total_row.get("lost_total", 0) or 0))
+        - abs(float(total_row.get("fba_disposal", 0) or 0))
+    )
+    other_fees_total = (
+        abs(float(total_row.get("platform_management_fees", 0) or 0))
+        - abs(float(total_row.get("other_adjustment", 0) or 0))
+    )
+    total_cm2 = (
+        cm2_profit_productwise
+        - cost_ads_total
+        - abs(float(total_row.get("shipping_charges", 0) or 0))
+        - abs(float(total_row.get("storage_fee", 0) or 0))
+        + inventory_reimbursement_total
+        - other_fees_total
+    )
+
+    total_row["cm2_profit"] = cm2_profit_productwise
     total_row["total_cm2_profit"] = total_cm2
+    total_reimbursement = float(total_row["rembursement_fee"] or 0)
 
     total_row["asp"] = total_net_sales / total_quantity if total_quantity else 0
     total_row["unit_wise_profitability"] = total_profit_value / total_quantity if total_quantity else 0
     total_row["profit_percentage"] = (total_profit_value / total_net_sales) * 100 if total_net_sales else 0
-    total_row["acos"] = (total_ads / total_net_sales) * 100 if total_net_sales else 0
-    total_row["cm2_profit_percentage"] = (total_cm2 / total_net_sales) * 100 if total_net_sales else 0
+    total_row["acos"] = (product_ads_total / total_net_sales) * 100 if total_net_sales else 0
+    total_row["cm2_profit_percentage"] = (cm2_profit_productwise / total_net_sales) * 100 if total_net_sales else 0
+    total_row["total_cm2_margins"] = (total_cm2 / total_net_sales) * 100 if total_net_sales else 0
+    total_row["tacos_total_advertising_cost_of_sale"] = (total_ads / total_net_sales) * 100 if total_net_sales else 0
     total_row["rembursment_vs_cm2_margins"] = (total_reimbursement / total_cm2) * 100 if total_cm2 else 0
     total_row["reimbursement_vs_sales"] = (total_reimbursement / total_net_sales) * 100 if total_net_sales else 0
     total_row["promotional_rebates_percentage"] = (
@@ -343,6 +442,13 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             profit_percentage DOUBLE PRECISION,
             visible_ads DOUBLE PRECISION,
             dealsvouchar_ads DOUBLE PRECISION,
+            product_spend DOUBLE PRECISION,
+            display_spend DOUBLE PRECISION,
+            ads_spend DOUBLE PRECISION,
+            ads_spend_raw DOUBLE PRECISION,
+            brand_spend DOUBLE PRECISION,
+            advertising_fees DOUBLE PRECISION,
+            total_ads DOUBLE PRECISION,
             advertising_total DOUBLE PRECISION,
             advertising_total_final DOUBLE PRECISION,
             lost_total DOUBLE PRECISION,
@@ -360,10 +466,13 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             shipment_fees DOUBLE PRECISION,
             cm2_profit DOUBLE PRECISION,
             total_cm2_profit DOUBLE PRECISION,
+            total_cm2_margins DOUBLE PRECISION,
             cm2_profit_percentage DOUBLE PRECISION,
             acos DOUBLE PRECISION,
+            tacos_total_advertising_cost_of_sale DOUBLE PRECISION,
             debt_payment DOUBLE PRECISION,
             disbursement DOUBLE PRECISION,
+            current_net_reimbursement DOUBLE PRECISION,
             rembursement_fee DOUBLE PRECISION,
             rembursment_vs_cm2_margins DOUBLE PRECISION,
             reimbursement_vs_sales DOUBLE PRECISION,
