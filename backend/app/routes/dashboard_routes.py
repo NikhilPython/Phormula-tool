@@ -1228,10 +1228,10 @@ def getDispatchfile():
                 air_units_int = int(round(air_units))
                 sea_units_int = int(round(sea_units))
 
-                total_dispatch = (
-                    air_units_int
-                    + sea_units_int
-                )
+                # The day-by-day simulation only decides how much of the
+                # requirement is urgent (AIR) versus non-urgent (SEA).
+                # The final dispatch quantity itself must be based on the
+                # full inventory shortfall, calculated below.
 
                 # ---------------------------------------------------------
                 # 10. Store final results
@@ -1259,17 +1259,61 @@ def getDispatchfile():
                     + awd_inbound_total
                 )
 
-                # This is now a TIMING-AWARE shortfall,
-                # not just projected sales - total inbound.
+                # Actual inventory shortfall: projected sales minus
+                # current stock and all existing inbound inventory.
+                projected_sales_total = scalar_number(
+                    row.get("Projected Sales Total", 0)
+                )
+
+                actual_shortfall = max(
+                    projected_sales_total
+                    - opening_stock
+                    - fba_inbound_total
+                    - awd_inbound_total,
+                    0.0,
+                )
+
+                target_dispatch = int(round(actual_shortfall))
+
                 planned.at[
                     idx,
                     "Shortfall Unit"
-                ] = total_dispatch
+                ] = target_dispatch
+
+                # Keep AIR/SEA timing logic, but force the split to equal
+                # the FULL shortfall. Any remaining non-urgent quantity is
+                # assigned to SEA (or AIR if SEA is not configured).
+                split_total = air_units_int + sea_units_int
+
+                if split_total < target_dispatch:
+                    remainder = target_dispatch - split_total
+                    if ship_time_weeks > 0:
+                        sea_units_int += remainder
+                    else:
+                        air_units_int += remainder
+
+                elif split_total > target_dispatch:
+                    excess = split_total - target_dispatch
+
+                    # Preserve urgent AIR first; trim SEA before AIR.
+                    sea_reduction = min(sea_units_int, excess)
+                    sea_units_int -= sea_reduction
+                    excess -= sea_reduction
+
+                    if excess > 0:
+                        air_units_int = max(air_units_int - excess, 0)
+
+                # IMPORTANT: Expected Reach Date may change only the SEA/AIR
+                # allocation. It must NEVER change Shortfall Unit or the total
+                # quantity that needs to be dispatched.
+                #
+                # Shortfall Unit == To be Dispatch == target_dispatch
+                total_dispatch = target_dispatch
 
                 planned.at[
                     idx,
                     "To be Dispatch"
-                ] = total_dispatch
+                ] = target_dispatch
 
                 planned.at[
                     idx,
