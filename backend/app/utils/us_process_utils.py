@@ -99,6 +99,29 @@ def _other_transaction_fees_value(net_taxes, net_credits, misc_transaction) -> f
     )
 
 
+US_POSITIVE_DISPLAY_COLUMNS = [
+    "promotional_rebates",
+    "promotional_rebates_percentage",
+    "selling_fees",
+    "refund_selling_fees",
+    "fba_fees",
+    "net_taxes",
+    "misc_transaction",
+    "placement_fee",
+    "customs_fee",
+    "inventory_charges_and_reimbursement",
+    "fba_disposal",
+]
+
+
+def _make_us_display_expenses_positive(df_: pd.DataFrame) -> pd.DataFrame:
+    df_ = df_.copy()
+    for col in US_POSITIVE_DISPLAY_COLUMNS:
+        if col in df_.columns:
+            df_[col] = pd.to_numeric(df_[col], errors="coerce").fillna(0.0).abs()
+    return df_
+
+
 def add_report_compat_columns(df_: pd.DataFrame) -> pd.DataFrame:
     """Add the July report schema to any monthly/quarterly/yearly dataframe."""
     df_ = df_.copy()
@@ -2080,11 +2103,7 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         sku_grouped = coalesce_duplicate_columns(sku_grouped)
 
-        # Final safety: selling_fees must always be negative before DB/export
-        sku_grouped["selling_fees"] = -pd.to_numeric(
-            sku_grouped["selling_fees"],
-            errors="coerce"
-        ).fillna(0).abs()
+        sku_grouped = _make_us_display_expenses_positive(sku_grouped)
         # Full detailed NSE dataframe for nse_{user_id}_{country}_{month}{year}
         df_nse_full = sku_grouped.copy()
         
@@ -3179,6 +3198,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             else:
                 sku_grouped[col] = sku_grouped[col].fillna("")
 
+        sku_grouped = _make_us_display_expenses_positive(sku_grouped)
+
         from sqlalchemy.types import Float, Integer, String
 
         dtype_map = {
@@ -4175,6 +4196,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
                 sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0)
             else:
                 sku_grouped[col] = sku_grouped[col].fillna("")
+
+        sku_grouped = _make_us_display_expenses_positive(sku_grouped)
 
         total_row = sku_grouped[sku_grouped["sku"].astype(str).str.lower() == "total"]
         other_rows = sku_grouped[sku_grouped["sku"].astype(str).str.lower() != "total"]

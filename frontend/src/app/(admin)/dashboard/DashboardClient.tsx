@@ -9460,13 +9460,13 @@ export default function DashboardPage() {
 
                         "COGS": n(r.cogs),
 
-                        "Selling Fees": n(r.selling_fees),
-                        "FBA Fees": n(r.fba_fees),
+                        "Selling Fees": Math.abs(n(r.selling_fees)),
+                        "FBA Fees": Math.abs(n(r.fba_fees)),
                         "Total Fees": marketplaceTotal,
 
-                        "Net Taxes": n(r.tax ?? r.net_taxes),
+                        "Net Taxes": Math.abs(n(r.tax ?? r.net_taxes)),
                         "Net Credits": n(r.credits ?? r.net_credits),
-                        "Misc. Transactions": n(r.misc_transaction),
+                        "Misc. Transactions": Math.abs(n(r.misc_transaction)),
                         "Other Transactions": otherTransactionsTotal,
 
                         "CM1 Profit": n(r.profit),
@@ -9505,8 +9505,8 @@ export default function DashboardPage() {
 
                     "COGS": n(r.cogs),
 
-                    "Selling Fees": n(r.selling_fees),
-                    "FBA Fees": n(r.fba_fees),
+                    "Selling Fees": Math.abs(n(r.selling_fees)),
+                    "FBA Fees": Math.abs(n(r.fba_fees)),
 
                     "Tax": n(r.tax),
                     "Credits": n(r.credits),
@@ -9633,6 +9633,8 @@ export default function DashboardPage() {
             };
 
             const summaryExportValue = (value: number | null) => value === null ? "-" : value;
+            const positiveSummaryExportValue = (value: number | null) =>
+                value === null ? "-" : Math.abs(value);
             const spacerSummaryRow = () => ({ label: "", value: "" });
 
             const exportPlacementFees = getOptionalExportNumber(["placement_fee"]);
@@ -9721,9 +9723,9 @@ export default function DashboardPage() {
                 spacerSummaryRow(),
 
                 { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingChargesTotal) },
-                { label: "Placement Fees (-)", value: summaryExportValue(exportPlacementFees), indent: 1 },
+                { label: "Placement Fees (-)", value: positiveSummaryExportValue(exportPlacementFees), indent: 1 },
                 { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingCharges), indent: 1 },
-                { label: "Customs Fees (-)", value: summaryExportValue(exportCustomsFees), indent: 1 },
+                { label: "Customs Fees (-)", value: positiveSummaryExportValue(exportCustomsFees), indent: 1 },
                 spacerSummaryRow(),
 
                 { label: "Storage Fees (-)", value: summaryExportValue(exportStorageFees) },
@@ -9733,9 +9735,9 @@ export default function DashboardPage() {
 
                 {
                     label: "Inventory Charges and Reimbursement",
-                    value: summaryExportValue(exportInventoryChargesAndReimbursement),
+                    value: positiveSummaryExportValue(exportInventoryChargesAndReimbursement),
                 },
-                { label: "Inventory Charges (-)", value: summaryExportValue(exportInventoryCharges), indent: 1 },
+                { label: "Inventory Charges (-)", value: positiveSummaryExportValue(exportInventoryCharges), indent: 1 },
                 {
                     label: `Reimbursement for lost Inventory${reimbursementUnits
                         ? ` - ${reimbursementUnits} Units`
