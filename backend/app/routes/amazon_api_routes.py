@@ -3182,9 +3182,7 @@ def finances_mtd_transactions():
             & ~df_all["type_key"].isin(exclude_type_keys)
         )
 
-        # Logic 1: GRAND_TOTAL misc_transaction
-        # Includes rows with SKU and rows without SKU
-        misc_transaction_total = (
+        all_misc_transaction_total = (
             pd.to_numeric(
                 df_all.loc[leftout_mask, "total"],
                 errors="coerce"
@@ -3193,15 +3191,18 @@ def finances_mtd_transactions():
             .sum()
         )
 
-        # Logic 2: SKU-wise misc_transaction
-        # Only rows with SKU can be merged into df_sku
+        # misc_transaction is SKU-wise only; blank/unassigned misc rows move
+        # to other_adjustment so the displayed grand total matches SKU rows.
         tmp_misc = df_all.loc[
             leftout_mask
             & df_all["sku"].notna()
-            & (df_all["sku"] != "")
-            & (df_all["sku"] != "0"),
+            & (df_all["sku"].astype(str).str.strip() != "")
+            & (df_all["sku"].astype(str).str.strip() != "0")
+            & (df_all["sku"].astype(str).str.strip().str.lower() != "none"),
             ["sku", "total"]
         ].copy()
+        tmp_misc["sku"] = tmp_misc["sku"].astype(str).str.strip()
+        tmp_misc["total"] = pd.to_numeric(tmp_misc["total"], errors="coerce").fillna(0.0)
 
         misc_transaction_df = (
             tmp_misc.groupby("sku", as_index=False)["total"]
@@ -3213,6 +3214,16 @@ def finances_mtd_transactions():
             misc_transaction_df["misc_transaction"],
             errors="coerce"
         ).fillna(0.0)
+
+        misc_transaction_total = float(misc_transaction_df["misc_transaction"].sum())
+        unassigned_misc_transaction_total = (
+            float(all_misc_transaction_total or 0.0)
+            - misc_transaction_total
+        )
+        other_adjustment_total = (
+            float(other_adjustment_total or 0.0)
+            + abs(unassigned_misc_transaction_total)
+        )
 
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)

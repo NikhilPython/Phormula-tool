@@ -1836,6 +1836,68 @@ def _extract_sku_and_qty_from_contexts(
     return None, None
 
 
+SKU_VALUE_KEYS = {"sku", "sellersku", "merchantsku"}
+QUANTITY_VALUE_KEYS = {"quantity", "quantityshipped", "shippedquantity", "itemquantity"}
+
+
+def _norm_payload_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _clean_payload_scalar(value: Any) -> Optional[str]:
+    if value is None or isinstance(value, (dict, list, tuple)):
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"0", "none", "null"}:
+        return None
+    return text
+
+
+def _extract_first_key_value(value: Any, allowed_keys: set[str]) -> Optional[str]:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if _norm_payload_key(key) in allowed_keys:
+                cleaned = _clean_payload_scalar(item)
+                if cleaned:
+                    return cleaned
+        for item in value.values():
+            found = _extract_first_key_value(item, allowed_keys)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _extract_first_key_value(item, allowed_keys)
+            if found:
+                return found
+    return None
+
+
+def _extract_sku_from_related_identifiers(
+    related_identifiers: Optional[List[Dict[str, Any]]]
+) -> Optional[str]:
+    for rid in related_identifiers or []:
+        name = _norm_payload_key((rid or {}).get("relatedIdentifierName"))
+        if name in SKU_VALUE_KEYS:
+            cleaned = _clean_payload_scalar((rid or {}).get("relatedIdentifierValue"))
+            if cleaned:
+                return cleaned
+    return None
+
+
+def _extract_sku_from_payload(value: Any) -> Optional[str]:
+    return _extract_first_key_value(value, SKU_VALUE_KEYS)
+
+
+def _extract_quantity_from_payload(value: Any) -> Optional[float]:
+    raw = _extract_first_key_value(value, QUANTITY_VALUE_KEYS)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 # =========================================================
 # BREAKDOWN WALK + CLASSIFIERS
 # =========================================================
@@ -1975,8 +2037,23 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
     if items:
         item0 = items[0] or {}
         sku, quantity = _extract_sku_and_qty_from_contexts(item0.get("contexts") or [])
+        sku = (
+            sku
+            or _extract_sku_from_related_identifiers(item0.get("relatedIdentifiers") or [])
+            or _extract_sku_from_payload(item0)
+        )
+        if quantity is None:
+            quantity = _extract_quantity_from_payload(item0)
         if isinstance(item0.get("breakdowns"), list):
             item_breakdowns = item0["breakdowns"]
+
+    sku = (
+        sku
+        or _extract_sku_from_related_identifiers(tx.get("relatedIdentifiers") or [])
+        or _extract_sku_from_payload(tx)
+    )
+    if quantity is None:
+        quantity = _extract_quantity_from_payload(tx)
 
     # ---------- tx level ----------
     tx_breakdowns: List[Dict[str, Any]] = tx.get("breakdowns") or []

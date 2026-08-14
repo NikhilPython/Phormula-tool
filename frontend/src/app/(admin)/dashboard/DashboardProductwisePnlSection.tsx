@@ -816,7 +816,10 @@ export default function DashboardProductwisePnlSection({
 
                                                 if (colKey === "misc_transaction") {
                                                     const v = Number((row as any)[colKey] ?? 0);
-                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
+                                                    const absValue = Math.abs(Number.isFinite(v) ? v : 0);
+                                                    return absValue > 0 && absValue < 1
+                                                        ? formatAdsNumber(absValue)
+                                                        : Math.round(absValue).toLocaleString();
                                                 }
 
                                                 if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
