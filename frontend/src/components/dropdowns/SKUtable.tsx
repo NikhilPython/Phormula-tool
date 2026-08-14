@@ -1875,6 +1875,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
         if (s?.text) signRow[k] = s.text;
       });
 
+      const positiveExpenseExportKeys = new Set([
+        "promotional_rebates",
+        "promotional_rebates_percentage",
+        "selling_fees",
+        "fba_fees",
+        "net_taxes",
+        "misc_transaction",
+        "placement_fee",
+        "customs_fee",
+        "inventory_charges_and_reimbursement",
+        "fba_disposal",
+      ]);
+
       const sourceRows = excelRows;
 
       const rowsForExcel = sourceRows.map((row, rowIndex) => {
@@ -1941,6 +1954,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
             value = getCm2Percentage(row);
           }
 
+          if (positiveExpenseExportKeys.has(key)) {
+            value = Math.abs(toNumber(value));
+          }
+
           // Keep Global total ASP aligned with the backend summary value.
           if (key === "asp") {
             const isTotalAspRow =
@@ -1983,6 +2000,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const summaryValueColumnKey = hasCm2Data ? "cm2_profit" : "profit";
       const summaryDash = "-";
       const summaryExportValue = (value: number | null) => value === null ? summaryDash : value;
+      const positiveSummaryExportValue = (value: number | null) =>
+        value === null ? summaryDash : Math.abs(value);
       const spacerSummaryRow = (): SummaryRow => ({
         product_name: "",
         [summaryValueColumnKey]: "",
@@ -2010,7 +2029,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           {
             product_name: "Placement Fees (-)",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.placementFees),
+            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.placementFees),
           },
           {
             product_name: "Shipping Charges (-)",
@@ -2018,7 +2037,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           {
             product_name: "Customs Fees (-)",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.customsFees),
+            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.customsFees),
           },
           spacerSummaryRow(),
 
@@ -2038,11 +2057,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {
             product_name: "Inventory Charges and Reimbursement",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.inventoryChargesAndReimbursement),
+            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.inventoryChargesAndReimbursement),
           },
           {
             product_name: "Inventory Charges (-)",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.inventoryCharges),
+            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.inventoryCharges),
           },
           {
             product_name: `Reimbursement for lost Inventory${totals.reimbursement_lost_inventory_units
