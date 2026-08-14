@@ -89,7 +89,7 @@ const addBorderToRow = (rowNumber: number) => {
       .toLowerCase()
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
-  // column index where CM1 Profit Margin exists (used in top section)
+  // column index where CM1 Profit total exists (used in top section)
   const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
 
   /**
@@ -137,7 +137,7 @@ type HeaderMeta = {
 
 const isUsSkuLayout =
   headerRow?.amazon_fee === "Total Fees" ||
-  headerRow?.profit === "Margin" ||
+  headerRow?.sno === "Sno." ||
   !columns.includes("tex_and_credits");
 
 const HEADER_META: Record<string, HeaderMeta> = {
@@ -231,7 +231,7 @@ const HEADER_META: Record<string, HeaderMeta> = {
 
 profit: {
   group: "CM1 Profit",
-  subHeader: isUsSkuLayout ? "Margin" : "Total",
+  subHeader: "Total",
 },
 unit_wise_profitability: {
   group: "CM1 Profit",
@@ -269,7 +269,7 @@ cm2_margins: {
 },
 cm2_profit: {
   group: "CM2 Profit",
-  subHeader: isUsSkuLayout ? "Margin" : "Total",
+  subHeader: "Total",
 },
 };
 

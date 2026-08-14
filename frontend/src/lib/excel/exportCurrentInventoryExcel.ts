@@ -818,7 +818,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   },
   "CM1 Profit": {
     group: "CM1 Profit",
-    subHeader: isUsPnlLayout ? "Margin" : "Total",
+    subHeader: "Total",
   },
 
 "Sponsored Product": {
@@ -851,7 +851,7 @@ export function exportPnLProductwiseBreakdownMtdExcel(params: {
   },
   "CM2 Profit": {
     group: "CM2 Profit",
-    subHeader: isUsPnlLayout ? "Margin" : "Total",
+    subHeader: "Total",
   },
 };
 

@@ -1270,7 +1270,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           {
             key: "profit",
-            label: "Margin",
+            label: "Total",
             align: "center" as const,
             sortable: true,
             width: "8%",
@@ -1365,7 +1365,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
               },
               {
                 key: "cm2_profit",
-                label: "Margin",
+                label: "Total",
                 align: "center" as const,
                 sortable: true,
                 width: "8%",
@@ -1501,7 +1501,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { key: "acos", label: "ACoS %", align: "center" as const },
         ...(isUsCountry
           ? [
-            { key: "cm2_profit", label: "Margin", align: "center" as const },
+            { key: "cm2_profit", label: "Total", align: "center" as const },
             { key: "unit_wise_cm2_profitability", label: "Per Unit", align: "center" as const },
             { key: "cm2_margins", label: "%", align: "center" as const },
           ]
@@ -1542,7 +1542,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { key: "misc_transaction", label: "Misc. Transactions", align: "center" as const },
         { key: "other_transactions", label: "Total", align: "center" as const },
 
-        { key: "profit", label: "Margin", align: "center" as const },
+        { key: "profit", label: "Total", align: "center" as const },
         { key: "unit_wise_profitability", label: "Per Unit", align: "center" as const },
         { key: "profit_percentage", label: "%", align: "center" as const },
 
