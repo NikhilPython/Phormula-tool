@@ -4076,16 +4076,25 @@ def finances_mtd_transactions():
         # keep UI platform_fee negative, same as global
         total_row["platform_fee"] = round(-other_transactions_total, 2)
 
-        shipment_charges_total = abs(float(total_row.get("shipment_fees", 0.0) or 0.0))
+        inventory_reimbursement_total = (
+            abs(float(total_row.get("lost_total", 0.0) or 0.0))
+            - abs(float(total_row.get("fba_disposal", 0.0) or 0.0))
+        )
+        other_fees_total = (
+            abs(float(total_row.get("platform_management_fees", 0.0) or 0.0))
+            - abs(float(total_row.get("other_adjustment", 0.0) or 0.0))
+        )
 
-        # Total CM2 Profit:
-        # total_cm2_profit = cm2_profit - brand_spend - dealsvouchar_ads - abs(platform_fee) - shipment_fees
+        # Total CM2 follows the lower P&L section:
+        # productwise CM2 - cost ads - shipping - storage
+        # + inventory reimbursement - other fees.
         total_cm2_profit = (
             cm2_profit_productwise
-            - abs(float(total_row.get("brand_spend", 0.0) or 0.0))
-            - abs(float(total_row.get("dealsvouchar_ads", 0.0) or 0.0))
-            - abs(float(total_row.get("platform_fee", 0.0) or 0.0))
-            - shipment_charges_total
+            - cost_ads_total
+            - abs(float(total_row.get("shipping_charges", 0.0) or 0.0))
+            - abs(float(total_row.get("storage_fee", 0.0) or 0.0))
+            + inventory_reimbursement_total
+            - other_fees_total
         )
 
         total_cm2_margins = (

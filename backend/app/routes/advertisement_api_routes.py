@@ -1598,10 +1598,6 @@ def monthly_sp_sd_to_db():
                 net_sales_expr = _numeric_sql("net_sales")
                 product_spend_expr = _numeric_sql("product_spend", absolute=True)
                 display_spend_expr = _numeric_sql("display_spend", absolute=True)
-                brand_spend_expr = _numeric_sql("brand_spend", absolute=True)
-                deals_ads_expr = _numeric_sql("dealsvouchar_ads", absolute=True)
-                platform_fee_expr = _numeric_sql("platform_fee", absolute=True)
-                shipment_fees_expr = _numeric_sql("shipment_fees", absolute=True)
 
                 # Amazon route primarily uses total_quantity. Fall back to
                 # quantity - return_quantity for older monthly tables.
@@ -1618,15 +1614,7 @@ def monthly_sp_sd_to_db():
                     units_expr = "0.0"
 
                 product_ads_expr = f"({product_spend_expr} + {display_spend_expr})"
-                total_ads_expr = (
-                    f"({product_spend_expr} + {display_spend_expr} "
-                    f"+ {brand_spend_expr} + {deals_ads_expr})"
-                )
                 cm2_profit_expr = f"({profit_expr} - {product_ads_expr})"
-                total_cm2_profit_expr = (
-                    f"({cm2_profit_expr} - {brand_spend_expr} - {deals_ads_expr} "
-                    f"- {platform_fee_expr} - {shipment_fees_expr})"
-                )
 
                 set_clauses = []
                 if "ads_spend" in skuwise_columns:
@@ -1652,20 +1640,6 @@ def monthly_sp_sd_to_db():
                         f"({cm2_profit_expr} / {units_expr}) "
                         "ELSE 0.0 END)::numeric, 2)"
                     ),
-                    f"total_ads = ROUND(({total_ads_expr})::numeric, 2)",
-                    f"total_cm2_profit = ROUND(({total_cm2_profit_expr})::numeric, 2)",
-                    (
-                        "total_cm2_margins = ROUND((CASE "
-                        f"WHEN {net_sales_expr} <> 0 THEN "
-                        f"({total_cm2_profit_expr} / {net_sales_expr}) * 100.0 "
-                        "ELSE 0.0 END)::numeric, 2)"
-                    ),
-                    (
-                        "tacos_total_advertising_cost_of_sale = ROUND((CASE "
-                        f"WHEN {net_sales_expr} <> 0 THEN "
-                        f"({total_ads_expr} / {net_sales_expr}) * 100.0 "
-                        "ELSE 0.0 END)::numeric, 2)"
-                    ),
                 ])
 
                 db.session.execute(text(f"""
@@ -1673,10 +1647,21 @@ def monthly_sp_sd_to_db():
                     SET {", ".join(set_clauses)}
                 """))
 
+                if total_conditions:
+                    db.session.execute(text(f"""
+                        UPDATE public.{skuwise_table_name}
+                        SET
+                            total_ads = 0,
+                            total_cm2_profit = 0,
+                            total_cm2_margins = 0,
+                            tacos_total_advertising_cost_of_sale = 0
+                        WHERE NOT ({total_where_sql})
+                    """))
+
                 # Productwise CM2 total must be the sum of SKU rows. The
-                # account-level value stays in total_cm2_profit, where brand
-                # ads, deals/voucher ads, platform fee, and shipment fee are
-                # also deducted.
+                # account-level value stays in total_cm2_profit and follows
+                # the lower P&L section: cost ads, shipping, storage,
+                # inventory reimbursement, and other fees.
                 if total_conditions:
                     total_net_sales_expr = (
                         "COALESCE(s.net_sales, 0.0)"
@@ -1697,6 +1682,16 @@ def monthly_sp_sd_to_db():
                             )
                         )
                     )
+                    total_product_expr = (
+                        "ABS(COALESCE(s.product_spend, 0.0))"
+                        if "product_spend" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_display_expr = (
+                        "ABS(COALESCE(s.display_spend, 0.0))"
+                        if "display_spend" in skuwise_columns
+                        else "0.0"
+                    )
                     total_brand_expr = (
                         "ABS(COALESCE(s.brand_spend, 0.0))"
                         if "brand_spend" in skuwise_columns
@@ -1707,19 +1702,50 @@ def monthly_sp_sd_to_db():
                         if "dealsvouchar_ads" in skuwise_columns
                         else "0.0"
                     )
-                    total_platform_expr = (
-                        "ABS(COALESCE(s.platform_fee, 0.0))"
-                        if "platform_fee" in skuwise_columns
+                    total_shipping_expr = (
+                        "ABS(COALESCE(s.shipping_charges, 0.0))"
+                        if "shipping_charges" in skuwise_columns
                         else "0.0"
                     )
-                    total_shipment_expr = (
-                        "ABS(COALESCE(s.shipment_fees, 0.0))"
-                        if "shipment_fees" in skuwise_columns
+                    total_storage_expr = (
+                        "ABS(COALESCE(s.storage_fee, 0.0))"
+                        if "storage_fee" in skuwise_columns
                         else "0.0"
+                    )
+                    total_lost_expr = (
+                        "ABS(COALESCE(s.lost_total, 0.0))"
+                        if "lost_total" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_disposal_expr = (
+                        "ABS(COALESCE(s.fba_disposal, 0.0))"
+                        if "fba_disposal" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_platform_management_expr = (
+                        "ABS(COALESCE(s.platform_management_fees, 0.0))"
+                        if "platform_management_fees" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_other_adjustment_expr = (
+                        "ABS(COALESCE(s.other_adjustment, 0.0))"
+                        if "other_adjustment" in skuwise_columns
+                        else "0.0"
+                    )
+                    total_ads_expr = (
+                        f"({total_product_expr} + {total_display_expr} "
+                        f"+ {total_brand_expr} + {total_deals_expr})"
+                    )
+                    inventory_reimbursement_expr = (
+                        f"({total_lost_expr} - {total_disposal_expr})"
+                    )
+                    other_fees_expr = (
+                        f"({total_platform_management_expr} - {total_other_adjustment_expr})"
                     )
                     total_cm2_expr = (
                         f"(pt.cm2_profit - {total_brand_expr} - {total_deals_expr} "
-                        f"- {total_platform_expr} - {total_shipment_expr})"
+                        f"- {total_shipping_expr} - {total_storage_expr} "
+                        f"+ {inventory_reimbursement_expr} - {other_fees_expr})"
                     )
 
                     db.session.execute(text(f"""
@@ -1747,10 +1773,16 @@ def monthly_sp_sd_to_db():
                                     pt.cm2_profit / {total_units_expr}
                                 ELSE 0.0
                             END)::numeric, 2),
+                            total_ads = ROUND(({total_ads_expr})::numeric, 2),
                             total_cm2_profit = ROUND(({total_cm2_expr})::numeric, 2),
                             total_cm2_margins = ROUND((CASE
                                 WHEN {total_net_sales_expr} <> 0 THEN
                                     ({total_cm2_expr} / {total_net_sales_expr}) * 100.0
+                                ELSE 0.0
+                            END)::numeric, 2),
+                            tacos_total_advertising_cost_of_sale = ROUND((CASE
+                                WHEN {total_net_sales_expr} <> 0 THEN
+                                    ({total_ads_expr} / {total_net_sales_expr}) * 100.0
                                 ELSE 0.0
                             END)::numeric, 2)
                         FROM product_totals AS pt
