@@ -218,6 +218,9 @@ def resolve_nse_table_name(user_id: int, country: str, month: int | str, year: i
     month_num = normalize_month(month)
     mk = MonthKey(year=year, month=month_num)
 
+    if country == "global":
+        return f"skuwisemonthly_{user_id}_global_{mk.table_suffix}_table"
+
     return f"skuwisemonthly_{user_id}_{country}_{mk.table_suffix}"
 
 
