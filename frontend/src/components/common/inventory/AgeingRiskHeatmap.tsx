@@ -325,12 +325,12 @@ const buildAggregateRow = (
     );
 
     aggregate.transitFba = rows.reduce(
-        (sum, row) => sum + Number(row.transitFba || row.fcTransfer || 0),
+        (sum, row) => sum + Number(row.transitFba ?? row.fcTransfer ?? 0),
         0
     );
 
     aggregate.transitAwd = rows.reduce(
-        (sum, row) => sum + Number(row.transitAwd || row.inboundUnits || 0),
+        (sum, row) => sum + Number(row.transitAwd ?? row.inboundUnits ?? 0),
         0
     );
 
@@ -351,14 +351,14 @@ const buildAggregateRow = (
             sum +
             Number(
                 row.totalInTransit ??
-                Number(row.transitFba || row.fcTransfer || 0) +
-                Number(row.transitAwd || row.inboundUnits || 0)
+                Number(row.transitFba ?? row.fcTransfer ?? 0) +
+                Number(row.transitAwd ?? row.inboundUnits ?? 0)
             ),
         0
     );
 
     aggregate.unsellableFba = rows.reduce(
-        (sum, row) => sum + Number(row.unsellableFba || row.unsellableUnits || 0),
+        (sum, row) => sum + Number(row.unsellableFba ?? row.unsellableUnits ?? 0),
         0
     );
 
@@ -1255,8 +1255,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 );
                 const totalInTransit = Number(
                     row.totalInTransit ??
-                    Number(row.transitFba || row.fcTransfer || 0) +
-                    Number(row.transitAwd || row.inboundUnits || 0)
+                    Number(row.transitFba ?? row.fcTransfer ?? 0) +
+                    Number(row.transitAwd ?? row.inboundUnits ?? 0)
                 );
                 const sales = getUnitSalesValue(row, unitSalesDataKey);
 
@@ -1302,8 +1302,8 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 if (row.isPercentageRow) return percentageCell(row.totalInTransit);
                 return numberDisplay(
                     row.totalInTransit ??
-                    Number(row.transitFba || row.fcTransfer || 0) +
-                    Number(row.transitAwd || row.inboundUnits || 0)
+                    Number(row.transitFba ?? row.fcTransfer ?? 0) +
+                    Number(row.transitAwd ?? row.inboundUnits ?? 0)
                 );
             }
 
