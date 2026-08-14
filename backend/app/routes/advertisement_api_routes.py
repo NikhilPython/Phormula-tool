@@ -1494,17 +1494,24 @@ def monthly_sp_sd_to_db():
                           AND NOT ({total_where_sql})
                     """))
 
-                # Fill the SKU-wise Grand Total from the adsmonthly Grand Total.
-                # This preserves unmapped Sponsored Brands spend/sales in totals.
+                # Fill the SKU-wise Grand Total from the visible SKU rows for
+                # Sponsored Product / Display spend. Sponsored Brand totals can
+                # still come from the ads table because those rows may be
+                # account-level and not SKU-attributed.
                 if total_conditions:
                     db.session.execute(text(f"""
-                        WITH ads_total AS (
+                        WITH sku_ad_totals AS (
                             SELECT
                                 COALESCE(SUM(product_spend), 0) AS product_spend,
                                 COALESCE(SUM(display_spend), 0) AS display_spend,
-                                COALESCE(SUM(brand_spend), 0) AS brand_spend,
                                 COALESCE(SUM(sp_ads_sales), 0) AS sp_ads_sales,
-                                COALESCE(SUM(sd_ads_sales), 0) AS sd_ads_sales,
+                                COALESCE(SUM(sd_ads_sales), 0) AS sd_ads_sales
+                            FROM public.{skuwise_table_name}
+                            WHERE NOT ({total_where_sql})
+                        ),
+                        ads_total AS (
+                            SELECT
+                                COALESCE(SUM(brand_spend), 0) AS brand_spend,
                                 COALESCE(SUM(sb_ads_sales), 0) AS sb_ads_sales
                             FROM public.{table_name}
                             WHERE UPPER(TRIM(COALESCE(products::text, ''))) NOT IN
@@ -1512,29 +1519,30 @@ def monthly_sp_sd_to_db():
                         )
                         UPDATE public.{skuwise_table_name}
                         SET
-                            product_spend = t.product_spend,
-                            display_spend = t.display_spend,
+                            product_spend = s.product_spend,
+                            display_spend = s.display_spend,
                             brand_spend = t.brand_spend,
                             ad_type = CASE
-                                WHEN t.product_spend <> 0
-                                 AND t.display_spend <> 0
+                                WHEN s.product_spend <> 0
+                                 AND s.display_spend <> 0
                                  AND t.brand_spend <> 0
                                     THEN 'sponsored_product, sponsored_display, sponsored_brands'
-                                WHEN t.product_spend <> 0 AND t.display_spend <> 0
+                                WHEN s.product_spend <> 0 AND s.display_spend <> 0
                                     THEN 'sponsored_product, sponsored_display'
-                                WHEN t.product_spend <> 0 AND t.brand_spend <> 0
+                                WHEN s.product_spend <> 0 AND t.brand_spend <> 0
                                     THEN 'sponsored_product, sponsored_brands'
-                                WHEN t.display_spend <> 0 AND t.brand_spend <> 0
+                                WHEN s.display_spend <> 0 AND t.brand_spend <> 0
                                     THEN 'sponsored_display, sponsored_brands'
-                                WHEN t.product_spend <> 0 THEN 'sponsored_product'
-                                WHEN t.display_spend <> 0 THEN 'sponsored_display'
+                                WHEN s.product_spend <> 0 THEN 'sponsored_product'
+                                WHEN s.display_spend <> 0 THEN 'sponsored_display'
                                 WHEN t.brand_spend <> 0 THEN 'sponsored_brands'
                                 ELSE NULL
                             END,
-                            sp_ads_sales = t.sp_ads_sales,
-                            sd_ads_sales = t.sd_ads_sales,
+                            sp_ads_sales = s.sp_ads_sales,
+                            sd_ads_sales = s.sd_ads_sales,
                             sb_ads_sales = t.sb_ads_sales
-                        FROM ads_total AS t
+                        FROM sku_ad_totals AS s
+                        CROSS JOIN ads_total AS t
                         WHERE {total_where_sql}
                     """))
 
