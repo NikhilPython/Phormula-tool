@@ -232,13 +232,14 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     net_sales = pd.to_numeric(global_df["net_sales"], errors="coerce").fillna(0)
     quantity = pd.to_numeric(global_df["quantity"], errors="coerce").fillna(0)
+    total_quantity = pd.to_numeric(global_df["total_quantity"], errors="coerce").fillna(0)
     profit = pd.to_numeric(global_df["profit"], errors="coerce").fillna(0)
     ads = pd.to_numeric(global_df["advertising_total"], errors="coerce").fillna(0)
     cm2_profit = pd.to_numeric(global_df["cm2_profit"], errors="coerce").fillna(0)
     reimbursement = pd.to_numeric(global_df["rembursement_fee"], errors="coerce").fillna(0)
 
-    global_df["asp"] = np.where(quantity != 0, net_sales / quantity, 0)
-    global_df["unit_wise_profitability"] = np.where(quantity != 0, profit / quantity, 0)
+    global_df["asp"] = np.where(total_quantity != 0, net_sales / total_quantity, 0)
+    global_df["unit_wise_profitability"] = np.where(total_quantity != 0, profit / total_quantity, 0)
     global_df["profit_percentage"] = np.where(net_sales != 0, (profit / net_sales) * 100, 0)
     global_df["acos"] = np.where(net_sales != 0, (ads / net_sales) * 100, 0)
     global_df["cm2_profit_percentage"] = np.where(net_sales != 0, (cm2_profit / net_sales) * 100, 0)
@@ -276,7 +277,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     )
 
     total_net_sales = float(total_row["net_sales"] or 0)
-    total_quantity = float(total_row["quantity"] or 0)
+    total_quantity = float(total_row["total_quantity"] or 0)
     total_profit_value = float(total_row["profit"] or 0)
     total_ads = float(total_row["advertising_total"] or 0)
     if not float(total_row.get("advertising_total_final", 0) or 0):

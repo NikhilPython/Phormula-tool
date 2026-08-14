@@ -3940,13 +3940,12 @@ def finances_mtd_transactions():
         # keep it same as tax_and_credits.
         total_row["other"] = abs(float(total_row.get("tax_and_credits", 0.0) or 0.0))
 
-        # Grand Total CM1 Profit
-        # CM1 = Net Sales - COGS - Marketplace Fees + Tax and Credits
+        # Grand Total CM1 Profit must match the displayed SKU profit rows.
+        # Recomputing from aggregate components can drift when report-level
+        # adjustments are not SKU-attributed.
         total_row["profit"] = round(
-            float(total_row.get("net_sales", 0.0) or 0.0)
-            - float(total_row.get("cogs", 0.0) or 0.0)
-            - float(total_row.get("marketplace_fees", 0.0) or 0.0)
-            + float(total_row.get("other", 0.0) or 0.0),
+            float(pd.to_numeric(df_sku["profit"], errors="coerce").fillna(0.0).sum())
+            if "profit" in df_sku.columns else 0.0,
             2,
         )
 
@@ -3964,8 +3963,16 @@ def finances_mtd_transactions():
             2
         )
 
-        total_row["product_spend"] = round(float(ads_total_product_spend or 0.0), 2)
-        total_row["display_spend"] = round(float(ads_total_display_spend or 0.0), 2)
+        total_row["product_spend"] = round(
+            float(pd.to_numeric(df_sku["product_spend"], errors="coerce").fillna(0.0).sum())
+            if "product_spend" in df_sku.columns else 0.0,
+            2,
+        )
+        total_row["display_spend"] = round(
+            float(pd.to_numeric(df_sku["display_spend"], errors="coerce").fillna(0.0).sum())
+            if "display_spend" in df_sku.columns else 0.0,
+            2,
+        )
         total_row["brand_spend"] = round(float(ads_total_brand_spend or 0.0), 2)
         total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"], 2)
         # ✅ ACOS for total
@@ -4019,6 +4026,7 @@ def finances_mtd_transactions():
         total_row["cm2_profit"] = g_profit - g_spend
         total_row["cm1_profit_per_unit"] = (g_profit / total_qty) if total_qty else 0.0
         total_row["cm1_profit_per"] = (g_profit / g_net_sales * 100.0) if g_net_sales else 0.0
+        total_row["profit_percentage"] = total_row["cm1_profit_per"]
         total_row["cm2_profit_per_unit"] = (total_row["cm2_profit"] / total_qty) if total_qty else 0.0
         total_row["cm2_profit_per"] = (total_row["cm2_profit"] / g_net_sales * 100.0) if g_net_sales else 0.0
 
@@ -4149,6 +4157,7 @@ def finances_mtd_transactions():
                 "platform_fee",
                 "profit",
                 "cm2_profit",
+                "profit_percentage",
                 "total_ads",
                 "total_cm2_profit",
                 "total_cm2_margins",
