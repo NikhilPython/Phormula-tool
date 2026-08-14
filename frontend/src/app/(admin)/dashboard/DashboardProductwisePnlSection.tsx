@@ -55,6 +55,14 @@ const sumKnownNumbers = (...values: Array<number | null>) => {
     return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 };
 
+const differenceKnownNumbers = (
+    minuend: number | null,
+    subtrahend: number | null
+) => {
+    if (minuend === null && subtrahend === null) return null;
+    return Number(minuend ?? 0) - Number(subtrahend ?? 0);
+};
+
 export default function DashboardProductwisePnlSection({
     currencySymbol,
     adsLoading,
@@ -174,9 +182,13 @@ export default function DashboardProductwisePnlSection({
 
     const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
     const others = getSummaryNumber(["other_adjustment"]);
+    const otherFees = differenceKnownNumbers(platformManagementFees, others);
 
     const formatSummaryValueOrDash = (value: number | null, key: string) => {
         return value === null ? "-" : formatSummaryValue(value, key);
+    };
+    const formatRoundedSummaryValueOrDash = (value: number | null) => {
+        return value === null ? "-" : Math.round(Math.abs(Number(value))).toLocaleString();
     };
 
     const productwiseSummaryRows = isUsPnlSkuLayout
@@ -277,25 +289,33 @@ export default function DashboardProductwisePnlSection({
                 ],
             },
             {
-                type: "fixed" as const,
-                id: "platform_management_fees",
-                label: "Platform Management Fees",
-                endValue: formatSummaryValueOrDash(
-                    platformManagementFees,
-                    "platform_management_fees"
-                ),
-            },
-            {
-                type: "fixed" as const,
-                id: "others",
-                label: "Others",
-                endValue: formatSummaryValueOrDash(others, "other_adjustment"),
+                type: "section" as const,
+                id: "other_fees",
+                label: <>Other Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                endValue: formatRoundedSummaryValueOrDash(otherFees),
+                defaultCollapsed: true,
+                children: [
+                    {
+                        id: "platform_management_fees",
+                        label: <>Platform Management Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        midValue: formatSummaryValueOrDash(
+                            platformManagementFees,
+                            "platform_management_fees"
+                        ),
+                    },
+                    {
+                        id: "others",
+                        label: <>Others <strong className="text-green-500">(+)</strong></>,
+                        midValue: formatSummaryValueOrDash(others, "other_adjustment"),
+                    },
+                ],
             },
             {
                 type: "fixed" as const,
                 id: "cm2_profit",
                 label: "CM2 Profit",
                 endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+                bold: true,
             },
             {
                 type: "fixed" as const,
@@ -311,6 +331,7 @@ export default function DashboardProductwisePnlSection({
                     tacosFromDisplayedCardsForSummary,
                     "acos"
                 )}%`,
+                bold: true,
             },
             {
                 type: "section" as const,
@@ -465,6 +486,7 @@ export default function DashboardProductwisePnlSection({
                 id: "cm2_profit",
                 label: "CM2 Profit/Loss",
                 endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+                bold: true,
             },
             {
                 type: "fixed" as const,
@@ -480,6 +502,7 @@ export default function DashboardProductwisePnlSection({
                     tacosFromDisplayedCardsForSummary,
                     "acos"
                 )}%`,
+                bold: true,
             },
             {
                 type: "section" as const,

@@ -320,6 +320,14 @@ const sumKnownNumbers = (...values: Array<number | null>) => {
   return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
 };
 
+const differenceKnownNumbers = (
+  minuend: number | null,
+  subtrahend: number | null
+) => {
+  if (minuend === null && subtrahend === null) return null;
+  return Number(minuend ?? 0) - Number(subtrahend ?? 0);
+};
+
 const formatRoundedPlain = (value: unknown) => {
   return Math.round(Math.abs(toNumber(value ?? 0))).toLocaleString();
 };
@@ -1679,6 +1687,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "inventory_charges_and_reimbursement",
         "reimbursement_lost_inventory_amount",
         "platform_management_fees",
+        "other_fees",
         "others",
         "other_adjustment",
       ]);
@@ -1995,7 +2004,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       });
 
 
-      type SummaryRow = Record<string, string | number> & { __bold?: number };
+      type SummaryRow = Record<string, string | number | boolean | undefined> & {
+        __bold?: boolean;
+      };
 
       const summaryValueColumnKey = hasCm2Data ? "cm2_profit" : "profit";
       const summaryDash = "-";
@@ -2006,6 +2017,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
         product_name: "",
         [summaryValueColumnKey]: "",
       });
+      const otherFeesTotal = differenceKnownNumbers(
+        usSummaryValues.platformManagementFees,
+        usSummaryValues.otherAdjustment
+      );
 
       const summaryRows: SummaryRow[] = isUsCountry
         ? [
@@ -2072,11 +2087,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
           spacerSummaryRow(),
 
           {
-            product_name: "Platform Management Fees",
+            product_name: "Other Fees (-)",
+            [summaryValueColumnKey]: summaryExportValue(otherFeesTotal),
+          },
+          {
+            product_name: "  Platform Management Fees (-)",
             [summaryValueColumnKey]: summaryExportValue(usSummaryValues.platformManagementFees),
           },
           {
-            product_name: "Others",
+            product_name: "  Others (+)",
             [summaryValueColumnKey]: summaryExportValue(usSummaryValues.otherAdjustment),
           },
           spacerSummaryRow(),
@@ -2084,6 +2103,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "CM2 Profit",
             [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
+            __bold: true,
           },
           spacerSummaryRow(),
           {
@@ -2093,6 +2113,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "TACoS (Total Advertising Cost of Sale)",
             [summaryValueColumnKey]: frontendTacos,
+            __bold: true,
           },
           {
             product_name: "Net Reimbursement",
@@ -2162,6 +2183,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "CM2 Profit/Loss",
             [summaryValueColumnKey]: Number(totals.total_cm2_profit || 0),
+            __bold: true,
           },
           {
             product_name: "CM2 Margins",
@@ -2170,6 +2192,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           {
             product_name: "TACoS (Total Advertising Cost of Sale)",
             [summaryValueColumnKey]: frontendTacos,
+            __bold: true,
           },
           {
             product_name: "Net Reimbursement",
@@ -2186,7 +2209,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ];
 
       const normalizedSummaryRows =
-        summaryRows.map((r) => ({ ...r, __bold: r.__bold ? true : undefined })) as Array<
+        summaryRows.map((r) => ({
+          ...r,
+          __bold: r.__bold ? true : undefined,
+        })) as Array<
           Record<string, string | number> & { __bold?: boolean }
         >;
 
@@ -2506,6 +2532,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     TOTAL_ROW_HEIGHT +
     SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
+  const usOtherFees = differenceKnownNumbers(
+    usSummaryValues.platformManagementFees,
+    usSummaryValues.otherAdjustment
+  );
+
   const skuSummaryRows = isUsCountry
     ? [
       {
@@ -2604,25 +2635,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ],
       },
       {
-        type: "fixed" as const,
-        id: "platform_management_fees",
-        label: "Platform Management Fees",
-        endValue: formatSummaryValueOrDash(
-          usSummaryValues.platformManagementFees,
-          "platform_management_fees"
-        ),
-      },
-      {
-        type: "fixed" as const,
-        id: "others",
-        label: "Others",
-        endValue: formatSummaryValueOrDash(usSummaryValues.otherAdjustment, "other_adjustment"),
+        type: "section" as const,
+        id: "other_fees",
+        label: <>Other Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+        endValue: formatSummaryValueOrDash(usOtherFees, "other_fees"),
+        defaultCollapsed: true,
+        children: [
+          {
+            id: "platform_management_fees",
+            label: <>Platform Management Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+            midValue: formatSummaryValueOrDash(
+              usSummaryValues.platformManagementFees,
+              "platform_management_fees"
+            ),
+          },
+          {
+            id: "others",
+            label: <>Others <strong className="text-green-500">(+)</strong></>,
+            midValue: formatSummaryValueOrDash(usSummaryValues.otherAdjustment, "other_adjustment"),
+          },
+        ],
       },
       {
         type: "fixed" as const,
         id: "cm2_profit",
         label: "CM2 Profit",
         endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
+        bold: true,
       },
       {
         type: "fixed" as const,
@@ -2635,6 +2674,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         id: "tacos",
         label: "TACoS (Total Advertising Cost of Sale)",
         endValue: `${formatValue(frontendTacos, "acos")}`,
+        bold: true,
       },
       {
         type: "section" as const,
@@ -2758,6 +2798,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         id: "cm2_profit",
         label: "CM2 Profit/Loss",
         endValue: formatValue(totals.total_cm2_profit, "cm2_profit"),
+        bold: true,
       },
       {
         type: "fixed" as const,
@@ -2770,6 +2811,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         id: "tacos",
         label: "TACoS (Total Advertising Cost of Sale)",
         endValue: `${formatValue(frontendTacos, "acos")}`,
+        bold: true,
       },
       {
         type: "section" as const,

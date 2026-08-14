@@ -457,7 +457,9 @@ for (const r of rows || []) {
   const percentSummaryRowNumbers: number[] = [];
 
   for (const sr of summaryRows || []) {
-    let label = String((sr as any)?.[labelKey] ?? "").trim();
+    const rawLabelText = String((sr as any)?.[labelKey] ?? "");
+    const labelIndent = rawLabelText.match(/^\s*/)?.[0] ?? "";
+    let label = rawLabelText.trim();
     let value: any = (sr as any)?.[valueKey] ?? "";
 
     if (label === "Reimbursement for lost Inventory") {
@@ -478,7 +480,7 @@ for (const r of rows || []) {
     }
 
     const line = new Array(columns.length).fill("");
-    line[colIndex[labelKey] - 1] = label;
+    line[colIndex[labelKey] - 1] = `${labelIndent}${label}`;
     line[colIndex[valueKey] - 1] = value;
 
     const excelRow = ws.addRow(line);

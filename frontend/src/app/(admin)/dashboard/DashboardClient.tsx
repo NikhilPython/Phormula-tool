@@ -9676,6 +9676,10 @@ export default function DashboardPage() {
 
             const exportPlatformManagementFees = getOptionalExportNumber(["platform_management_fees"]);
             const exportOthers = getOptionalExportNumber(["other_adjustment"]);
+            const exportOtherFees =
+                exportPlatformManagementFees !== null || exportOthers !== null
+                    ? Number(exportPlatformManagementFees ?? 0) - Number(exportOthers ?? 0)
+                    : null;
             const reimbursementUnits = getOptionalExportNumber([
                 "reimbursement_lost_inventory_units",
                 "reimbursement_units",
@@ -9708,9 +9712,9 @@ export default function DashboardPage() {
                     ]
                     : []),
 
-                { label: "CM2 Profit/Loss", value: cm2ProfitLoss },
+                { label: "CM2 Profit/Loss", value: cm2ProfitLoss, bold: true },
                 { label: "CM2 Margins", value: Number(cm2MarginPctForSummary ?? 0) },
-                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0) },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
                 { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0) },
                 { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0) },
                 { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0) },
@@ -9747,17 +9751,19 @@ export default function DashboardPage() {
                 },
                 spacerSummaryRow(),
 
+                { label: "Other Fees (-)", value: summaryExportValue(exportOtherFees) },
                 {
-                    label: "Platform Management Fees",
+                    label: "Platform Management Fees (-)",
                     value: summaryExportValue(exportPlatformManagementFees),
+                    indent: 1,
                 },
-                { label: "Others", value: summaryExportValue(exportOthers) },
+                { label: "Others (+)", value: summaryExportValue(exportOthers), indent: 1 },
                 spacerSummaryRow(),
 
-                { label: "CM2 Profit", value: cm2ProfitLoss },
+                { label: "CM2 Profit", value: cm2ProfitLoss, bold: true },
                 spacerSummaryRow(),
                 { label: "CM2 Profit %", value: Number(cm2MarginPctForSummary ?? 0) },
-                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0) },
+                { label: "TACoS (Total Advertising Cost of Sale)", value: Number(tacosFromDisplayedCardsForSummary ?? 0), bold: true },
                 { label: "Net Reimbursement", value: Number(reimbursementForSummary ?? 0) },
                 { label: "Reimbursement vs Sales", value: Number(reimbursementVsSalesPctForSummary ?? 0) },
                 { label: "Reimbursement vs CM2 Margins", value: Number(reimbursementVsCm2PctForSummary ?? 0) },
