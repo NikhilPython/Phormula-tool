@@ -162,15 +162,30 @@ def getDispatchfile():
         if not country or not month or not year:
             return jsonify({'error': 'Missing country, month, or year parameters'}), 400
 
+        # requested_month = month.strip().lower()
+        # requested_year = int(year)
+
+        # current_month = datetime.now().strftime("%B").lower()
+        # current_year = datetime.now().year
+
+        # # Existing naming behavior preserved
+        # effective_month = current_month if requested_year == current_year else requested_month
+        # short_month = effective_month[:3].lower()
+
         requested_month = month.strip().lower()
         requested_year = int(year)
 
-        current_month = datetime.now().strftime("%B").lower()
-        current_year = datetime.now().year
+        # Always use the month explicitly requested by the UI.
+        effective_month = requested_month
+        short_month = requested_month[:3].lower()
 
-        # Existing naming behavior preserved
-        effective_month = current_month if requested_year == current_year else requested_month
-        short_month = effective_month[:3].lower()
+        print(
+            "[DISPATCH][REQUEST]",
+            f"raw_month={month}",
+            f"requested_month={requested_month}",
+            f"year={requested_year}",
+            f"forecast_file_month={short_month}",
+        )
 
         def fetch_latest_stored_file(user_id: int, ctry: str, short_month: str):
             """
@@ -666,6 +681,66 @@ def getDispatchfile():
             )
             return next_month - pd.Timedelta(days=1)
 
+        def weeks_to_full_months(weeks) -> int:
+            """
+            Convert user profile weeks into FULL monthly planning buckets.
+
+            Examples:
+                4 weeks  -> 1 month
+                8 weeks  -> 2 months
+                16 weeks -> 4 months
+                10 weeks -> 3 months
+
+            Nothing is hard-coded per user.
+            """
+            weeks = pd.to_numeric(weeks, errors="coerce")
+
+            if pd.isna(weeks) or float(weeks) <= 0:
+                return 0
+
+            return int(math.ceil(float(weeks) / 4.0))
+
+
+        def normalize_month_start(value):
+            """
+            Convert any date/month value to the first day of that month.
+            """
+            dt = pd.to_datetime(value, errors="coerce")
+
+            if pd.isna(dt):
+                return None
+
+            return pd.Timestamp(
+                year=dt.year,
+                month=dt.month,
+                day=1,
+            ).normalize()
+
+
+        def next_month_opening(value):
+            """
+            Business rule:
+
+            If an inbound shipment reaches during November,
+            it becomes usable on 1 December.
+
+            Examples:
+                2026-11-01 -> 2026-12-01
+                2026-11-15 -> 2026-12-01
+                2026-11-30 -> 2026-12-01
+            """
+            month_start = normalize_month_start(value)
+
+            if month_start is None:
+                return None
+
+            return (
+                month_start
+                + pd.DateOffset(months=1)
+            ).normalize()
+
+
+
         def month_weighted_demand(row: pd.Series, forecast_cols: list[str], start_index: int, weeks: int) -> float:
             remaining_weeks = max(float(weeks or 0), 0)
             if remaining_weeks <= 0:
@@ -822,124 +897,259 @@ def getDispatchfile():
                 f"for {country_label}. Please enter expected reach date for: {preview}."
             )
 
-        def apply_rolling_dispatch_plan(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
+        def apply_rolling_dispatch_plan(
+            df: pd.DataFrame,
+            ctry: str,
+        ) -> pd.DataFrame:
+
             planned = df.copy()
 
-            # ---------------------------------------------------------
-            # 1. Get month-wise forecast columns in chronological order
-            # ---------------------------------------------------------
+            # =========================================================
+            # 1. GET MONTHLY FORECAST COLUMNS
+            # =========================================================
             forecast_cols = [
-                col for col in get_forecast_columns(planned)
+                col
+                for col in get_forecast_columns(planned)
                 if forecast_label_month_start(col) is not None
             ]
 
             forecast_cols = sorted(
                 forecast_cols,
-                key=lambda col: forecast_label_month_start(col)
+                key=lambda col: forecast_label_month_start(col),
             )
 
-            # We want ONLY the timing-based SEA/AIR logic.
-            # Do not fall back to historical shipment ratios.
             if not forecast_cols:
                 raise ValueError(
-                    "Monthly forecast columns are required for SEA/AIR dispatch planning."
+                    "Monthly forecast columns are required "
+                    "for SEA/AIR dispatch planning."
+                )
+
+            # =========================================================
+            # 2. GET DYNAMIC USER PROFILE
+            # =========================================================
+            (
+                ship_time_weeks,
+                air_time_weeks,
+                stock_unit_weeks,
+            ) = get_country_profile_split_policy(ctry)
+
+            ship_time_weeks = max(
+                float(ship_time_weeks or 0),
+                0,
+            )
+
+            air_time_weeks = max(
+                float(air_time_weeks or 0),
+                0,
+            )
+
+            stock_unit_weeks = max(
+                float(stock_unit_weeks or 0),
+                0,
+            )
+
+            # ---------------------------------------------------------
+            # Convert weeks into FULL MONTH planning buckets.
+            #
+            # Example for your current user:
+            #
+            # AIR    4 weeks  -> 1 month
+            # SEA   16 weeks  -> 4 months
+            # BUFFER 8 weeks  -> 2 months
+            #
+            # These are NOT hard-coded.
+            # ---------------------------------------------------------
+            air_months = weeks_to_full_months(
+                air_time_weeks
+            )
+
+            sea_months = weeks_to_full_months(
+                ship_time_weeks
+            )
+
+            buffer_months = weeks_to_full_months(
+                stock_unit_weeks
+            )
+
+            if air_months <= 0 and sea_months <= 0:
+                raise ValueError(
+                    f"AIR/SEA transit time is not configured for "
+                    f"{ctry.upper()}."
+                )
+
+            # =========================================================
+            # 3. PLANNING MONTH
+            # =========================================================
+            planning_month = normalize_month_start(
+                month_start_date(
+                    requested_month,
+                    requested_year,
+                )
+            )
+
+            if planning_month is None:
+                raise ValueError(
+                    "Unable to determine dispatch planning month."
                 )
 
             # ---------------------------------------------------------
-            # 2. Country profile
+            # Earliest usable month of a NEW shipment dispatched now.
+            #
+            # Example:
+            #
+            # Planning = 1-Aug
+            # AIR = 1 month
+            #     -> usable 1-Sep
+            #
+            # SEA = 4 months
+            #     -> usable 1-Dec
             # ---------------------------------------------------------
-            ship_time_weeks, air_time_weeks, stock_unit_weeks = (
-                get_country_profile_split_policy(ctry)
-            )
+            air_usable_month = (
+                planning_month
+                + pd.DateOffset(months=air_months)
+            ).normalize()
 
-            ship_time_weeks = max(float(ship_time_weeks or 0), 0)
-            air_time_weeks = max(float(air_time_weeks or 0), 0)
-            stock_unit_weeks = max(float(stock_unit_weeks or 0), 0)
+            sea_usable_month = (
+                planning_month
+                + pd.DateOffset(months=sea_months)
+            ).normalize()
 
-            # ---------------------------------------------------------
-            # 3. Determine actual planning/dispatch date
-            # ---------------------------------------------------------
-            selected_month_start = pd.to_datetime(
-                month_start_date(requested_month, requested_year),
-                errors="coerce",
-            )
+            # =========================================================
+            # 4. BUILD MONTH -> FORECAST COLUMN MAP
+            # =========================================================
+            forecast_by_month = {}
 
-            if pd.isna(selected_month_start):
-                selected_month_start = pd.Timestamp(
-                    datetime(requested_year, 1, 1)
+            for col in forecast_cols:
+
+                month_dt = normalize_month_start(
+                    forecast_label_month_start(col)
                 )
 
-            # Dispatch planning always starts from the first day
-            # of the selected forecast month.
+                if month_dt is None:
+                    continue
+
+                forecast_by_month[month_dt] = col
+
+            if planning_month not in forecast_by_month:
+                raise ValueError(
+                    f"Forecast for "
+                    f"{planning_month.strftime('%b %Y')} "
+                    f"is missing."
+                )
+
+            # =========================================================
+            # 5. DETERMINE HOW FAR WE MUST PLAN
+            # =========================================================
+            #
+            # We cross-check every month until the NEW SEA shipment
+            # can become usable.
+            #
+            # For the SEA-arrival month we must ALSO be able to check
+            # the complete buffer after that month.
             #
             # Example:
-            # August 2026 -> 01-Aug-2026
             #
-            # Opening FBA/AWD stock belongs to this date, so the
-            # recommendation stays fixed throughout the month.
-            planning_dispatch_date = selected_month_start.normalize()
+            # Planning = Aug
+            # SEA usable = Dec
+            # Buffer = 2 months
+            #
+            # We need forecasts through:
+            #
+            # Aug Sep Oct Nov Dec Jan Feb
+            #
+            # because Dec must check Jan + Feb buffer.
+            # =========================================================
+
+            if sea_months > 0:
+                decision_end_month = sea_usable_month
+            else:
+                decision_end_month = air_usable_month
+
+            forecast_horizon_end = (
+                decision_end_month
+                + pd.DateOffset(months=buffer_months)
+            ).normalize()
 
             # ---------------------------------------------------------
-            # 4. Calculate earliest arrival date of NEW shipments
+            # Build every required calendar month.
             # ---------------------------------------------------------
-            air_arrival_date = (
-                planning_dispatch_date
-                + pd.Timedelta(weeks=air_time_weeks)
-            )
+            required_months = []
 
-            sea_arrival_date = (
-                planning_dispatch_date
-                + pd.Timedelta(weeks=ship_time_weeks)
-            )
+            month_cursor = planning_month
 
-            # ---------------------------------------------------------
-            # 5. Planning horizon
-            #
-            # Plan until SEA arrival + required safety/buffer stock.
-            #
-            # Example:
-            # SEA = 16 weeks
-            # Buffer = 8 weeks
-            #
-            # Need inventory coverage for 24 weeks from dispatch.
-            # ---------------------------------------------------------
-            planning_horizon_end = (
-                sea_arrival_date
-                + pd.Timedelta(weeks=stock_unit_weeks)
-            )
+            while month_cursor <= forecast_horizon_end:
 
-            last_forecast_end = forecast_label_month_end(
-                forecast_cols[-1]
-            )
+                required_months.append(
+                    month_cursor
+                )
 
-            if last_forecast_end is not None:
-                last_forecast_end = pd.Timestamp(
-                    last_forecast_end
+                month_cursor = (
+                    month_cursor
+                    + pd.DateOffset(months=1)
                 ).normalize()
 
-                # We cannot calculate beyond available forecast.
-                planning_horizon_end = min(
-                    planning_horizon_end,
-                    last_forecast_end,
+            # ---------------------------------------------------------
+            # DO NOT silently treat missing future forecast as zero.
+            #
+            # Example:
+            # December buffer requires Jan + Feb.
+            # If Jan/Feb don't exist, calculation would be wrong.
+            # ---------------------------------------------------------
+            missing_forecast_months = [
+                month_dt
+                for month_dt in required_months
+                if month_dt not in forecast_by_month
+            ]
+
+            if missing_forecast_months:
+
+                missing_labels = ", ".join(
+                    month_dt.strftime("%b'%y")
+                    for month_dt in missing_forecast_months
                 )
 
-            # ---------------------------------------------------------
-            # 6. Fetch EXISTING inbound shipments
-            # ---------------------------------------------------------
-            inbound_rows = fetch_inbound_shipment_rows(ctry)
+                raise ValueError(
+                    "Not enough future monthly forecast data "
+                    "to calculate dispatch and full buffer. "
+                    f"Missing forecast month(s): {missing_labels}."
+                )
+
+            # =========================================================
+            # 6. FETCH EXISTING INBOUND SHIPMENTS
+            # =========================================================
+            inbound_rows = fetch_inbound_shipment_rows(
+                ctry
+            )
 
             validate_inbound_expected_reach_dates(
                 inbound_rows,
                 ctry,
             )
 
-            inbound_events_by_sku = {}
+            # ---------------------------------------------------------
+            # Total quantity is still kept separately for DISPLAY
+            # and Shortfall Unit calculation.
+            # ---------------------------------------------------------
             inbound_totals_by_sku = {}
+
+            # ---------------------------------------------------------
+            # Monthly usable inbound:
+            #
+            # {
+            #   SKU: {
+            #       Timestamp("2026-12-01"): 2016
+            #   }
+            # }
+            #
+            # Expected reach 15-Nov -> usable 1-Dec.
+            # ---------------------------------------------------------
+            inbound_by_sku_month = {}
 
             for inbound in inbound_rows:
 
                 sku_norm = str(
-                    inbound.get("sku_norm") or ""
+                    inbound.get("sku_norm")
+                    or ""
                 ).strip().upper()
 
                 if not sku_norm:
@@ -950,29 +1160,44 @@ def getDispatchfile():
                     errors="coerce",
                 )
 
-                if pd.isna(units) or float(units) <= 0:
+                if (
+                    pd.isna(units)
+                    or float(units) <= 0
+                ):
                     continue
 
                 units = float(units)
 
                 source_key = (
                     "FBA"
-                    if str(inbound.get("source") or "").upper() == "FBA"
+                    if str(
+                        inbound.get("source")
+                        or ""
+                    ).upper() == "FBA"
                     else "AWD"
                 )
 
-                # Total inbound for display
-                sku_totals = inbound_totals_by_sku.setdefault(
-                    sku_norm,
-                    {
-                        "FBA": 0.0,
-                        "AWD": 0.0,
-                    },
+                # -----------------------------------------------------
+                # Total inbound for display / physical shortfall.
+                # -----------------------------------------------------
+                sku_totals = (
+                    inbound_totals_by_sku.setdefault(
+                        sku_norm,
+                        {
+                            "FBA": 0.0,
+                            "AWD": 0.0,
+                        },
+                    )
                 )
 
                 sku_totals[source_key] += units
 
-                # Exact arrival event for stock simulation
+                # -----------------------------------------------------
+                # BUSINESS RULE:
+                #
+                # Shipment reaching during one month becomes usable
+                # at opening of NEXT month.
+                # -----------------------------------------------------
                 reach_dt = pd.to_datetime(
                     inbound.get("expected_reach_date"),
                     errors="coerce",
@@ -981,41 +1206,83 @@ def getDispatchfile():
                 if pd.isna(reach_dt):
                     continue
 
-                reach_dt = reach_dt.normalize()
-
-                inbound_events_by_sku.setdefault(
-                    sku_norm,
-                    []
-                ).append(
-                    (reach_dt, units)
+                usable_month = next_month_opening(
+                    reach_dt
                 )
 
-            # ---------------------------------------------------------
-            # Helpers
-            # ---------------------------------------------------------
+                if usable_month is None:
+                    continue
+
+                # -----------------------------------------------------
+                # If an old/open shipment has a usable month before the
+                # selected planning month, treat it as available at the
+                # selected month's opening.
+                # -----------------------------------------------------
+                if usable_month < planning_month:
+                    usable_month = planning_month
+
+                sku_months = (
+                    inbound_by_sku_month.setdefault(
+                        sku_norm,
+                        {},
+                    )
+                )
+
+                sku_months[usable_month] = (
+                    sku_months.get(
+                        usable_month,
+                        0.0,
+                    )
+                    + units
+                )
+
+            # =========================================================
+            # 7. HELPERS
+            # =========================================================
             def scalar_number(value) -> float:
+
                 parsed = pd.to_numeric(
                     value,
                     errors="coerce",
                 )
 
-                return 0.0 if pd.isna(parsed) else float(parsed)
+                return (
+                    0.0
+                    if pd.isna(parsed)
+                    else float(parsed)
+                )
 
             def forecast_value(
                 row_data: pd.Series,
-                forecast_col: str,
+                month_dt: pd.Timestamp,
             ) -> float:
 
+                forecast_col = forecast_by_month.get(
+                    month_dt
+                )
+
+                if forecast_col is None:
+                    return 0.0
+
                 parsed = pd.to_numeric(
-                    row_data.get(forecast_col, 0),
+                    row_data.get(
+                        forecast_col,
+                        0,
+                    ),
                     errors="coerce",
                 )
 
-                return 0.0 if pd.isna(parsed) else max(float(parsed), 0.0)
+                if pd.isna(parsed):
+                    return 0.0
 
-            # ---------------------------------------------------------
-            # 7. Process every SKU independently
-            # ---------------------------------------------------------
+                return max(
+                    float(parsed),
+                    0.0,
+                )
+
+            # =========================================================
+            # 8. PROCESS EVERY SKU
+            # =========================================================
             for idx, row in planned.iterrows():
 
                 sku_norm = str(
@@ -1024,232 +1291,509 @@ def getDispatchfile():
                     or ""
                 ).strip().upper()
 
-                # ---------------------------------------------
-                # Current inventory
-                # ---------------------------------------------
+                # -----------------------------------------------------
+                # CURRENT OPENING STOCK
+                # -----------------------------------------------------
                 opening_stock = (
-                    scalar_number(row.get("FBA", 0))
-                    + scalar_number(row.get("AWD", 0))
+                    scalar_number(
+                        row.get("FBA", 0)
+                    )
+                    + scalar_number(
+                        row.get("AWD", 0)
+                    )
                 )
 
-                inventory = opening_stock
-
-                # ---------------------------------------------
-                # Existing inbound totals
-                # ---------------------------------------------
-                sku_inbound_totals = inbound_totals_by_sku.get(
-                    sku_norm,
-                    {},
+                # -----------------------------------------------------
+                # EXISTING INBOUND TOTALS
+                # -----------------------------------------------------
+                sku_inbound_totals = (
+                    inbound_totals_by_sku.get(
+                        sku_norm,
+                        {},
+                    )
                 )
 
-                fba_inbound_total = sku_inbound_totals.get(
-                    "FBA",
-                    0.0,
+                fba_inbound_total = (
+                    sku_inbound_totals.get(
+                        "FBA",
+                        0.0,
+                    )
                 )
 
-                awd_inbound_total = sku_inbound_totals.get(
-                    "AWD",
-                    0.0,
+                awd_inbound_total = (
+                    sku_inbound_totals.get(
+                        "AWD",
+                        0.0,
+                    )
                 )
 
-                # Keep old sheet values as fallback only if DB has
-                # no inbound quantity for this SKU.
+                # -----------------------------------------------------
+                # Keep your old workbook values as DISPLAY fallback
+                # when DB did not provide quantity.
+                #
+                # IMPORTANT:
+                # We DO NOT put this fallback into monthly simulation
+                # because there is no reliable Expected Reach Date.
+                # -----------------------------------------------------
                 if fba_inbound_total <= 0:
-                    fba_inbound_total = scalar_number(
-                        row.get("In Transit FBA", 0)
+
+                    fba_inbound_total = (
+                        scalar_number(
+                            row.get(
+                                "In Transit FBA",
+                                0,
+                            )
+                        )
                     )
 
                 if awd_inbound_total <= 0:
-                    awd_inbound_total = scalar_number(
-                        row.get("In Transit AWD", 0)
+
+                    awd_inbound_total = (
+                        scalar_number(
+                            row.get(
+                                "In Transit AWD",
+                                0,
+                            )
+                        )
                     )
 
-                # ---------------------------------------------
-                # Existing inbound events by exact date
-                # ---------------------------------------------
-                arrival_events = sorted(
-                    inbound_events_by_sku.get(
+                # -----------------------------------------------------
+                # DATED inbound quantities used in monthly simulation.
+                # -----------------------------------------------------
+                inbound_by_month = (
+                    inbound_by_sku_month.get(
                         sku_norm,
-                        [],
-                    ),
-                    key=lambda item: item[0],
+                        {},
+                    )
                 )
 
-                arrivals_by_date = {}
+                # =====================================================
+                # 9. MONTHLY PLANNED REQUIREMENTS
+                # =====================================================
+                #
+                # Important:
+                #
+                # This dictionary represents WHEN inventory is needed,
+                # not when transportation physically arrives.
+                #
+                # Example:
+                #
+                # Sep requirement = 303
+                # Oct requirement = 408
+                #
+                # Both are classified as AIR if SEA cannot be usable
+                # until December.
+                # =====================================================
+                planned_supply_by_month = {}
 
-                for event_dt, event_units in arrival_events:
-
-                    event_dt = event_dt.normalize()
-
-                    arrivals_by_date[event_dt] = (
-                        arrivals_by_date.get(
-                            event_dt,
-                            0.0,
-                        )
-                        + float(event_units)
-                    )
-
-                # ---------------------------------------------
-                # NEW recommended shipment quantities
-                # ---------------------------------------------
                 air_units = 0.0
                 sea_units = 0.0
 
-                first_stockout_date = None
-                stockout_before_air_arrival = False
+                # Actual sales shortfall discovered during the
+                # month-by-month inventory simulation.
+                #
+                # This is DIFFERENT from buffer replenishment.
+                # Therefore To be Dispatch can be greater than Shortfall Unit.
+                timing_shortfall_units = 0.0
 
                 # -----------------------------------------------------
-                # 8. Simulate forecast DAY BY DAY
+                # Add a requirement without double counting.
                 # -----------------------------------------------------
-                for forecast_col in forecast_cols:
+                def add_requirement(
+                    need_month,
+                    quantity,
+                ):
 
-                    month_start = forecast_label_month_start(
-                        forecast_col
+                    nonlocal air_units
+                    nonlocal sea_units
+
+                    quantity = max(
+                        float(quantity or 0),
+                        0.0,
                     )
 
-                    month_end = forecast_label_month_end(
-                        forecast_col
-                    )
+                    if quantity <= 0:
+                        return
 
-                    if month_start is None or month_end is None:
-                        continue
-
-                    month_start = pd.Timestamp(
-                        month_start
-                    ).normalize()
-
-                    month_end = pd.Timestamp(
-                        month_end
-                    ).normalize()
-
-                    # Ignore dates before current planning date
-                    simulation_start = max(
-                        month_start,
-                        planning_dispatch_date,
-                    )
-
-                    simulation_end = min(
-                        month_end,
-                        planning_horizon_end,
-                    )
-
-                    if simulation_start > simulation_end:
-                        continue
-
-                    monthly_sales = forecast_value(
-                        row,
-                        forecast_col,
-                    )
-
-                    days_in_month = (
-                        month_end - month_start
-                    ).days + 1
-
-                    daily_sales = (
-                        monthly_sales / days_in_month
-                        if days_in_month > 0
-                        else 0.0
-                    )
-
-                    current_day = simulation_start
-
-                    while current_day <= simulation_end:
-
-                        # -----------------------------------------
-                        # Existing shipments arrive FIRST
-                        # on their Expected Reach Date
-                        # -----------------------------------------
-                        inventory += arrivals_by_date.get(
-                            current_day,
+                    planned_supply_by_month[
+                        need_month
+                    ] = (
+                        planned_supply_by_month.get(
+                            need_month,
                             0.0,
                         )
+                        + quantity
+                    )
 
-                        demand_today = daily_sales
+                    # ================================================
+                    # TRANSPORT SPLIT
+                    # ================================================
+                    #
+                    # If SEA dispatched in the selected month can be
+                    # usable by the month inventory is required:
+                    #       -> SEA
+                    #
+                    # Otherwise:
+                    #       -> AIR
+                    #
+                    # Example:
+                    #
+                    # Planning Aug
+                    # SEA usable Dec
+                    #
+                    # Sep requirement -> AIR
+                    # Oct requirement -> AIR
+                    # Nov requirement -> AIR
+                    # Dec requirement -> SEA
+                    # Jan requirement -> SEA
+                    # Feb requirement -> SEA
+                    # ================================================
+                    if (
+                        ship_time_weeks > 0
+                        and need_month
+                        >= sea_usable_month
+                    ):
+                        sea_units += quantity
 
-                        # -----------------------------------------
-                        # Do we have enough stock for today's sales?
-                        # -----------------------------------------
-                        if inventory < demand_today:
+                    elif air_time_weeks > 0:
+                        air_units += quantity
 
-                            shortage_today = (
-                                demand_today - inventory
+                    elif ship_time_weeks > 0:
+                        # No AIR profile configured.
+                        # SEA is the only available mode.
+                        sea_units += quantity
+
+                # -----------------------------------------------------
+                # PLANNING INVENTORY
+                #
+                # This inventory includes NEW recommended AIR / SEA
+                # quantities when they become required.
+                #
+                # Used for:
+                # - buffer calculation
+                # - AIR calculation
+                # - SEA calculation
+                # - To be Dispatch
+                # -----------------------------------------------------
+                inventory = opening_stock
+
+
+                # -----------------------------------------------------
+                # SHORTFALL INVENTORY
+                #
+                # This inventory DOES NOT include any NEW recommended
+                # AIR / SEA dispatch.
+                #
+                # It contains only:
+                # - opening stock
+                # - EXISTING inbound when it becomes usable
+                # - monthly forecast consumption
+                #
+                # This is used only to calculate Shortfall Unit.
+                # -----------------------------------------------------
+                shortfall_inventory = opening_stock
+
+                # -----------------------------------------------------
+                # Months where we actually perform a new buffer check.
+                #
+                # Example:
+                # Aug -> Dec inclusive.
+                # -----------------------------------------------------
+                decision_months = []
+
+                month_cursor = planning_month
+
+                while month_cursor <= decision_end_month:
+
+                    decision_months.append(
+                        month_cursor
+                    )
+
+                    month_cursor = (
+                        month_cursor
+                        + pd.DateOffset(months=1)
+                    ).normalize()
+
+                # =====================================================
+                # 10. ROLL MONTH BY MONTH
+                # =====================================================
+                for current_month in decision_months:
+
+                    # -------------------------------------------------
+                    # A. EXISTING INBOUND USABLE THIS MONTH
+                    #
+                    # Example:
+                    # Expected reach during November
+                    # -> usable at opening of December.
+                    #
+                    # Existing inbound affects BOTH:
+                    # 1. actual shortfall calculation
+                    # 2. dispatch / buffer planning
+                    # -------------------------------------------------
+                    month_inbound = inbound_by_month.get(
+                        current_month,
+                        0.0,
+                    )
+
+                    inventory += month_inbound
+                    shortfall_inventory += month_inbound
+
+
+                    # -------------------------------------------------
+                    # B. CURRENT MONTH SALES
+                    # -------------------------------------------------
+                    current_sales = forecast_value(
+                        row,
+                        current_month,
+                    )
+
+
+                    # =================================================
+                    # C. ACTUAL SHORTFALL CALCULATION
+                    #
+                    # IMPORTANT:
+                    #
+                    # Do this BEFORE adding any NEW recommended
+                    # AIR / SEA dispatch.
+                    #
+                    # Therefore Shortfall Unit tells us:
+                    #
+                    # "How much sales demand cannot be covered by
+                    # existing stock + existing inbound available
+                    # in the correct month?"
+                    #
+                    # Buffer replenishment is NOT included here.
+                    # =================================================
+                    if shortfall_inventory < current_sales:
+
+                        actual_month_shortfall = (
+                            current_sales
+                            - shortfall_inventory
+                        )
+
+                        timing_shortfall_units += (
+                            actual_month_shortfall
+                        )
+
+                        # All physically available stock is consumed.
+                        shortfall_inventory = 0.0
+
+                    else:
+
+                        shortfall_inventory -= (
+                            current_sales
+                        )
+
+
+                    # -------------------------------------------------
+                    # D. ADD NEW DISPATCH REQUIREMENTS THAT WERE
+                    #    DISCOVERED BY EARLIER BUFFER CHECKS
+                    #
+                    # This ONLY affects dispatch/buffer planning.
+                    #
+                    # It must NOT reduce Shortfall Unit.
+                    # -------------------------------------------------
+                    inventory += (
+                        planned_supply_by_month.get(
+                            current_month,
+                            0.0,
+                        )
+                    )
+
+
+                    # =================================================
+                    # E. CHECK WHETHER PLANNING INVENTORY CAN COVER
+                    #    CURRENT MONTH SALES
+                    #
+                    # If not, create a dispatch requirement.
+                    # =================================================
+                    if inventory < current_sales:
+
+                        current_gap = (
+                            current_sales
+                            - inventory
+                        )
+
+                        add_requirement(
+                            current_month,
+                            current_gap,
+                        )
+
+                        # Add recommended requirement into the
+                        # planning simulation.
+                        inventory += current_gap
+
+
+                    # -------------------------------------------------
+                    # F. CONSUME CURRENT MONTH SALES
+                    # -------------------------------------------------
+                    inventory -= current_sales
+
+                    inventory = max(
+                        inventory,
+                        0.0,
+                    )
+
+                    # =================================================
+                    # E. FULL-MONTH BUFFER CHECK
+                    # =================================================
+                    #
+                    # Example:
+                    #
+                    # End Aug:
+                    #
+                    # closing inventory = 74
+                    #
+                    # buffer_months = 2
+                    #
+                    # Sep = 377
+                    # Oct = 408
+                    #
+                    # The simulation below identifies:
+                    #
+                    # Sep gap = 303
+                    # Oct gap = 408
+                    #
+                    # Total Aug buffer requirement = 711
+                    # =================================================
+
+                    if buffer_months <= 0:
+                        continue
+
+                    future_inventory = inventory
+
+                    for offset in range(
+                        1,
+                        buffer_months + 1,
+                    ):
+
+                        future_month = (
+                            current_month
+                            + pd.DateOffset(
+                                months=offset
+                            )
+                        ).normalize()
+
+                        # ---------------------------------------------
+                        # Existing inbound is only added in the month
+                        # it becomes USABLE.
+                        #
+                        # Reach in Nov -> + inventory in Dec.
+                        # ---------------------------------------------
+                        future_inventory += (
+                            inbound_by_month.get(
+                                future_month,
+                                0.0,
+                            )
+                        )
+
+                        # ---------------------------------------------
+                        # Requirement already discovered by an earlier
+                        # buffer check.
+                        # ---------------------------------------------
+                        future_inventory += (
+                            planned_supply_by_month.get(
+                                future_month,
+                                0.0,
+                            )
+                        )
+
+                        future_sales = forecast_value(
+                            row,
+                            future_month,
+                        )
+
+                        future_inventory -= (
+                            future_sales
+                        )
+
+                        # ---------------------------------------------
+                        # Buffer is insufficient.
+                        #
+                        # Create ONLY the missing units.
+                        # ---------------------------------------------
+                        if future_inventory < 0:
+
+                            buffer_gap = (
+                                -future_inventory
                             )
 
-                            need_date = current_day
+                            add_requirement(
+                                future_month,
+                                buffer_gap,
+                            )
 
-                            if first_stockout_date is None:
-                                first_stockout_date = need_date
+                            # Once planned, inventory becomes zero
+                            # instead of remaining negative.
+                            future_inventory = 0.0
 
-                            # =========================================
-                            # CORE SEA / AIR DECISION
-                            # =========================================
+                # =====================================================
+                # 11. ROUND FINAL AIR / SEA
+                # =====================================================
+                air_units_int = max(
+                    int(round(air_units)),
+                    0,
+                )
 
-                            # SEA can physically arrive before
-                            # this stock is required.
-                            if (
-                                ship_time_weeks > 0
-                                and sea_arrival_date <= need_date
-                            ):
-                                sea_units += shortage_today
+                sea_units_int = max(
+                    int(round(sea_units)),
+                    0,
+                )
 
-                            # SEA is too late.
-                            # Check AIR.
-                            elif (
-                                air_time_weeks > 0
-                                and air_arrival_date <= need_date
-                            ):
-                                air_units += shortage_today
+                total_dispatch = (
+                    air_units_int
+                    + sea_units_int
+                )
 
-                            else:
-                                # Even AIR arrives after the shortage.
-                                # AIR is still the fastest possible mode,
-                                # so recommend AIR and flag internally.
-                                air_units += shortage_today
-                                stockout_before_air_arrival = True
-
-                            # Add recommended quantity to the
-                            # simulated inventory so we can continue
-                            # forecasting future demand.
-                            inventory += shortage_today
-
-                        # Consume today's demand
-                        inventory -= demand_today
-
-                        current_day += pd.Timedelta(days=1)
-
-                # ---------------------------------------------------------
-                # 9. Round while guaranteeing:
+                # =====================================================
+                # 12. KEEP SHORTFALL UNIT SEPARATE
+                # =====================================================
                 #
-                # AIR + SEA == To be Dispatch
-                # ---------------------------------------------------------
-                air_units = max(air_units, 0.0)
-                sea_units = max(sea_units, 0.0)
+                # IMPORTANT:
+                #
+                # Shortfall Unit remains the physical aggregate
+                # inventory shortfall.
+                #
+                # To be Dispatch is the MONTHLY TIMING + BUFFER
+                # requirement.
+                #
+                # Therefore:
+                #
+                # To be Dispatch CAN be greater than Shortfall Unit.
+                # =====================================================
+                # Shortfall Unit = actual sales shortage found by
+                # the monthly rolling simulation.
+                #
+                # Do NOT subtract all future inbound from total projected sales,
+                # because future inbound is only usable in its correct month.
+                shortfall_units_int = max(
+                    int(round(timing_shortfall_units)),
+                    0,
+                )
 
-                air_units_int = int(round(air_units))
-                sea_units_int = int(round(sea_units))
-
-                # The day-by-day simulation only decides how much of the
-                # requirement is urgent (AIR) versus non-urgent (SEA).
-                # The final dispatch quantity itself must be based on the
-                # full inventory shortfall, calculated below.
-
-                # ---------------------------------------------------------
-                # 10. Store final results
-                # ---------------------------------------------------------
+                # =====================================================
+                # 13. WRITE FINAL VALUES
+                # =====================================================
                 planned.at[
                     idx,
                     "In Transit FBA"
-                ] = round(fba_inbound_total)
+                ] = round(
+                    fba_inbound_total
+                )
 
                 planned.at[
                     idx,
                     "In Transit AWD"
-                ] = round(awd_inbound_total)
+                ] = round(
+                    awd_inbound_total
+                )
 
                 planned.at[
                     idx,
                     "In stock"
-                ] = round(opening_stock)
+                ] = round(
+                    opening_stock
+                )
 
                 planned.at[
                     idx,
@@ -1259,61 +1803,15 @@ def getDispatchfile():
                     + awd_inbound_total
                 )
 
-                # Actual inventory shortfall: projected sales minus
-                # current stock and all existing inbound inventory.
-                projected_sales_total = scalar_number(
-                    row.get("Projected Sales Total", 0)
-                )
-
-                actual_shortfall = max(
-                    projected_sales_total
-                    - opening_stock
-                    - fba_inbound_total
-                    - awd_inbound_total,
-                    0.0,
-                )
-
-                target_dispatch = int(round(actual_shortfall))
-
                 planned.at[
                     idx,
                     "Shortfall Unit"
-                ] = target_dispatch
-
-                # Keep AIR/SEA timing logic, but force the split to equal
-                # the FULL shortfall. Any remaining non-urgent quantity is
-                # assigned to SEA (or AIR if SEA is not configured).
-                split_total = air_units_int + sea_units_int
-
-                if split_total < target_dispatch:
-                    remainder = target_dispatch - split_total
-                    if ship_time_weeks > 0:
-                        sea_units_int += remainder
-                    else:
-                        air_units_int += remainder
-
-                elif split_total > target_dispatch:
-                    excess = split_total - target_dispatch
-
-                    # Preserve urgent AIR first; trim SEA before AIR.
-                    sea_reduction = min(sea_units_int, excess)
-                    sea_units_int -= sea_reduction
-                    excess -= sea_reduction
-
-                    if excess > 0:
-                        air_units_int = max(air_units_int - excess, 0)
-
-                # IMPORTANT: Expected Reach Date may change only the SEA/AIR
-                # allocation. It must NEVER change Shortfall Unit or the total
-                # quantity that needs to be dispatched.
-                #
-                # Shortfall Unit == To be Dispatch == target_dispatch
-                total_dispatch = target_dispatch
+                ] = shortfall_units_int
 
                 planned.at[
                     idx,
                     "To be Dispatch"
-                ] = target_dispatch
+                ] = total_dispatch
 
                 planned.at[
                     idx,
@@ -1930,37 +2428,118 @@ def getDispatchfile():
         if not data_bytes:
             return jsonify({'error': 'Stored file is empty/corrupt'}), 500
 
-        # df = read_dispatch_dataframe(data_bytes)
-        # df = clean_dispatch_dataframe(df)
-        # df = refresh_fba_in_transit_from_db(df, country.lower())
-        # df = refresh_awd_in_transit_from_db(df, country.lower())
-        # df = apply_rolling_dispatch_plan(df, country.lower())
+
 
         df = read_dispatch_dataframe(data_bytes)
 
-        # print("\n========== DISPATCH DEBUG ==========")
-        # print("Requested month:", requested_month)
-        # print("Requested year:", requested_year)
-        # print("Stored file:", filename)
-        # print("RAW COLUMNS:")
-        # print(df.columns.tolist())
-
-        # print("\nFORECAST COLUMNS FOUND:")
-        # print(get_forecast_columns(df))
-        # print("====================================\n")
+   
 
         df = clean_dispatch_dataframe(df)
-        df = refresh_fba_in_transit_from_db(df, country.lower())
-        df = refresh_awd_in_transit_from_db(df, country.lower())
-        df = apply_rolling_dispatch_plan(df, country.lower())
+        df = refresh_fba_in_transit_from_db(
+            df,
+            country.lower()
+        )
+        df = refresh_awd_in_transit_from_db(
+            df,
+            country.lower()
+        )
+        df = apply_rolling_dispatch_plan(
+            df,
+            country.lower()
+        )
 
-        df = recalculate_coverage_before_dispatch(df, country.lower())
+        df = recalculate_coverage_before_dispatch(
+            df,
+            country.lower()
+        )
+
+        # ---------------------------------------------------------
+        # Build FINAL calculated dispatch workbook
+        # ---------------------------------------------------------
         output = build_global_dispatch_file([df])
+
+        # Get generated Excel bytes
+        dispatch_bytes = output.getvalue()
+
+        dispatch_filename = (
+            f"dispatch_{user_id}_"
+            f"{country.lower()}_"
+            f"{requested_month}_"
+            f"{requested_year}.xlsx"
+        )
+
+        # ---------------------------------------------------------
+        # Save FINAL dispatch calculation separately.
+        #
+        # This contains the FINAL:
+        # Shortfall Unit
+        # To be Dispatch
+        # SEA
+        # AIR
+        #
+        # Purchase Order must read THIS file, not the original
+        # inventory_forecast file.
+        # ---------------------------------------------------------
+        save_dispatch_query = text("""
+            INSERT INTO public.stored_files
+            (
+                user_id,
+                country,
+                kind,
+                month,
+                year,
+                filename,
+                content_type,
+                data,
+                created_at
+            )
+            VALUES
+            (
+                :user_id,
+                :country,
+                'dispatch',
+                :month,
+                :year,
+                :filename,
+                :content_type,
+                :data,
+                NOW()
+            )
+            ON CONFLICT ON CONSTRAINT uq_stored_files_period
+            DO UPDATE SET
+                filename = EXCLUDED.filename,
+                content_type = EXCLUDED.content_type,
+                data = EXCLUDED.data,
+                created_at = NOW()
+        """)
+
+        with engine.begin() as conn:
+            conn.execute(
+                save_dispatch_query,
+                {
+                    "user_id": user_id,
+                    "country": country.lower(),
+                    "month": requested_month,
+                    "year": str(requested_year),
+                    "filename": dispatch_filename,
+                    "content_type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
+                    "data": dispatch_bytes,
+                }
+            )
+
+        # Reset pointer before send_file
+        output.seek(0)
 
         return send_file(
             output,
-            download_name=filename or f"{country.lower()}_dispatch.xlsx",
-            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            download_name=dispatch_filename,
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
             as_attachment=False
         )
 
@@ -2104,29 +2683,48 @@ def merge_dispatch_files(file_uk, file_us):
     if 'In transit' not in df_combined.columns:
         df_combined['In transit'] = 0
 
-    if (
-        'Projected Sales Total' in df_combined.columns and
-        'FBA' in df_combined.columns
-    ):
-        df_combined['Shortfall Unit'] = (
-            df_combined['Projected Sales Total']
-            - df_combined['In stock']
-            - df_combined['In transit']
-        ).clip(lower=0)
-        df_combined['To be Dispatch'] = df_combined['Shortfall Unit'].clip(lower=0)
+    # ---------------------------------------------------------
+    # Preserve the already-calculated dispatch plan.
+    #
+    # IMPORTANT:
+    # Do NOT recalculate To be Dispatch from Shortfall Unit.
+    #
+    # New rule:
+    # To be Dispatch = SEA + AIR
+    # Shortfall Unit can be lower because dispatch may also
+    # include buffer replenishment.
+    # ---------------------------------------------------------
+
     if 'SEA' not in df_combined.columns:
-        df_combined['SEA'] = df_combined['To be Dispatch'].clip(lower=0)
+        df_combined['SEA'] = 0
+
     if 'AIR' not in df_combined.columns:
         df_combined['AIR'] = 0
-    if (
-        {'SEA', 'AIR', 'To be Dispatch'}.issubset(df_combined.columns) and
-        not (
-            df_combined['SEA'].fillna(0).round().astype(int)
-            + df_combined['AIR'].fillna(0).round().astype(int)
-        ).equals(df_combined['To be Dispatch'].fillna(0).round().astype(int))
-    ):
-        df_combined['SEA'] = df_combined['To be Dispatch'].clip(lower=0)
-        df_combined['AIR'] = 0
+
+    df_combined['SEA'] = pd.to_numeric(
+        df_combined['SEA'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    df_combined['AIR'] = pd.to_numeric(
+        df_combined['AIR'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    # Preserve Shortfall Unit from country dispatch files.
+    if 'Shortfall Unit' not in df_combined.columns:
+        df_combined['Shortfall Unit'] = 0
+
+    df_combined['Shortfall Unit'] = pd.to_numeric(
+        df_combined['Shortfall Unit'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    # New invariant
+    df_combined['To be Dispatch'] = (
+        df_combined['SEA']
+        + df_combined['AIR']
+    )
 
     # Group sums
     agg_spec = {}
@@ -2185,26 +2783,42 @@ def merge_dispatch_files(file_uk, file_us):
     else:
         final_df = grouped.copy()
 
-    if (
-        'Projected Sales Total' in final_df.columns and
-        'FBA' in final_df.columns
-    ):
-        if 'AWD' not in final_df.columns:
-            final_df['AWD'] = 0
-        if 'In stock' not in final_df.columns:
-            final_df['In stock'] = final_df['FBA'] + final_df['AWD']
-        if 'In transit' not in final_df.columns:
-            final_df['In transit'] = 0
-        final_df['Shortfall Unit'] = (
-            final_df['Projected Sales Total']
-            - final_df['In stock']
-            - final_df['In transit']
-        ).clip(lower=0)
-        final_df['To be Dispatch'] = final_df['Shortfall Unit'].clip(lower=0)
+    # ---------------------------------------------------------
+    # Preserve grouped dispatch values.
+    #
+    # SEA, AIR and Shortfall Unit have already been summed
+    # from the country-level calculated dispatch files.
+    # ---------------------------------------------------------
+
     if 'SEA' not in final_df.columns:
-        final_df['SEA'] = final_df['To be Dispatch'].clip(lower=0)
+        final_df['SEA'] = 0
+
     if 'AIR' not in final_df.columns:
         final_df['AIR'] = 0
+
+    if 'Shortfall Unit' not in final_df.columns:
+        final_df['Shortfall Unit'] = 0
+
+    final_df['SEA'] = pd.to_numeric(
+        final_df['SEA'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    final_df['AIR'] = pd.to_numeric(
+        final_df['AIR'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    final_df['Shortfall Unit'] = pd.to_numeric(
+        final_df['Shortfall Unit'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    # Final grouped dispatch must always equal SEA + AIR.
+    final_df['To be Dispatch'] = (
+        final_df['SEA']
+        + final_df['AIR']
+    )
 
     # Total row
     total_row = {'Product Name': 'Total'}
@@ -2261,20 +2875,20 @@ def PO_generated():
     except Exception:
         return jsonify({'error': 'Invalid month/year'}), 400
 
-    forecast_query = text("""
+    dispatch_query = text("""
         SELECT filename, data
         FROM public.stored_files
         WHERE user_id = :user_id
-          AND LOWER(country) = LOWER(:country)
-          AND kind = 'inventory_forecast'
-          AND LOWER(month) = LOWER(:month)
-          AND year = :year
+        AND LOWER(country) = LOWER(:country)
+        AND kind = 'dispatch'
+        AND LOWER(month) = LOWER(:month)
+        AND year = :year
         ORDER BY id DESC
         LIMIT 1
     """)
 
     with engine.connect() as conn:
-        row = conn.execute(forecast_query, {
+        row = conn.execute(dispatch_query, {
             "user_id": user_id,
             "country": country_db,
             "month": month_db,
@@ -2282,7 +2896,12 @@ def PO_generated():
         }).fetchone()
 
     if not row:
-        return jsonify({'error': 'Inventory forecast not found'}), 404
+        return jsonify({
+            'error': (
+                'Calculated dispatch file not found. '
+                'Please generate the dispatch file first.'
+            )
+        }), 404
 
     _, data_bytes = row
 
@@ -2290,9 +2909,15 @@ def PO_generated():
         data_bytes = data_bytes.tobytes()
 
     try:
-        inventory_df = pd.read_excel(BytesIO(data_bytes), sheet_name='Dispatch', header=6)
+        inventory_df = pd.read_excel(
+            BytesIO(data_bytes),
+            sheet_name='Dispatch',
+            header=0
+        )
     except Exception as e:
-        return jsonify({'error': f'Unable to read Dispatch sheet: {str(e)}'}), 400
+        return jsonify({
+            'error': f'Unable to read Dispatch sheet: {str(e)}'
+        }), 400
 
     inventory_df.columns = [str(c).strip() for c in inventory_df.columns]
 
@@ -2300,44 +2925,73 @@ def PO_generated():
         if col in inventory_df.columns:
             inventory_df[col] = pd.to_numeric(inventory_df[col], errors='coerce').fillna(0)
 
-    if {'FBA', 'AWD', 'Projected Sales Total'}.issubset(inventory_df.columns):
-        inventory_df['In stock'] = inventory_df['FBA'] + inventory_df['AWD']
-        if 'In transit' not in inventory_df.columns:
-            inventory_df['In transit'] = 0
-        inventory_df['Shortfall Unit'] = (
-            inventory_df['Projected Sales Total']
-            - inventory_df['In stock']
-            - inventory_df['In transit']
-        ).clip(lower=0)
-        inventory_df['To be Dispatch'] = inventory_df['Shortfall Unit'].clip(lower=0)
-        if 'SEA' not in inventory_df.columns:
-            inventory_df['SEA'] = inventory_df['To be Dispatch']
-        if 'AIR' not in inventory_df.columns:
-            inventory_df['AIR'] = 0
-        if not (
-            inventory_df['SEA'].fillna(0).round().astype(int)
-            + inventory_df['AIR'].fillna(0).round().astype(int)
-        ).equals(inventory_df['To be Dispatch'].fillna(0).round().astype(int)):
-            inventory_df['SEA'] = inventory_df['To be Dispatch']
-            inventory_df['AIR'] = 0
+    if 'FBA' in inventory_df.columns:
+        inventory_df['FBA'] = pd.to_numeric(
+            inventory_df['FBA'],
+            errors='coerce'
+        ).fillna(0)
+    else:
+        inventory_df['FBA'] = 0
 
-    if {'SEA', 'AIR'}.issubset(inventory_df.columns):
-        inventory_df['Dispatch'] = (
-            pd.to_numeric(inventory_df['SEA'], errors='coerce').fillna(0)
-            + pd.to_numeric(inventory_df['AIR'], errors='coerce').fillna(0)
-        )
-    elif 'Dispatch' not in inventory_df.columns and 'To be Dispatch' in inventory_df.columns:
-        inventory_df['Dispatch'] = (
-            pd.to_numeric(inventory_df['To be Dispatch'], errors='coerce')
-            .fillna(0)
-            .clip(lower=0)
-        )
-    elif 'Dispatch' not in inventory_df.columns and 'Shortfall Unit' in inventory_df.columns:
-        inventory_df['Dispatch'] = (
-            pd.to_numeric(inventory_df['Shortfall Unit'], errors='coerce')
-            .fillna(0)
-            .clip(lower=0)
-        )
+    if 'AWD' in inventory_df.columns:
+        inventory_df['AWD'] = pd.to_numeric(
+            inventory_df['AWD'],
+            errors='coerce'
+        ).fillna(0)
+    else:
+        inventory_df['AWD'] = 0
+
+    inventory_df['In stock'] = (
+        inventory_df['FBA']
+        + inventory_df['AWD']
+    )
+
+    if 'In transit' not in inventory_df.columns:
+        inventory_df['In transit'] = 0
+
+    inventory_df['In transit'] = pd.to_numeric(
+        inventory_df['In transit'],
+        errors='coerce'
+    ).fillna(0)
+
+    # ---------------------------------------------------------
+    # IMPORTANT:
+    #
+    # Do NOT recalculate To be Dispatch from Shortfall Unit.
+    #
+    # New business rule:
+    # To be Dispatch = SEA + AIR
+    #
+    # Shortfall Unit may be smaller because the extra dispatch
+    # can exist purely to maintain buffer stock.
+    # ---------------------------------------------------------
+    if 'SEA' not in inventory_df.columns:
+        inventory_df['SEA'] = 0
+
+    if 'AIR' not in inventory_df.columns:
+        inventory_df['AIR'] = 0
+
+    inventory_df['SEA'] = pd.to_numeric(
+        inventory_df['SEA'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    inventory_df['AIR'] = pd.to_numeric(
+        inventory_df['AIR'],
+        errors='coerce'
+    ).fillna(0).clip(lower=0)
+
+    inventory_df['To be Dispatch'] = (
+        inventory_df['SEA']
+        + inventory_df['AIR']
+    )
+
+    inventory_df['Dispatch'] = (
+        inventory_df['SEA']
+        + inventory_df['AIR']
+    )
+
+
 
     if 'sku' not in inventory_df.columns or 'Dispatch' not in inventory_df.columns:
         return jsonify({

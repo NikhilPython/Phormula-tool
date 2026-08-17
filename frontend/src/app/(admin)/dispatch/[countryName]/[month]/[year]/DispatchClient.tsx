@@ -1765,25 +1765,18 @@ export default function DispatchPage({
 
   useEffect(() => {
     if (month && year) {
-      const capitalizeMonth = capitalize(month)
-      const monthIndex = monthdps.indexOf(capitalizeMonth)
-
-      const dispatchMonth =
-        monthIndex >= 0
-          ? monthdps[(monthIndex + 1) % 12]
-          : getCurrentMonthPlus1()
-
-      const dispatchYear =
-        monthIndex === 11
-          ? String(Number(year) + 1)
-          : year
+      const selectedMonth = capitalize(month)
 
       setMonthDp((previous) =>
-        previous === dispatchMonth ? previous : dispatchMonth
+        previous === selectedMonth
+          ? previous
+          : selectedMonth
       )
 
       setYearDp((previous) =>
-        previous === dispatchYear ? previous : dispatchYear
+        previous === year
+          ? previous
+          : year
       )
 
       setIsInitialized(true)
@@ -1793,7 +1786,7 @@ export default function DispatchPage({
     setMonthDp(getCurrentMonthPlus1())
     setYearDp(getCurrentYear())
     setIsInitialized(true)
-  }, [month, year, monthdps])
+  }, [month, year])
 
   useEffect(() => {
     if (isInitialized && monthdp && yeardp) {
