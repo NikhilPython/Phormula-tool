@@ -16,6 +16,7 @@ import GroupedCollapsibleTable, {
   type LeafCol,
 } from '@/components/ui/table/GroupedCollapsibleTable'
 import DataTable, { type ColumnDef, type Row } from '@/components/ui/table/DataTable'
+import Button from '@/components/ui/button/Button'
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
@@ -115,6 +116,7 @@ type InboundShipmentTableRow = Row & {
   shipment_id: string
   rowIndex: number
   serialNo: number
+  createdAtRaw: string
   shipmentId: string
   status: string
   sku: string
@@ -566,6 +568,44 @@ function parseIsoDate(value?: string | null) {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function getStartOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function compareLocalDates(first: Date, second: Date) {
+  return getStartOfLocalDay(first).getTime() - getStartOfLocalDay(second).getTime()
+}
+
+function isBeforeMinDate(value?: string | null, minDate?: Date | null) {
+  if (!value || !minDate) return false
+  const parsed = parseIsoDate(value)
+  if (!parsed) return false
+  return compareLocalDates(parsed, minDate) < 0
+}
+
+function getLatestDate(...dates: Array<Date | null | undefined>) {
+  const validDates = dates.filter((date): date is Date => Boolean(date))
+  if (!validDates.length) return null
+
+  return validDates.reduce((latest, date) =>
+    compareLocalDates(date, latest) > 0 ? date : latest
+  )
+}
+
+function getTodayDate() {
+  return getStartOfLocalDay(new Date())
+}
+
+function getDispatchMinDate(row: Pick<InboundDispatchInputRow, 'created_at'>) {
+  return parseIsoDate(row.created_at)
+}
+
+function getExpectedReachMinDate(
+  row: Pick<InboundDispatchInputRow, 'created_at' | 'dispatch_date'>
+) {
+  return getLatestDate(parseIsoDate(row.created_at), parseIsoDate(row.dispatch_date))
+}
+
 function formatIsoDate(date: Date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -577,11 +617,13 @@ function ShipmentDatePicker({
   id,
   value,
   placeholder,
+  minDate,
   onChange,
 }: {
   id: string
   value?: string
   placeholder: string
+  minDate?: Date | null
   onChange: (dateStr: string) => void
 }) {
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -590,6 +632,14 @@ function ShipmentDatePicker({
   const [mounted, setMounted] = useState(false)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
   const selectedDate = parseIsoDate(value)
+  const normalizedMinDate = minDate ? getStartOfLocalDay(minDate) : undefined
+  const todayDate = getTodayDate()
+  const calendarDate =
+    selectedDate && (!normalizedMinDate || compareLocalDates(selectedDate, normalizedMinDate) >= 0)
+      ? selectedDate
+      : normalizedMinDate && compareLocalDates(normalizedMinDate, todayDate) > 0
+        ? normalizedMinDate
+        : todayDate
 
   useEffect(() => {
     setMounted(true)
@@ -696,12 +746,13 @@ function ShipmentDatePicker({
           }}
         >
           <Calendar
-            date={selectedDate || new Date()}
+            date={calendarDate}
             onChange={(date: Date) => {
               onChange(formatIsoDate(date))
               setOpen(false)
             }}
             color="#5EA68E"
+            minDate={normalizedMinDate}
             showMonthAndYearPickers={false}
           />
           <div className="mt-2 flex justify-between gap-2">
@@ -1067,11 +1118,25 @@ export default function DispatchPage({
     patch: Partial<Pick<InboundDispatchInputRow, 'dispatch_date' | 'shipment_type' | 'expected_reach_date'>>
   ) {
     setInboundInputRows((rows) =>
-      rows.map((row) =>
-        row.source === source && row.shipment_id === shipmentId
-          ? { ...row, ...patch }
-          : row
-      )
+      rows.map((row) => {
+        if (row.source !== source || row.shipment_id !== shipmentId) {
+          return row
+        }
+
+        const nextRow = { ...row, ...patch }
+        const dispatchMinDate = getDispatchMinDate(nextRow)
+        const expectedReachMinDate = getExpectedReachMinDate(nextRow)
+
+        if (isBeforeMinDate(nextRow.dispatch_date, dispatchMinDate)) {
+          nextRow.dispatch_date = ''
+        }
+
+        if (isBeforeMinDate(nextRow.expected_reach_date, expectedReachMinDate)) {
+          nextRow.expected_reach_date = ''
+        }
+
+        return nextRow
+      })
     )
   }
 
@@ -1096,6 +1161,26 @@ export default function DispatchPage({
     )
     if (missing) {
       setAwdInputError('Please fill dispatch date, shipment type, and expected reach date for every shipment.')
+      return
+    }
+
+    const invalidDispatchDate = inboundInputRows.find((row) =>
+      isBeforeMinDate(row.dispatch_date, getDispatchMinDate(row))
+    )
+    if (invalidDispatchDate) {
+      setAwdInputError(
+        `Dispatch date cannot be before Created At for shipment ${invalidDispatchDate.display_shipment_id}.`
+      )
+      return
+    }
+
+    const invalidExpectedReachDate = inboundInputRows.find((row) =>
+      isBeforeMinDate(row.expected_reach_date, getExpectedReachMinDate(row))
+    )
+    if (invalidExpectedReachDate) {
+      setAwdInputError(
+        `Expected reach date cannot be before Created At or Dispatch Date for shipment ${invalidExpectedReachDate.display_shipment_id}.`
+      )
       return
     }
 
@@ -1845,6 +1930,7 @@ export default function DispatchPage({
       shipment_id: row.shipment_id,
       rowIndex,
       serialNo: rowIndex + 1,
+      createdAtRaw: row.created_at || '',
       shipmentId: row.display_shipment_id,
       status: row.shipment_status || '-',
       sku: row.sku || '',
@@ -1907,6 +1993,9 @@ export default function DispatchPage({
               id={`inbound-dispatch-date-${row.source}-${row.rowIndex}`}
               value={String(row.dispatchDate || '')}
               placeholder="Select date"
+              minDate={getDispatchMinDate({
+                created_at: String(row.createdAtRaw || ''),
+              })}
               onChange={(dateStr) =>
                 updateInboundInputRow(row.source, row.shipment_id, {
                   dispatch_date: dateStr,
@@ -1946,6 +2035,10 @@ export default function DispatchPage({
               id={`inbound-expected-reach-date-${row.source}-${row.rowIndex}`}
               value={String(row.expectedReachDate || '')}
               placeholder="Select date"
+              minDate={getExpectedReachMinDate({
+                created_at: String(row.createdAtRaw || ''),
+                dispatch_date: String(row.dispatchDate || ''),
+              })}
               onChange={(dateStr) =>
                 updateInboundInputRow(row.source, row.shipment_id, {
                   expected_reach_date: dateStr,
@@ -1977,8 +2070,6 @@ export default function DispatchPage({
           </p>
         </div>
 
-      
-
         <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
           <DataTable<InboundShipmentTableRow>
             columns={columns}
@@ -1998,23 +2089,16 @@ export default function DispatchPage({
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
-        <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 px-5 py-4">
-          <button
+        <div className="flex shrink-0 justify-end border-t border-gray-200 px-5 py-4">
+          <Button
             type="button"
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-60"
-            onClick={() => closeAwdInputModal(null)}
-            disabled={awdInputSaving}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            variant="primary"
+            size="md"
             onClick={handleSaveAwdInputRows}
             disabled={awdInputSaving}
           >
             {awdInputSaving ? 'Saving...' : 'Save and Open Dispatch'}
-          </button>
+          </Button>
         </div>
       </div>
     )
