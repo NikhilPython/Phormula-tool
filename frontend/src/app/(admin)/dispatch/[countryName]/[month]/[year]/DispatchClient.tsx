@@ -18,6 +18,7 @@ import Loader from '@/components/loader/Loader'
 import { exportDispatchExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useGetUserDataQuery } from '@/lib/api/profileApi'
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import { CalendarDays } from 'lucide-react'
 
 interface SkuRow {
   [key: string]: string | number | undefined
@@ -52,7 +53,7 @@ type DispatchPageProps = {
   selectedYearProp?: string
   showAllRowsProp?: boolean
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
-  promptOnOpenKey?: number
+  shipmentDetailsRequestKey?: number
   onProductNameClick?: (productName: string, sku?: string) => void
 }
 
@@ -103,6 +104,8 @@ type InboundDispatchInputRow = {
   expected_reach_date?: string | null
 }
 
+type ShipmentDetailsDisplayMode = 'inline' | 'modal'
+
 const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   uk: 'A1F83G8C2ARO7P',
   gb: 'A1F83G8C2ARO7P',
@@ -111,11 +114,29 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
 }
 
 const AWD_SUPPORTED_COUNTRIES = new Set(['us', 'usa'])
+const SHIPMENT_DETAILS_CANCELLED_MESSAGE = 'Shipment details editing was cancelled.'
+const SHIPMENT_DETAILS_REQUIRED_MESSAGE =
+  'Please fill dispatch date, shipment type, and expected reach date for every shipment before opening Dispatch.'
 
 const normalizeCountryKey = (country: string) => country.trim().toLowerCase()
 
 const isAwdSupportedCountry = (country: string) =>
   AWD_SUPPORTED_COUNTRIES.has(normalizeCountryKey(country))
+
+function isShipmentDetailsRequiredError(message: string) {
+  const normalized = message.toLowerCase()
+
+  return (
+    normalized.includes('expected reach date is required') ||
+    normalized.includes('dispatch date is required') ||
+    normalized.includes('shipment type is required') ||
+    (
+      normalized.includes('shipment') &&
+      normalized.includes('required') &&
+      normalized.includes('dispatch')
+    )
+  )
+}
 
 const monthNames = [
   'January',
@@ -456,7 +477,7 @@ export default function DispatchPage({
   selectedYearProp,
   showAllRowsProp,
   onShowAllRowsChange,
-  promptOnOpenKey,
+  shipmentDetailsRequestKey,
   onProductNameClick,
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
@@ -509,9 +530,11 @@ export default function DispatchPage({
   const [fbaInputRows, setFbaInputRows] = useState<FbaDispatchInputRow[]>([])
   const [inboundInputRows, setInboundInputRows] = useState<InboundDispatchInputRow[]>([])
   const [awdInputOpen, setAwdInputOpen] = useState(false)
+  const [awdInputDisplayMode, setAwdInputDisplayMode] = useState<ShipmentDetailsDisplayMode>('modal')
   const [awdInputSaving, setAwdInputSaving] = useState(false)
   const [awdInputError, setAwdInputError] = useState('')
   const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
+  const lastShipmentDetailsRequestKeyRef = useRef(shipmentDetailsRequestKey ?? 0)
 
   const showAllDispatchRows =
     typeof showAllRowsProp === 'boolean'
@@ -720,7 +743,11 @@ export default function DispatchPage({
     }
   }
 
-  async function requestAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
+  async function requestAwdDispatchInputs(
+    token: string,
+    initialError = '',
+    displayMode: ShipmentDetailsDisplayMode = 'modal'
+  ): Promise<AwdDispatchInputRow[]> {
     const shouldFetchAwd = isAwdSupportedCountry(countryName)
     let [rows, fbaRows] = await Promise.all([
       shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
@@ -759,7 +786,8 @@ export default function DispatchPage({
     setAwdInputRows(normalizedAwdRows)
     setFbaInputRows(normalizedFbaRows)
     setInboundInputRows(buildInboundDispatchRows(normalizedAwdRows, normalizedFbaRows))
-    setAwdInputError('')
+    setAwdInputError(initialError)
+    setAwdInputDisplayMode(displayMode)
     setAwdInputOpen(true)
 
     const savedRows = await new Promise<AwdDispatchInputRow[] | null>((resolve) => {
@@ -767,7 +795,7 @@ export default function DispatchPage({
     })
 
     if (!savedRows) {
-      throw new Error('Please complete AWD shipment details before opening dispatch.')
+      throw new Error(SHIPMENT_DETAILS_CANCELLED_MESSAGE)
     }
 
     return savedRows
@@ -790,6 +818,7 @@ export default function DispatchPage({
   function closeAwdInputModal(rows: AwdDispatchInputRow[] | null) {
     setAwdInputOpen(false)
     setInboundInputRows([])
+    setAwdInputDisplayMode('modal')
     const resolve = awdInputResolverRef.current
     awdInputResolverRef.current = null
     resolve?.(rows)
@@ -857,7 +886,11 @@ export default function DispatchPage({
     }
   }
 
-  async function fetchDispatchFile(monthdpValue: string, yeardpValue: string) {
+  async function fetchDispatchFile(
+    monthdpValue: string,
+    yeardpValue: string,
+    options: { promptForShipmentDetails?: boolean } = {}
+  ) {
     if (!monthdpValue || !yeardpValue) {
       setError('Please select both month and year.')
       setNoData(false)
@@ -876,12 +909,14 @@ export default function DispatchPage({
     setLoading(false)
 
     try {
-      const awdRows = await requestAwdDispatchInputs(token)
+      let awdRows = options.promptForShipmentDetails
+        ? await requestAwdDispatchInputs(token)
+        : []
 
       setLoading(true)
       setSkuData([])
 
-      const response = await fetch(
+      let response = await fetch(
         `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
         {
           method: 'GET',
@@ -899,7 +934,49 @@ export default function DispatchPage({
 
         const msg = String(errorData?.error || 'Failed to fetch dispatch file')
 
-        if (
+        if (isShipmentDetailsRequiredError(msg)) {
+          setLoading(false)
+          awdRows = await requestAwdDispatchInputs(
+            token,
+            SHIPMENT_DETAILS_REQUIRED_MESSAGE,
+            'inline'
+          )
+          setLoading(true)
+
+          response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile?country=${countryName}&month=${monthdpValue}&year=${yeardpValue}`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          )
+
+          if (!response.ok) {
+            let retryErrorData: any = {}
+            try {
+              retryErrorData = await response.json()
+            } catch { }
+
+            const retryMsg = String(retryErrorData?.error || msg)
+
+            if (
+              retryMsg.includes('Forecast file not found') ||
+              retryMsg.includes('Please generate inventory forecast first') ||
+              retryMsg.includes('No UK or US forecast files found') ||
+              retryMsg.includes('No readable UK/US dispatch data found') ||
+              retryMsg.includes('No UK or US dispatch files found')
+            ) {
+              setError('')
+              setNoData(true)
+              setSkuData([])
+              return
+            }
+
+            throw new Error(retryMsg)
+          }
+        } else if (
           msg.includes('Forecast file not found') ||
           msg.includes('Please generate inventory forecast first') ||
           msg.includes('No UK or US forecast files found') ||
@@ -910,9 +987,9 @@ export default function DispatchPage({
           setNoData(true)
           setSkuData([])
           return
+        } else {
+          throw new Error(msg)
         }
-
-        throw new Error(msg)
       }
 
       const blob = await response.blob()
@@ -1035,6 +1112,10 @@ export default function DispatchPage({
       setSkuData(jsonData)
       setNoData(false)
     } catch (err: any) {
+      if (err?.message === SHIPMENT_DETAILS_CANCELLED_MESSAGE) {
+        return
+      }
+
       console.error('Fetch error:', err)
       setError(err?.message ?? 'Unknown error')
       setNoData(false)
@@ -1084,7 +1165,19 @@ export default function DispatchPage({
     if (isInitialized && monthdp && yeardp) {
       void fetchDispatchFile(monthdp, yeardp)
     }
-  }, [isInitialized, monthdp, yeardp, promptOnOpenKey])
+  }, [isInitialized, monthdp, yeardp])
+
+  useEffect(() => {
+    if (!shipmentDetailsRequestKey || !isInitialized || !monthdp || !yeardp) return
+    if (awdInputOpen) {
+      lastShipmentDetailsRequestKeyRef.current = shipmentDetailsRequestKey
+      return
+    }
+    if (lastShipmentDetailsRequestKeyRef.current === shipmentDetailsRequestKey) return
+
+    lastShipmentDetailsRequestKeyRef.current = shipmentDetailsRequestKey
+    void fetchDispatchFile(monthdp, yeardp, { promptForShipmentDetails: true })
+  }, [shipmentDetailsRequestKey, isInitialized, monthdp, yeardp, awdInputOpen])
 
 
   function isTotalRow(row: SkuRow) {
@@ -1485,6 +1578,125 @@ export default function DispatchPage({
     []
   )
 
+  function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
+    const isInline = displayMode === 'inline'
+
+    return (
+      <div
+        className={
+          isInline
+            ? "flex max-h-[calc(100vh-260px)] min-h-[360px] w-full flex-col overflow-hidden rounded-xl bg-white"
+            : "flex max-h-[calc(100vh-220px)] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
+        }
+      >
+        <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+          <h3 className="text-lg font-semibold text-gray-900">Inbound Shipment Details</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            Fill dispatch date, shipment type, and expected reach date before opening the dispatch file.
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                <th className="border px-3 py-2">Shipment ID</th>
+                <th className="border px-3 py-2">Status</th>
+                <th className="border px-3 py-2">SKU</th>
+                <th className="border px-3 py-2">Units</th>
+                <th className="border px-3 py-2">Created At</th>
+                <th className="border px-3 py-2">Updated At</th>
+                <th className="border px-3 py-2">Dispatch Date</th>
+                <th className="border px-3 py-2">Shipment Type</th>
+                <th className="border px-3 py-2">Expected Reach Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inboundInputRows.map((row, index) => (
+                <tr key={`${row.source}-${row.shipment_id}`} className="text-gray-700">
+                  <td className="border px-3 py-2 font-medium">{row.display_shipment_id}</td>
+                  <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
+                  <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
+                    {row.sku || '-'}
+                  </td>
+                  <td className="border px-3 py-2 text-center">{row.units ?? 0}</td>
+                  <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
+                  <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
+                  <td className="border px-3 py-2">
+                    <div className="min-w-[165px]">
+                      <DatePicker
+                        id={`inbound-dispatch-date-${row.source}-${index}`}
+                        defaultDate={row.dispatch_date || undefined}
+                        placeholder="Select date"
+                        onChange={(_dates, dateStr) =>
+                          updateInboundInputRow(row.source, row.shipment_id, {
+                            dispatch_date: dateStr,
+                          })
+                        }
+                      />
+                    </div>
+                  </td>
+                  <td className="border px-3 py-2">
+                    <select
+                      className="w-full min-w-[105px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                      value={row.shipment_type || ''}
+                      onChange={(event) =>
+                        updateInboundInputRow(row.source, row.shipment_id, {
+                          shipment_type: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Select</option>
+                      <option value="SEA">SEA</option>
+                      <option value="AIR">AIR</option>
+                    </select>
+                  </td>
+                  <td className="border px-3 py-2">
+                    <div className="min-w-[165px]">
+                      <DatePicker
+                        id={`inbound-expected-reach-date-${row.source}-${index}`}
+                        defaultDate={row.expected_reach_date || undefined}
+                        placeholder="Select date"
+                        onChange={(_dates, dateStr) =>
+                          updateInboundInputRow(row.source, row.shipment_id, {
+                            expected_reach_date: dateStr,
+                          })
+                        }
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {awdInputError && (
+          <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
+        )}
+
+        <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 px-5 py-4">
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-60"
+            onClick={() => closeAwdInputModal(null)}
+            disabled={awdInputSaving}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+            onClick={handleSaveAwdInputRows}
+            disabled={awdInputSaving}
+          >
+            {awdInputSaving ? 'Saving...' : 'Save and Open Dispatch'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <style jsx global>{`
@@ -1571,114 +1783,10 @@ export default function DispatchPage({
   /* keep the rest of your existing CSS below this */
 `}</style>
 
-      {awdInputOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 px-4">
-          <div className="w-full max-w-6xl rounded-lg bg-white shadow-xl">
-            <div className="border-b border-gray-200 px-5 py-4">
-              <h3 className="text-lg font-semibold text-gray-900">Inbound Shipment Details</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Fill dispatch date, shipment type, and expected reach date before opening the dispatch file.
-              </p>
-            </div>
-
-            <div className="max-h-[60vh] overflow-auto px-5 py-4">
-              <table className="min-w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                    <th className="border px-3 py-2">Shipment ID</th>
-                    <th className="border px-3 py-2">Status</th>
-                    <th className="border px-3 py-2">SKU</th>
-                    <th className="border px-3 py-2">Units</th>
-                    <th className="border px-3 py-2">Created At</th>
-                    <th className="border px-3 py-2">Updated At</th>
-                    <th className="border px-3 py-2">Dispatch Date</th>
-                    <th className="border px-3 py-2">Shipment Type</th>
-                    <th className="border px-3 py-2">Expected Reach Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inboundInputRows.map((row, index) => (
-                    <tr key={`${row.source}-${row.shipment_id}`} className="text-gray-700">
-                      <td className="border px-3 py-2 font-medium">{row.display_shipment_id}</td>
-                      <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
-                      <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
-                        {row.sku || '-'}
-                      </td>
-                      <td className="border px-3 py-2 text-center">{row.units ?? 0}</td>
-                      <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
-                      <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
-                      <td className="border px-3 py-2">
-                        <div className="min-w-[165px]">
-                          <DatePicker
-                            id={`inbound-dispatch-date-${row.source}-${index}`}
-                            defaultDate={row.dispatch_date || undefined}
-                            placeholder="Select date"
-                            onChange={(_dates, dateStr) =>
-                            updateInboundInputRow(row.source, row.shipment_id, {
-                              dispatch_date: dateStr,
-                            })
-                          }
-                          />
-                        </div>
-                      </td>
-                      <td className="border px-3 py-2">
-                        <select
-                          className="w-full min-w-[105px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                          value={row.shipment_type || ''}
-                          onChange={(event) =>
-                            updateInboundInputRow(row.source, row.shipment_id, {
-                              shipment_type: event.target.value,
-                            })
-                          }
-                        >
-                          <option value="">Select</option>
-                          <option value="SEA">SEA</option>
-                          <option value="AIR">AIR</option>
-                        </select>
-                      </td>
-                      <td className="border px-3 py-2">
-                        <div className="min-w-[165px]">
-                          <DatePicker
-                            id={`inbound-expected-reach-date-${row.source}-${index}`}
-                            defaultDate={row.expected_reach_date || undefined}
-                            placeholder="Select date"
-                            onChange={(_dates, dateStr) =>
-                            updateInboundInputRow(row.source, row.shipment_id, {
-                              expected_reach_date: dateStr,
-                            })
-                          }
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {awdInputError && (
-              <div className="px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
-            )}
-
-            <div className="flex justify-end gap-3 border-t border-gray-200 px-5 py-4">
-              <button
-                type="button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 disabled:opacity-60"
-                onClick={() => closeAwdInputModal(null)}
-                disabled={awdInputSaving}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                onClick={handleSaveAwdInputRows}
-                disabled={awdInputSaving}
-              >
-                {awdInputSaving ? 'Saving...' : 'Save and Open Dispatch'}
-              </button>
-            </div>
-          </div>
+      <div className="relative min-h-[calc(100vh-180px)]">
+      {awdInputOpen && awdInputDisplayMode === 'modal' && (
+        <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-6">
+          {renderInboundShipmentDetailsPanel('modal')}
         </div>
       )}
 
@@ -1705,6 +1813,18 @@ export default function DispatchPage({
               onYearChange={(v) => setYearDp(String(v))}
               valueMode="lower"
             />
+
+            <button
+              type="button"
+              onClick={() => fetchDispatchFile(monthdp, yeardp, { promptForShipmentDetails: true })}
+              title="Edit inbound shipment dates"
+              aria-label="Edit inbound shipment dates"
+              disabled={loading || awdInputOpen}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9"
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span>Inbound Shipments</span>
+            </button>
 
             {/* <div className="centralised-fetch-button">
               <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
@@ -1736,7 +1856,7 @@ export default function DispatchPage({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Loader fullscreen transparent />
+          <Loader fullscreen contained transparent zIndex={20} />
         </div>
       ) : error ? (
         <div className="alert-container">
@@ -1770,7 +1890,9 @@ export default function DispatchPage({
           )} */}
 
           <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
-            {tableRows.length === 0 ? (
+            {awdInputOpen && awdInputDisplayMode === 'inline' ? (
+              renderInboundShipmentDetailsPanel('inline')
+            ) : tableRows.length === 0 ? (
               <div className="flex min-h-55 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
                 {noData
                   ? "No Data Available for selected period"
@@ -1833,6 +1955,7 @@ export default function DispatchPage({
           }}
         />
       </Modal>
+      </div>
     </>
   )
 }

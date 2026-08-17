@@ -17,6 +17,7 @@ import DownloadIconButton from '@/components/ui/button/DownloadButton';
 import { IoMdLock } from 'react-icons/io';
 import IntegrationsModal from '@/features/integration/IntegrationsModal';
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
+import { CalendarDays } from 'lucide-react';
 import { AnimatePresence, motion } from "framer-motion";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import Loader from "@/components/loader/Loader";
@@ -1715,7 +1716,7 @@ export default function InventoryFlowPage() {
   const lastPoTriggerRef = useRef<string | null>(null);
   const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
   const [showAllPoRows, setShowAllPoRows] = useState(false);
-  const [dispatchPromptKey, setDispatchPromptKey] = useState(0);
+  const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
@@ -1885,10 +1886,6 @@ export default function InventoryFlowPage() {
   }, []);
 
   const handleTabChange = (tab: InventoryFlowTab) => {
-    if (tab === 'dispatch') {
-      setDispatchPromptKey((current) => current + 1);
-    }
-
     setActiveTab(tab);
     const hash = TAB_TO_HASH[tab];
 
@@ -2505,6 +2502,20 @@ export default function InventoryFlowPage() {
                     valueMode="lower"
                   />
 
+                  {activeTab === 'dispatch' && (
+                    <button
+                      type="button"
+                      onClick={() => setShipmentDetailsRequestKey((current) => current + 1)}
+                      title="Edit inbound shipment dates"
+                      aria-label="Edit inbound shipment dates"
+                      disabled={isDemoMode}
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <CalendarDays className="h-4 w-4" />
+                      <span className="hidden sm:inline">Inbound Shipments</span>
+                    </button>
+                  )}
+
                   <DownloadIconButton
                     size="md"
                     onClick={() => {
@@ -2653,7 +2664,7 @@ export default function InventoryFlowPage() {
                       selectedYearProp={sharedYear}
                       showAllRowsProp={showAllDispatchRows}
                       onShowAllRowsChange={setShowAllDispatchRows}
-                      promptOnOpenKey={dispatchPromptKey}
+                      shipmentDetailsRequestKey={shipmentDetailsRequestKey}
                       onProductNameClick={(productName, sku) =>
                         void openProductDrawer(productName, sku, sharedMonth, sharedYear)
                       }

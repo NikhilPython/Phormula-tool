@@ -12,6 +12,7 @@ import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm';
 import InventoryFlowTabs, { InventoryFlowTab } from '@/components/inventory/InventoryFlowTabs';
 import DispatchPage from '@/app/(admin)/dispatch/[countryName]/[month]/[year]/DispatchClient';
 import PurchaseOrderPage from '@/app/(admin)/purchase-order/[countryName]/[month]/[year]/PurchaseOrderClient';
+import { CalendarDays } from 'lucide-react';
 
 // ---------------- Types ----------------
 type UploadItem = {
@@ -119,6 +120,7 @@ export default function InventoryForecastPage() {
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
   const [activeTab, setActiveTab] = useState<InventoryFlowTab>("inventory");
+  const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
 const [pendingHash, setPendingHash] = useState<string>("");
 
 
@@ -483,18 +485,33 @@ return;
   
   <div className="">
     <div className="sticky top-0 z-30 bg-[#F7F7F7] border-b border-gray-200 py-2">
-  <InventoryFlowTabs
-    value={activeTab}
-    onChange={(tab) => {
-      setActiveTab(tab);
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <InventoryFlowTabs
+          value={activeTab}
+          onChange={(tab) => {
+            setActiveTab(tab);
 
-      const hash = TAB_TO_HASH[tab];
-      if (typeof window !== "undefined") {
-        window.history.pushState(null, "", `#${hash}`);
-      }
-    }}
-  />
-</div>
+            const hash = TAB_TO_HASH[tab];
+            if (typeof window !== "undefined") {
+              window.history.pushState(null, "", `#${hash}`);
+            }
+          }}
+        />
+
+        {activeTab === "dispatch" && (
+          <button
+            type="button"
+            onClick={() => setShipmentDetailsRequestKey((current) => current + 1)}
+            title="Edit inbound shipment dates"
+            aria-label="Edit inbound shipment dates"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md"
+          >
+            <CalendarDays className="h-4 w-4" />
+            <span>Inbound Shipments</span>
+          </button>
+        )}
+      </div>
+    </div>
     <style>{`
       .alert-container {
         display: flex; align-items: center; background-color: #f2f2f2;
@@ -572,6 +589,7 @@ return;
       countryNameProp={countryName}
       selectedMonthProp={apiMonth}
       selectedYearProp={apiYear}
+      shipmentDetailsRequestKey={shipmentDetailsRequestKey}
     />
   </div>
 ) : (
