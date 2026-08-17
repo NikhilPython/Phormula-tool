@@ -283,7 +283,12 @@ export default function DataTable<T extends Row>({
       style={shouldPinTotalRows ? undefined : containerStyle}
     >
       {/* Horizontal scroll wrapper for header + body + pinned total */}
-      <div className="w-full overflow-x-auto [-webkit-overflow-scrolling:touch]">
+      <div
+        className={clsx(
+          "w-full overflow-x-auto [-webkit-overflow-scrolling:touch]",
+          shouldPinTotalRows && "overflow-y-hidden"
+        )}
+      >
         {/* Header table */}
         <div style={scrollbarCompensationStyle}>
           <table

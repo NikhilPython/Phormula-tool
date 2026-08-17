@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 
@@ -83,13 +83,15 @@ export default function InventoryForecastPage() {
     year?: string;
   };
 
+  const outletRef = useRef<HTMLDivElement | null>(null);
+
   const countryName = (params.countryName ?? '').toLowerCase();
   const today = new Date();
   const currentMonthIndex = today.getMonth();
   const thisYear = today.getFullYear();
   const previousMonthIndex = currentMonthIndex === 0 ? 11 : currentMonthIndex - 1;
 
-  const monthNames = ['january','February','March','April','May','June','July','August','September','October','November','December'] as const;;
+  const monthNames = ['january', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const;;
 
 
   // URL month/year normalize (fallback to prev month / current year)
@@ -99,8 +101,8 @@ export default function InventoryForecastPage() {
     // allow numeric / short / long
     const mnum = urlMonth.match(/\b(1[0-2]|0?[1-9])\b/);
     if (mnum) return monthNames[parseInt(mnum[0], 10) - 1];
-    const short = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-    const si = short.indexOf(urlMonth.slice(0,3));
+    const short = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const si = short.indexOf(urlMonth.slice(0, 3));
     if (si !== -1) return monthNames[si];
     const li = monthNames.indexOf(urlMonth as any);
     return li !== -1 ? monthNames[li] : urlMonth;
@@ -121,120 +123,122 @@ export default function InventoryForecastPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [activeTab, setActiveTab] = useState<InventoryFlowTab>("inventory");
   const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
-const [pendingHash, setPendingHash] = useState<string>("");
+  const [pendingHash, setPendingHash] = useState<string>("");
 
+  const [outletElement, setOutletElement] =
+  useState<HTMLDivElement | null>(null);
 
-useEffect(() => {
-  if (typeof window === "undefined") return;
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-  const applyHash = (rawHash?: string) => {
-    const hash = (rawHash ?? window.location.hash).replace("#", "");
-    if (!hash) {
-      setActiveTab("inventory");
-      return;
-    }
+    const applyHash = (rawHash?: string) => {
+      const hash = (rawHash ?? window.location.hash).replace("#", "");
+      if (!hash) {
+        setActiveTab("inventory");
+        return;
+      }
 
-    const targetTab = HASH_TO_TAB[hash];
-    if (!targetTab) return;
+      const targetTab = HASH_TO_TAB[hash];
+      if (!targetTab) return;
 
-    setPendingHash(hash);
-    setActiveTab(targetTab);
-  };
+      setPendingHash(hash);
+      setActiveTab(targetTab);
+    };
 
-  const onHashChange = () => {
+    const onHashChange = () => {
+      applyHash(window.location.hash);
+    };
+
+    const onCustomHashNavigate = (event: Event) => {
+      const customEvent = event as CustomEvent<{ hash?: string }>;
+      if (!customEvent.detail?.hash) return;
+      applyHash(`#${customEvent.detail.hash}`);
+    };
+
     applyHash(window.location.hash);
-  };
 
-  const onCustomHashNavigate = (event: Event) => {
-    const customEvent = event as CustomEvent<{ hash?: string }>;
-    if (!customEvent.detail?.hash) return;
-    applyHash(`#${customEvent.detail.hash}`);
-  };
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
 
-  applyHash(window.location.hash);
-
-  window.addEventListener("hashchange", onHashChange);
-  window.addEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
-
-  return () => {
-    window.removeEventListener("hashchange", onHashChange);
-    window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
-  };
-}, []);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("page-hash-navigate", onCustomHashNavigate as EventListener);
+    };
+  }, []);
 
   const isDemoMode =
-  params.month?.toUpperCase() === 'NA' &&
-  params.year?.toUpperCase() === 'NA';
+    params.month?.toUpperCase() === 'NA' &&
+    params.year?.toUpperCase() === 'NA';
 
 
   const triggerPurchaseOrderApi = async (
-  country: string,
-  month: string,
-  year: string
-) => {
-  const jwtToken =
-    typeof window !== "undefined"
-      ? localStorage.getItem("jwtToken")
-      : null;
+    country: string,
+    month: string,
+    year: string
+  ) => {
+    const jwtToken =
+      typeof window !== "undefined"
+        ? localStorage.getItem("jwtToken")
+        : null;
 
-  if (!jwtToken) throw new Error("Missing jwt token");
+    if (!jwtToken) throw new Error("Missing jwt token");
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!baseUrl) throw new Error("Missing NEXT_PUBLIC_API_BASE_URL");
 
-  const safeMonth =
-    month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    const safeMonth =
+      month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
 
-  const formData = new FormData();
-  formData.append("month", safeMonth);
-  formData.append("year", year);
-  formData.append("country", country.toLowerCase());
+    const formData = new FormData();
+    formData.append("month", safeMonth);
+    formData.append("year", year);
+    formData.append("country", country.toLowerCase());
 
-  const res = await fetch(`${baseUrl}/purchase_order`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${jwtToken}`,
-      Accept: "application/json",
-    },
-    body: formData,
-  });
-
-  const json = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(json?.error || "Purchase order API failed");
-  }
-
-  return json;
-};
-
-const [poTriggered, setPoTriggered] = useState(false);
-
-useEffect(() => {
-  if (activeTab === "purchaseOrder" && !poTriggered) {
-    setPoTriggered(true);
-
-    triggerPurchaseOrderApi(
-      countryName,
-      apiMonth,
-      apiYear
-    ).catch((err) => {
-      console.error("PO API error:", err);
+    const res = await fetch(`${baseUrl}/purchase_order`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+        Accept: "application/json",
+      },
+      body: formData,
     });
-  }
-}, [activeTab, poTriggered, countryName, apiMonth, apiYear]);
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(json?.error || "Purchase order API failed");
+    }
+
+    return json;
+  };
+
+  const [poTriggered, setPoTriggered] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "purchaseOrder" && !poTriggered) {
+      setPoTriggered(true);
+
+      triggerPurchaseOrderApi(
+        countryName,
+        apiMonth,
+        apiYear
+      ).catch((err) => {
+        console.error("PO API error:", err);
+      });
+    }
+  }, [activeTab, poTriggered, countryName, apiMonth, apiYear]);
 
   // -------------- Effects --------------
   useEffect(() => {
-  if (isDemoMode) {
-    setExcelData(DUMMY_INVENTORY_FORECAST);
-    setLoading(false);
-    setError(null);
-    return;
-  }
+    if (isDemoMode) {
+      setExcelData(DUMMY_INVENTORY_FORECAST);
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
-  void fetchUploadHistory();
-}, [countryName, isDemoMode]);
+    void fetchUploadHistory();
+  }, [countryName, isDemoMode]);
 
 
   // -------------- Helpers --------------
@@ -270,15 +274,15 @@ useEffect(() => {
         try {
           const j = (await res.json()) as any;
           msg = j?.error || j?.message || msg;
-        } catch {}
+        } catch { }
         throw new Error(msg);
       }
 
       const data = (await res.json()) as UploadHistoryRes;
       const filtered = countryName
         ? data.uploads.filter(
-            (u) => (u.country ?? '').toString().toLowerCase() === countryName
-          )
+          (u) => (u.country ?? '').toString().toLowerCase() === countryName
+        )
         : data.uploads;
 
       setUploads(data.uploads);
@@ -375,7 +379,7 @@ useEffect(() => {
           const errJson = (await res.json()) as any;
           serverMsg = errJson?.error || errJson?.message || errJson?.warning || '';
           zeroMonths = Array.isArray(errJson?.zero_months) ? errJson.zero_months : [];
-        } catch {}
+        } catch { }
         setError(serverMsg || `Server error (${res.status})`);
         if (zeroMonths.length) {
           const formatted = zeroMonths.map((s) => {
@@ -398,47 +402,47 @@ useEffect(() => {
         const blob = await res.blob();
         const buffer = await blob.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: 'array' });
-const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-// Read as rows first
-const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-  header: 1,
-  defval: '',
-});
+        // Read as rows first
+        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+          header: 1,
+          defval: '',
+        });
 
-if (!rows || rows.length < 7) {
-  setError('Forecast file format is invalid.');
-  setLoading(false);
-  return;
-}
+        if (!rows || rows.length < 7) {
+          setError('Forecast file format is invalid.');
+          setLoading(false);
+          return;
+        }
 
-// Excel row 7 = index 6
-const headerRowIndex = 6;
-const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
-  String(h ?? '').trim().replace(/\s+Sold$/i, '')
-);
+        // Excel row 7 = index 6
+        const headerRowIndex = 6;
+        const rawHeaders = (rows[headerRowIndex] || []).map((h) =>
+          String(h ?? '').trim().replace(/\s+Sold$/i, '')
+        );
 
-const dataRows = rows.slice(headerRowIndex + 1);
+        const dataRows = rows.slice(headerRowIndex + 1);
 
-// Convert rows to objects using row 7 headers
-const jsonRows: ForecastRow[] = dataRows
-  .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
-  .map((row) => {
-    const obj: ForecastRow = {};
-    rawHeaders.forEach((header, idx) => {
-      if (header) obj[header] = row[idx] ?? '';
-    });
-    return obj;
-  });
+        // Convert rows to objects using row 7 headers
+        const jsonRows: ForecastRow[] = dataRows
+          .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+          .map((row) => {
+            const obj: ForecastRow = {};
+            rawHeaders.forEach((header, idx) => {
+              if (header) obj[header] = row[idx] ?? '';
+            });
+            return obj;
+          });
 
-console.log('Parsed forecast rows:', jsonRows.slice(0, 5));
-console.log('Parsed headers:', rawHeaders);
+        console.log('Parsed forecast rows:', jsonRows.slice(0, 5));
+        console.log('Parsed headers:', rawHeaders);
 
-setExcelData(jsonRows);
-localStorage.setItem(`forecast-${countryName}`, JSON.stringify(jsonRows));
-localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
-setLoading(false);
-return;
+        setExcelData(jsonRows);
+        localStorage.setItem(`forecast-${countryName}`, JSON.stringify(jsonRows));
+        localStorage.setItem(`forecast-time-${countryName}`, Date.now().toString());
+        setLoading(false);
+        return;
       }
 
       // JSON (fallbacks / messages)
@@ -482,37 +486,37 @@ return;
 
   // -------------- Render --------------
   return (
-  
-  <div className="">
-    <div className="sticky top-0 z-30 bg-[#F7F7F7] border-b border-gray-200 py-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <InventoryFlowTabs
-          value={activeTab}
-          onChange={(tab) => {
-            setActiveTab(tab);
 
-            const hash = TAB_TO_HASH[tab];
-            if (typeof window !== "undefined") {
-              window.history.pushState(null, "", `#${hash}`);
-            }
-          }}
-        />
+    <div className="">
+      <div className="sticky top-0 z-30 bg-[#F7F7F7] border-b border-gray-200 py-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <InventoryFlowTabs
+            value={activeTab}
+            onChange={(tab) => {
+              setActiveTab(tab);
 
-        {activeTab === "dispatch" && (
-          <button
-            type="button"
-            onClick={() => setShipmentDetailsRequestKey((current) => current + 1)}
-            title="Edit inbound shipment dates"
-            aria-label="Edit inbound shipment dates"
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md"
-          >
-            <CalendarDays className="h-4 w-4" />
-            <span>Inbound Shipments</span>
-          </button>
-        )}
+              const hash = TAB_TO_HASH[tab];
+              if (typeof window !== "undefined") {
+                window.history.pushState(null, "", `#${hash}`);
+              }
+            }}
+          />
+
+          {activeTab === "dispatch" && (
+            <button
+              type="button"
+              onClick={() => setShipmentDetailsRequestKey((current) => current + 1)}
+              title="Edit inbound shipment dates"
+              aria-label="Edit inbound shipment dates"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md"
+            >
+              <CalendarDays className="h-4 w-4" />
+              <span>Inbound Shipments</span>
+            </button>
+          )}
+        </div>
       </div>
-    </div>
-    <style>{`
+      <style>{`
       .alert-container {
         display: flex; align-items: center; background-color: #f2f2f2;
         border-top: 4px solid #ff5c5c; padding: 12px 16px; border-radius: 6px;
@@ -531,89 +535,89 @@ return;
       .country-name { color: #414042; }
     `}</style>
 
-   {loading ? (
-  <Loading />
-) : activeTab === "inventory" ? (
-  missingMonths.length > 0 ? (
-    <div id="inventory-forecast" className="scroll-mt-[80px]">
-      <h3 className="text-2xl font-bold text-[#414042]">Inventory Forecast</h3>
+      {loading ? (
+        <Loading />
+      ) : activeTab === "inventory" ? (
+        missingMonths.length > 0 ? (
+          <div id="inventory-forecast" className="scroll-mt-[80px]">
+            <h3 className="text-2xl font-bold text-[#414042]">Inventory Forecast</h3>
 
-      <span style={{ fontSize: '12px' }}>
-        The following Monthly files are needed to upload:&nbsp;
-        <strong style={{ color: '#60a68e' }}>
-          {missingMonths.join(', ')}
-        </strong>
-      </span>
+            <span style={{ fontSize: '12px' }}>
+              The following Monthly files are needed to upload:&nbsp;
+              <strong style={{ color: '#60a68e' }}>
+                {missingMonths.join(', ')}
+              </strong>
+            </span>
 
-      <div className="alert-container">
-        <div className="alert-message">
-          <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-          <span>Please upload at least 4 months&apos; files to see for the next two months.</span>
+            <div className="alert-container">
+              <div className="alert-message">
+                <i className="fa-solid fa-circle-exclamation alert-icon"></i>
+                <span>Please upload at least 4 months&apos; files to see for the next two months.</span>
+              </div>
+              <button
+                className="alert-button"
+                onClick={() => setShowUpload(true)}
+              >
+                Upload Now <i className="fa-solid fa-chevron-right"></i>
+              </button>
+            </div>
+          </div>
+        ) : error ? (
+          <div id="inventory-forecast" className="alert-container scroll-mt-[80px]">
+            <div className="alert-message">
+              <i className="fa-solid fa-circle-exclamation alert-icon"></i>
+              <span>{error}</span>
+            </div>
+            <button
+              className="alert-button"
+              onClick={() => setShowUpload(true)}
+            >
+              Upload Now <i className="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        ) : (
+          <div id="inventory-forecast" className="scroll-mt-[80px]">
+            <DisplayInventoryForecast
+              countryName={countryName}
+              month={apiMonth}
+              year={apiYear}
+              data={excelData ?? []}
+              isDemoMode={isDemoMode}
+            />
+          </div>
+        )
+      ) : activeTab === "dispatch" ? (
+        <div id="dispatch" className="scroll-mt-[80px]">
+          <DispatchPage
+            embedded
+            countryNameProp={countryName}
+            selectedMonthProp={apiMonth}
+            selectedYearProp={apiYear}
+            shipmentDetailsRequestKey={shipmentDetailsRequestKey}
+          />
         </div>
-        <button
-          className="alert-button"
-          onClick={() => setShowUpload(true)}
-        >
-          Upload Now <i className="fa-solid fa-chevron-right"></i>
-        </button>
-      </div>
-    </div>
-  ) : error ? (
-    <div id="inventory-forecast" className="alert-container scroll-mt-[80px]">
-      <div className="alert-message">
-        <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-        <span>{error}</span>
-      </div>
-      <button
-        className="alert-button"
-        onClick={() => setShowUpload(true)}
+      ) : (
+        <div id="purchase-order" className="scroll-mt-[80px]">
+          <PurchaseOrderPage
+            embedded
+            countryNameProp={countryName}
+            selectedMonthProp={apiMonth}
+            selectedYearProp={apiYear}
+          />
+        </div>
+      )}
+      <Modal
+        isOpen={showUpload}
+        onClose={() => setShowUpload(false)}
+        showCloseButton
+        className="max-w-4xl w-full mx-auto p-0"
       >
-        Upload Now <i className="fa-solid fa-chevron-right"></i>
-      </button>
+        <FileUploadForm initialCountry={''} onClose={function (): void {
+          throw new Error('Function not implemented.');
+        }} onComplete={function (): void {
+          throw new Error('Function not implemented.');
+        }} />
+      </Modal>
     </div>
-  ) : (
-    <div id="inventory-forecast" className="scroll-mt-[80px]">
-      <DisplayInventoryForecast
-        countryName={countryName}
-        month={apiMonth}
-        year={apiYear}
-        data={excelData ?? []}
-        isDemoMode={isDemoMode}
-      />
-    </div>
-  )
-) : activeTab === "dispatch" ? (
-  <div id="dispatch" className="scroll-mt-[80px]">
-    <DispatchPage
-      embedded
-      countryNameProp={countryName}
-      selectedMonthProp={apiMonth}
-      selectedYearProp={apiYear}
-      shipmentDetailsRequestKey={shipmentDetailsRequestKey}
-    />
-  </div>
-) : (
-  <div id="purchase-order" className="scroll-mt-[80px]">
-    <PurchaseOrderPage
-      embedded
-      countryNameProp={countryName}
-      selectedMonthProp={apiMonth}
-      selectedYearProp={apiYear}
-    />
-  </div>
-)}
-    <Modal
-      isOpen={showUpload}
-      onClose={() => setShowUpload(false)}
-      showCloseButton
-      className="max-w-4xl w-full mx-auto p-0"
-    >
-      <FileUploadForm initialCountry={''} onClose={function (): void {
-        throw new Error('Function not implemented.');
-      } } onComplete={function (): void {
-        throw new Error('Function not implemented.');
-      } } />
-    </Modal>
-  </div>
-);
+  );
 }

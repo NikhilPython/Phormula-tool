@@ -61,6 +61,8 @@ type DispatchPageProps = {
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
   shipmentDetailsRequestKey?: number
   onProductNameClick?: (productName: string, sku?: string) => void
+
+  popupContainer?: HTMLElement | null
 }
 
 type AwdDispatchInputRow = {
@@ -677,6 +679,23 @@ function withAutoExpectedReachDate(
     : row
 }
 
+function getScrollableAncestor(element: HTMLElement | null) {
+  if (typeof window === 'undefined') return null
+
+  let current = element?.parentElement ?? null
+
+  while (current) {
+    const { overflowY } = window.getComputedStyle(current)
+    if (['auto', 'scroll', 'overlay'].includes(overflowY)) {
+      return current
+    }
+
+    current = current.parentElement
+  }
+
+  return null
+}
+
 function ShipmentDatePicker({
   id,
   value,
@@ -857,6 +876,7 @@ export default function DispatchPage({
   onShowAllRowsChange,
   shipmentDetailsRequestKey,
   onProductNameClick,
+  popupContainer,
 }: DispatchPageProps) {
   const params = useParams<{ countryName?: string; month?: string; year?: string }>()
   const router = useRouter()
@@ -914,8 +934,11 @@ export default function DispatchPage({
   const [shipmentTransitWeeks, setShipmentTransitWeeks] = useState<ShipmentTransitWeeks>(
     EMPTY_SHIPMENT_TRANSIT_WEEKS
   )
+  const [dispatchPopupContainer, setDispatchPopupContainer] = useState<HTMLDivElement | null>(null)
+  const [modalOverlayRect, setModalOverlayRect] = useState<React.CSSProperties | null>(null)
   const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
   const lastShipmentDetailsRequestKeyRef = useRef(shipmentDetailsRequestKey ?? 0)
+  const modalPopupContainer = popupContainer ?? dispatchPopupContainer
 
   const showAllDispatchRows =
     typeof showAllRowsProp === 'boolean'
@@ -924,6 +947,61 @@ export default function DispatchPage({
 
   const setShowAllDispatchRows =
     onShowAllRowsChange ?? setLocalShowAllDispatchRows
+
+  useEffect(() => {
+    if (!awdInputOpen || awdInputDisplayMode !== 'modal' || !modalPopupContainer) {
+      setModalOverlayRect(null)
+      return
+    }
+
+    const scrollHost = getScrollableAncestor(modalPopupContainer)
+    const overlayHost = scrollHost ?? modalPopupContainer
+    const previousOverflow = scrollHost?.style.overflow
+    const previousOverflowY = scrollHost?.style.overflowY
+    const previousBodyOverflow = document.body.style.overflow
+    const previousHtmlOverflow = document.documentElement.style.overflow
+
+    const updateOverlayRect = () => {
+      const rect = overlayHost.getBoundingClientRect()
+      setModalOverlayRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      })
+    }
+
+    if (scrollHost) {
+      scrollHost.style.overflow = 'hidden'
+      scrollHost.style.overflowY = 'hidden'
+    }
+
+    document.body.style.overflow = 'hidden'
+    document.documentElement.style.overflow = 'hidden'
+    updateOverlayRect()
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateOverlayRect)
+        : null
+
+    resizeObserver?.observe(overlayHost)
+    window.addEventListener('resize', updateOverlayRect)
+
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', updateOverlayRect)
+
+      if (scrollHost) {
+        scrollHost.style.overflow = previousOverflow ?? ''
+        scrollHost.style.overflowY = previousOverflowY ?? ''
+      }
+
+      document.body.style.overflow = previousBodyOverflow
+      document.documentElement.style.overflow = previousHtmlOverflow
+      setModalOverlayRect(null)
+    }
+  }, [awdInputOpen, awdInputDisplayMode, modalPopupContainer])
 
   async function fetchCountryTransitWeeks(token: string): Promise<ShipmentTransitWeeks> {
     const countryKey = normalizeCountryKey(countryName)
@@ -2068,6 +2146,9 @@ export default function DispatchPage({
 
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
+    const shipmentTableBodyMaxHeight = 'calc(100% - 40px)'
+    const shipmentTableClassName =
+      'inbound-shipment-details-table !w-full !min-w-[1450px] 2xl:!min-w-0'
     const rows: InboundShipmentTableRow[] = inboundInputRows.map((row, rowIndex) => ({
       source: row.source,
       shipment_id: row.shipment_id,
@@ -2089,47 +2170,47 @@ export default function DispatchPage({
       {
         key: 'serialNo',
         header: 'S. No.',
-        width: '72px',
+        width: '5%',
         cellClassName: 'font-semibold text-slate-600',
       },
       {
         key: 'shipmentId',
         header: 'Shipment ID',
-        width: '170px',
+        width: '12%',
         cellClassName: '!whitespace-normal break-words text-left font-medium',
       },
       {
         key: 'status',
         header: 'Status',
-        width: '135px',
+        width: '8%',
         render: (_row, value) => renderStatusBadge(value),
       },
       {
         key: 'sku',
         header: 'SKU',
-        width: '280px',
+        width: '19%',
         cellClassName: '!whitespace-normal align-middle',
         render: (_row, value) => renderSkuBadges(value),
       },
       {
         key: 'units',
         header: 'Units',
-        width: '90px',
+        width: '6%',
       },
       {
         key: 'createdAt',
         header: 'Created At',
-        width: '130px',
+        width: '8%',
       },
       {
         key: 'updatedAt',
         header: 'Updated At',
-        width: '130px',
+        width: '8%',
       },
       {
         key: 'dispatchDate',
         header: 'Dispatch Date',
-        width: '190px',
+        width: '13%',
         render: (row) => (
           <div className="w-full min-w-0">
             <ShipmentDatePicker
@@ -2151,7 +2232,7 @@ export default function DispatchPage({
       {
         key: 'shipmentType',
         header: 'Shipment Type',
-        width: '170px',
+        width: '10%',
         render: (row) => {
           const selectedShipmentType = String(row.shipmentType || 'SEA').toUpperCase() === 'AIR' ? 'AIR' : 'SEA'
 
@@ -2176,7 +2257,7 @@ export default function DispatchPage({
       {
         key: 'expectedReachDate',
         header: 'Expected Reach Date',
-        width: '200px',
+        width: '11%',
         render: (row) => (
           <div className="w-full min-w-0">
             <ShipmentDatePicker
@@ -2203,7 +2284,7 @@ export default function DispatchPage({
         className={
           isInline
             ? "flex h-[calc(100vh-260px)] min-h-[360px] w-full flex-col overflow-hidden rounded-xl bg-white"
-            : "flex max-h-[calc(100vh-220px)] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
+            : "flex h-[calc(100%-32px)] max-h-[calc(100%-32px)] w-[calc(100%-32px)] max-w-none flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
         }
       >
         <div className="shrink-0 border-b border-gray-200 px-5 py-4">
@@ -2225,9 +2306,10 @@ export default function DispatchPage({
             paginate={false}
             zebra
             maxHeight="100%"
+            bodyMaxHeight={shipmentTableBodyMaxHeight}
             emptyMessage="No inbound shipments found."
-            className="h-full shadow-none [&>div]:h-full [&>div]:overflow-x-auto"
-            tableClassName="inbound-shipment-details-table"
+            className="h-full shadow-none [&>div]:h-full [&>div]:overflow-y-hidden 2xl:[&>div]:overflow-x-hidden"
+            tableClassName={shipmentTableClassName}
             headerMaxWidth={120}
             rowClassName={(_row, index) => (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
           />
@@ -2237,7 +2319,20 @@ export default function DispatchPage({
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
-        <div className="flex shrink-0 justify-end border-t border-gray-200 px-5 py-4">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 px-5 py-4">
+
+          {!isInline && (
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => closeAwdInputModal(null)}
+              disabled={awdInputSaving}
+            >
+              Cancel
+            </Button>
+          )}
+
           <Button
             type="button"
             variant="primary"
@@ -2247,6 +2342,7 @@ export default function DispatchPage({
           >
             {awdInputSaving ? 'Saving...' : 'Save and Open Dispatch'}
           </Button>
+
         </div>
       </div>
     )
@@ -2338,12 +2434,28 @@ export default function DispatchPage({
   /* keep the rest of your existing CSS below this */
 `}</style>
 
-      <div className={embedded ? "relative min-h-0" : "relative min-h-[calc(100vh-180px)]"}>
-        {awdInputOpen && awdInputDisplayMode === 'modal' && (
+      {awdInputOpen &&
+        awdInputDisplayMode === 'modal' &&
+        modalOverlayRect &&
+        createPortal(
+          <div
+            className="fixed z-[1050] flex items-center justify-center overflow-hidden bg-transparent p-4"
+            style={modalOverlayRect}
+          >
+            {renderInboundShipmentDetailsPanel('modal')}
+          </div>,
+          document.body
+        )}
+
+      <div
+        ref={setDispatchPopupContainer}
+        className={embedded ? "relative min-h-0" : "relative min-h-[calc(100vh-180px)]"}
+      >
+        {/* {awdInputOpen && awdInputDisplayMode === 'modal' && (
           <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-6">
             {renderInboundShipmentDetailsPanel('modal')}
           </div>
-        )}
+        )} */}
 
         {!embedded && (
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">

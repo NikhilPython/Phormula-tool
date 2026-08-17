@@ -833,122 +833,122 @@ const buildHistoricDrawerData = (
   const referenceInsightBlock = findHistoricInsightBlock(json, productName, sku);
   const metrics: DrawerMetric[] = [];
   if (structuredSkuRow) {
-  const cm1Profit = structuredSkuRow?.profit;
-  const cm2Profit = structuredSkuRow?.cm2_profit;
+    const cm1Profit = structuredSkuRow?.profit;
+    const cm2Profit = structuredSkuRow?.cm2_profit;
 
-  const cm1Value = drawerToNumber(cm1Profit?.current);
-  const cm2Value = drawerToNumber(cm2Profit?.current);
+    const cm1Value = drawerToNumber(cm1Profit?.current);
+    const cm2Value = drawerToNumber(cm2Profit?.current);
 
-  const hasStructuredCm2 =
-    cm2Profit?.current !== null &&
-    cm2Profit?.current !== undefined &&
-    Math.abs(cm2Value - cm1Value) >= 0.01;
+    const hasStructuredCm2 =
+      cm2Profit?.current !== null &&
+      cm2Profit?.current !== undefined &&
+      Math.abs(cm2Value - cm1Value) >= 0.01;
 
-  metrics.push(
-    {
-      label: "Units",
-      value: `${drawerNumber(
-        structuredSkuRow?.total_quantity?.current ??
-        structuredSkuRow?.quantity?.current
-      )}${drawerPct(
-        structuredSkuRow?.total_quantity?.delta_pct ??
-        structuredSkuRow?.quantity?.delta_pct
-      )}`,
-    },
-    {
-      label: "Net Sales",
-      value: `${drawerMoney(
-        structuredSkuRow?.net_sales?.current,
-        symbol
-      )}${drawerPct(
-        structuredSkuRow?.net_sales?.delta_pct
-      )}`,
-    },
-    {
-      label: "ASP",
-      value: `${drawerMoney(
-        structuredSkuRow?.asp?.current,
-        symbol
-      )}${drawerPct(
-        structuredSkuRow?.asp?.delta_pct
-      )}`,
-    }
-  );
-
-  if (hasStructuredCm2) {
     metrics.push(
       {
-        label: "Ads",
-        value: `${drawerMoney(
-          structuredSkuRow?.productwise_ads_spend?.current ??
-          structuredSkuRow?.total_ads?.current,
-          symbol
+        label: "Units",
+        value: `${drawerNumber(
+          structuredSkuRow?.total_quantity?.current ??
+          structuredSkuRow?.quantity?.current
         )}${drawerPct(
-          structuredSkuRow?.productwise_ads_spend?.delta_pct ??
-          structuredSkuRow?.total_ads?.delta_pct
+          structuredSkuRow?.total_quantity?.delta_pct ??
+          structuredSkuRow?.quantity?.delta_pct
         )}`,
       },
       {
-        label: "CM2 Profit",
+        label: "Net Sales",
         value: `${drawerMoney(
-          structuredSkuRow?.cm2_profit?.current,
+          structuredSkuRow?.net_sales?.current,
           symbol
         )}${drawerPct(
-          structuredSkuRow?.cm2_profit?.delta_pct
+          structuredSkuRow?.net_sales?.delta_pct
         )}`,
       },
       {
-        label: "CM2 Profit Per Unit",
+        label: "ASP",
         value: `${drawerMoney(
-          structuredSkuRow?.cm2_profit_per_unit?.current,
+          structuredSkuRow?.asp?.current,
           symbol
         )}${drawerPct(
-          structuredSkuRow?.cm2_profit_per_unit?.delta_pct
+          structuredSkuRow?.asp?.delta_pct
         )}`,
       }
     );
-  } else {
+
+    if (hasStructuredCm2) {
+      metrics.push(
+        {
+          label: "Ads",
+          value: `${drawerMoney(
+            structuredSkuRow?.productwise_ads_spend?.current ??
+            structuredSkuRow?.total_ads?.current,
+            symbol
+          )}${drawerPct(
+            structuredSkuRow?.productwise_ads_spend?.delta_pct ??
+            structuredSkuRow?.total_ads?.delta_pct
+          )}`,
+        },
+        {
+          label: "CM2 Profit",
+          value: `${drawerMoney(
+            structuredSkuRow?.cm2_profit?.current,
+            symbol
+          )}${drawerPct(
+            structuredSkuRow?.cm2_profit?.delta_pct
+          )}`,
+        },
+        {
+          label: "CM2 Profit Per Unit",
+          value: `${drawerMoney(
+            structuredSkuRow?.cm2_profit_per_unit?.current,
+            symbol
+          )}${drawerPct(
+            structuredSkuRow?.cm2_profit_per_unit?.delta_pct
+          )}`,
+        }
+      );
+    } else {
+      metrics.push(
+        {
+          label: "CM1 Profit",
+          value: `${drawerMoney(
+            structuredSkuRow?.profit?.current,
+            symbol
+          )}${drawerPct(
+            structuredSkuRow?.profit?.delta_pct
+          )}`,
+        },
+        {
+          label: "CM1 Profit Per Unit",
+          value: `${drawerMoney(
+            structuredSkuRow?.unit_wise_profitability?.current,
+            symbol
+          )}${drawerPct(
+            structuredSkuRow?.unit_wise_profitability?.delta_pct
+          )}`,
+        }
+      );
+    }
+
     metrics.push(
       {
-        label: "CM1 Profit",
-        value: `${drawerMoney(
-          structuredSkuRow?.profit?.current,
-          symbol
-        )}${drawerPct(
-          structuredSkuRow?.profit?.delta_pct
-        )}`,
+        label: "Current Inventory",
+        value: drawerNumber(
+          structuredSkuRow?.current_inventory
+        ),
       },
       {
-        label: "CM1 Profit Per Unit",
-        value: `${drawerMoney(
-          structuredSkuRow?.unit_wise_profitability?.current,
-          symbol
-        )}${drawerPct(
-          structuredSkuRow?.unit_wise_profitability?.delta_pct
-        )}`,
+        label: "Stock Cover",
+        value:
+          structuredSkuRow?.selected_period_coverage_ratio !== null &&
+            structuredSkuRow?.selected_period_coverage_ratio !== undefined
+            ? Number(
+              structuredSkuRow.selected_period_coverage_ratio
+            ).toFixed(2)
+            : "-",
       }
     );
   }
-
-  metrics.push(
-    {
-      label: "Current Inventory",
-      value: drawerNumber(
-        structuredSkuRow?.current_inventory
-      ),
-    },
-    {
-      label: "Stock Cover",
-      value:
-        structuredSkuRow?.selected_period_coverage_ratio !== null &&
-        structuredSkuRow?.selected_period_coverage_ratio !== undefined
-          ? Number(
-              structuredSkuRow.selected_period_coverage_ratio
-            ).toFixed(2)
-          : "-",
-    }
-  );
-}
   const journey: string[] = [];
   const recommendation: string[] = [];
   const inventoryRecommendation: string[] = [];
@@ -962,54 +962,54 @@ const buildHistoricDrawerData = (
     inventoryRecommendation.push(...referenceInsightBlock.inventoryRecommendation);
     adsRecommendation.push(...referenceInsightBlock.adsRecommendation);
   } else if (!structuredSkuRow) {
-  for (const line of block) {
-    if (/^product journey/i.test(line)) {
-      inJourney = true;
-      continue;
-    }
+    for (const line of block) {
+      if (/^product journey/i.test(line)) {
+        inJourney = true;
+        continue;
+      }
 
-    if (/^recommendation:/i.test(line)) {
-      recommendation.push(
-        line.replace(/^recommendation:\s*/i, "")
-      );
-      inJourney = false;
-      continue;
-    }
+      if (/^recommendation:/i.test(line)) {
+        recommendation.push(
+          line.replace(/^recommendation:\s*/i, "")
+        );
+        inJourney = false;
+        continue;
+      }
 
-    if (/^inventory action:/i.test(line)) {
-      inventoryRecommendation.push(
-        line.replace(/^inventory action:\s*/i, "")
-      );
-      inJourney = false;
-      continue;
-    }
+      if (/^inventory action:/i.test(line)) {
+        inventoryRecommendation.push(
+          line.replace(/^inventory action:\s*/i, "")
+        );
+        inJourney = false;
+        continue;
+      }
 
-    if (/^ads action:/i.test(line)) {
-      adsRecommendation.push(
-        line.replace(/^ads action:\s*/i, "")
-      );
-      inJourney = false;
-      continue;
-    }
+      if (/^ads action:/i.test(line)) {
+        adsRecommendation.push(
+          line.replace(/^ads action:\s*/i, "")
+        );
+        inJourney = false;
+        continue;
+      }
 
-    const metricMatch = line.match(/^([^:]+):\s*(.+)$/);
+      const metricMatch = line.match(/^([^:]+):\s*(.+)$/);
 
-    if (metricMatch) {
-      metrics.push({
-        label: metricMatch[1].trim(),
-        value: metricMatch[2].trim(),
-      });
-      continue;
-    }
+      if (metricMatch) {
+        metrics.push({
+          label: metricMatch[1].trim(),
+          value: metricMatch[2].trim(),
+        });
+        continue;
+      }
 
-    if (
-      inJourney &&
-      drawerNormalize(line) !== drawerNormalize(productName)
-    ) {
-      journey.push(line);
+      if (
+        inJourney &&
+        drawerNormalize(line) !== drawerNormalize(productName)
+      ) {
+        journey.push(line);
+      }
     }
   }
-}
 
   /*
     Genuine CM2 tabhi maana jayega jab:
@@ -1020,36 +1020,36 @@ const buildHistoricDrawerData = (
   */
 
   const recMap =
-  json?.recommendations?.sku_actions ||
-  json?.sku_actions ||
-  json?.recommendations ||
-  {};
+    json?.recommendations?.sku_actions ||
+    json?.sku_actions ||
+    json?.recommendations ||
+    {};
 
-const rec =
-  (sku && (
-    recMap?.[sku] ||
-    recMap?.[String(sku).toUpperCase()] ||
-    recMap?.[String(sku).toLowerCase()]
-  )) ||
-  recMap?.[productName] ||
-  Object.entries(recMap).find(([key, value]: any) => {
-    const keyMatchesSku = drawerSkuKeys(sku).some((targetSku) =>
-      drawerSkuKeys(key).some((candidateSku) =>
-        candidateSku === targetSku ||
-        candidateSku.includes(targetSku) ||
-        targetSku.includes(candidateSku)
-      )
-    );
+  const rec =
+    (sku && (
+      recMap?.[sku] ||
+      recMap?.[String(sku).toUpperCase()] ||
+      recMap?.[String(sku).toLowerCase()]
+    )) ||
+    recMap?.[productName] ||
+    Object.entries(recMap).find(([key, value]: any) => {
+      const keyMatchesSku = drawerSkuKeys(sku).some((targetSku) =>
+        drawerSkuKeys(key).some((candidateSku) =>
+          candidateSku === targetSku ||
+          candidateSku.includes(targetSku) ||
+          targetSku.includes(candidateSku)
+        )
+      );
 
-    const valueProductKey = drawerCompactKey(
-      value?.product_name ?? value?.productName ?? value?.name
-    );
+      const valueProductKey = drawerCompactKey(
+        value?.product_name ?? value?.productName ?? value?.name
+      );
 
-    return keyMatchesSku ||
-      (targetProductKey && valueProductKey === targetProductKey) ||
-      drawerCompactKey(key) === targetProductKey;
-  })?.[1] ||
-  {};
+      return keyMatchesSku ||
+        (targetProductKey && valueProductKey === targetProductKey) ||
+        drawerCompactKey(key) === targetProductKey;
+    })?.[1] ||
+    {};
 
   if (!metrics.length) {
     metrics.push(
@@ -1577,71 +1577,71 @@ const ProductInsightDrawer = ({
 };
 
 const PreviewLockedSection = ({
-    enabled,
-    children,
-    title,
-    description,
-    buttonText,
-    onAction,
-  }: {
-    enabled: boolean;
-    children: React.ReactNode;
-    title?: string;
-    description?: string;
-    buttonText?: string;
-    onAction?: () => void;
-  }) => {
-    return (
-      <div className="relative w-full">
-        <div
-          className={
-            enabled
-              ? "pointer-events-none select-none opacity-45  transition-all duration-300"
-              : "opacity-100 transition-all duration-300"
-          }
-        >
-          {children}
-        </div>
+  enabled,
+  children,
+  title,
+  description,
+  buttonText,
+  onAction,
+}: {
+  enabled: boolean;
+  children: React.ReactNode;
+  title?: string;
+  description?: string;
+  buttonText?: string;
+  onAction?: () => void;
+}) => {
+  return (
+    <div className="relative w-full">
+      <div
+        className={
+          enabled
+            ? "pointer-events-none select-none opacity-45  transition-all duration-300"
+            : "opacity-100 transition-all duration-300"
+        }
+      >
+        {children}
+      </div>
 
-        {enabled && (
-          <>
-            <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
+      {enabled && (
+        <>
+          <div className="absolute inset-0 z-10 rounded-xl bg-white/45" />
 
-            <div className="absolute inset-0 z-20 pointer-events-none">
-              <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
-                <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
-                  <div className="mb-4 flex justify-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-blue-700">
-                      <IoMdLock className="text-3xl text-yellow-200" />
-                    </div>
+          <div className="absolute inset-0 z-20 pointer-events-none">
+            <div className="sticky top-[18vh] sm:top-[20vh] lg:top-[22vh] 2xl:top-[24vh] flex justify-center px-4">
+              <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl p-6 text-center">
+                <div className="mb-4 flex justify-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full  bg-blue-700">
+                    <IoMdLock className="text-3xl text-yellow-200" />
                   </div>
+                </div>
 
-                  <h3 className="text-lg font-semibold text-charcoal-500">
-                    {title}
-                  </h3>
+                <h3 className="text-lg font-semibold text-charcoal-500">
+                  {title}
+                </h3>
 
-                  <p className="mt-2 text-sm text-gray-600 leading-6">
-                    {description}
-                  </p>
+                <p className="mt-2 text-sm text-gray-600 leading-6">
+                  {description}
+                </p>
 
-                  <button
-                    onClick={onAction}
-                    className="mt-4 rounded-md bg-blue-700 px-4 py-2 text-sm text-yellow-200 hover:opacity-90 transition"
-                  >
-                    {buttonText}
-                  </button>
+                <button
+                  onClick={onAction}
+                  className="mt-4 rounded-md bg-blue-700 px-4 py-2 text-sm text-yellow-200 hover:opacity-90 transition"
+                >
+                  {buttonText}
+                </button>
 
-                  {/* <p className="mt-3 text-xs text-gray-500">
+                {/* <p className="mt-3 text-xs text-gray-500">
                     Demo data is shown for preview only.
                   </p> */}
-                </div>
               </div>
             </div>
-          </>
-        )}
-      </div>
-    );
-  };
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export default function InventoryFlowPage() {
   const params = useParams() as {
@@ -1717,6 +1717,8 @@ export default function InventoryFlowPage() {
   const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
   const [showAllPoRows, setShowAllPoRows] = useState(false);
   const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
+  const [outletElement, setOutletElement] =
+    useState<HTMLDivElement | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
@@ -2356,7 +2358,7 @@ export default function InventoryFlowPage() {
     );
   };
 
-  
+
 
   const handleConnectAmazonPreview = () => {
     router.push(`/profile/${countryName}/NA/NA`);
@@ -2461,7 +2463,10 @@ export default function InventoryFlowPage() {
       `}</style>
 
       <div className="font-lato">
-        <div className="flex flex-col justify-start">
+        <div
+          ref={setOutletElement}
+          className="relative flex min-h-[calc(100vh-180px)] flex-col justify-start"
+        >
           <div className="sticky top-0 z-40 w-full bg-[#F7F7F7] pb-2">
             <div className="flex flex-col gap-4 pb-1 md:flex-row md:items-center md:justify-between">
               <div className="flex w-full flex-col leading-tight md:w-auto">
@@ -2584,114 +2589,117 @@ export default function InventoryFlowPage() {
             </div>
           </div>
 
-          <PreviewLockedSection
-            enabled={isDemoMode}
-            title="Preview Mode"
-            description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
-            buttonText="Complete Setup"
-            onAction={handleConnectAmazonPreview}
-          >
-            <div>
-              {loading ? (
-                <Loading />
-              ) : activeTab === 'inventory' ? (
-                <div id="inventory-forecast" className="product-click-table scroll-mt-20 relative" onClickCapture={handleForecastProductClick}>
-                  <DisplayInventoryForecast
-                    countryName={countryName}
-                    month={effectiveMonth}
-                    year={effectiveYear}
-                    data={excelData ?? []}
-                    isDemoMode={isDemoMode}
-                  />
+          <div className="relative min-h-[calc(100vh-180px)]">
+            <PreviewLockedSection
+              enabled={isDemoMode}
+              title="Preview Mode"
+              description="To view your real business data and analytics, please complete your profile and connect your Amazon account. This will unlock your performance dashboard and insights."
+              buttonText="Complete Setup"
+              onAction={handleConnectAmazonPreview}
+            >
+              <div>
+                {loading ? (
+                  <Loading />
+                ) : activeTab === 'inventory' ? (
+                  <div id="inventory-forecast" className="product-click-table scroll-mt-20 relative" onClickCapture={handleForecastProductClick}>
+                    <DisplayInventoryForecast
+                      countryName={countryName}
+                      month={effectiveMonth}
+                      year={effectiveYear}
+                      data={excelData ?? []}
+                      isDemoMode={isDemoMode}
+                    />
 
-                  {(missingMonths.length > 0 || !excelData || excelData.length === 0) && (
-                    <div className="fixed inset-0 z-100 pointer-events-none">
-                      <div className="absolute inset-0 bg-white/45" />
+                    {(missingMonths.length > 0 || !excelData || excelData.length === 0) && (
+                      <div className="fixed inset-0 z-100 pointer-events-none">
+                        <div className="absolute inset-0 bg-white/45" />
 
-                      <div className="absolute inset-0 flex items-center justify-center px-4 py-8">
-                        <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6 text-center">
-                          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 border border-amber-200">
-                            <svg
-                              width="24"
-                              height="24"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              className="text-amber-600"
-                            >
-                              <path
-                                d="M12 9V13M12 16H12.01M10.29 3.86L1.82 18A2 2 0 0 0 3.55 21H20.45A2 2 0 0 0 22.18 18L13.71 3.86A2 2 0 0 0 10.29 3.86Z"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </div>
+                        <div className="absolute inset-0 flex items-center justify-center px-4 py-8">
+                          <div className="pointer-events-auto w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 p-6 text-center">
+                            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 border border-amber-200">
+                              <svg
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                className="text-amber-600"
+                              >
+                                <path
+                                  d="M12 9V13M12 16H12.01M10.29 3.86L1.82 18A2 2 0 0 0 3.55 21H20.45A2 2 0 0 0 22.18 18L13.71 3.86A2 2 0 0 0 10.29 3.86Z"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </div>
 
-                          <h3 className="text-lg font-semibold text-charcoal-500">
-                            Data required
-                          </h3>
+                            <h3 className="text-lg font-semibold text-charcoal-500">
+                              Data required
+                            </h3>
 
-                          <p className="mt-2 text-sm leading-6 text-gray-600">
-                            This section requires you to fetch at least 6 months of data.
-                          </p>
+                            <p className="mt-2 text-sm leading-6 text-gray-600">
+                              This section requires you to fetch at least 6 months of data.
+                            </p>
 
-                          <div className="mt-5 flex items-center justify-center gap-3">
+                            <div className="mt-5 flex items-center justify-center gap-3">
 
-                            <button
-                              onClick={() => {
-                                setShowIntegrationModal(true);
-                              }}
-                              className="rounded-md bg-blue-700 px-4 py-2 text-sm text-yellow-200 hover:opacity-90 transition"
-                            >
-                              Fetch Data
-                            </button>
+                              <button
+                                onClick={() => {
+                                  setShowIntegrationModal(true);
+                                }}
+                                className="rounded-md bg-blue-700 px-4 py-2 text-sm text-yellow-200 hover:opacity-90 transition"
+                              >
+                                Fetch Data
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              ) : activeTab === 'dispatch' ? (
-                <div id="dispatch" className="scroll-mt-20">
-                  {isDemoMode ? (
-                    <DemoDispatchPreview />
-                  ) : (
-                    <DispatchPage
-                      embedded
-                      countryNameProp={countryName}
-                      selectedMonthProp={sharedMonth}
-                      selectedYearProp={sharedYear}
-                      showAllRowsProp={showAllDispatchRows}
-                      onShowAllRowsChange={setShowAllDispatchRows}
-                      shipmentDetailsRequestKey={shipmentDetailsRequestKey}
-                      onProductNameClick={(productName, sku) =>
-                        void openProductDrawer(productName, sku, sharedMonth, sharedYear)
-                      }
-                    />
-                  )}
-                </div>
-              ) : (
-                <div id="purchase-order" className="scroll-mt-20">
-                  {isDemoMode ? (
-                    <DemoPurchaseOrderPreview />
-                  ) : (
-                    <PurchaseOrderPage
-                      embedded
-                      countryNameProp={countryName}
-                      selectedMonthProp={sharedMonth}
-                      selectedYearProp={sharedYear}
-                      showAllRowsProp={showAllPoRows}
-                      onShowAllRowsChange={setShowAllPoRows}
-                      onProductNameClick={(productName) =>
-                        void openProductDrawer(productName, undefined, sharedMonth, sharedYear)
-                      }
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          </PreviewLockedSection>
+                    )}
+                  </div>
+                ) : activeTab === 'dispatch' ? (
+                  <div id="dispatch" className="scroll-mt-20">
+                    {isDemoMode ? (
+                      <DemoDispatchPreview />
+                    ) : (
+                      <DispatchPage
+                        embedded
+                        countryNameProp={countryName}
+                        selectedMonthProp={sharedMonth}
+                        selectedYearProp={sharedYear}
+                        showAllRowsProp={showAllDispatchRows}
+                        onShowAllRowsChange={setShowAllDispatchRows}
+                        shipmentDetailsRequestKey={shipmentDetailsRequestKey}
+                        onProductNameClick={(productName, sku) =>
+                          void openProductDrawer(productName, sku, sharedMonth, sharedYear)
+                        }
+                        popupContainer={outletElement}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div id="purchase-order" className="scroll-mt-20">
+                    {isDemoMode ? (
+                      <DemoPurchaseOrderPreview />
+                    ) : (
+                      <PurchaseOrderPage
+                        embedded
+                        countryNameProp={countryName}
+                        selectedMonthProp={sharedMonth}
+                        selectedYearProp={sharedYear}
+                        showAllRowsProp={showAllPoRows}
+                        onShowAllRowsChange={setShowAllPoRows}
+                        onProductNameClick={(productName) =>
+                          void openProductDrawer(productName, undefined, sharedMonth, sharedYear)
+                        }
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </PreviewLockedSection>
+          </div>
         </div>
 
         <ProductInsightDrawer
