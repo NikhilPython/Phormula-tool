@@ -1413,55 +1413,84 @@ def getDispatchfile():
                     )
 
                     if quantity <= 0:
-                        return
+                        return None
 
+                    # =================================================
+                    # TRANSPORT + PHYSICAL USABLE MONTH
+                    # =================================================
+                    #
+                    # need_month:
+                    #     Month by whose end we want the stock.
+                    #
+                    # usable_month:
+                    #     Month when the recommended shipment can
+                    #     physically be available in the simulation.
+                    #
+                    # Example:
+                    #
+                    # Planning = Aug
+                    # AIR usable = Sep
+                    # SEA usable = Nov
+                    #
+                    # Aug requirement:
+                    #     AIR is fastest, but physically usable Sep.
+                    #
+                    # Sep requirement:
+                    #     AIR can already be usable in Sep.
+                    #
+                    # Nov requirement:
+                    #     SEA can be usable in Nov.
+                    # =================================================
+
+                    if (
+                        ship_time_weeks > 0
+                        and need_month >= sea_usable_month
+                    ):
+
+                        sea_units += quantity
+
+                        usable_month = need_month
+
+                    elif air_time_weeks > 0:
+
+                        air_units += quantity
+
+                        usable_month = max(
+                            need_month,
+                            air_usable_month,
+                        )
+
+                    elif ship_time_weeks > 0:
+
+                        # AIR is unavailable.
+                        # SEA is the only route.
+                        sea_units += quantity
+
+                        usable_month = max(
+                            need_month,
+                            sea_usable_month,
+                        )
+
+                    else:
+
+                        return None
+
+
+                    # -------------------------------------------------
+                    # Store recommended supply by the month in which
+                    # it can physically participate in inventory.
+                    # -------------------------------------------------
                     planned_supply_by_month[
-                        need_month
+                        usable_month
                     ] = (
                         planned_supply_by_month.get(
-                            need_month,
+                            usable_month,
                             0.0,
                         )
                         + quantity
                     )
 
-                    # ================================================
-                    # TRANSPORT SPLIT
-                    # ================================================
-                    #
-                    # If SEA dispatched in the selected month can be
-                    # usable by the month inventory is required:
-                    #       -> SEA
-                    #
-                    # Otherwise:
-                    #       -> AIR
-                    #
-                    # Example:
-                    #
-                    # Planning Aug
-                    # SEA usable Dec
-                    #
-                    # Sep requirement -> AIR
-                    # Oct requirement -> AIR
-                    # Nov requirement -> AIR
-                    # Dec requirement -> SEA
-                    # Jan requirement -> SEA
-                    # Feb requirement -> SEA
-                    # ================================================
-                    if (
-                        ship_time_weeks > 0
-                        and need_month
-                        >= sea_usable_month
-                    ):
-                        sea_units += quantity
-
-                    elif air_time_weeks > 0:
-                        air_units += quantity
-
-                    elif ship_time_weeks > 0:
-                        # No AIR profile configured.
-                        # SEA is the only available mode.
-                        sea_units += quantity
+                    return usable_month
 
                 # -----------------------------------------------------
                 # PLANNING INVENTORY
@@ -1614,14 +1643,26 @@ def getDispatchfile():
                             - inventory
                         )
 
-                        add_requirement(
+                        supply_month = add_requirement(
                             current_month,
                             current_gap,
                         )
 
-                        # Add recommended requirement into the
-                        # planning simulation.
-                        inventory += current_gap
+                        # -------------------------------------------------
+                        # Only count the recommendation immediately when
+                        # that transport mode can physically be usable
+                        # in the current month.
+                        #
+                        # Example:
+                        #
+                        # Planning Aug
+                        # AIR usable Sep
+                        #
+                        # An Aug shortage still recommends AIR,
+                        # but that AIR must NOT magically appear in Aug.
+                        # -------------------------------------------------
+                        if supply_month == current_month:
+                            inventory += current_gap
 
 
                     # -------------------------------------------------
@@ -1635,97 +1676,108 @@ def getDispatchfile():
                     )
 
                     # =================================================
-                    # E. FULL-MONTH BUFFER CHECK
                     # =================================================
+                    # G. PHYSICAL MONTH-END BUFFER CHECK
+                    # =================================================
+                    #
+                    # BUSINESS RULE:
+                    #
+                    # At the END of every decision month, physical
+                    # inventory should be enough to cover the next
+                    # buffer_months FULL forecast months.
                     #
                     # Example:
                     #
-                    # End Aug:
+                    # Buffer = 2 months
                     #
-                    # closing inventory = 74
+                    # End Aug target = Sep + Oct
+                    # End Sep target = Oct + Nov
+                    # End Oct target = Nov + Dec
+                    # End Nov target = Dec + Jan
                     #
-                    # buffer_months = 2
+                    # IMPORTANT:
                     #
-                    # Sep = 377
-                    # Oct = 408
+                    # Future inbound is NOT counted here until it
+                    # actually becomes usable.
                     #
-                    # The simulation below identifies:
-                    #
-                    # Sep gap = 303
-                    # Oct gap = 408
-                    #
-                    # Total Aug buffer requirement = 711
+                    # Future AIR / SEA recommendations are also NOT
+                    # counted before their usable month.
                     # =================================================
 
                     if buffer_months <= 0:
                         continue
 
-                    future_inventory = inventory
+
+                    # -------------------------------------------------
+                    # Calculate the physical closing-stock target.
+                    # -------------------------------------------------
+                    required_buffer_stock = 0.0
 
                     for offset in range(
                         1,
                         buffer_months + 1,
                     ):
 
-                        future_month = (
+                        buffer_month = (
                             current_month
                             + pd.DateOffset(
                                 months=offset
                             )
                         ).normalize()
 
-                        # ---------------------------------------------
-                        # Existing inbound is only added in the month
-                        # it becomes USABLE.
-                        #
-                        # Reach in Nov -> + inventory in Dec.
-                        # ---------------------------------------------
-                        future_inventory += (
-                            inbound_by_month.get(
-                                future_month,
-                                0.0,
-                            )
-                        )
-
-                        # ---------------------------------------------
-                        # Requirement already discovered by an earlier
-                        # buffer check.
-                        # ---------------------------------------------
-                        future_inventory += (
-                            planned_supply_by_month.get(
-                                future_month,
-                                0.0,
-                            )
-                        )
-
-                        future_sales = forecast_value(
+                        required_buffer_stock += forecast_value(
                             row,
-                            future_month,
+                            buffer_month,
                         )
 
-                        future_inventory -= (
-                            future_sales
+
+                    # -------------------------------------------------
+                    # inventory currently represents physical inventory
+                    # AFTER current-month sales.
+                    #
+                    # Example:
+                    #
+                    # End Oct inventory = 613
+                    #
+                    # Nov forecast = 613
+                    # Dec forecast = 653
+                    #
+                    # Required physical buffer = 1,266
+                    #
+                    # Gap = 1,266 - 613 = 653
+                    # -------------------------------------------------
+                    buffer_gap = max(
+                        required_buffer_stock
+                        - inventory,
+                        0.0,
+                    )
+
+
+                    if buffer_gap > 0:
+
+                        supply_month = add_requirement(
+                            current_month,
+                            buffer_gap,
                         )
 
-                        # ---------------------------------------------
-                        # Buffer is insufficient.
+                        # -------------------------------------------------
+                        # Only increase physical closing inventory when
+                        # the selected transport can actually be usable
+                        # by this month.
                         #
-                        # Create ONLY the missing units.
-                        # ---------------------------------------------
-                        if future_inventory < 0:
-
-                            buffer_gap = (
-                                -future_inventory
-                            )
-
-                            add_requirement(
-                                future_month,
-                                buffer_gap,
-                            )
-
-                            # Once planned, inventory becomes zero
-                            # instead of remaining negative.
-                            future_inventory = 0.0
+                        # If planning Aug and AIR is usable Sep:
+                        #
+                        # Aug buffer gap is recommended as AIR,
+                        # but Aug physical closing inventory remains
+                        # below target because it is impossible to fix
+                        # retroactively.
+                        #
+                        # From Sep onward, AIR can physically contribute.
+                        #
+                        # From SEA usable month onward, SEA can contribute.
+                        # -------------------------------------------------
+                        if supply_month == current_month:
+                            inventory += buffer_gap
 
                 # =====================================================
                 # 11. ROUND FINAL AIR / SEA
