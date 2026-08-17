@@ -112,6 +112,7 @@ type InboundDispatchInputRow = {
 
 type ShipmentDetailsDisplayMode = 'inline' | 'modal'
 type ShipmentType = 'SEA' | 'AIR'
+type ShipmentTransitWeeks = Record<ShipmentType, number | null>
 
 type InboundShipmentTableRow = Row & {
   source: InboundDispatchInputRow['source']
@@ -145,6 +146,10 @@ const SHIPMENT_TYPE_OPTIONS: Array<{ value: ShipmentType; label: string }> = [
   { value: 'SEA', label: 'Sea' },
   { value: 'AIR', label: 'Air' },
 ]
+const EMPTY_SHIPMENT_TRANSIT_WEEKS: ShipmentTransitWeeks = {
+  SEA: null,
+  AIR: null,
+}
 
 const normalizeCountryKey = (country: string) => country.trim().toLowerCase()
 
@@ -627,6 +632,51 @@ function formatIsoDate(date: Date) {
   return `${year}-${month}-${day}`
 }
 
+function toPositiveNumber(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function normalizeShipmentType(value: unknown): ShipmentType {
+  return String(value || 'SEA').trim().toUpperCase() === 'AIR' ? 'AIR' : 'SEA'
+}
+
+function calculateExpectedReachDate(dispatchDate: string | null | undefined, transitWeeks: number | null) {
+  const parsedDispatchDate = parseIsoDate(dispatchDate)
+  if (!parsedDispatchDate || !transitWeeks) return ''
+
+  const expectedReachDate = getStartOfLocalDay(parsedDispatchDate)
+  expectedReachDate.setDate(expectedReachDate.getDate() + transitWeeks * 7)
+
+  return formatIsoDate(expectedReachDate)
+}
+
+function getTransitWeeksForShipmentType(
+  shipmentTransitWeeks: ShipmentTransitWeeks,
+  shipmentType: unknown
+) {
+  return shipmentTransitWeeks[normalizeShipmentType(shipmentType)]
+}
+
+function withAutoExpectedReachDate(
+  row: InboundDispatchInputRow,
+  shipmentTransitWeeks: ShipmentTransitWeeks,
+  options: { overwriteExisting: boolean }
+) {
+  if (!row.dispatch_date) return row
+  if (!options.overwriteExisting && row.expected_reach_date) return row
+
+  const transitWeeks = getTransitWeeksForShipmentType(shipmentTransitWeeks, row.shipment_type)
+  const expectedReachDate = calculateExpectedReachDate(row.dispatch_date, transitWeeks)
+
+  return expectedReachDate
+    ? {
+      ...row,
+      expected_reach_date: expectedReachDate,
+    }
+    : row
+}
+
 function ShipmentDatePicker({
   id,
   value,
@@ -861,6 +911,9 @@ export default function DispatchPage({
   const [awdInputDisplayMode, setAwdInputDisplayMode] = useState<ShipmentDetailsDisplayMode>('modal')
   const [awdInputSaving, setAwdInputSaving] = useState(false)
   const [awdInputError, setAwdInputError] = useState('')
+  const [shipmentTransitWeeks, setShipmentTransitWeeks] = useState<ShipmentTransitWeeks>(
+    EMPTY_SHIPMENT_TRANSIT_WEEKS
+  )
   const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
   const lastShipmentDetailsRequestKeyRef = useRef(shipmentDetailsRequestKey ?? 0)
 
@@ -871,6 +924,49 @@ export default function DispatchPage({
 
   const setShowAllDispatchRows =
     onShowAllRowsChange ?? setLocalShowAllDispatchRows
+
+  async function fetchCountryTransitWeeks(token: string): Promise<ShipmentTransitWeeks> {
+    const countryKey = normalizeCountryKey(countryName)
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
+
+    if (!countryKey || !marketplaceId) {
+      return EMPTY_SHIPMENT_TRANSIT_WEEKS
+    }
+
+    const params = new URLSearchParams({
+      country: countryKey,
+      marketplace: marketplaceId,
+    })
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/country-profile?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+
+    const text = await response.text()
+    let data: any = {}
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.error || data?.message || 'Failed to fetch country profile')
+    }
+
+    const profile = data?.profile || {}
+
+    return {
+      SEA: toPositiveNumber(profile.ship_time_weeks ?? profile.transit_time),
+      AIR: toPositiveNumber(profile.air_time_weeks ?? profile.transit_time),
+    }
+  }
 
   async function fetchAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
     if (!isAwdSupportedCountry(countryName)) return []
@@ -1077,6 +1173,13 @@ export default function DispatchPage({
     displayMode: ShipmentDetailsDisplayMode = 'modal'
   ): Promise<AwdDispatchInputRow[]> {
     const shouldFetchAwd = isAwdSupportedCountry(countryName)
+    const transitWeeks = await fetchCountryTransitWeeks(token).catch((err) => {
+      console.error('Failed to fetch country transit times:', err)
+      return EMPTY_SHIPMENT_TRANSIT_WEEKS
+    })
+
+    setShipmentTransitWeeks(transitWeeks)
+
     let [rows, fbaRows] = await Promise.all([
       shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
       fetchFbaDispatchInputs(token),
@@ -1113,7 +1216,11 @@ export default function DispatchPage({
 
     setAwdInputRows(normalizedAwdRows)
     setFbaInputRows(normalizedFbaRows)
-    setInboundInputRows(buildInboundDispatchRows(normalizedAwdRows, normalizedFbaRows))
+    setInboundInputRows(
+      buildInboundDispatchRows(normalizedAwdRows, normalizedFbaRows).map((row) =>
+        withAutoExpectedReachDate(row, transitWeeks, { overwriteExisting: false })
+      )
+    )
     setAwdInputError(initialError)
     setAwdInputDisplayMode(displayMode)
     setAwdInputOpen(true)
@@ -1141,18 +1248,37 @@ export default function DispatchPage({
         }
 
         const nextRow = { ...row, ...patch }
+        const shouldRecalculateExpectedReach =
+          'dispatch_date' in patch || 'shipment_type' in patch
+
+        if ('shipment_type' in patch) {
+          nextRow.shipment_type = normalizeShipmentType(patch.shipment_type)
+        }
+
         const dispatchMinDate = getDispatchMinDate(nextRow)
-        const expectedReachMinDate = getExpectedReachMinDate(nextRow)
 
         if (isBeforeMinDate(nextRow.dispatch_date, dispatchMinDate)) {
           nextRow.dispatch_date = ''
         }
 
-        if (isBeforeMinDate(nextRow.expected_reach_date, expectedReachMinDate)) {
+        if ('dispatch_date' in patch && !nextRow.dispatch_date) {
           nextRow.expected_reach_date = ''
         }
 
-        return nextRow
+        const nextRowWithExpectedReach =
+          shouldRecalculateExpectedReach && nextRow.dispatch_date
+            ? withAutoExpectedReachDate(nextRow, shipmentTransitWeeks, {
+              overwriteExisting: true,
+            })
+            : nextRow
+
+        const expectedReachMinDate = getExpectedReachMinDate(nextRowWithExpectedReach)
+
+        if (isBeforeMinDate(nextRowWithExpectedReach.expected_reach_date, expectedReachMinDate)) {
+          nextRowWithExpectedReach.expected_reach_date = ''
+        }
+
+        return nextRowWithExpectedReach
       })
     )
   }
