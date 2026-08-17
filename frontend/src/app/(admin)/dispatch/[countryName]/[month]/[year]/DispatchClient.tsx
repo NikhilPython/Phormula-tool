@@ -16,6 +16,7 @@ import GroupedCollapsibleTable, {
   type LeafCol,
 } from '@/components/ui/table/GroupedCollapsibleTable'
 import DataTable, { type ColumnDef, type Row } from '@/components/ui/table/DataTable'
+import SegmentedToggle from '@/components/ui/SegmentedToggle'
 import Button from '@/components/ui/button/Button'
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
@@ -110,6 +111,7 @@ type InboundDispatchInputRow = {
 }
 
 type ShipmentDetailsDisplayMode = 'inline' | 'modal'
+type ShipmentType = 'SEA' | 'AIR'
 
 type InboundShipmentTableRow = Row & {
   source: InboundDispatchInputRow['source']
@@ -139,6 +141,10 @@ const AWD_SUPPORTED_COUNTRIES = new Set(['us', 'usa'])
 const SHIPMENT_DETAILS_CANCELLED_MESSAGE = 'Shipment details editing was cancelled.'
 const SHIPMENT_DETAILS_REQUIRED_MESSAGE =
   'Please fill dispatch date, shipment type, and expected reach date for every shipment before opening Dispatch.'
+const SHIPMENT_TYPE_OPTIONS: Array<{ value: ShipmentType; label: string }> = [
+  { value: 'SEA', label: 'Sea' },
+  { value: 'AIR', label: 'Air' },
+]
 
 const normalizeCountryKey = (country: string) => country.trim().toLowerCase()
 
@@ -368,6 +374,14 @@ function formatAwdDate(value?: string | null): string {
   return String(value).slice(0, 10)
 }
 
+function formatReadableDate(value?: string | null): string {
+  const parsed = parseIsoDate(value)
+  if (!parsed) return ''
+
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${parsed.getDate()} ${monthNames[parsed.getMonth()]} ${parsed.getFullYear()}`
+}
+
 function splitSkuList(value?: string | null): string[] {
   return String(value ?? '')
     .split(',')
@@ -402,7 +416,7 @@ function buildInboundDispatchRows(
       created_at: row.created_at,
       updated_at: row.updated_at,
       dispatch_date: row.dispatch_date || '',
-      shipment_type: row.shipment_type || '',
+      shipment_type: String(row.shipment_type || 'SEA').toUpperCase(),
       expected_reach_date: row.expected_reach_date || '',
     })),
     ...fbaRows.map((row) => ({
@@ -415,7 +429,7 @@ function buildInboundDispatchRows(
       created_at: row.created_at,
       updated_at: row.updated_at,
       dispatch_date: row.dispatch_date || '',
-      shipment_type: row.shipment_type || '',
+      shipment_type: String(row.shipment_type || 'SEA').toUpperCase(),
       expected_reach_date: row.expected_reach_date || '',
     })),
   ]
@@ -634,6 +648,7 @@ function ShipmentDatePicker({
   const selectedDate = parseIsoDate(value)
   const normalizedMinDate = minDate ? getStartOfLocalDay(minDate) : undefined
   const todayDate = getTodayDate()
+  const displayValue = value ? formatReadableDate(value) || value : ''
   const calendarDate =
     selectedDate && (!normalizedMinDate || compareLocalDates(selectedDate, normalizedMinDate) >= 0)
       ? selectedDate
@@ -731,7 +746,9 @@ function ShipmentDatePicker({
         onClick={toggleCalendar}
         className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-800 shadow-sm transition focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/20"
       >
-        <span className={value ? 'truncate' : 'truncate text-gray-400'}>{value || placeholder}</span>
+        <span className={displayValue ? 'truncate' : 'truncate text-gray-400'}>
+          {displayValue || placeholder}
+        </span>
         <CalendarDays className="h-4 w-4 shrink-0 text-gray-500" />
       </button>
 
@@ -1084,13 +1101,13 @@ export default function DispatchPage({
     const normalizedAwdRows = rows.map((row) => ({
       ...row,
       dispatch_date: row.dispatch_date || '',
-      shipment_type: row.shipment_type || '',
+      shipment_type: String(row.shipment_type || 'SEA').toUpperCase(),
       expected_reach_date: row.expected_reach_date || '',
     }))
     const normalizedFbaRows = fbaRows.map((row) => ({
       ...row,
       dispatch_date: row.dispatch_date || '',
-      shipment_type: row.shipment_type || '',
+      shipment_type: String(row.shipment_type || 'SEA').toUpperCase(),
       expected_reach_date: row.expected_reach_date || '',
     }))
 
@@ -1935,8 +1952,8 @@ export default function DispatchPage({
       status: row.shipment_status || '-',
       sku: row.sku || '',
       units: row.units ?? 0,
-      createdAt: formatAwdDate(row.created_at) || '-',
-      updatedAt: formatAwdDate(row.updated_at) || '-',
+      createdAt: formatReadableDate(row.created_at) || '-',
+      updatedAt: formatReadableDate(row.updated_at) || '-',
       dispatchDate: row.dispatch_date || '',
       shipmentType: row.shipment_type || '',
       expectedReachDate: row.expected_reach_date || '',
@@ -2009,21 +2026,26 @@ export default function DispatchPage({
         key: 'shipmentType',
         header: 'Shipment Type',
         width: '170px',
-        render: (row) => (
-          <select
-            className="h-9 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm"
-            value={String(row.shipmentType || '')}
-            onChange={(event) =>
-              updateInboundInputRow(row.source, row.shipment_id, {
-                shipment_type: event.target.value,
-              })
-            }
-          >
-            <option value="">Select</option>
-            <option value="SEA">SEA</option>
-            <option value="AIR">AIR</option>
-          </select>
-        ),
+        render: (row) => {
+          const selectedShipmentType = String(row.shipmentType || 'SEA').toUpperCase() === 'AIR' ? 'AIR' : 'SEA'
+
+          return (
+            <div className="flex w-full justify-center">
+              <SegmentedToggle<'SEA' | 'AIR'>
+                value={selectedShipmentType}
+                options={SHIPMENT_TYPE_OPTIONS}
+                onChange={(shipmentType) =>
+                  updateInboundInputRow(row.source, row.shipment_id, {
+                    shipment_type: shipmentType,
+                  })
+                }
+                className="mx-auto"
+                compact
+                textSizeClass="text-xs"
+              />
+            </div>
+          )
+        },
       },
       {
         key: 'expectedReachDate',
