@@ -2352,12 +2352,6 @@ export default function DispatchPage({
         cellClassName: '!whitespace-normal break-words text-left font-medium',
       },
       {
-        key: 'status',
-        header: 'Status',
-        width: '8%',
-        render: (_row, value) => renderStatusBadge(value),
-      },
-      {
         key: 'sku',
         header: 'Product Name',
         width: '19%',
@@ -2383,6 +2377,12 @@ export default function DispatchPage({
         key: 'updatedAt',
         header: 'Updated At',
         width: '8%',
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        width: '8%',
+        render: (_row, value) => renderStatusBadge(value),
       },
       {
         key: 'dispatchDate',
