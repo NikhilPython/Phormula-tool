@@ -1717,6 +1717,79 @@ def _attach_product_names_to_rows(
             row["product_name"] = None
 
 
+def _get_sku_product_name_lookup(
+    user_id: int | None,
+    country: str | None = None,
+    marketplace_id: str | None = None,
+) -> dict[str, str]:
+    if not user_id:
+        return {}
+
+    country_key = (country or MARKETPLACE_TO_COUNTRY.get(marketplace_id or "", "")).strip().lower()
+    candidates_by_country = {
+        "us": ["sku_us", "sku_usa", "sku"],
+        "usa": ["sku_us", "sku_usa", "sku"],
+        "uk": ["sku_uk", "sku_gb", "sku"],
+        "gb": ["sku_uk", "sku_gb", "sku"],
+        "ca": ["sku_canada", "sku_ca", "sku"],
+        "canada": ["sku_canada", "sku_ca", "sku"],
+    }
+
+    table_name = f"sku_{int(user_id)}_data_table"
+    if not re.fullmatch(r"[A-Za-z0-9_]+", table_name):
+        return {}
+
+    try:
+        column_rows = db.session.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        """), {"table_name": table_name}).all()
+        available_columns = {row[0] for row in column_rows}
+    except Exception:
+        logger.exception("Could not inspect SKU master table %s", table_name)
+        return {}
+
+    sku_column = next(
+        (c for c in candidates_by_country.get(country_key, [f"sku_{country_key}", "sku"]) if c in available_columns),
+        None,
+    )
+
+    if not sku_column or "product_name" not in available_columns:
+        return {}
+
+    try:
+        result = db.session.execute(text(f"""
+            SELECT
+                "{sku_column}" AS sku,
+                product_name
+            FROM public."{table_name}"
+            WHERE "{sku_column}" IS NOT NULL
+              AND TRIM(CAST("{sku_column}" AS TEXT)) <> ''
+              AND product_name IS NOT NULL
+              AND TRIM(CAST(product_name AS TEXT)) <> ''
+        """)).mappings().all()
+    except Exception:
+        logger.exception("Could not read SKU product names from public.%s", table_name)
+        return {}
+
+    lookup: dict[str, str] = {}
+    invalid_product_names = {"", "-", "0", "nan", "none", "null", "undefined", "total", "others", "other skus"}
+
+    for row in result:
+        product_name = str(row.get("product_name") or "").strip()
+        if product_name.lower() in invalid_product_names:
+            continue
+
+        for sku in re.split(r"[,;\n]+", str(row.get("sku") or "")):
+            normalized_sku = sku.strip().upper()
+            if normalized_sku and normalized_sku not in lookup:
+                lookup[normalized_sku] = product_name
+
+    return lookup
+
+
 # =============================================================================
 # UPSERT
 # =============================================================================
@@ -6541,6 +6614,34 @@ def _get_auth_user_id_from_request() -> int | None:
     token = auth_header.split(" ", 1)[1].strip()
     payload, user_id, member_id = get_effective_user_id_from_token(token)
     return int(payload.get("user_id") or user_id)
+
+
+@inventory_bp.route("/amazon_api/sku-product-names", methods=["GET"])
+def get_sku_product_names():
+    try:
+        user_id = _get_auth_user_id_from_request()
+    except jwt.ExpiredSignatureError:
+        return jsonify({"success": False, "error": "Token has expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"success": False, "error": "Invalid token"}), 401
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+
+    marketplace_id = (request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    country = request.args.get("country")
+    lookup = _get_sku_product_name_lookup(user_id, country=country, marketplace_id=marketplace_id)
+
+    return jsonify({
+        "success": True,
+        "marketplace_id": marketplace_id or None,
+        "country": country or MARKETPLACE_TO_COUNTRY.get(marketplace_id),
+        "count": len(lookup),
+        "items": [
+            {"sku": sku, "product_name": product_name}
+            for sku, product_name in sorted(lookup.items())
+        ],
+    }), 200
 
 
 @inventory_bp.route("/amazon_api/awd/inbound-shipments/dispatch-inputs", methods=["GET"])

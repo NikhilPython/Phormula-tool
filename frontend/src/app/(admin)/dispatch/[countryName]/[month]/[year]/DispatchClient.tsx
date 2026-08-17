@@ -391,7 +391,7 @@ function formatReadableDate(value?: string | null): string {
 
 function splitSkuList(value?: string | null): string[] {
   return String(value ?? '')
-    .split(',')
+    .split(/[,;\n]+/)
     .map((sku) => sku.trim().toUpperCase())
     .filter(Boolean)
 }
@@ -421,6 +421,49 @@ function buildSkuProductNameLookup(rows: SkuRow[]) {
   })
 
   return lookup
+}
+
+function buildSkuProductNameLookupFromItems(items: unknown[]) {
+  const lookup: Record<string, string> = {}
+
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object') return
+
+    const record = item as Record<string, unknown>
+    const productName = String(
+      record.product_name ??
+      record.productName ??
+      record['Product Name'] ??
+      ''
+    ).trim()
+
+    if (!isDisplayableProductName(productName)) return
+
+    splitSkuList(String(record.sku ?? record.SKU ?? record.seller_sku ?? '')).forEach((sku) => {
+      if (!lookup[sku]) {
+        lookup[sku] = productName
+      }
+    })
+  })
+
+  return lookup
+}
+
+function mergeSkuProductNameLookups(
+  previousLookup: Record<string, string>,
+  nextLookup: Record<string, string>
+) {
+  let didChange = false
+  const mergedLookup = { ...previousLookup }
+
+  Object.entries(nextLookup).forEach(([sku, productName]) => {
+    if (mergedLookup[sku] !== productName) {
+      mergedLookup[sku] = productName
+      didChange = true
+    }
+  })
+
+  return didChange ? mergedLookup : previousLookup
 }
 
 function applyAwdShipmentDetails(
@@ -983,6 +1026,7 @@ export default function DispatchPage({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [skuData, setSkuData] = useState<SkuRow[]>([])
+  const [skuProductNameLookup, setSkuProductNameLookup] = useState<Record<string, string>>({})
   // const [showForecastMessage, setShowForecastMessage] = useState(false)
   const [isInitialized, setIsInitialized] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
@@ -1015,6 +1059,20 @@ export default function DispatchPage({
 
   const setShowAllDispatchRows =
     onShowAllRowsChange ?? setLocalShowAllDispatchRows
+
+  useEffect(() => {
+    setSkuProductNameLookup({})
+  }, [countryName])
+
+  useEffect(() => {
+    const nextLookup = buildSkuProductNameLookup(skuData)
+
+    if (Object.keys(nextLookup).length) {
+      setSkuProductNameLookup((previousLookup) =>
+        mergeSkuProductNameLookups(previousLookup, nextLookup)
+      )
+    }
+  }, [skuData])
 
   useEffect(() => {
     if (!awdInputOpen || awdInputDisplayMode !== 'modal' || !modalPopupContainer) {
@@ -1112,6 +1170,44 @@ export default function DispatchPage({
       SEA: toPositiveNumber(profile.ship_time_weeks ?? profile.transit_time),
       AIR: toPositiveNumber(profile.air_time_weeks ?? profile.transit_time),
     }
+  }
+
+  async function fetchSkuProductNameLookup(token: string): Promise<Record<string, string>> {
+    const countryKey = normalizeCountryKey(countryName)
+    const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
+    const params = new URLSearchParams({
+      country: countryKey,
+    })
+
+    if (marketplaceId) {
+      params.set('marketplace_id', marketplaceId)
+    }
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/sku-product-names?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+
+    const text = await response.text()
+    let data: unknown = {}
+
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { raw: text }
+    }
+
+    if (!response.ok || (data as Record<string, unknown>)?.success === false) {
+      return {}
+    }
+
+    const items = (data as Record<string, unknown>)?.items
+    return buildSkuProductNameLookupFromItems(Array.isArray(items) ? items : [])
   }
 
   async function fetchAwdDispatchInputs(token: string): Promise<AwdDispatchInputRow[]> {
@@ -1319,12 +1415,23 @@ export default function DispatchPage({
     displayMode: ShipmentDetailsDisplayMode = 'modal'
   ): Promise<AwdDispatchInputRow[]> {
     const shouldFetchAwd = isAwdSupportedCountry(countryName)
-    const transitWeeks = await fetchCountryTransitWeeks(token).catch((err) => {
-      console.error('Failed to fetch country transit times:', err)
-      return EMPTY_SHIPMENT_TRANSIT_WEEKS
-    })
+    const [transitWeeks, productNameLookup] = await Promise.all([
+      fetchCountryTransitWeeks(token).catch((err) => {
+        console.error('Failed to fetch country transit times:', err)
+        return EMPTY_SHIPMENT_TRANSIT_WEEKS
+      }),
+      fetchSkuProductNameLookup(token).catch((err) => {
+        console.error('Failed to fetch SKU product names:', err)
+        return {}
+      }),
+    ])
 
     setShipmentTransitWeeks(transitWeeks)
+    if (Object.keys(productNameLookup).length) {
+      setSkuProductNameLookup((previousLookup) =>
+        mergeSkuProductNameLookups(previousLookup, productNameLookup)
+      )
+    }
 
     let [rows, fbaRows] = await Promise.all([
       shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
@@ -2216,11 +2323,6 @@ export default function DispatchPage({
     []
   )
 
-  const skuProductNameLookup = useMemo(
-    () => buildSkuProductNameLookup(skuData),
-    [skuData]
-  )
-
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
     const shipmentTableBodyMaxHeight = 'calc(100% - 40px)'
@@ -2264,7 +2366,7 @@ export default function DispatchPage({
       },
       {
         key: 'sku',
-        header: 'SKU',
+        header: 'Product Name',
         width: '19%',
         cellClassName: '!whitespace-normal align-middle',
         render: (_row, value) => (
@@ -2369,19 +2471,19 @@ export default function DispatchPage({
             : "flex h-[calc(100%-32px)] max-h-[calc(100%-32px)] w-[calc(100%-32px)] max-w-none flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
         }
       >
-        <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+        <div className="shrink-0 px-5 py-4">
           <PageBreadcrumb
             pageTitle="Inbound Shipment Details"
             align='left'
             textSize='xl'
           />
 
-          <p className="mt-1 text-xs text-charcoal-500">
+          {/* <p className="mt-1 text-xs text-charcoal-500">
             Edit dispatch date, shipment type, and expected reach date before opening the dispatch file.
-          </p>
+          </p> */}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-hidden px-5 pb-4">
           <DataTable<InboundShipmentTableRow>
             columns={columns}
             data={rows}
@@ -2401,7 +2503,7 @@ export default function DispatchPage({
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray-200 px-3 py-2 sm:px-4 sm:py-2.5 2xl:px-5 2xl:py-3">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 px-3 py-2 sm:px-4 sm:py-2.5 2xl:px-5 2xl:py-3">
 
           {!isInline && (
             <Button
