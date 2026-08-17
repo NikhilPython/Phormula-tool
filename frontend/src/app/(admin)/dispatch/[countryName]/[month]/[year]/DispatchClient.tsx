@@ -1,17 +1,21 @@
 'use client'
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import '@/app/(admin)/pnlforecast/[countryName]/[month]/[year]/Styles.css'
 import { Modal } from '@/components/ui/modal'
 import FileUploadForm from '@/app/(admin)/(ui-elements)/modals/FileUploadForm'
 import MonthYearPickerTable from '@/components/filters/MonthYearPickerTable'
-import DatePicker from '@/components/form/date-picker'
+import { Calendar } from 'react-date-range'
+import 'react-date-range/dist/styles.css'
+import 'react-date-range/dist/theme/default.css'
 import GroupedCollapsibleTable, {
   type ColGroup,
   type LeafCol,
 } from '@/components/ui/table/GroupedCollapsibleTable'
+import DataTable, { type ColumnDef, type Row } from '@/components/ui/table/DataTable'
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
@@ -105,6 +109,22 @@ type InboundDispatchInputRow = {
 }
 
 type ShipmentDetailsDisplayMode = 'inline' | 'modal'
+
+type InboundShipmentTableRow = Row & {
+  source: InboundDispatchInputRow['source']
+  shipment_id: string
+  rowIndex: number
+  serialNo: number
+  shipmentId: string
+  status: string
+  sku: string
+  units: number
+  createdAt: string
+  updatedAt: string
+  dispatchDate: string
+  shipmentType: string
+  expectedReachDate: string
+}
 
 const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
   uk: 'A1F83G8C2ARO7P',
@@ -470,6 +490,246 @@ function renderSkuCell(value: unknown) {
   )
 }
 
+function renderSkuBadges(value: unknown) {
+  const skus = splitSkuList(String(value ?? ''))
+
+  if (!skus.length) return <span className="text-gray-400">-</span>
+
+  const isSparseSkuRow = skus.length <= 2
+
+  return (
+    <div
+      className={
+        isSparseSkuRow
+          ? "flex w-full flex-wrap items-center justify-center gap-3 whitespace-normal"
+          : "grid w-full grid-cols-2 content-center items-center gap-x-3 gap-y-2 whitespace-normal"
+      }
+    >
+      {skus.map((sku) => (
+        <span
+          key={sku}
+          className={
+            isSparseSkuRow
+              ? "inline-flex min-w-[120px] max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-none text-slate-700 shadow-sm"
+              : "inline-flex w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-none text-slate-700 shadow-sm"
+          }
+        >
+          <span className="truncate">{sku}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function getShipmentStatusBadgeClass(status: string) {
+  const normalized = status.trim().toLowerCase()
+
+  if (normalized.includes('in_transit') || normalized.includes('in transit')) {
+    return 'border-blue-200 bg-blue-50 text-blue-700'
+  }
+
+  if (normalized.includes('created') || normalized.includes('active')) {
+    return 'border-amber-200 bg-amber-50 text-amber-700'
+  }
+
+  if (normalized.includes('shipped') || normalized.includes('received') || normalized.includes('closed')) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  }
+
+  if (normalized.includes('cancel')) {
+    return 'border-red-200 bg-red-50 text-red-700'
+  }
+
+  return 'border-slate-200 bg-slate-50 text-slate-700'
+}
+
+function renderStatusBadge(value: unknown) {
+  const status = String(value || '-')
+
+  const label = status
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold leading-none ${getShipmentStatusBadgeClass(status)}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+function parseIsoDate(value?: string | null) {
+  if (!value) return null
+  const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatIsoDate(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function ShipmentDatePicker({
+  id,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string
+  value?: string
+  placeholder: string
+  onChange: (dateStr: string) => void
+}) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
+  const selectedDate = parseIsoDate(value)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const getCalendarPosition = () => {
+    const button = buttonRef.current
+    if (!button) return null
+
+    const rect = button.getBoundingClientRect()
+    const calendarWidth = 340
+    const calendarHeight = 390
+    const gap = 8
+    const padding = 12
+    const spaceBelow = window.innerHeight - rect.bottom
+    const top =
+      spaceBelow >= calendarHeight + gap
+        ? rect.bottom + gap
+        : Math.max(padding, rect.top - calendarHeight - gap)
+    const left = Math.min(
+      Math.max(padding, rect.left),
+      Math.max(padding, window.innerWidth - calendarWidth - padding)
+    )
+
+    return { top, left }
+  }
+
+  const toggleCalendar = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+
+    const nextPosition = getCalendarPosition()
+    if (!nextPosition) return
+
+    setPosition(nextPosition)
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!open) return
+
+    const updatePosition = () => {
+      const nextPosition = getCalendarPosition()
+      if (nextPosition) setPosition(nextPosition)
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (wrapperRef.current?.contains(target) || buttonRef.current?.contains(target)) {
+        return
+      }
+      setOpen(false)
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        id={id}
+        type="button"
+        onClick={toggleCalendar}
+        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-800 shadow-sm transition focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/20"
+      >
+        <span className={value ? 'truncate' : 'truncate text-gray-400'}>{value || placeholder}</span>
+        <CalendarDays className="h-4 w-4 shrink-0 text-gray-500" />
+      </button>
+
+      {open && mounted && position && createPortal(
+        <div
+          ref={wrapperRef}
+          className="fixed z-[10000] rounded-lg border border-slate-200 bg-white p-2 shadow-xl"
+          style={{
+            top: position.top,
+            left: position.left,
+            width: 340,
+          }}
+        >
+          <Calendar
+            date={selectedDate || new Date()}
+            onChange={(date: Date) => {
+              onChange(formatIsoDate(date))
+              setOpen(false)
+            }}
+            color="#5EA68E"
+            showMonthAndYearPickers={false}
+          />
+          <div className="mt-2 flex justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('')
+                setOpen(false)
+              }}
+              className="rounded border border-slate-200 px-2 py-1 text-xs text-charcoal-500"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded border border-charcoal-500 px-2 py-1 text-xs text-charcoal-500"
+            >
+              Close
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
+
 export default function DispatchPage({
   embedded = false,
   countryNameProp,
@@ -756,10 +1016,10 @@ export default function DispatchPage({
 
     if (!rows.length && !fbaRows.length) {
       await fetchAndStoreInboundShipments(token)
-      ;[rows, fbaRows] = await Promise.all([
-        shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
-        fetchFbaDispatchInputs(token),
-      ])
+        ;[rows, fbaRows] = await Promise.all([
+          shouldFetchAwd ? fetchAwdDispatchInputs(token) : Promise.resolve([]),
+          fetchFbaDispatchInputs(token),
+        ])
     }
 
     if (!rows.length && !fbaRows.length) {
@@ -1130,36 +1390,36 @@ export default function DispatchPage({
   }
 
   useEffect(() => {
-  if (month && year) {
-    const capitalizeMonth = capitalize(month)
-    const monthIndex = monthdps.indexOf(capitalizeMonth)
+    if (month && year) {
+      const capitalizeMonth = capitalize(month)
+      const monthIndex = monthdps.indexOf(capitalizeMonth)
 
-    const dispatchMonth =
-      monthIndex >= 0
-        ? monthdps[(monthIndex + 1) % 12]
-        : getCurrentMonthPlus1()
+      const dispatchMonth =
+        monthIndex >= 0
+          ? monthdps[(monthIndex + 1) % 12]
+          : getCurrentMonthPlus1()
 
-    const dispatchYear =
-      monthIndex === 11
-        ? String(Number(year) + 1)
-        : year
+      const dispatchYear =
+        monthIndex === 11
+          ? String(Number(year) + 1)
+          : year
 
-    setMonthDp((previous) =>
-      previous === dispatchMonth ? previous : dispatchMonth
-    )
+      setMonthDp((previous) =>
+        previous === dispatchMonth ? previous : dispatchMonth
+      )
 
-    setYearDp((previous) =>
-      previous === dispatchYear ? previous : dispatchYear
-    )
+      setYearDp((previous) =>
+        previous === dispatchYear ? previous : dispatchYear
+      )
 
+      setIsInitialized(true)
+      return
+    }
+
+    setMonthDp(getCurrentMonthPlus1())
+    setYearDp(getCurrentYear())
     setIsInitialized(true)
-    return
-  }
-
-  setMonthDp(getCurrentMonthPlus1())
-  setYearDp(getCurrentYear())
-  setIsInitialized(true)
-}, [month, year, monthdps])
+  }, [month, year, monthdps])
 
   useEffect(() => {
     if (isInitialized && monthdp && yeardp) {
@@ -1580,98 +1840,161 @@ export default function DispatchPage({
 
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
+    const rows: InboundShipmentTableRow[] = inboundInputRows.map((row, rowIndex) => ({
+      source: row.source,
+      shipment_id: row.shipment_id,
+      rowIndex,
+      serialNo: rowIndex + 1,
+      shipmentId: row.display_shipment_id,
+      status: row.shipment_status || '-',
+      sku: row.sku || '',
+      units: row.units ?? 0,
+      createdAt: formatAwdDate(row.created_at) || '-',
+      updatedAt: formatAwdDate(row.updated_at) || '-',
+      dispatchDate: row.dispatch_date || '',
+      shipmentType: row.shipment_type || '',
+      expectedReachDate: row.expected_reach_date || '',
+    }))
+
+    const columns: ColumnDef<InboundShipmentTableRow>[] = [
+      {
+        key: 'serialNo',
+        header: 'S. No.',
+        width: '72px',
+        cellClassName: 'font-semibold text-slate-600',
+      },
+      {
+        key: 'shipmentId',
+        header: 'Shipment ID',
+        width: '170px',
+        cellClassName: '!whitespace-normal break-words text-left font-medium',
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        width: '135px',
+        render: (_row, value) => renderStatusBadge(value),
+      },
+      {
+        key: 'sku',
+        header: 'SKU',
+        width: '280px',
+        cellClassName: '!whitespace-normal align-middle',
+        render: (_row, value) => renderSkuBadges(value),
+      },
+      {
+        key: 'units',
+        header: 'Units',
+        width: '90px',
+      },
+      {
+        key: 'createdAt',
+        header: 'Created At',
+        width: '130px',
+      },
+      {
+        key: 'updatedAt',
+        header: 'Updated At',
+        width: '130px',
+      },
+      {
+        key: 'dispatchDate',
+        header: 'Dispatch Date',
+        width: '190px',
+        render: (row) => (
+          <div className="w-full min-w-0">
+            <ShipmentDatePicker
+              id={`inbound-dispatch-date-${row.source}-${row.rowIndex}`}
+              value={String(row.dispatchDate || '')}
+              placeholder="Select date"
+              onChange={(dateStr) =>
+                updateInboundInputRow(row.source, row.shipment_id, {
+                  dispatch_date: dateStr,
+                })
+              }
+            />
+          </div>
+        ),
+      },
+      {
+        key: 'shipmentType',
+        header: 'Shipment Type',
+        width: '170px',
+        render: (row) => (
+          <select
+            className="h-9 w-full min-w-0 rounded-md border border-gray-300 bg-white px-2 text-sm"
+            value={String(row.shipmentType || '')}
+            onChange={(event) =>
+              updateInboundInputRow(row.source, row.shipment_id, {
+                shipment_type: event.target.value,
+              })
+            }
+          >
+            <option value="">Select</option>
+            <option value="SEA">SEA</option>
+            <option value="AIR">AIR</option>
+          </select>
+        ),
+      },
+      {
+        key: 'expectedReachDate',
+        header: 'Expected Reach Date',
+        width: '200px',
+        render: (row) => (
+          <div className="w-full min-w-0">
+            <ShipmentDatePicker
+              id={`inbound-expected-reach-date-${row.source}-${row.rowIndex}`}
+              value={String(row.expectedReachDate || '')}
+              placeholder="Select date"
+              onChange={(dateStr) =>
+                updateInboundInputRow(row.source, row.shipment_id, {
+                  expected_reach_date: dateStr,
+                })
+              }
+            />
+          </div>
+        ),
+      },
+    ]
 
     return (
       <div
         className={
           isInline
-            ? "flex max-h-[calc(100vh-260px)] min-h-[360px] w-full flex-col overflow-hidden rounded-xl bg-white"
+            ? "flex h-[calc(100vh-260px)] min-h-[360px] w-full flex-col overflow-hidden rounded-xl bg-white"
             : "flex max-h-[calc(100vh-220px)] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-xl"
         }
       >
         <div className="shrink-0 border-b border-gray-200 px-5 py-4">
-          <h3 className="text-lg font-semibold text-gray-900">Inbound Shipment Details</h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <PageBreadcrumb
+            pageTitle="Inbound Shipment Details"
+            align='left'
+            textSize='xl'
+          />
+
+          <p className="mt-1 text-xs text-charcoal-500">
             Fill dispatch date, shipment type, and expected reach date before opening the dispatch file.
           </p>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
-          <table className="min-w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
-                <th className="border px-3 py-2">Shipment ID</th>
-                <th className="border px-3 py-2">Status</th>
-                <th className="border px-3 py-2">SKU</th>
-                <th className="border px-3 py-2">Units</th>
-                <th className="border px-3 py-2">Created At</th>
-                <th className="border px-3 py-2">Updated At</th>
-                <th className="border px-3 py-2">Dispatch Date</th>
-                <th className="border px-3 py-2">Shipment Type</th>
-                <th className="border px-3 py-2">Expected Reach Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {inboundInputRows.map((row, index) => (
-                <tr key={`${row.source}-${row.shipment_id}`} className="text-gray-700">
-                  <td className="border px-3 py-2 font-medium">{row.display_shipment_id}</td>
-                  <td className="border px-3 py-2">{row.shipment_status || '-'}</td>
-                  <td className="max-w-[220px] whitespace-normal break-words border px-3 py-2">
-                    {row.sku || '-'}
-                  </td>
-                  <td className="border px-3 py-2 text-center">{row.units ?? 0}</td>
-                  <td className="border px-3 py-2">{formatAwdDate(row.created_at) || '-'}</td>
-                  <td className="border px-3 py-2">{formatAwdDate(row.updated_at) || '-'}</td>
-                  <td className="border px-3 py-2">
-                    <div className="min-w-[165px]">
-                      <DatePicker
-                        id={`inbound-dispatch-date-${row.source}-${index}`}
-                        defaultDate={row.dispatch_date || undefined}
-                        placeholder="Select date"
-                        onChange={(_dates, dateStr) =>
-                          updateInboundInputRow(row.source, row.shipment_id, {
-                            dispatch_date: dateStr,
-                          })
-                        }
-                      />
-                    </div>
-                  </td>
-                  <td className="border px-3 py-2">
-                    <select
-                      className="w-full min-w-[105px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-                      value={row.shipment_type || ''}
-                      onChange={(event) =>
-                        updateInboundInputRow(row.source, row.shipment_id, {
-                          shipment_type: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Select</option>
-                      <option value="SEA">SEA</option>
-                      <option value="AIR">AIR</option>
-                    </select>
-                  </td>
-                  <td className="border px-3 py-2">
-                    <div className="min-w-[165px]">
-                      <DatePicker
-                        id={`inbound-expected-reach-date-${row.source}-${index}`}
-                        defaultDate={row.expected_reach_date || undefined}
-                        placeholder="Select date"
-                        onChange={(_dates, dateStr) =>
-                          updateInboundInputRow(row.source, row.shipment_id, {
-                            expected_reach_date: dateStr,
-                          })
-                        }
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      
+
+        <div className="min-h-0 flex-1 overflow-hidden px-5 py-4">
+          <DataTable<InboundShipmentTableRow>
+            columns={columns}
+            data={rows}
+            paginate={false}
+            zebra
+            maxHeight="100%"
+            emptyMessage="No inbound shipments found."
+            className="h-full shadow-none [&>div]:h-full [&>div]:overflow-x-auto"
+            tableClassName="inbound-shipment-details-table"
+            headerMaxWidth={120}
+            rowClassName={(_row, index) => (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
+          />
         </div>
 
-        {awdInputError && (
+        {!isInline && awdInputError && (
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
@@ -1783,94 +2106,94 @@ export default function DispatchPage({
   /* keep the rest of your existing CSS below this */
 `}</style>
 
-      <div className="relative min-h-[calc(100vh-180px)]">
-      {awdInputOpen && awdInputDisplayMode === 'modal' && (
-        <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-6">
-          {renderInboundShipmentDetailsPanel('modal')}
-        </div>
-      )}
-
-      {!embedded && (
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="flex flex-wrap items-baseline gap-2 justify-start">
-            <PageBreadcrumb
-              pageTitle="Dispatch Report - "
-              variant="page"
-              align="left"
-              className=""
-            />
-            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-              Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
-            </span>
+      <div className={embedded ? "relative min-h-0" : "relative min-h-[calc(100vh-180px)]"}>
+        {awdInputOpen && awdInputDisplayMode === 'modal' && (
+          <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-6">
+            {renderInboundShipmentDetailsPanel('modal')}
           </div>
+        )}
 
-          <div className={`inline-dropdowns ${embedded ? 'w-full flex justify-end' : ''}`}>
-            <MonthYearPickerTable
-              month={monthdp}
-              year={yeardp}
-              yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
-              onMonthChange={(v) => setMonthDp(capitalize(v))}
-              onYearChange={(v) => setYearDp(String(v))}
-              valueMode="lower"
-            />
+        {!embedded && (
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-wrap items-baseline gap-2 justify-start">
+              <PageBreadcrumb
+                pageTitle="Dispatch Report - "
+                variant="page"
+                align="left"
+                className=""
+              />
+              <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+                Amazon {countryName?.toLowerCase() === 'global' ? 'Global' : countryName?.toUpperCase()}
+              </span>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => fetchDispatchFile(monthdp, yeardp, { promptForShipmentDetails: true })}
-              title="Edit inbound shipment dates"
-              aria-label="Edit inbound shipment dates"
-              disabled={loading || awdInputOpen}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9"
-            >
-              <CalendarDays className="h-4 w-4" />
-              <span>Inbound Shipments</span>
-            </button>
+            <div className={`inline-dropdowns ${embedded ? 'w-full flex justify-end' : ''}`}>
+              <MonthYearPickerTable
+                month={monthdp}
+                year={yeardp}
+                yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
+                onMonthChange={(v) => setMonthDp(capitalize(v))}
+                onYearChange={(v) => setYearDp(String(v))}
+                valueMode="lower"
+              />
 
-            {/* <div className="centralised-fetch-button">
+              <button
+                type="button"
+                onClick={() => fetchDispatchFile(monthdp, yeardp, { promptForShipmentDetails: true })}
+                title="Edit inbound shipment dates"
+                aria-label="Edit inbound shipment dates"
+                disabled={loading || awdInputOpen}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9"
+              >
+                <CalendarDays className="h-4 w-4" />
+                <span>Inbound Shipments</span>
+              </button>
+
+              {/* <div className="centralised-fetch-button">
               <button className="fetch-button" onClick={() => fetchDispatchFile(monthdp, yeardp)}>
                 Get Report
               </button>
             </div> */}
 
-            {skuData.filter((row) => !isTotalRow(row)).length > 9 && (
-              <button
-                type="button"
-                onClick={() => setShowAllDispatchRows((prev) => !prev)}
-                title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
-                aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
-                disabled={loading || noData}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
-              >
-                {showAllDispatchRows ? (
-                  <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
-                ) : (
-                  <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
-                )}
-              </button>
-            )}
+              {skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllDispatchRows((prev) => !prev)}
+                  title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                  aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                  disabled={loading || noData}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
+                >
+                  {showAllDispatchRows ? (
+                    <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
+                  ) : (
+                    <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
+                  )}
+                </button>
+              )}
 
-            <DownloadIconButton onClick={handleExportToExcel} size="md" />
+              <DownloadIconButton onClick={handleExportToExcel} size="md" />
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Loader fullscreen contained transparent zIndex={20} />
-        </div>
-      ) : error ? (
-        <div className="alert-container">
-          <div className="alert-message">
-            <i className="fa-solid fa-circle-exclamation alert-icon"></i>
-            <span>{error}</span>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Loader fullscreen contained transparent zIndex={20} />
           </div>
-          <button className="alert-button" onClick={() => setShowUpload(true)}>
-            Run Now <i className="fa-solid fa-chevron-right"></i>
-          </button>
-        </div>
-      ) : (
-        <>
-          {/* {embedded && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+        ) : error ? (
+          <div className="alert-container">
+            <div className="alert-message">
+              <i className="fa-solid fa-circle-exclamation alert-icon"></i>
+              <span>{error}</span>
+            </div>
+            <button className="alert-button" onClick={() => setShowUpload(true)}>
+              Run Now <i className="fa-solid fa-chevron-right"></i>
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* {embedded && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
             <div className="mb-3 flex justify-end">
               <button
                 type="button"
@@ -1889,72 +2212,72 @@ export default function DispatchPage({
             </div>
           )} */}
 
-          <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
-            {awdInputOpen && awdInputDisplayMode === 'inline' ? (
-              renderInboundShipmentDetailsPanel('inline')
-            ) : tableRows.length === 0 ? (
-              <div className="flex min-h-55 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
-                {noData
-                  ? "No Data Available for selected period"
-                  : "Select Month and Year to see Dispatch!"}
-              </div>
-            ) : (
-              <GroupedCollapsibleTable<DispatchTableRow>
-                rows={tableRows}
-                getRowKey={(row, index) =>
-                  row.__isTotal ? 'total' : row.__isOthers ? 'others' : index
-                }
-                leftCols={dispatchLeftCols}
-                groups={dispatchGroups}
-                singleCols={dispatchSingleCols}
-                layout={dispatchTableLayout}
-                initialCollapsed={dispatchInitialCollapsed}
-                getValue={(row, colKey) => row[colKey] ?? ''}
-                getRowClassName={(row, index) => {
-                  if (row.__isTotal) return "bg-[#EFEFEF] font-semibold"
-                  if (row.__isOthers && !showAllDispatchRows) return "cursor-pointer bg-white"
-                  return index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                }}
-                onRowClick={(row) => {
-                  if (!showAllDispatchRows && row.__isOthers) {
-                    setShowAllDispatchRows(true)
+            <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
+              {awdInputOpen && awdInputDisplayMode === 'inline' ? (
+                renderInboundShipmentDetailsPanel('inline')
+              ) : tableRows.length === 0 ? (
+                <div className="flex min-h-55 items-center justify-center rounded-lg border border-gray-200 bg-white p-6 text-center text-sm text-neutral-600">
+                  {noData
+                    ? "No Data Available for selected period"
+                    : "Select Month and Year to see Dispatch!"}
+                </div>
+              ) : (
+                <GroupedCollapsibleTable<DispatchTableRow>
+                  rows={tableRows}
+                  getRowKey={(row, index) =>
+                    row.__isTotal ? 'total' : row.__isOthers ? 'others' : index
                   }
-                }}
-                isTotalRow={(row) => !!row.__isTotal}
-                bodyMaxHeight={
-                  showAllDispatchRows &&
-                    tableRows.filter((row) => !row.__isTotal).length > 15
-                    ? 40 * 15
-                    : undefined
-                }
-                tableClassName="w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
-                headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
-                preserveColumnWidths="responsive"
-                stickyLeftBorderMode="shadow-only"
-                stickyLeftDividerMode="leading"
-                stickyLeftHorizontalBorderMode="border"
-              />
-            )}
-          </div>
-        </>
-      )}
+                  leftCols={dispatchLeftCols}
+                  groups={dispatchGroups}
+                  singleCols={dispatchSingleCols}
+                  layout={dispatchTableLayout}
+                  initialCollapsed={dispatchInitialCollapsed}
+                  getValue={(row, colKey) => row[colKey] ?? ''}
+                  getRowClassName={(row, index) => {
+                    if (row.__isTotal) return "bg-[#EFEFEF] font-semibold"
+                    if (row.__isOthers && !showAllDispatchRows) return "cursor-pointer bg-white"
+                    return index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                  }}
+                  onRowClick={(row) => {
+                    if (!showAllDispatchRows && row.__isOthers) {
+                      setShowAllDispatchRows(true)
+                    }
+                  }}
+                  isTotalRow={(row) => !!row.__isTotal}
+                  bodyMaxHeight={
+                    showAllDispatchRows &&
+                      tableRows.filter((row) => !row.__isTotal).length > 15
+                      ? 40 * 15
+                      : undefined
+                  }
+                  tableClassName="w-full table-fixed border-collapse bg-white text-[#414042] text-xs 2xl:text-sm"
+                  headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf]"
+                  preserveColumnWidths="responsive"
+                  stickyLeftBorderMode="shadow-only"
+                  stickyLeftDividerMode="leading"
+                  stickyLeftHorizontalBorderMode="border"
+                />
+              )}
+            </div>
+          </>
+        )}
 
-      <Modal
-        isOpen={showUpload}
-        onClose={() => setShowUpload(false)}
-        showCloseButton
-        className="max-w-4xl w-full mx-auto p-0"
-      >
-        <FileUploadForm
-          initialCountry={''}
+        <Modal
+          isOpen={showUpload}
           onClose={() => setShowUpload(false)}
-          onComplete={() => {
-            setShowUpload(false)
-            void fetchDispatchFile(monthdp, yeardp)
-          }}
-        />
-      </Modal>
+          showCloseButton
+          className="max-w-4xl w-full mx-auto p-0"
+        >
+          <FileUploadForm
+            initialCountry={''}
+            onClose={() => setShowUpload(false)}
+            onComplete={() => {
+              setShowUpload(false)
+              void fetchDispatchFile(monthdp, yeardp)
+            }}
+          />
+        </Modal>
       </div>
     </>
   )
