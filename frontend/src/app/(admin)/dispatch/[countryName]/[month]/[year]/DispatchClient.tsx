@@ -540,7 +540,16 @@ function renderSkuCell(value: unknown) {
   )
 }
 
-function renderSkuBadges(value: unknown, productNameBySku: Record<string, string> = {}) {
+const COLLAPSED_SHIPMENT_SKU_COUNT = 4
+
+function ExpandableShipmentSkuBadges({
+  value,
+  productNameBySku = {},
+}: {
+  value: unknown
+  productNameBySku?: Record<string, string>
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const skus = splitSkuList(String(value ?? ''))
 
   if (!skus.length) return <span className="text-gray-400">-</span>
@@ -558,29 +567,47 @@ function renderSkuBadges(value: unknown, productNameBySku: Record<string, string
     return items
   }, [])
 
-  const isSparseSkuRow = badgeItems.length <= 2
+  const hasHiddenBadges = badgeItems.length > COLLAPSED_SHIPMENT_SKU_COUNT
+  const visibleBadgeItems = isExpanded
+    ? badgeItems
+    : badgeItems.slice(0, COLLAPSED_SHIPMENT_SKU_COUNT)
+  const hiddenBadgeCount = badgeItems.length - COLLAPSED_SHIPMENT_SKU_COUNT
+  const isSparseSkuRow = visibleBadgeItems.length <= 2
 
   return (
-    <div
-      className={
-        isSparseSkuRow
-          ? "flex w-full flex-wrap items-center justify-center gap-3 whitespace-normal"
-          : "grid w-full grid-cols-2 content-center items-center gap-x-3 gap-y-2 whitespace-normal"
-      }
-    >
-      {badgeItems.map(({ sku, label }) => (
-        <span
-          key={sku}
-          title={label === sku ? sku : `${label} (${sku})`}
-          className={
-            isSparseSkuRow
-              ? "inline-flex min-w-[120px] max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
-              : "inline-flex w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
-          }
+    <div className="flex w-full min-w-0 flex-col items-center gap-2 whitespace-normal">
+      <div
+        className={
+          isSparseSkuRow
+            ? "flex w-full flex-wrap items-center justify-center gap-1 min-[1700px]:gap-3"
+            : "grid w-full grid-cols-2 content-center items-center gap-x-3 gap-y-2"
+        }
+      >
+        {visibleBadgeItems.map(({ sku, label }) => (
+          <span
+            key={sku}
+            title={label === sku ? sku : `${label} (${sku})`}
+            className={
+              isSparseSkuRow
+                ? "inline-flex min-w-[120px] max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
+                : "inline-flex w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
+            }
+          >
+            <span className="min-w-0 break-words text-center">{label}</span>
+          </span>
+        ))}
+      </div>
+
+      {hasHiddenBadges && (
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((expanded) => !expanded)}
+          className="rounded-md px-2 py-0.5 text-xs font-semibold text-[#397e69] transition-colors hover:bg-emerald-50 hover:text-[#28614f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-1"
         >
-          <span className="min-w-0 break-words text-center">{label}</span>
-        </span>
-      ))}
+          {isExpanded ? 'Show less' : `Show more (${hiddenBadgeCount})`}
+        </button>
+      )}
     </div>
   )
 }
@@ -2240,7 +2267,12 @@ export default function DispatchPage({
         header: 'SKU',
         width: '19%',
         cellClassName: '!whitespace-normal align-middle',
-        render: (_row, value) => renderSkuBadges(value, skuProductNameLookup),
+        render: (_row, value) => (
+          <ExpandableShipmentSkuBadges
+            value={value}
+            productNameBySku={skuProductNameLookup}
+          />
+        ),
       },
       {
         key: 'units',

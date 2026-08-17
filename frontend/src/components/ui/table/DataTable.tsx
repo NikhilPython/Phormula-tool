@@ -116,7 +116,24 @@ export default function DataTable<T extends Row>({
   }, [pageRows, shouldPinTotalRows, isTotalRow]);
 
   const bodyScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const headerScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const pinnedRowsScrollRef = React.useRef<HTMLDivElement | null>(null);
   const [scrollbarWidth, setScrollbarWidth] = React.useState(0);
+
+  const syncHorizontalScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const scrollLeft = event.currentTarget.scrollLeft;
+
+      if (headerScrollRef.current) {
+        headerScrollRef.current.scrollLeft = scrollLeft;
+      }
+
+      if (pinnedRowsScrollRef.current) {
+        pinnedRowsScrollRef.current.scrollLeft = scrollLeft;
+      }
+    },
+    []
+  );
 
   React.useEffect(() => {
     if (!shouldPinTotalRows) return;
@@ -285,12 +302,18 @@ export default function DataTable<T extends Row>({
       {/* Horizontal scroll wrapper for header + body + pinned total */}
       <div
         className={clsx(
-          "w-full overflow-x-auto [-webkit-overflow-scrolling:touch]",
-          shouldPinTotalRows && "overflow-y-hidden"
+          "w-full [-webkit-overflow-scrolling:touch]",
+          shouldPinTotalRows
+            ? "overflow-x-hidden overflow-y-hidden"
+            : "overflow-x-auto"
         )}
       >
         {/* Header table */}
-        <div style={scrollbarCompensationStyle}>
+        <div
+          ref={headerScrollRef}
+          className={shouldPinTotalRows ? "overflow-x-hidden" : undefined}
+          style={scrollbarCompensationStyle}
+        >
           <table
             className={clsx(
               "border-separate border-spacing-0",
@@ -342,8 +365,9 @@ export default function DataTable<T extends Row>({
           ref={bodyScrollRef}
           className={clsx(
             shouldPinTotalRows &&
-            "overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+            "overflow-auto [scrollbar-gutter:stable]"
           )}
+          onScroll={shouldPinTotalRows ? syncHorizontalScroll : undefined}
           style={bodyScrollStyle}
         >
           <table
@@ -439,7 +463,11 @@ export default function DataTable<T extends Row>({
 
         {/* Fixed total row table */}
         {pinnedRows.length > 0 && (
-          <div style={scrollbarCompensationStyle}>
+          <div
+            ref={pinnedRowsScrollRef}
+            className="overflow-x-hidden"
+            style={scrollbarCompensationStyle}
+          >
             <table
               className={clsx(
                 "border-separate border-spacing-0",
