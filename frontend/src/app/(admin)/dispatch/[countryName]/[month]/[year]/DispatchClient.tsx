@@ -2439,7 +2439,7 @@ export default function DispatchPage({
         modalOverlayRect &&
         createPortal(
           <div
-            className="fixed z-[1050] flex items-center justify-center overflow-hidden bg-transparent p-4"
+            className="fixed z-[1050] flex items-center justify-center overflow-hidden bg-white/80 p-4"
             style={modalOverlayRect}
           >
             {renderInboundShipmentDetailsPanel('modal')}
