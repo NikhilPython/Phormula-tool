@@ -480,12 +480,38 @@ def calculate_remaining_months_v2(
     if max_extra <= 0:
         return inventory_forecast
 
-    # build future month columns starting after the 3rd forecast month
-    third_label = anchor_months_all[2]
-    third_dt = datetime.strptime(third_label, "%b'%y")
-    start_dt = add_months(third_dt, 1)
+    # ---------------------------------------------------------
+    # Build the remaining months directly from the exact
+    # required forecast horizon.
+    #
+    # Example:
+    #
+    # anchor_months_all =
+    # [
+    #     "Aug'26",
+    #     "Sep'26",
+    #     "Oct'26",
+    #     "Nov'26",
+    #     "Dec'26",
+    #     "Jan'27",
+    #     "Feb'27",
+    # ]
+    #
+    # Starting after the first 3 model months gives:
+    #
+    # Nov Dec Jan Feb
+    #
+    # ARIMA uses all 4.
+    # HYBRID skips Nov because its 4th model month is
+    # already available, then extends Dec Jan Feb.
+    # ---------------------------------------------------------
 
-    month_names = [month_label(add_months(start_dt, i)) for i in range(max_extra)]
+    month_names = list(
+        anchor_months_all[
+            3:int(forecast_horizon_months)
+        ]
+    )
+
     for m in month_names:
         if m not in inventory_forecast.columns:
             inventory_forecast[m] = 0.0
@@ -2596,13 +2622,66 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     air_time_weeks = int(profile.air_time_weeks or 0)
     stock_unit_weeks = int(profile.stock_unit_weeks or 0)
 
-    # Forecast files are month-based. Use sea transit as the primary
-    # replenishment route and convert the complete weekly requirement
-    # into the required number of forecast months.
-    total_requirement_weeks = ship_time_weeks + stock_unit_weeks
+    # ---------------------------------------------------------
+    # FORECAST HORIZON
+    #
+    # Use the SAME full-month planning buckets as Dispatch.
+    #
+    # SEA transit months
+    # + Stock buffer months
+    # + 1 selected planning month
+    #
+    # Example:
+    #
+    # SEA    = 16 weeks -> 4 months
+    # Buffer = 8 weeks  -> 2 months
+    #
+    # Forecast horizon:
+    # 4 + 2 + 1 = 7 months
+    #
+    # Aug Sep Oct Nov Dec Jan Feb
+    # ---------------------------------------------------------
+
+    sea_months = (
+        int(np.ceil(ship_time_weeks / 4.0))
+        if ship_time_weeks > 0
+        else 0
+    )
+
+    air_months = (
+        int(np.ceil(air_time_weeks / 4.0))
+        if air_time_weeks > 0
+        else 0
+    )
+
+    buffer_months = (
+        int(np.ceil(stock_unit_weeks / 4.0))
+        if stock_unit_weeks > 0
+        else 0
+    )
+
+    # SEA is the primary replenishment route.
+    # If SEA is not configured, use AIR as fallback.
+    transit_months = (
+        sea_months
+        if sea_months > 0
+        else air_months
+    )
+
+    # +1 = selected/planning month itself.
     forecast_horizon_months = max(
+        transit_months
+        + buffer_months
+        + 1,
         1,
-        int(np.ceil(total_requirement_weeks / 4.345)),
+    )
+
+    print(
+        "[FORECAST][HORIZON]",
+        f"SEA={sea_months}",
+        f"AIR={air_months}",
+        f"BUFFER={buffer_months}",
+        f"TOTAL={forecast_horizon_months}",
     )
 
     # HARD CAP workers to prevent EC2 OOM
