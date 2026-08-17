@@ -396,6 +396,33 @@ function splitSkuList(value?: string | null): string[] {
     .filter(Boolean)
 }
 
+function isDisplayableProductName(value: unknown) {
+  const normalized = String(value ?? '').trim()
+  const lowered = normalized.toLowerCase()
+
+  return Boolean(
+    normalized &&
+    !['-', '0', 'nan', 'none', 'null', 'undefined', 'total', 'others', 'other skus'].includes(lowered)
+  )
+}
+
+function buildSkuProductNameLookup(rows: SkuRow[]) {
+  const lookup: Record<string, string> = {}
+
+  rows.forEach((row) => {
+    const productName = String(row['Product Name'] ?? '').trim()
+    if (!isDisplayableProductName(productName)) return
+
+    splitSkuList(String(row['SKU'] ?? '')).forEach((sku) => {
+      if (!lookup[sku]) {
+        lookup[sku] = productName
+      }
+    })
+  })
+
+  return lookup
+}
+
 function applyAwdShipmentDetails(
   rows: SkuRow[],
   awdRows: AwdDispatchInputRow[],
@@ -445,7 +472,7 @@ function buildInboundDispatchRows(
 function buildOthersRow(rows: SkuRow[]): SkuRow {
   return {
     'Product Name': 'Others',
-    'SKU': '',
+    'SKU': '-',
     'FBA': rows.reduce((sum, row) => sum + toNumber(row['FBA']), 0),
     'AWD': rows.reduce((sum, row) => sum + toNumber(row['AWD']), 0),
     'In Transit FBA': rows.reduce((sum, row) => sum + toNumber(row['In Transit FBA']), 0),
@@ -513,12 +540,25 @@ function renderSkuCell(value: unknown) {
   )
 }
 
-function renderSkuBadges(value: unknown) {
+function renderSkuBadges(value: unknown, productNameBySku: Record<string, string> = {}) {
   const skus = splitSkuList(String(value ?? ''))
 
   if (!skus.length) return <span className="text-gray-400">-</span>
 
-  const isSparseSkuRow = skus.length <= 2
+  const seenLabels = new Set<string>()
+  const badgeItems = skus.reduce<Array<{ sku: string; label: string }>>((items, sku) => {
+    const label = productNameBySku[sku] || sku
+    const labelKey = label.trim().toLowerCase()
+
+    if (!seenLabels.has(labelKey)) {
+      seenLabels.add(labelKey)
+      items.push({ sku, label })
+    }
+
+    return items
+  }, [])
+
+  const isSparseSkuRow = badgeItems.length <= 2
 
   return (
     <div
@@ -528,16 +568,17 @@ function renderSkuBadges(value: unknown) {
           : "grid w-full grid-cols-2 content-center items-center gap-x-3 gap-y-2 whitespace-normal"
       }
     >
-      {skus.map((sku) => (
+      {badgeItems.map(({ sku, label }) => (
         <span
           key={sku}
+          title={label === sku ? sku : `${label} (${sku})`}
           className={
             isSparseSkuRow
-              ? "inline-flex min-w-[120px] max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-none text-slate-700 shadow-sm"
-              : "inline-flex w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-none text-slate-700 shadow-sm"
+              ? "inline-flex min-w-[120px] max-w-full items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
+              : "inline-flex w-full min-w-0 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold leading-snug text-slate-700 shadow-sm"
           }
         >
-          <span className="truncate">{sku}</span>
+          <span className="min-w-0 break-words text-center">{label}</span>
         </span>
       ))}
     </div>
@@ -1903,7 +1944,7 @@ export default function DispatchPage({
 
       displayedColumns.forEach((col) => {
         if (col === 'S. No.') {
-          obj[col] = isTotal || isOthers ? '' : ++serialNo
+          obj[col] = isTotal ? '' : ++serialNo
           return
         }
 
@@ -2005,7 +2046,11 @@ export default function DispatchPage({
         !isOthers &&
         !['total', 'others', 'other skus', '-'].includes(rawProductName.toLowerCase())
 
-      obj.product_name = isClickableProduct ? (
+      obj.product_name = isOthers ? (
+        <span className="text-green-500">
+          {rawProductName}
+        </span>
+      ) : isClickableProduct ? (
         <button
           type="button"
           onClick={(event) => {
@@ -2144,6 +2189,11 @@ export default function DispatchPage({
     []
   )
 
+  const skuProductNameLookup = useMemo(
+    () => buildSkuProductNameLookup(skuData),
+    [skuData]
+  )
+
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
     const shipmentTableBodyMaxHeight = 'calc(100% - 40px)'
@@ -2190,7 +2240,7 @@ export default function DispatchPage({
         header: 'SKU',
         width: '19%',
         cellClassName: '!whitespace-normal align-middle',
-        render: (_row, value) => renderSkuBadges(value),
+        render: (_row, value) => renderSkuBadges(value, skuProductNameLookup),
       },
       {
         key: 'units',

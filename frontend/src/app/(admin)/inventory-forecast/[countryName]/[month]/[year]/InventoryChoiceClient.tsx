@@ -21,6 +21,7 @@ import { CalendarDays } from 'lucide-react';
 import { AnimatePresence, motion } from "framer-motion";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
 import Loader from "@/components/loader/Loader";
+import { MdModeEdit } from 'react-icons/md';
 
 type UploadItem = {
   filename?: string;
@@ -2506,7 +2507,19 @@ export default function InventoryFlowPage() {
                     onYearChange={(value) => setSharedYear(value)}
                     valueMode="lower"
                   />
+                </div>
+              )}
+            </div>
 
+            <div className="flex items-center justify-between gap-3 overflow-x-auto border-b border-gray-200 py-1.5">
+              <InventoryFlowTabs
+                value={activeTab}
+                onChange={handleTabChange}
+                className="w-fit shrink-0"
+              />
+
+              {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
+                <div className="ml-auto flex shrink-0 items-center gap-2">
                   {activeTab === 'dispatch' && (
                     <button
                       type="button"
@@ -2514,15 +2527,13 @@ export default function InventoryFlowPage() {
                       title="Edit inbound shipment dates"
                       aria-label="Edit inbound shipment dates"
                       disabled={isDemoMode}
-                      className="inline-flex h-9 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <CalendarDays className="h-4 w-4" />
-                      <span className="hidden sm:inline">Inbound Shipments</span>
+                      <MdModeEdit size={18} className="font-extrabold" />
                     </button>
                   )}
 
                   <DownloadIconButton
-                    size="md"
                     onClick={() => {
                       window.dispatchEvent(
                         new CustomEvent(
@@ -2532,59 +2543,54 @@ export default function InventoryFlowPage() {
                         )
                       );
                     }}
+                    className=" hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                     disabled={isDemoMode}
                   />
-                </div>
-              )}
-            </div>
 
-            <div className="flex items-center justify-between gap-3 border-b border-gray-200 py-1.5">
-              <InventoryFlowTabs value={activeTab} onChange={handleTabChange} />
 
-              {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (activeTab === 'dispatch') {
-                      setShowAllDispatchRows((prev) => !prev);
-                      return;
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeTab === "dispatch") {
+                        setShowAllDispatchRows((prev) => !prev);
+                        return;
+                      }
+
+                      setShowAllPoRows((prev) => !prev);
+                    }}
+                    title={
+                      activeTab === "dispatch"
+                        ? showAllDispatchRows
+                          ? "Collapse rows"
+                          : "Expand all rows"
+                        : showAllPoRows
+                          ? "Collapse rows"
+                          : "Expand all rows"
                     }
-
-                    setShowAllPoRows((prev) => !prev);
-                  }}
-                  title={
-                    activeTab === 'dispatch'
-                      ? showAllDispatchRows
-                        ? "Collapse rows"
-                        : "Expand all rows"
-                      : showAllPoRows
-                        ? "Collapse rows"
-                        : "Expand all rows"
-                  }
-                  aria-label={
-                    activeTab === 'dispatch'
-                      ? showAllDispatchRows
-                        ? "Collapse rows"
-                        : "Expand all rows"
-                      : showAllPoRows
-                        ? "Collapse rows"
-                        : "Expand all rows"
-                  }
-                  disabled={isDemoMode}
-                  className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {activeTab === 'dispatch' ? (
-                    showAllDispatchRows ? (
+                    aria-label={
+                      activeTab === "dispatch"
+                        ? showAllDispatchRows
+                          ? "Collapse rows"
+                          : "Expand all rows"
+                        : showAllPoRows
+                          ? "Collapse rows"
+                          : "Expand all rows"
+                    }
+                    className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                  >
+                    {activeTab === "dispatch" ? (
+                      showAllDispatchRows ? (
+                        <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                      ) : (
+                        <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                      )
+                    ) : showAllPoRows ? (
                       <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                     ) : (
                       <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                    )
-                  ) : showAllPoRows ? (
-                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                  ) : (
-                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                  )}
-                </button>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           </div>
