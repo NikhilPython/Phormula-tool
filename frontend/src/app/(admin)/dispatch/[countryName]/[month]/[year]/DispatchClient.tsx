@@ -881,12 +881,12 @@ function ShipmentDatePicker({
         id={id}
         type="button"
         onClick={toggleCalendar}
-        className="flex h-9 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-300 bg-white px-3 text-left text-sm text-gray-800 shadow-sm transition focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/20"
+        className="flex h-8 w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-gray-300 bg-white px-2 text-left text-xs text-gray-800 shadow-sm transition focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/20 2xl:h-9 2xl:gap-2 2xl:rounded-lg 2xl:px-3 2xl:text-sm"
       >
         <span className={displayValue ? 'truncate' : 'truncate text-gray-400'}>
           {displayValue || placeholder}
         </span>
-        <CalendarDays className="h-4 w-4 shrink-0 text-gray-500" />
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-gray-500 2xl:h-4 2xl:w-4" />
       </button>
 
       {open && mounted && position && createPortal(
@@ -2294,7 +2294,7 @@ export default function DispatchPage({
         header: 'Dispatch Date',
         width: '13%',
         render: (row) => (
-          <div className="w-full min-w-0">
+          <div className="mx-auto w-full min-w-0 max-w-[145px] 2xl:max-w-none">
             <ShipmentDatePicker
               id={`inbound-dispatch-date-${row.source}-${row.rowIndex}`}
               value={String(row.dispatchDate || '')}
@@ -2341,7 +2341,7 @@ export default function DispatchPage({
         header: 'Expected Reach Date',
         width: '11%',
         render: (row) => (
-          <div className="w-full min-w-0">
+          <div className="mx-auto w-full min-w-0 max-w-[145px] 2xl:max-w-none">
             <ShipmentDatePicker
               id={`inbound-expected-reach-date-${row.source}-${row.rowIndex}`}
               value={String(row.expectedReachDate || '')}
@@ -2377,7 +2377,7 @@ export default function DispatchPage({
           />
 
           <p className="mt-1 text-xs text-charcoal-500">
-            Fill dispatch date, shipment type, and expected reach date before opening the dispatch file.
+            Edit dispatch date, shipment type, and expected reach date before opening the dispatch file.
           </p>
         </div>
 
@@ -2401,13 +2401,14 @@ export default function DispatchPage({
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
-        <div className="flex shrink-0 justify-end gap-3 border-t border-gray-200 px-5 py-4">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray-200 px-3 py-2 sm:px-4 sm:py-2.5 2xl:px-5 2xl:py-3">
 
           {!isInline && (
             <Button
               type="button"
               variant="outline"
-              size="md"
+              size="sm"
+              className="!h-8 !px-3 !py-1 !text-xs sm:!h-9 sm:!px-3.5 2xl:!h-10 2xl:!px-4 2xl:!text-sm"
               onClick={() => closeAwdInputModal(null)}
               disabled={awdInputSaving}
             >
@@ -2418,7 +2419,8 @@ export default function DispatchPage({
           <Button
             type="button"
             variant="primary"
-            size="md"
+            size="sm"
+            className="!h-8 whitespace-nowrap !px-3 !py-1 !text-xs sm:!h-9 sm:!px-3.5 2xl:!h-10 2xl:!px-4 2xl:!text-sm"
             onClick={handleSaveAwdInputRows}
             disabled={awdInputSaving}
           >
