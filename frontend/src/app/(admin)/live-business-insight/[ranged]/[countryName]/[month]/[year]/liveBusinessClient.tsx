@@ -56,6 +56,7 @@ type MonthsforBIProps = {
   endDay?: number;
 
   formattedMonthYear?: string; // ✅ add this
+  skuAnalysisOnly?: boolean;
 };
 
 // =========================
@@ -362,6 +363,7 @@ export default function LiveBusinessClient({
   startDay,
   endDay,
   formattedMonthYear, // ✅ add this
+  skuAnalysisOnly = false,
 }: MonthsforBIProps) {
   const { data: userData } = useGetUserDataQuery();
   const router = useRouter();
@@ -4587,6 +4589,7 @@ export default function LiveBusinessClient({
           background-color:#2c3e50; color:#f8edcf; font-weight:bold;
         }
         .styled-button:hover, .compare-button:hover{ background-color:#1f2a36; }
+        .sku-analysis-only > :not(.sku-analysis-section){ display:none !important; }
       `}</style>
 
       {pageLoading ? (
@@ -4594,7 +4597,7 @@ export default function LiveBusinessClient({
           <Loader fullscreen transparent />
         </div>
       ) : (
-        <div className="mt-2 md:mt-4 flex flex-col ">
+        <div className={`mt-2 md:mt-4 flex flex-col ${skuAnalysisOnly ? "sku-analysis-only" : ""}`}> 
           {error && <p style={{ color: 'red' }}>{error}</p>}
 
           {(summaryText ||
@@ -5000,7 +5003,7 @@ export default function LiveBusinessClient({
               </div>
             )}
 
-          <div>
+          <div className="sku-analysis-section">
             <div className="mt-4 rounded-xl border bg-white p-4 shadow-sm">
 
               <div className="flex flex-col gap-4">
