@@ -63,6 +63,37 @@ INVENTORY_MARKETPLACE_BY_COUNTRY = {
 
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 
+PO_TOTAL_LABELS = {'total', 'grand total'}
+PO_PLACEHOLDER_SKU_LABELS = {'', 'nan', 'none', 'null', 'undefined'}
+
+def _clean_po_text_value(value):
+    if pd.isna(value):
+        return ''
+    return str(value).strip()
+
+def _clean_po_text_series(series):
+    return series.where(series.notna(), '').astype(str).str.strip()
+
+def _normalize_po_label(value):
+    return _clean_po_text_value(value).lower()
+
+def _filter_po_product_rows(df: pd.DataFrame, require_sku: bool = False) -> pd.DataFrame:
+    filtered_df = df.copy()
+    keep_mask = pd.Series(True, index=filtered_df.index)
+
+    if 'Product Name' in filtered_df.columns:
+        product_labels = filtered_df['Product Name'].apply(_normalize_po_label)
+        keep_mask &= ~product_labels.isin(PO_TOTAL_LABELS)
+
+    if 'sku' in filtered_df.columns:
+        sku_labels = filtered_df['sku'].apply(_normalize_po_label)
+        keep_mask &= ~sku_labels.isin(PO_TOTAL_LABELS)
+
+        if require_sku:
+            keep_mask &= ~sku_labels.isin(PO_PLACEHOLDER_SKU_LABELS)
+
+    return filtered_df[keep_mask].copy()
+
 def encode_file_to_base64(file_path):
     with open(file_path, "rb") as file:
         return base64.b64encode(file.read()).decode('utf-8')
@@ -3121,21 +3152,14 @@ def PO_generated():
             'error': f"Required columns missing in Dispatch sheet. Found: {list(inventory_df.columns)}"
         }), 400
 
-    inventory_df['sku'] = inventory_df['sku'].astype(str).str.strip()
+    inventory_df['sku'] = _clean_po_text_series(inventory_df['sku'])
     inventory_df['Dispatch'] = pd.to_numeric(inventory_df['Dispatch'], errors='coerce').fillna(0)
 
     if 'Product Name' not in inventory_df.columns:
         inventory_df['Product Name'] = ''
 
-    inventory_df['Product Name'] = inventory_df['Product Name'].astype(str).str.strip()
-
-    inventory_df = inventory_df[
-        ~inventory_df['sku'].astype(str).str.lower().str.contains('total', na=False)
-    ].copy()
-
-    inventory_df = inventory_df[
-        inventory_df['sku'].notna() & (inventory_df['sku'] != '')
-    ].copy()
+    inventory_df['Product Name'] = _clean_po_text_series(inventory_df['Product Name'])
+    inventory_df = _filter_po_product_rows(inventory_df, require_sku=True)
 
     sku_table = f"sku_{user_id}_data_table"
 
@@ -3150,7 +3174,7 @@ def PO_generated():
 
     sku_df = sku_df.copy()
     sku_df.rename(columns={sku_column: 'sku'}, inplace=True)
-    sku_df['sku'] = sku_df['sku'].astype(str).str.strip()
+    sku_df['sku'] = _clean_po_text_series(sku_df['sku'])
 
     for col in ['local_stock', 'in_transit_units', 'price']:
         if col in sku_df.columns:
@@ -3161,7 +3185,7 @@ def PO_generated():
     if 'product_name' not in sku_df.columns:
         sku_df['product_name'] = ''
 
-    sku_df['product_name'] = sku_df['product_name'].fillna('').astype(str).str.strip()
+    sku_df['product_name'] = _clean_po_text_series(sku_df['product_name'])
 
     current_transit_df = pd.DataFrame(columns=['sku', 'Current Inventory Total Transit'])
     current_inventory_table = f"currentinventory_{user_id}_{country_db}_{month_db}{year_db}_table"
@@ -3465,12 +3489,10 @@ def global_PO_generated():
             if 'sku' not in country_po_df.columns:
                 country_po_df['sku'] = ''
 
-            country_po_df['sku'] = country_po_df['sku'].fillna('').astype(str).str.strip()
-            country_po_df['Product Name'] = country_po_df['Product Name'].fillna('').astype(str).str.strip()
-
-            country_po_df = country_po_df[
-                country_po_df['Product Name'].str.lower() != 'total'
-            ].copy()
+            country_po_df['sku'] = _clean_po_text_series(country_po_df['sku'])
+            country_po_df['Product Name'] = _clean_po_text_series(country_po_df['Product Name'])
+            country_po_df = _filter_po_product_rows(country_po_df)
+            country_po_df = country_po_df[country_po_df['Product Name'] != ''].copy()
 
             for col in numeric_columns:
                 if col not in country_po_df.columns:
