@@ -1383,6 +1383,10 @@ def monthly_sp_sd_to_db():
                     f'ALTER TABLE public.{skuwise_table_name} '
                     'ADD COLUMN IF NOT EXISTS sb_ads_sales DOUBLE PRECISION DEFAULT 0;'
                 ))
+                db.session.execute(text(
+                    f'ALTER TABLE public.{skuwise_table_name} '
+                    'ADD COLUMN IF NOT EXISTS dealsvouchar_ads DOUBLE PRECISION DEFAULT 0;'
+                ))
 
                 # Refresh actual SKU-wise columns after ALTER statements.
                 skuwise_columns = set(db.session.execute(text("""
@@ -1511,17 +1515,31 @@ def monthly_sp_sd_to_db():
                         ),
                         ads_total AS (
                             SELECT
+                                COALESCE(SUM(product_spend), 0) AS product_spend,
+                                COALESCE(SUM(display_spend), 0) AS display_spend,
                                 COALESCE(SUM(brand_spend), 0) AS brand_spend,
                                 COALESCE(SUM(sb_ads_sales), 0) AS sb_ads_sales
                             FROM public.{table_name}
                             WHERE UPPER(TRIM(COALESCE(products::text, ''))) NOT IN
                                   ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                        ),
+                        unsku_ads AS (
+                            SELECT
+                                GREATEST(ABS(t.product_spend) - ABS(s.product_spend), 0.0) AS product_spend,
+                                GREATEST(ABS(t.display_spend) - ABS(s.display_spend), 0.0) AS display_spend
+                            FROM sku_ad_totals AS s
+                            CROSS JOIN ads_total AS t
                         )
                         UPDATE public.{skuwise_table_name}
                         SET
                             product_spend = s.product_spend,
                             display_spend = s.display_spend,
                             brand_spend = t.brand_spend,
+                            dealsvouchar_ads = ROUND((
+                                ABS(COALESCE(dealsvouchar_ads, 0.0))
+                                + u.product_spend
+                                + u.display_spend
+                            )::numeric, 2),
                             ad_type = CASE
                                 WHEN s.product_spend <> 0
                                  AND s.display_spend <> 0
@@ -1543,6 +1561,7 @@ def monthly_sp_sd_to_db():
                             sb_ads_sales = t.sb_ads_sales
                         FROM sku_ad_totals AS s
                         CROSS JOIN ads_total AS t
+                        CROSS JOIN unsku_ads AS u
                         WHERE {total_where_sql}
                     """))
 
