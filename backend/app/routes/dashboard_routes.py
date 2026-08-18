@@ -1709,9 +1709,38 @@ def getDispatchfile():
 
 
                     # -------------------------------------------------
-                    # Calculate the physical closing-stock target.
                     # -------------------------------------------------
+                    # Calculate the MINIMUM physical stock required at
+                    # the end of the current month to protect the full
+                    # buffer period.
+                    #
+                    # IMPORTANT:
+                    #
+                    # Confirmed EXISTING inbound is credited only from
+                    # the month in which it becomes usable.
+                    #
+                    # Already recommended AIR / SEA is also credited
+                    # only from its physical usable month.
+                    #
+                    # We use cumulative month-by-month demand so that
+                    # an inbound arriving later cannot hide an earlier
+                    # shortage.
+                    #
+                    # Example:
+                    #
+                    # End Nov buffer = Dec + Jan
+                    #
+                    # If inbound is usable Dec:
+                    #     it can protect Dec and Jan.
+                    #
+                    # If inbound is usable Jan:
+                    #     it cannot protect Dec.
+                    # -------------------------------------------------
+
                     required_buffer_stock = 0.0
+
+                    cumulative_future_sales = 0.0
+                    cumulative_future_supply = 0.0
 
                     for offset in range(
                         1,
@@ -1725,26 +1754,68 @@ def getDispatchfile():
                             )
                         ).normalize()
 
-                        required_buffer_stock += forecast_value(
+                        # ---------------------------------------------
+                        # Cumulative demand through this buffer month.
+                        # ---------------------------------------------
+                        cumulative_future_sales += forecast_value(
                             row,
                             buffer_month,
                         )
 
+                        # ---------------------------------------------
+                        # Existing inbound gets credit ONLY when it is
+                        # physically usable.
+                        #
+                        # Example:
+                        # Reach during Nov -> usable Dec.
+                        # Therefore it is credited from Dec onward.
+                        # ---------------------------------------------
+                        cumulative_future_supply += (
+                            inbound_by_month.get(
+                                buffer_month,
+                                0.0,
+                            )
+                        )
+
+                        # ---------------------------------------------
+                        # Also credit AIR / SEA that was already
+                        # recommended earlier, but only in its stored
+                        # usable month.
+                        #
+                        # This prevents double-dispatching the same
+                        # future requirement.
+                        # ---------------------------------------------
+                        cumulative_future_supply += (
+                            planned_supply_by_month.get(
+                                buffer_month,
+                                0.0,
+                            )
+                        )
+
+                        # ---------------------------------------------
+                        # Minimum CURRENT closing stock required to
+                        # survive through this point in the buffer.
+                        #
+                        # Taking MAX across all prefixes is important.
+                        #
+                        # A January inbound must never be allowed to
+                        # cover a December shortage.
+                        # ---------------------------------------------
+                        stock_needed_for_prefix = max(
+                            cumulative_future_sales
+                            - cumulative_future_supply,
+                            0.0,
+                        )
+
+                        required_buffer_stock = max(
+                            required_buffer_stock,
+                            stock_needed_for_prefix,
+                        )
+
 
                     # -------------------------------------------------
-                    # inventory currently represents physical inventory
-                    # AFTER current-month sales.
-                    #
-                    # Example:
-                    #
-                    # End Oct inventory = 613
-                    #
-                    # Nov forecast = 613
-                    # Dec forecast = 653
-                    #
-                    # Required physical buffer = 1,266
-                    #
-                    # Gap = 1,266 - 613 = 653
+                    # Any amount below the required closing stock is a
+                    # genuine buffer replenishment requirement.
                     # -------------------------------------------------
                     buffer_gap = max(
                         required_buffer_stock
