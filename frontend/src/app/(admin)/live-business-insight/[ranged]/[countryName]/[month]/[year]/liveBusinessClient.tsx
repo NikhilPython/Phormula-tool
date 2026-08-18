@@ -119,7 +119,9 @@ interface SkuItem {
   cm2_profit_per_unit_curr?: number;
   cm2_profit_per_unit_prev?: number;
   ads_spend_curr?: number;
+  ads_spend_prev?: number;
   ads_spend_growth_pct?: number;
+  cm2_profit_growth_pct?: number;
 }
 
 interface CategorizedGrowth {
@@ -1229,11 +1231,28 @@ export default function LiveBusinessClient({
         'Sales Mix Change (%)': 'Sales Mix Change',
         'Profit Per Unit (%)': 'Profit Per Unit',
         'CM1 Profit Impact (%)': 'CM1 Profit Impact',
+        'Ads Change (%)': 'Ads Change',
+        'CM2 Profit Impact (%)': 'CM2 Profit Impact',
       };
 
       Object.entries(fieldMap).forEach(([backendKey, frontKey]) => {
         if (row[backendKey] != null) clone[frontKey] = row[backendKey];
       });
+
+      if (clone['Ads Change'] == null) {
+        const adsChange = row['Ads Spend Growth (%)'] ?? row.ads_spend_growth_pct;
+        if (adsChange != null) clone['Ads Change'] =
+          typeof adsChange === 'object'
+            ? adsChange
+            : { value: Number(adsChange), category: '' };
+      }
+      if (clone['CM2 Profit Impact'] == null) {
+        const cm2ProfitImpact = row['CM2 Profit Growth (%)'] ?? row.cm2_profit_growth_pct;
+        if (cm2ProfitImpact != null) clone['CM2 Profit Impact'] =
+          typeof cm2ProfitImpact === 'object'
+            ? cm2ProfitImpact
+            : { value: Number(cm2ProfitImpact), category: '' };
+      }
 
       // Handles 0 correctly
       if (clone['Net Sales Growth'] != null && clone['Sales Growth'] == null) {
@@ -2926,8 +2945,10 @@ export default function LiveBusinessClient({
     asp?: React.ReactNode;
     sales?: React.ReactNode;
     mixChange?: React.ReactNode;
+    adsChange?: React.ReactNode;
     unitProfit?: React.ReactNode;
     profit?: React.ReactNode;
+    cm2Profit?: React.ReactNode;
   };
 
   const calcGrowthValue = (prev: number, curr: number) => {
@@ -2940,6 +2961,11 @@ export default function LiveBusinessClient({
     const v = calcGrowthValue(prev, curr);
     if (v == null) return undefined;
     return { value: v, category: "" };
+  };
+
+  const makeImpactGrowth = (prev: number, curr: number): GrowthCategory | undefined => {
+    if (!prev || curr == null) return undefined;
+    return { value: ((curr - prev) / Math.abs(prev)) * 100, category: "" };
   };
 
   const CenterCell = ({ value }: { value: React.ReactNode }) => (
@@ -3147,6 +3173,11 @@ export default function LiveBusinessClient({
         width: COMMON_WIDTH,
       },
       {
+        key: 'adsChange',
+        header: 'Ads Change (%)',
+        width: COMMON_WIDTH,
+      },
+      {
         key: 'unitProfit',
         header: isNewRev ? 'Unit Profit (%)' : 'CM1 Profit Per Unit (%)',
         width: '190px',
@@ -3154,6 +3185,11 @@ export default function LiveBusinessClient({
       {
         key: 'profit',
         header: isNewRev ? 'Profit (%)' : 'CM1 Profit Impact (%)',
+        width: '200px',
+      },
+      {
+        key: 'cm2Profit',
+        header: 'CM2 Profit Impact (%)',
         width: '200px',
       },
     ];
@@ -3236,6 +3272,10 @@ export default function LiveBusinessClient({
           ? renderNewRevGrowthOrDash(itemAny["Sales Growth"])
           : renderGrowthOrNA(itemAny["Sales Growth"]),
 
+        adsChange: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["Ads Change"])
+          : renderGrowthOrNA(itemAny["Ads Change"]),
+
         ...(isNewRev
           ? {}
           : {
@@ -3249,6 +3289,10 @@ export default function LiveBusinessClient({
         profit: isNewRev
           ? renderNewRevGrowthOrDash(itemAny["CM1 Profit Impact"])
           : renderGrowthOrNA(itemAny["CM1 Profit Impact"]),
+
+        cm2Profit: isNewRev
+          ? renderNewRevGrowthOrDash(itemAny["CM2 Profit Impact"])
+          : renderGrowthOrNA(itemAny["CM2 Profit Impact"]),
 
       };
     });
@@ -3273,6 +3317,8 @@ export default function LiveBusinessClient({
       const qty = sum('quantity_month1', 'quantity_month2');
       const sales = sum('net_sales_month1', 'net_sales_month2');
       const profit = sum('profit_month1', 'profit_month2');
+      const ads = sum('ads_spend_prev', 'ads_spend_curr');
+      const cm2Profit = sum('cm2_profit_prev', 'cm2_profit_curr');
       const othersProfitMix =
         totalCm1ProfitMonth2 > 0
           ? `${((profit.curr / totalCm1ProfitMonth2) * 100).toFixed(2)}%`
@@ -3318,6 +3364,7 @@ export default function LiveBusinessClient({
         unit: renderGrowthOrNA(makeGrowth(qty.prev, qty.curr)),
         asp: renderGrowthOrNA(makeGrowth(aspPrev, aspCurr)),
         sales: renderGrowthOrNA(makeGrowth(sales.prev, sales.curr)),
+        adsChange: renderGrowthOrNA(makeGrowth(ads.prev, ads.curr)),
         mixChange: renderGrowthOrNA({
           value: othersMix2 - othersMix1,
           category: '',
@@ -3329,6 +3376,7 @@ export default function LiveBusinessClient({
           )
         ),
         profit: renderGrowthOrNA(makeGrowth(profit.prev, profit.curr)),
+        cm2Profit: renderGrowthOrNA(makeImpactGrowth(cm2Profit.prev, cm2Profit.curr)),
 
       });
 
@@ -3429,6 +3477,10 @@ export default function LiveBusinessClient({
 
           const profitPrev = sumMoneyPrevOnly(rows, ["profit_month1", "profit_prev"]);
           const profitCurr = sumMoneyCurrOnly(rows, ["profit_month2", "profit_curr", "profit"]);
+          const adsPrev = sumMoneyPrevOnly(rows, ["ads_spend_prev"]);
+          const adsCurr = sumMoneyCurrOnly(rows, ["ads_spend_curr", "ads_spend"]);
+          const cm2ProfitPrev = sumMoneyPrevOnly(rows, ["cm2_profit_prev"]);
+          const cm2ProfitCurr = sumMoneyCurrOnly(rows, ["cm2_profit_curr"]);
 
 
           // ✅ PREVIOUS: ONLY previous keys (no current fallback)
@@ -3464,12 +3516,14 @@ export default function LiveBusinessClient({
             unit: renderGrowthOrNA(asGrowth(unitGrowthPct)),
             asp: renderGrowthOrNA(asGrowth(aspGrowthPct)),
             sales: renderGrowthOrNA(asGrowth(salesGrowthPct)),
+            adsChange: renderGrowthOrNA(asGrowth(pct(adsPrev, adsCurr))),
 
             // Total mix is always 100% if there are sales; change is 0
             mixChange: renderGrowthOrNA(asGrowth(0)),
 
             unitProfit: renderGrowthOrNA(asGrowth(unitProfitGrowthPct)),
             profit: renderGrowthOrNA(asGrowth(profitGrowthPct)),
+            cm2Profit: renderGrowthOrNA(makeImpactGrowth(cm2ProfitPrev, cm2ProfitCurr)),
           };
         })()
         : activeTab !== "new_skus" && activeTab !== "reviving_skus"
@@ -3478,15 +3532,31 @@ export default function LiveBusinessClient({
             asp: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["ASP Growth"]),
             sales: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Sales Growth"]),
             mixChange: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Sales Mix Change"]),
+            adsChange: renderGrowthOrNA(
+              (segmentTotal as SkuItem | null | undefined)?.["Ads Change"] ??
+              makeGrowth(
+                sumPrevOnly(currentTabData, ["ads_spend_prev"]),
+                sumCurrOnly(currentTabData, ["ads_spend_curr", "ads_spend"])
+              )
+            ),
             unitProfit: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["Profit Per Unit"]),
             profit: renderGrowthOrNA((segmentTotal as SkuItem | null | undefined)?.["CM1 Profit Impact"]),
+            cm2Profit: renderGrowthOrNA(
+              (segmentTotal as SkuItem | null | undefined)?.["CM2 Profit Impact"] ??
+              makeImpactGrowth(
+                sumPrevOnly(currentTabData, ["cm2_profit_prev"]),
+                sumCurrOnly(currentTabData, ["cm2_profit_curr"])
+              )
+            ),
           }
           : {
             unit: "-",
             asp: "-",
             sales: "-",
+            adsChange: "-",
             unitProfit: "-",
             profit: "-",
+            cm2Profit: "-",
           })
       ,
     };

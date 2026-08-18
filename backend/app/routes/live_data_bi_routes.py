@@ -6324,6 +6324,26 @@ def live_mtd_vs_previous():
                 row.get("cm2_profit_growth_pct", 0.0),
             )
 
+            # Canonical table metrics consumed by the live SKU Analysis UI.
+            # Keep the flat fields above for recommendation-card compatibility.
+            ads_growth_metric = row.get("Ads Spend Growth (%)") or {}
+            cm2_growth_metric = row.get("CM2 Profit Growth (%)") or {}
+            ads_change_pct = float(
+                row.get("ads_spend_growth_pct", ads_growth_metric.get("value", 0.0)) or 0.0
+            )
+            cm2_profit_impact_pct = float(
+                row.get("cm2_profit_growth_pct", cm2_growth_metric.get("value", 0.0)) or 0.0
+            )
+
+            row["Ads Change (%)"] = {
+                "category": "",
+                "value": round(ads_change_pct, 2),
+            }
+            row["CM2 Profit Impact (%)"] = {
+                "category": "",
+                "value": round(cm2_profit_impact_pct, 2),
+            }
+
             return row
 
         categorized_top_80_skus = [
