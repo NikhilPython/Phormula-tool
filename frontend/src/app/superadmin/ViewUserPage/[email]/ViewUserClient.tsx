@@ -59,6 +59,8 @@ type ViewUserData = {
   email?: string;
   annual_sales_range?: string;
   marketplace_id?: string;
+  marketplace_ids?: string[];
+  countries?: string[];
   months_of_data_count?: number;
   created_at?: string;
   ai_business_journey?: string | null;
@@ -499,6 +501,23 @@ export default function ViewUserPage() {
     return "No business journey available yet.";
   }, [data?.ai_business_journey]);
 
+  const marketplaceIdsLabel = useMemo(() => {
+    const marketplaceIds = Array.isArray(data?.marketplace_ids)
+      ? data.marketplace_ids
+      : [];
+
+    const values = marketplaceIds.length
+      ? marketplaceIds
+      : data?.marketplace_id
+        ? [data.marketplace_id]
+        : [];
+
+    return values
+      .map((id) => String(id).trim())
+      .filter(Boolean)
+      .join(", ") || "-";
+  }, [data?.marketplace_id, data?.marketplace_ids]);
+
   const infoCards = [
     {
       key: "brandName",
@@ -520,8 +539,9 @@ export default function ViewUserPage() {
     },
     {
       key: "marketplaceId",
-      title: "Marketplace ID",
-      value: data?.marketplace_id || "-",
+      title: "Marketplace IDs",
+      value: marketplaceIdsLabel,
+      valueClassName: "text-sm leading-5 break-all whitespace-normal",
       icon: <ClipboardList size={22} />,
     },
     {
@@ -753,7 +773,10 @@ export default function ViewUserPage() {
                     {card.title}
                   </p>
 
-                  <h3 className="mt-1 truncate text-xl font-bold tracking-tight text-white">
+                  <h3
+                    className={`mt-1 text-xl font-bold tracking-tight text-white ${card.valueClassName || "truncate"
+                      }`}
+                  >
                     {card.value}
                   </h3>
                 </div>

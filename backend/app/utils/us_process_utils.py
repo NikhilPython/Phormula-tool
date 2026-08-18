@@ -234,11 +234,11 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
     """Override SKU advertising metrics from adsmonthly table when it exists."""
     ads_table = f"adsmonthly_{user_id}_{str(country).lower()}_{str(month).lower()}_{year}"
     if not table_exists_conn(conn, ads_table):
-        return sku_grouped, False
+        return sku_grouped, False, 0.0
 
     ads_df = pd.read_sql(text(f'SELECT * FROM "{ads_table}"'), conn)
     if ads_df.empty or "products" not in ads_df.columns:
-        return sku_grouped, False
+        return sku_grouped, False, 0.0
 
     ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
     ads_df = ads_df.loc[
@@ -246,7 +246,7 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
         & ~ads_df["products"].str.casefold().eq("grand total")
     ].copy()
     if ads_df.empty:
-        return sku_grouped, False
+        return sku_grouped, False, 0.0
 
     source_to_target = {
         "ads_impressions": "ads_impressions",
@@ -272,7 +272,7 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
 
     metric_cols = [c for c in ads_sku.columns if c != "products"]
     if not metric_cols:
-        return sku_grouped, False
+        return sku_grouped, False, 0.0
 
     ads_sku = ads_sku.groupby("products", as_index=False)[metric_cols].sum()
     ads_sku = ads_sku.rename(columns={"products": "sku"})
@@ -289,6 +289,26 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
             out.drop(columns=[ads_col], inplace=True)
         else:
             out[col] = pd.to_numeric(out.get(col, 0.0), errors="coerce").fillna(0.0)
+
+    unsku_product_spend = 0.0
+    unsku_display_spend = 0.0
+    if "product_spend" in ads_df.columns and "product_spend" in out.columns:
+        ads_product_spend = pd.to_numeric(
+            ads_df["product_spend"], errors="coerce"
+        ).fillna(0.0).abs().sum()
+        sku_product_spend = pd.to_numeric(
+            out["product_spend"], errors="coerce"
+        ).fillna(0.0).abs().sum()
+        unsku_product_spend = max(float(ads_product_spend - sku_product_spend), 0.0)
+    if "display_spend" in ads_df.columns and "display_spend" in out.columns:
+        ads_display_spend = pd.to_numeric(
+            ads_df["display_spend"], errors="coerce"
+        ).fillna(0.0).abs().sum()
+        sku_display_spend = pd.to_numeric(
+            out["display_spend"], errors="coerce"
+        ).fillna(0.0).abs().sum()
+        unsku_display_spend = max(float(ads_display_spend - sku_display_spend), 0.0)
+    unsku_product_display_spend = round(unsku_product_spend + unsku_display_spend, 2)
 
     # The ads report spend is the authoritative advertising expense.
     spend = pd.to_numeric(out.get("ads_spend_raw", 0.0), errors="coerce").fillna(0.0).abs()
@@ -352,7 +372,7 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
         out[col] = pd.to_numeric(out[col], errors="coerce").replace([np.inf, -np.inf], 0).fillna(0.0)
 
     print(f"[ADS] Applied SKU advertising data from {ads_table}")
-    return out, True
+    return out, True, unsku_product_display_spend
 
 def ensure_payment_columns(conn, table_name: str):
     if not table_exists_conn(conn, table_name):
@@ -1647,7 +1667,7 @@ def process_skuwise_us_data(user_id, country, month, year):
             default="No Growth"
         )
 
-        sku_grouped, ads_table_applied = merge_monthly_ads_into_sku_grouped(
+        sku_grouped, ads_table_applied, unsku_product_display_spend = merge_monthly_ads_into_sku_grouped(
             conn, sku_grouped, user_id, country, month, year
         )
         if ads_table_applied:
@@ -1878,7 +1898,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["disbursement"] = abs(disbursement_total)
         sum_row["rembursement_fee"] = abs(rembursement_fee)
         sum_row["visible_ads"] = visible_ads_total
-        sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total
+        sum_row["dealsvouchar_ads"] = dealsvouchar_ads_total + unsku_product_display_spend
         sum_row["advertising_total"] = advertising_total
         sum_row["platformfeenew"] = platformfeenew_total
         sum_row["platform_management_fees"] = platform_management_fees_total
