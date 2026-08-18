@@ -3995,6 +3995,15 @@ def finances_mtd_transactions():
         )
         total_row["brand_spend"] = round(float(ads_total_brand_spend or 0.0), 2)
         total_row["ads_spend"] = round(total_row["product_spend"] + total_row["display_spend"], 2)
+        unsku_product_display_spend = max(
+            float(ads_total_product_spend or 0.0)
+            - float(total_row["product_spend"] or 0.0),
+            0.0,
+        ) + max(
+            float(ads_total_display_spend or 0.0)
+            - float(total_row["display_spend"] or 0.0),
+            0.0,
+        )
         # ✅ ACOS for total
         g_spend = float(total_row["ads_spend"])
         g_net_sales = float(total_row["net_sales"])
@@ -4014,7 +4023,10 @@ def finances_mtd_transactions():
         total_row["other_adjustment"] = round(float(other_adjustment_total or 0.0), 2)
         total_row["shipment_fees"] = round(float(shipment_fees or 0.0), 2)
         total_row["platformfeenew"] = round(float(platformfeenew_total or 0.0), 2)
-        total_row["dealsvouchar_ads"] = round(float(dealsvouchar_ads_total or 0.0), 2)
+        total_row["dealsvouchar_ads"] = round(
+            float(dealsvouchar_ads_total or 0.0) + unsku_product_display_spend,
+            2,
+        )
 
         # Other Transactions:
         # Misc Transactions (+) + Reimbursement for lost Inventory (+)

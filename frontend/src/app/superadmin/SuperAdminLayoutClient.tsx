@@ -17,6 +17,8 @@ import {
     ChevronLeft,
     ChevronRight,
     Building2,
+    Database,
+    AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -93,6 +95,16 @@ export default function SuperAdminLayoutClient({
             label: "Brands",
             href: "/superadmin/Brands",
             icon: Building2,
+        },
+        {
+            label: "Data Checker",
+            href: "/superadmin/DataAvailability",
+            icon: Database,
+        },
+        {
+            label: "Issues",
+            href: "/superadmin/Issues",
+            icon: AlertTriangle,
         },
     ];
 

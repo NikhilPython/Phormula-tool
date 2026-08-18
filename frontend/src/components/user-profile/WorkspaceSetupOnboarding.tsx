@@ -6,6 +6,7 @@ import ReactCountryFlag from "react-country-flag";
 import {
   FiCheck,
   FiCloud,
+  FiDownload,
   FiEdit3,
   FiLock,
   FiPlus,
@@ -171,7 +172,7 @@ function ReadOnlyField({
       <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
         {label}
       </p>
-      <div className="mt-1 text-xs 2xl:text-sm font-semibold leading-5 2xl:leading-6 text-[#33413A]">
+      <div className="mt-1 break-words whitespace-normal text-xs 2xl:text-sm font-semibold leading-5 2xl:leading-6 text-[#33413A]">
         {value || "-"}
       </div>
     </div>
@@ -444,6 +445,15 @@ export default function WorkspaceSetupOnboarding({
       console.error(error);
       window.alert(error?.data?.message || "Failed to send reset email.");
     }
+  };
+
+  const handleDownloadSkuTemplate = () => {
+    const link = document.createElement("a");
+    link.href = "/sku-information-template.xlsx";
+    link.download = "SKU Information.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCompanyChange =
@@ -812,34 +822,16 @@ export default function WorkspaceSetupOnboarding({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4">
                     <div className="flex items-center gap-3">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-green-500 shadow-sm">
                         <FiLock size={18} />
                       </span>
                       <div>
                         <p className="text-xs 2xl:text-sm font-bold text-[#33413A]">Password</p>
-                        <p className="mt-0.5 text-xs text-[#78847E]">••••••••••</p>
+                        <p className="mt-0.5 text-xs text-[#78847E]">{"\u2022".repeat(10)}</p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      disabled={isSendingReset || resetEmailSent}
-                      className={cx(
-                        "inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition",
-                        resetEmailSent
-                          ? "border-[#B9D8C9] bg-[#EAF7F1] text-[#0E8558]"
-                          : "border-[#B9D8C9] bg-white text-[#0E8558] hover:bg-[#F2FAF6]",
-                        isSendingReset && "cursor-not-allowed opacity-60"
-                      )}
-                    >
-                      {isSendingReset
-                        ? "Sending…"
-                        : resetEmailSent
-                          ? "Reset email sent"
-                          : "Reset password"}
-                    </button>
                   </div>
                 </div>
               )}
@@ -988,7 +980,7 @@ export default function WorkspaceSetupOnboarding({
                     <ReadOnlyField label="PAN No." value={form.pan_no || "-"} />
                     <ReadOnlyField
                       label="Business address"
-                      className="border-t border-[#E8ECEA] pt-3 sm:col-span-2 xl:col-span-3"
+                      className="min-w-0"
                       value={[
                         form.address_building,
                         form.address_city,
@@ -1087,6 +1079,14 @@ export default function WorkspaceSetupOnboarding({
                     <FiLock size={11} /> Locked until Step 1 is complete
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadSkuTemplate}
+                className="mx-auto mt-3 inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
+              >
+                Download format here <FiDownload size={14} />
               </button>
             </div>
             </Panel>

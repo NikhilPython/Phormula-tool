@@ -64,6 +64,7 @@ import DashboardLiveSalesTab from "./DashboardLiveSalesTab";
 import DashboardProductwisePnlSection from "./DashboardProductwisePnlSection";
 import DashboardMtdPlSection from "./DashboardMtdPlSection";
 import DashboardInventoryInsightsTab from "./DashboardInventoryInsightsTab";
+import DashboardActionItemsTab, { BusinessAnalysisView, type MonthlyMetricRow } from "@/components/dashboard/DashboardActionItemsTab";
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import {
     AGEING_TREND_BUCKET_OPTIONS,
@@ -1655,7 +1656,7 @@ export default function DashboardPage() {
     const [invError, setInvError] = useState("");
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
-    const [activeTab, setActiveTab] = useState<TopTab>("summary");
+    const [activeTab, setActiveTab] = useState<TopTab>("action");
     const [dismissedSalesDelayNoticeKey, setDismissedSalesDelayNoticeKey] =
         useState<string | null>(null);
     const [summaryLoading, setSummaryLoading] = useState(true);
@@ -8592,12 +8593,16 @@ export default function DashboardPage() {
     ]);
 
     type TopTab =
+        | "action"
+        | "analysis"
         | "live"
         | "productwise"
         | "summary"
         | "inventory";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
+        { id: "action", label: "Action Items" },
+        { id: "analysis", label: "Business Analysis" },
         { id: "summary", label: "AI Insights & Recommendations" },
         { id: "live", label: "MTD Sales" },
         { id: "productwise", label: "P&L Breakdown" },
@@ -8605,6 +8610,8 @@ export default function DashboardPage() {
     ];
 
     const HASH_TO_TAB: Record<string, TopTab> = {
+        "action-items": "action",
+        "business-analysis": "analysis",
         "live-sales": "live",
         "ai-insights": "summary",
         // "mtd-pl": "productwise",
@@ -8613,6 +8620,8 @@ export default function DashboardPage() {
     };
 
     const TAB_TO_HASH: Record<TopTab, string> = {
+        action: "action-items",
+        analysis: "business-analysis",
         live: "live-sales",
         summary: "ai-insights",
         productwise: "pnl-mtd",
@@ -11980,6 +11989,142 @@ export default function DashboardPage() {
 
     const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT = 12;
 
+    // Business Analysis uses the SAME resolved current/previous values as the dashboard KPI cards.
+    // This keeps the Business Analysis numbers and MoM comparison in sync with what the user sees above.
+    const businessAnalysisMonthlyData = useMemo<MonthlyMetricRow[]>(() => {
+        if (shouldShowDummyUi) return [];
+
+        const kpiPair = (label: string) => {
+            const item = stickyKpiItems.find((entry) => entry.label === label);
+            return {
+                current: toNumber(item?.current ?? 0),
+                previous: toNumber(item?.previous ?? 0),
+            };
+        };
+
+        // Exact KPI-card values for the overlapping Business Analysis cards.
+        const unitsKpi = kpiPair("Units");
+        const netSalesKpi = kpiPair("Net Sales");
+        const aspKpi = kpiPair("ASP");
+        const adsKpi = kpiPair("Cost of Ads");
+        const tacosKpi = kpiPair("TACoS");
+        const cm2Kpi = kpiPair("CM2 Profit");
+
+        const currentGrand = (grandTotalRowRaw ?? grandTotalRowDisplay ?? {}) as Record<string, any>;
+
+        const previousGlobalRows = Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
+            ? previousSkuwiseGlobalData.skuwise_items_global
+            : [];
+        const previousGlobalGrand = getGrandTotalRow(previousGlobalRows) as Record<string, any>;
+        const previousGlobalDerived = (previousSkuwiseGlobalData?.derived_totals_global ?? {}) as Record<string, any>;
+        const previousTotals = ((data as any)?.previous_period?.totals ?? {}) as Record<string, any>;
+
+        // "Other" uses the SAME Other Transactions amount shown in the P&L table.
+        // The current table receives `platformFee`, which is resolved from platform_fee/platformfeenew.
+        const currentOtherTransactions = Math.abs(toNumber(platformFee));
+
+        // Previous month counterpart of the same Other Transactions / platform-fee bucket.
+        const previousOtherTransactionsRaw = Math.abs(
+            toNumber(
+                platform === "global"
+                    ? (
+                        previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_platform_fees ??
+                        previousGlobalDerived.platform_fee ??
+                        previousGlobalDerived.platformfeenew ??
+                        previousGlobalGrand.platform_fee ??
+                        previousGlobalGrand.platformfeenew ??
+                        previousGlobalGrand.other_transactions ??
+                        previousGlobalGrand.other ??
+                        0
+                    )
+                    : (
+                        previousTotals.platform_fee ??
+                        previousTotals.platformfeenew ??
+                        previousTotals.other_transactions ??
+                        previousTotals.other ??
+                        0
+                    )
+            )
+        );
+
+        const previousOtherTransactions = platform === "global"
+            ? convertToDisplayCurrency(previousOtherTransactionsRaw, amazonDataCurrency)
+            : previousOtherTransactionsRaw;
+
+        // TACoS and ASP both come from the exact same resolved KPI-card pairs (current + previous).
+
+        // Promotions use the same resolved current/previous values already used by the dashboard's MTD KPI card.
+        const currentPromotions = Math.abs(toNumber(mtdPromotionsCurrentDisplay));
+        const previousPromotions = Math.abs(toNumber(mtdPromotionsPreviousDisplay));
+
+        const currentRow: MonthlyMetricRow = {
+            sku: "TOTAL",
+            product_name: "TOTAL",
+            month: currentDisplayMonth.monthName.toLowerCase(),
+            year: currentDisplayMonth.year,
+            country: countryName,
+
+            total_quantity: unitsKpi.current,
+            quantity: unitsKpi.current,
+            net_sales: netSalesKpi.current,
+            asp: aspKpi.current,
+            platform_fee: currentOtherTransactions,
+            other_transactions: currentOtherTransactions,
+            total_cm2_profit: cm2Kpi.current,
+            total_cm2_margins: isStickyGlobal ? stickyTableTotals.cm2MarginPct : totalRowCm2Margins,
+            total_ads: adsKpi.current,
+            tacos_total_advertising_cost_of_sale: tacosKpi.current,
+            promotional_rebates: currentPromotions,
+            promotional_rebates_percentage: mtdPromotionsPctCurrent,
+        };
+
+        const previousRow: MonthlyMetricRow = {
+            sku: "TOTAL",
+            product_name: "TOTAL",
+            month: previousDisplayMonth.monthName.toLowerCase(),
+            year: previousDisplayMonth.year,
+            country: countryName,
+
+            total_quantity: unitsKpi.previous,
+            quantity: unitsKpi.previous,
+            net_sales: netSalesKpi.previous,
+            asp: aspKpi.previous,
+            platform_fee: previousOtherTransactions,
+            other_transactions: previousOtherTransactions,
+            total_cm2_profit: cm2Kpi.previous,
+            total_cm2_margins: isStickyGlobal ? stickyPreviousTotals.cm2MarginPct : Number(prev?.profitPct ?? 0),
+            total_ads: adsKpi.previous,
+            tacos_total_advertising_cost_of_sale: tacosKpi.previous,
+            promotional_rebates: previousPromotions,
+            promotional_rebates_percentage: mtdPromotionsPctPrevious,
+        };
+
+        return [previousRow, currentRow];
+    }, [
+        shouldShowDummyUi,
+        stickyKpiItems,
+        platformFee,
+        grandTotalRowRaw,
+        grandTotalRowDisplay,
+        previousSkuwiseGlobalData,
+        data,
+        platform,
+        amazonDataCurrency,
+        convertToDisplayCurrency,
+        mtdPromotionsCurrentDisplay,
+        mtdPromotionsPreviousDisplay,
+        mtdPromotionsPctCurrent,
+        mtdPromotionsPctPrevious,
+        currentDisplayMonth,
+        previousDisplayMonth,
+        countryName,
+        isStickyGlobal,
+        stickyTableTotals.cm2MarginPct,
+        stickyPreviousTotals.cm2MarginPct,
+        totalRowCm2Margins,
+        prev?.profitPct,
+    ]);
+
     const shouldScrollMtdProductwiseTable =
         mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
 
@@ -12057,6 +12202,37 @@ export default function DashboardPage() {
             >
                 {["summary", "productwise"].includes(activeTab) && (
                     <DashboardStickyKpis items={stickyKpiItems} />
+                )}
+
+                {activeTab === "action" && (
+                    <DashboardActionItemsTab />
+                )}
+
+                {activeTab === "analysis" && (
+                    <BusinessAnalysisView
+                        monthlyData={businessAnalysisMonthlyData}
+                        currency={displayCurrency}
+                        useDummyFallback={shouldShowDummyUi}
+                        loading={
+                            !shouldShowDummyUi &&
+                            (loading || (platform === "global" && previousSkuwiseGlobalLoading))
+                        }
+                        skuAnalysisContent={
+                            showLiveBI && finalLiveBiPayload ? (
+                                <LiveBusinessClient
+                                    countryName={countryName}
+                                    sourceCountryName={countryName}
+                                    ranged="MTD"
+                                    month={(currMonthName || "").toLowerCase()}
+                                    year={String(currYear)}
+                                    initialData={finalLiveBiPayload}
+                                    disableAutoFetch
+                                    formattedMonthYear={formattedMonthYear}
+                                    skuAnalysisOnly
+                                />
+                            ) : null
+                        }
+                    />
                 )}
 
                 {activeTab === "live" && (
