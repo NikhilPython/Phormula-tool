@@ -1048,6 +1048,11 @@ export default function DispatchPage({
   )
   const [dispatchPopupContainer, setDispatchPopupContainer] = useState<HTMLDivElement | null>(null)
   const [modalOverlayRect, setModalOverlayRect] = useState<React.CSSProperties | null>(null)
+  const [inlineShipmentPanelMaxHeight, setInlineShipmentPanelMaxHeight] = useState<number | null>(null)
+  const [inlineShipmentBodyMaxHeight, setInlineShipmentBodyMaxHeight] = useState<number | null>(null)
+  const inlineShipmentPanelRef = useRef<HTMLDivElement | null>(null)
+  const inlineShipmentHeaderRef = useRef<HTMLDivElement | null>(null)
+  const inlineShipmentFooterRef = useRef<HTMLDivElement | null>(null)
   const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
   const lastShipmentDetailsRequestKeyRef = useRef(shipmentDetailsRequestKey ?? 0)
   const modalPopupContainer = popupContainer ?? dispatchPopupContainer
@@ -1128,6 +1133,68 @@ export default function DispatchPage({
       setModalOverlayRect(null)
     }
   }, [awdInputOpen, awdInputDisplayMode, modalPopupContainer])
+
+  useEffect(() => {
+    if (!awdInputOpen || awdInputDisplayMode !== 'inline') {
+      setInlineShipmentPanelMaxHeight(null)
+      setInlineShipmentBodyMaxHeight(null)
+      return
+    }
+
+    const updateInlineShipmentHeights = () => {
+      const panel = inlineShipmentPanelRef.current
+      const header = inlineShipmentHeaderRef.current
+      const footer = inlineShipmentFooterRef.current
+
+      if (!panel || !header || !footer) return
+
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      const panelTop = panel.getBoundingClientRect().top
+      const bottomGap = 16
+      const tableHeaderHeight = 40
+      const tableWrapperPaddingY = 16
+      const panelMaxHeight = Math.max(320, viewportHeight - panelTop - bottomGap)
+      const bodyMaxHeight = Math.max(
+        180,
+        panelMaxHeight -
+        header.offsetHeight -
+        footer.offsetHeight -
+        tableWrapperPaddingY -
+        tableHeaderHeight
+      )
+
+      setInlineShipmentPanelMaxHeight((height) =>
+        Math.abs((height ?? 0) - panelMaxHeight) > 1 ? panelMaxHeight : height
+      )
+      setInlineShipmentBodyMaxHeight((height) =>
+        Math.abs((height ?? 0) - bodyMaxHeight) > 1 ? bodyMaxHeight : height
+      )
+    }
+
+    updateInlineShipmentHeights()
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateInlineShipmentHeights)
+        : null
+
+    if (resizeObserver) {
+      if (inlineShipmentPanelRef.current) resizeObserver.observe(inlineShipmentPanelRef.current)
+      if (inlineShipmentHeaderRef.current) resizeObserver.observe(inlineShipmentHeaderRef.current)
+      if (inlineShipmentFooterRef.current) resizeObserver.observe(inlineShipmentFooterRef.current)
+    }
+
+    window.addEventListener('resize', updateInlineShipmentHeights)
+    window.visualViewport?.addEventListener('resize', updateInlineShipmentHeights)
+    window.visualViewport?.addEventListener('scroll', updateInlineShipmentHeights)
+
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', updateInlineShipmentHeights)
+      window.visualViewport?.removeEventListener('resize', updateInlineShipmentHeights)
+      window.visualViewport?.removeEventListener('scroll', updateInlineShipmentHeights)
+    }
+  }, [awdInputOpen, awdInputDisplayMode, inboundInputRows.length])
 
   async function fetchCountryTransitWeeks(token: string): Promise<ShipmentTransitWeeks> {
     const countryKey = normalizeCountryKey(countryName)
@@ -2318,7 +2385,14 @@ export default function DispatchPage({
 
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
-    const shipmentTableBodyMaxHeight = 'calc(100% - 40px)'
+    const shipmentTableBodyMaxHeight = isInline
+      ? inlineShipmentBodyMaxHeight
+        ? `${inlineShipmentBodyMaxHeight}px`
+        : undefined
+      : 'calc(100% - 40px)'
+    const shipmentPanelStyle: React.CSSProperties | undefined = isInline && inlineShipmentPanelMaxHeight
+      ? { maxHeight: `${inlineShipmentPanelMaxHeight}px` }
+      : undefined
     const shipmentTableClassName =
       'inbound-shipment-details-table !w-full !min-w-[1450px] 2xl:!min-w-0'
     const rows: InboundShipmentTableRow[] = inboundInputRows.map((row, rowIndex) => ({
@@ -2458,13 +2532,15 @@ export default function DispatchPage({
 
     return (
       <div
+        ref={isInline ? inlineShipmentPanelRef : undefined}
+        style={shipmentPanelStyle}
         className={
           isInline
-            ? "flex h-[calc(100vh-260px)] min-h-[360px] w-full flex-col overflow-hidden rounded-xl bg-white"
+            ? "flex w-full flex-col overflow-hidden rounded-xl bg-white"
             : "flex h-[calc(100%-32px)] max-h-[calc(100%-32px)] w-[calc(100%-32px)] max-w-none flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
         }
       >
-        <div className="shrink-0 px-5 py-4">
+        <div ref={isInline ? inlineShipmentHeaderRef : undefined} className="shrink-0 px-5 py-4">
           <PageBreadcrumb
             pageTitle="Inbound Shipment Details"
             align='left'
@@ -2476,16 +2552,27 @@ export default function DispatchPage({
           </p> */}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-hidden px-5 pb-4">
+        <div
+          className={
+            isInline
+              ? "min-h-0 px-5 pb-4"
+              : "min-h-0 flex-1 overflow-hidden px-5 pb-4"
+          }
+        >
           <DataTable<InboundShipmentTableRow>
             columns={columns}
             data={rows}
             paginate={false}
             zebra
-            maxHeight="100%"
+            maxHeight={isInline ? undefined : "100%"}
             bodyMaxHeight={shipmentTableBodyMaxHeight}
+            scrollY
             emptyMessage="No inbound shipments found."
-            className="h-full shadow-none [&>div]:h-full [&>div]:overflow-y-hidden 2xl:[&>div]:overflow-x-hidden"
+            className={
+              isInline
+                ? "shadow-none [&>div]:overflow-y-hidden 2xl:[&>div]:overflow-x-hidden"
+                : "h-full shadow-none [&>div]:h-full [&>div]:overflow-y-hidden 2xl:[&>div]:overflow-x-hidden"
+            }
             tableClassName={shipmentTableClassName}
             headerMaxWidth={120}
             rowClassName={(_row, index) => (index % 2 === 0 ? 'bg-white' : 'bg-gray-50')}
@@ -2496,7 +2583,10 @@ export default function DispatchPage({
           <div className="shrink-0 px-5 pb-2 text-sm font-medium text-red-600">{awdInputError}</div>
         )}
 
-        <div className="flex shrink-0 flex-wrap justify-end gap-2 px-3 py-2 sm:px-4 sm:py-2.5 2xl:px-5 2xl:py-3">
+        <div
+          ref={isInline ? inlineShipmentFooterRef : undefined}
+          className="flex shrink-0 flex-wrap justify-end gap-2 px-3 py-2 sm:px-4 sm:py-2.5 2xl:px-5 2xl:py-3"
+        >
 
           {!isInline && (
             <Button
