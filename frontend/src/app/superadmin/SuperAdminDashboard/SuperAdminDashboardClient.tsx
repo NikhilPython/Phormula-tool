@@ -3,13 +3,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FaSearch } from "react-icons/fa";
-import { Eye, Trash2, Users, Tags, Building2, Store } from "lucide-react";
+import { Users, Tags, Building2, Globe2 } from "lucide-react";
 import { toast } from "sonner";
 import Loader from "@/components/loader/Loader";
-import SegmentedToggle from "@/components/ui/SegmentedToggle";
-import SummaryMetricCardLarge from "../ViewUserPage/SummaryMetricCardLarge";
 import SuperAdminUsersTable from "@/components/admin/table/SuperAdminUsersTable";
-import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 const MIN_LOADER_MS = 3000;
 
@@ -25,7 +22,9 @@ type UserRow = {
   name: string;
   company_name: string;
   country?: string;
+  countries?: string[];
   marketplace_id?: string;
+  marketplace_ids?: string[];
   status?: string | boolean;
   address?: {
     building?: string;
@@ -46,6 +45,21 @@ type ApiError = {
 };
 
 type StatusFilter = "all" | "active" | "inactive";
+
+const getConnectedCountries = (user: UserRow) => {
+  const countries = Array.isArray(user.countries)
+    ? user.countries
+    : user.country?.split(",") || [];
+
+  return countries
+    .map((country) => country.trim())
+    .filter(Boolean);
+};
+
+const formatCountryLabel = (country: string) => country.trim().toUpperCase();
+
+const getConnectedCountryLabel = (user: UserRow) =>
+  getConnectedCountries(user).map(formatCountryLabel).join(", ");
 
 export default function SuperAdminDashboardPage() {
   // const [showSettings, setShowSettings] = useState<boolean>(false);
@@ -233,7 +247,8 @@ export default function SuperAdminDashboardPage() {
         (user.email || "").toLowerCase().includes(query) ||
         (user.brand_name || "").toLowerCase().includes(query) ||
         (user.name || "").toLowerCase().includes(query) ||
-        (user.company_name || "").toLowerCase().includes(query);
+        (user.company_name || "").toLowerCase().includes(query) ||
+        getConnectedCountryLabel(user).toLowerCase().includes(query);
 
       const userStatus = normalizeStatus(user.status);
       const matchesStatus =
@@ -244,12 +259,6 @@ export default function SuperAdminDashboardPage() {
   }, [allUsers, emailInput, statusFilter]);
 
   const totalUsers = usersData.length;
-  const activeUsers = usersData.filter(
-    (u) => normalizeStatus(u.status) === "active"
-  ).length;
-  const inactiveUsers = usersData.filter(
-    (u) => normalizeStatus(u.status) === "inactive"
-  ).length;
 
   const totalBrands = new Set(
     usersData.map((u) => (u.brand_name || "").trim()).filter(Boolean)
@@ -259,8 +268,11 @@ export default function SuperAdminDashboardPage() {
     usersData.map((u) => (u.company_name || "").trim()).filter(Boolean)
   ).size;
 
-  const totalMarketplaces = new Set(
-    usersData.map((u) => (u.country || "").trim().toLowerCase()).filter(Boolean)
+  const totalCountries = new Set(
+    usersData
+      .flatMap(getConnectedCountries)
+      .map((country) => country.toLowerCase())
+      .filter(Boolean)
   ).size;
 
   const summaryCards = [
@@ -289,9 +301,9 @@ export default function SuperAdminDashboardPage() {
       borderTop: "border-t-[#31d9e5]",
     },
     {
-      title: "Marketplaces",
-      value: totalMarketplaces,
-      icon: Store,
+      title: "Countries",
+      value: totalCountries,
+      icon: Globe2,
       iconBg: "bg-[#31d9e5]/15",
       iconText: "text-[#31d9e5]",
       borderTop: "border-t-[#31d9e5]",
@@ -548,7 +560,7 @@ export default function SuperAdminDashboardPage() {
             </div>
 
             <p className="mt-2 text-sm text-white/60">
-              Manage users, brands, companies, marketplaces and account status.
+              Manage users, brands, companies, countries and account status.
             </p>
           </div>
         </div>
@@ -613,7 +625,7 @@ export default function SuperAdminDashboardPage() {
                     type="text"
                     value={emailInput}
                     onChange={handleSearchInputChange}
-                    placeholder="Search by Email, Brand or Company..."
+                    placeholder="Search by Email, Brand, Company or Country..."
                     className="h-[42px] w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-11 text-sm text-white shadow-sm outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
                   />
 

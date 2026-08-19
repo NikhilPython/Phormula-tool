@@ -112,6 +112,35 @@ function toNumber(value: unknown): number {
   return Number.isFinite(num) ? num : 0
 }
 
+const TOTAL_ROW_LABELS = new Set(['total', 'grand total']);
+const PLACEHOLDER_SKU_LABELS = new Set(['', 'nan', 'none', 'null', 'undefined']);
+
+function normalizeCellText(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isTotalProductRow(row: Row): boolean {
+  return TOTAL_ROW_LABELS.has(normalizeCellText(row['Product Name']));
+}
+
+function isPlaceholderSkuRow(row: Row): boolean {
+  const hasSku =
+    Object.prototype.hasOwnProperty.call(row, 'SKU') ||
+    Object.prototype.hasOwnProperty.call(row, 'sku');
+
+  if (!hasSku) return false;
+
+  const skuValue = Object.prototype.hasOwnProperty.call(row, 'SKU')
+    ? row.SKU
+    : row.sku;
+
+  return PLACEHOLDER_SKU_LABELS.has(normalizeCellText(skuValue));
+}
+
+function isPurchaseOrderProductRow(row: Row): boolean {
+  return !isTotalProductRow(row) && !isPlaceholderSkuRow(row);
+}
+
 function buildOthersPoRow(rows: Row[], displayedColumns: string[]): Row {
   const othersRow: Row = {
     'Product Name': 'Others',
@@ -131,6 +160,42 @@ function buildOthersPoRow(rows: Row[], displayedColumns: string[]): Row {
   })
 
   return othersRow
+}
+
+function buildPoTotalRow(
+  rows: Row[],
+  displayedColumns: string[],
+  normalCountryDispatchKey: string
+): Row {
+  const totalRow: Row = {
+    'Product Name': 'Total',
+    'S. No.': '',
+  };
+
+  displayedColumns.forEach((col) => {
+    if (col === 'S. No.' || col === 'Product Name') return;
+
+    if (col === 'Cost per Unit (in INR)') {
+      totalRow[col] = '';
+      return;
+    }
+
+    if (col === 'Dispatch') {
+      const dispatchTotal = rows.reduce(
+        (sum, row) =>
+          sum + toNumber(row.Dispatch ?? row[normalCountryDispatchKey]),
+        0
+      );
+
+      totalRow[col] = dispatchTotal;
+      totalRow[normalCountryDispatchKey] = dispatchTotal;
+      return;
+    }
+
+    totalRow[col] = rows.reduce((sum, row) => sum + toNumber(row[col]), 0);
+  });
+
+  return totalRow;
 }
 
 
@@ -194,7 +259,9 @@ export default function PurchaseOrderPage({
 
   const hasColumnValue = useCallback(
     (columnName: string) => {
-      return skuData.some((row) => toNumber(row[columnName]) > 0);
+      return skuData.some(
+        (row) => isPurchaseOrderProductRow(row) && toNumber(row[columnName]) > 0
+      );
     },
     [skuData]
   );
@@ -546,15 +613,10 @@ export default function PurchaseOrderPage({
   const handleExportToExcel = useCallback(() => {
     if (!skuData.length || noData || loading) return;
 
-    const isTotalProductRow = (row: Row) =>
-      String(row["Product Name"] ?? "").trim().toLowerCase() === "total";
-
-    const sourceRows = [...skuData];
-
-    const totalRow = sourceRows.find((row) => isTotalProductRow(row));
+    const sourceRows = skuData.filter(isPurchaseOrderProductRow);
+    if (!sourceRows.length) return;
 
     const sortedRows = sourceRows
-      .filter((row) => !isTotalProductRow(row))
       .sort((a, b) => {
         const valA = isGlobalRoute
           ? toNumber(a["Total Dispatches"])
@@ -568,15 +630,14 @@ export default function PurchaseOrderPage({
       });
 
     // Excel export: all product rows, no Others grouping
-    const rowsForExport: Row[] = [...sortedRows];
-
-    if (totalRow) {
-      rowsForExport.push(totalRow);
-    }
+    const rowsForExport: Row[] = [
+      ...sortedRows,
+      buildPoTotalRow(sourceRows, displayedColumns, normalCountryDispatchKey),
+    ];
 
     const exportRows = rowsForExport.map((row, index) => {
       const isTotalRow =
-        String(row["Product Name"] ?? "").trim().toLowerCase() === "total";
+        isTotalProductRow(row);
 
       const formatted: Record<string, any> = {};
 
@@ -643,14 +704,11 @@ export default function PurchaseOrderPage({
     })
     signRow.__isSignRow = true
 
-    const totalRow = skuData.find(
-      (row) => String(row['Product Name'] ?? '').trim().toLowerCase() === 'total'
-    )
+    const sourceRows = skuData.filter(isPurchaseOrderProductRow)
 
-    const sortedRows = [...skuData]
-      .filter(
-        (row) => String(row['Product Name'] ?? '').trim().toLowerCase() !== 'total'
-      )
+    if (!sourceRows.length) return []
+
+    const sortedRows = [...sourceRows]
       .sort((a, b) => {
         const valA = isGlobalRoute
           ? toNumber(a['Total Dispatches'])
@@ -675,9 +733,9 @@ export default function PurchaseOrderPage({
       rowsForDisplay = [...firstNine, othersRow]
     }
 
-    if (totalRow) {
-      rowsForDisplay.push(totalRow)
-    }
+    rowsForDisplay.push(
+      buildPoTotalRow(sourceRows, displayedColumns, normalCountryDispatchKey)
+    )
 
     const formattedRows = rowsForDisplay.map((row, index) => {
       const output: Row = {}
@@ -1007,9 +1065,7 @@ export default function PurchaseOrderPage({
               valueMode="lower"
             />
 
-            {skuData.filter(
-              (row) => String(row["Product Name"] ?? "").trim().toLowerCase() !== "total"
-            ).length > 9 && (
+            {skuData.filter(isPurchaseOrderProductRow).length > 9 && (
                 <button
                   type="button"
                   onClick={() => setShowAllPoRows((prev) => !prev)}

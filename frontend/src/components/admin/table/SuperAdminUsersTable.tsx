@@ -20,7 +20,9 @@ type UserRow = {
     name: string;
     company_name: string;
     country?: string;
+    countries?: string[];
     marketplace_id?: string;
+    marketplace_ids?: string[];
     status?: string | boolean;
     address?: {
         building?: string;
@@ -58,12 +60,27 @@ const defaultTableColumns = [
     "Brand Name",
     "Company",
     "Native Country",
-    "Marketplace",
+    "Current Country",
     "Name",
     "Email",
     "Status",
     "Actions",
 ];
+
+const getConnectedCountries = (user: UserRow) => {
+    const countries = Array.isArray(user.countries)
+        ? user.countries
+        : user.country?.split(",") || [];
+
+    return countries
+        .map((country) => country.trim())
+        .filter(Boolean);
+};
+
+const getConnectedCountryLabel = (user: UserRow) =>
+    getConnectedCountries(user)
+        .map((country) => country.toUpperCase())
+        .join(", ");
 
 export default function SuperAdminUsersTable<T = UserRow>({
     users = [],
@@ -175,7 +192,7 @@ export default function SuperAdminUsersTable<T = UserRow>({
                                     const nativeCountry =
                                         user.address?.country?.trim() || "Not added";
 
-                                    const marketplaceIntegration = user.country || "Not added";
+                                    const currentCountry = getConnectedCountryLabel(user) || "Not added";
                                     const isBusy = !!actionLoading[user.email];
 
                                     return (
@@ -199,7 +216,7 @@ export default function SuperAdminUsersTable<T = UserRow>({
 
                                             <TableCell className="px-4 py-4 text-start text-theme-sm text-white/65">
                                                 <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium capitalize text-white/75">
-                                                    {marketplaceIntegration}
+                                                    {currentCountry}
                                                 </span>
                                             </TableCell>
 

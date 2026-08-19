@@ -6837,8 +6837,8 @@ export default function DashboardPage() {
         0
     );
 
-    // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
-    const rawCostOfAds = Math.abs(rawSponsoredBrandSpend - rawDealVouchers);
+   // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
+    const rawCostOfAds = Math.abs(rawSponsoredBrandSpend) + Math.abs(rawDealVouchers);
 
     // Prefer backend total ad value first.
     // Fallback to ads_spend + costOfAds if total_ads is missing.

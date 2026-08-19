@@ -117,6 +117,7 @@ def create_app():
     from app.routes.inventory_current_routes import inventory_current_bp
     from app.routes.dashboard_action_items_routes import dashboard_action_items_bp
     from app.routes.check_routes import check_bp
+    from app.routes.customer_feedback_routes import customer_feedback_bp
 
     app.register_blueprint(user_bp)
     app.register_blueprint(upload_bp)
@@ -154,6 +155,7 @@ def create_app():
     app.register_blueprint(inventory_current_bp)
     app.register_blueprint(dashboard_action_items_bp)
     app.register_blueprint(check_bp)
+    app.register_blueprint(customer_feedback_bp)
     with app.app_context():
         db.create_all()
 

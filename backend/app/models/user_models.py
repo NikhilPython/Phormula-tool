@@ -44,6 +44,48 @@ class CurrencyConversion(db.Model):
     year = Column(Integer, nullable=False)
     conversion_rate = Column(Float, nullable=False)
 
+
+class SuperAdminIssue(db.Model):
+    __tablename__ = "superadmin_issue"
+    __bind_key__ = "superadmin"
+
+    id = Column(Integer, primary_key=True)
+    issue_key = Column(String(255), nullable=False, unique=True, index=True)
+
+    user_id = Column(Integer, nullable=False, index=True)
+    email = Column(String(150), nullable=True, index=True)
+    name = Column(String(150), nullable=True)
+    brand_name = Column(String(150), nullable=True)
+    company_name = Column(String(150), nullable=True)
+
+    country = Column(String(20), nullable=True, index=True)
+    marketplace_id = Column(String(50), nullable=True, index=True)
+    period_month = Column(String(15), nullable=True, index=True)
+    period_year = Column(Integer, nullable=True, index=True)
+    period_key = Column(String(32), nullable=True, index=True)
+
+    issue_type = Column(String(64), nullable=False, index=True)
+    severity = Column(String(20), nullable=False, default="medium")
+    status = Column(String(20), nullable=False, default="open", index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    evidence = Column(JSON, nullable=True)
+    occurrences = Column(Integer, nullable=False, default=1)
+
+    detected_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    resolved_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("issue_key", name="uq_superadmin_issue_key"),
+        Index("ix_superadmin_issue_lookup", "status", "period_key", "issue_type"),
+    )
+
 # ------------------------------------------------- Member Models -------------------------------------------------
 
 class Member(db.Model):
