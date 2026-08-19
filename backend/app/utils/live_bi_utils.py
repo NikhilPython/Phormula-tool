@@ -787,6 +787,7 @@ def totals_from_daily_series(daily_series):
         "quantity": s("quantity"),
         "net_sales": s("net_sales"),
         "product_sales": s("product_sales"),
+        "promotional_rebates": s("promotional_rebates"),
         "profit": s("profit"),
         "platform_fee": s("platform_fee"),
         "advertising": s("advertising"),
@@ -2021,6 +2022,14 @@ def fetch_current_ai_values_from_skuwisemonthly(
     # quantity, asp, net_sales, sales_mix,
     # unit_wise_profitability, profit, product_name, sku
     # -------------------------------------------------
+    # Preserve the source's pre-return quantity for return-rate calculations.
+    # `quantity` is subsequently normalized to net units (`total_quantity`) for
+    # the existing Live BI contract, so it cannot safely serve both meanings.
+    sku_df["return_rate_base_quantity"] = get_series(
+        sku_df,
+        ["quantity", "total_quantity"]
+    )
+
     sku_df["quantity"] = get_series(
         sku_df,
         ["total_quantity"]
@@ -2034,6 +2043,18 @@ def fetch_current_ai_values_from_skuwisemonthly(
     sku_df["profit"] = get_series(
         sku_df,
         ["profit", "cm1_profit"]
+    )
+
+    # Compact action-item consumers need these raw business metrics. Keeping
+    # them in the normalized monthly rows avoids exposing the full source table.
+    sku_df["return_quantity"] = get_series(
+        sku_df,
+        ["return_quantity", "returned_quantity", "returns"]
+    )
+
+    sku_df["promotional_rebates"] = get_series(
+        sku_df,
+        ["promotional_rebates", "promotion_rebates"]
     )
 
     sku_df["product_sales"] = get_series(
@@ -2087,10 +2108,14 @@ def fetch_current_ai_values_from_skuwisemonthly(
         "cogs",
         "ads_spend",
         "cm2_profit",
+        "cm2_profit_per",
+        "marketplace_fees",
+        "amazon_fees",
         "platform_fee",
         "advertising",
         "rembursement_fee",
         "reimbursement_fee",
+        "total_ads",
     ]:
         if c not in sku_df.columns:
             sku_df[c] = 0.0
@@ -2101,6 +2126,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
         "sku",
         "product_name",
         "quantity",
+        "return_rate_base_quantity",
         "product_sales",
         "gross_sales",
         "selling_fees",
@@ -2108,16 +2134,22 @@ def fetch_current_ai_values_from_skuwisemonthly(
         "tax_and_credits",
         "asp",
         "profit",
+        "return_quantity",
+        "promotional_rebates",
         "sales_mix",
         "net_sales",
         "unit_wise_profitability",
         "cogs",
         "ads_spend",
         "cm2_profit",
+        "cm2_profit_per",
+        "marketplace_fees",
+        "amazon_fees",
         "platform_fee",
         "advertising",
         "rembursement_fee",
         "reimbursement_fee",
+        "total_ads",
     ]
 
     curr_ai_data = (
@@ -2145,6 +2177,30 @@ def fetch_current_ai_values_from_skuwisemonthly(
     "profit": get_total(
         ["profit", "cm1_profit"],
         fallback_totals.get("profit", 0.0),
+    ),
+    "return_quantity": get_total(
+        ["return_quantity", "returned_quantity", "returns"],
+        float(sku_df["return_quantity"].sum()),
+    ),
+    "promotional_rebates": get_total(
+        ["promotional_rebates", "promotion_rebates"],
+        float(sku_df["promotional_rebates"].sum()),
+    ),
+    "promotional_rebates_percentage": get_total(
+        ["promotional_rebates_percentage"],
+        0.0,
+    ),
+    "total_ads": abs(get_total(
+        ["total_ads", "advertising_fees", "ads_spend"],
+        float(sku_df["total_ads"].sum()),
+    )),
+    "tacos_total_advertising_cost_of_sale": get_total(
+        ["tacos_total_advertising_cost_of_sale"],
+        0.0,
+    ),
+    "amazon_fees": get_total(
+        ["amazon_fees", "marketplace_fees"],
+        0.0,
     ),
     "total_asp": get_total(
         ["asp"],

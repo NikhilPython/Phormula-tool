@@ -2,18 +2,23 @@
 
 import React, { useMemo, useState } from "react";
 
-type Priority = "Critical" | "High" | "Medium" | "Opportunity";
-type Category = "Inventory & Dispatch" | "Ads" | "Finance" | "Returns";
+export type ActionItemPriority = "Critical" | "High" | "Medium" | "Opportunity";
+export type ActionItemCategory = "Inventory & Dispatch" | "Ads" | "Finance" | "Returns";
 
-type ActionItem = {
+export type DashboardActionItem = {
   id: string;
-  category: Category;
-  priority: Priority;
+  category: ActionItemCategory;
+  priority: ActionItemPriority;
   title: string;
   reason: string;
   metrics: { value: string; label: string }[];
   action: string;
+  affected_skus?: string[];
 };
+
+type Priority = ActionItemPriority;
+type Category = ActionItemCategory;
+type ActionItem = DashboardActionItem;
 
 type IconName =
   | "clipboard"
@@ -90,90 +95,6 @@ type MetricDefinition = {
 };
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-
-
-// Temporary frontend demo data. Remove this fallback once the backend monthly route is ready.
-// Keeping it in the same shape as the database response makes the API swap one-line later.
-export const DUMMY_MONTHLY_DATA: MonthlyMetricRow[] = [
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "march", year: 2026, country: "uk",
-    gross_sales: 126400, net_sales: 117200, quantity: 8120, return_quantity: 188, total_quantity: 7932, asp: 14.78,
-    profit: 55500, profit_percentage: 47.35, total_cm2_profit: 32700, total_cm2_margins: 27.90,
-    cm1_profit_per_unit: 7.00, cm2_profit_per_unit: 4.12,
-    total_ads: 30200, tacos_total_advertising_cost_of_sale: 25.77, ads_acos: 31.8, ads_roas: 3.14, ads_conversion_rate: 9.8,
-    promotional_rebates: -6700, promotional_rebates_percentage: -5.72, amazon_fees: 52200,
-    current_net_reimbursement: 3100, reimbursement_vs_sales: 2.65, cogs: -36500,
-    storage_fee: 720, placement_fee: -1980, shipment_fees: 82, shipping_charges: 2980, lost_total: -1240,
-    platform_fee: 430, platform_fee_inventory_storage: 980, disbursement: 35400,
-    inventory_units: 22100, inventory_coverage_months: 1.84, stockout_skus: 9, low_stock_skus: 31,
-    aged_inventory_percent: 14.8, inbound_units: 5800, dispatched_units: 7700, dispatch_rate: 94.2,
-  },
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "april", year: 2026, country: "uk",
-    gross_sales: 130900, net_sales: 121900, quantity: 8350, return_quantity: 180, total_quantity: 8170, asp: 14.92,
-    profit: 57900, profit_percentage: 47.50, total_cm2_profit: 34200, total_cm2_margins: 28.06,
-    cm1_profit_per_unit: 7.09, cm2_profit_per_unit: 4.19,
-    total_ads: 30800, tacos_total_advertising_cost_of_sale: 25.27, ads_acos: 30.9, ads_roas: 3.24, ads_conversion_rate: 10.1,
-    promotional_rebates: -6810, promotional_rebates_percentage: -5.59, amazon_fees: 53800,
-    current_net_reimbursement: 3300, reimbursement_vs_sales: 2.71, cogs: -37700,
-    storage_fee: 700, placement_fee: -1930, shipment_fees: 79, shipping_charges: 3060, lost_total: -1160,
-    platform_fee: 440, platform_fee_inventory_storage: 950, disbursement: 36600,
-    inventory_units: 22900, inventory_coverage_months: 1.93, stockout_skus: 8, low_stock_skus: 28,
-    aged_inventory_percent: 14.2, inbound_units: 6100, dispatched_units: 8040, dispatch_rate: 95.0,
-  },
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "may", year: 2026, country: "uk",
-    gross_sales: 137600, net_sales: 128500, quantity: 8690, return_quantity: 176, total_quantity: 8514, asp: 15.09,
-    profit: 61400, profit_percentage: 47.78, total_cm2_profit: 36750, total_cm2_margins: 28.60,
-    cm1_profit_per_unit: 7.21, cm2_profit_per_unit: 4.32,
-    total_ads: 31600, tacos_total_advertising_cost_of_sale: 24.59, ads_acos: 30.1, ads_roas: 3.32, ads_conversion_rate: 10.5,
-    promotional_rebates: -6960, promotional_rebates_percentage: -5.42, amazon_fees: 56300,
-    current_net_reimbursement: 3480, reimbursement_vs_sales: 2.71, cogs: -39200,
-    storage_fee: 690, placement_fee: -2010, shipment_fees: 76, shipping_charges: 3180, lost_total: -1080,
-    platform_fee: 458, platform_fee_inventory_storage: 925, disbursement: 39000,
-    inventory_units: 23750, inventory_coverage_months: 2.02, stockout_skus: 7, low_stock_skus: 25,
-    aged_inventory_percent: 13.7, inbound_units: 6450, dispatched_units: 8420, dispatch_rate: 95.7,
-  },
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "june", year: 2026, country: "uk",
-    gross_sales: 142900, net_sales: 133200, quantity: 8920, return_quantity: 171, total_quantity: 8749, asp: 15.22,
-    profit: 63900, profit_percentage: 47.97, total_cm2_profit: 38450, total_cm2_margins: 28.87,
-    cm1_profit_per_unit: 7.30, cm2_profit_per_unit: 4.39,
-    total_ads: 32400, tacos_total_advertising_cost_of_sale: 24.32, ads_acos: 29.7, ads_roas: 3.37, ads_conversion_rate: 10.7,
-    promotional_rebates: -7080, promotional_rebates_percentage: -5.32, amazon_fees: 57900,
-    current_net_reimbursement: 3690, reimbursement_vs_sales: 2.77, cogs: -40500,
-    storage_fee: 670, placement_fee: -1950, shipment_fees: 74, shipping_charges: 3260, lost_total: -1020,
-    platform_fee: 470, platform_fee_inventory_storage: 900, disbursement: 40700,
-    inventory_units: 24500, inventory_coverage_months: 2.12, stockout_skus: 6, low_stock_skus: 23,
-    aged_inventory_percent: 13.1, inbound_units: 6700, dispatched_units: 8670, dispatch_rate: 96.1,
-  },
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "july", year: 2026, country: "uk",
-    gross_sales: 147900, net_sales: 138100, quantity: 9150, return_quantity: 169, total_quantity: 8981, asp: 15.38,
-    profit: 66400, profit_percentage: 48.08, total_cm2_profit: 40100, total_cm2_margins: 29.04,
-    cm1_profit_per_unit: 7.39, cm2_profit_per_unit: 4.46,
-    total_ads: 33400, tacos_total_advertising_cost_of_sale: 24.19, ads_acos: 29.2, ads_roas: 3.42, ads_conversion_rate: 10.9,
-    promotional_rebates: -7220, promotional_rebates_percentage: -5.23, amazon_fees: 59600,
-    current_net_reimbursement: 3910, reimbursement_vs_sales: 2.83, cogs: -41800,
-    storage_fee: 655, placement_fee: -1900, shipment_fees: 72, shipping_charges: 3330, lost_total: -960,
-    platform_fee: 486, platform_fee_inventory_storage: 875, disbursement: 42500,
-    inventory_units: 25200, inventory_coverage_months: 2.24, stockout_skus: 5, low_stock_skus: 21,
-    aged_inventory_percent: 12.6, inbound_units: 7000, dispatched_units: 8940, dispatch_rate: 96.5,
-  },
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "august", year: 2026, country: "uk",
-    gross_sales: 157800, net_sales: 146200, quantity: 9580, return_quantity: 162, total_quantity: 9418, asp: 15.52,
-    profit: 70200, profit_percentage: 48.02, total_cm2_profit: 42950, total_cm2_margins: 29.38,
-    cm1_profit_per_unit: 7.45, cm2_profit_per_unit: 4.56,
-    total_ads: 34500, tacos_total_advertising_cost_of_sale: 23.60, ads_acos: 27.8, ads_roas: 3.60, ads_conversion_rate: 11.6,
-    promotional_rebates: -7340, promotional_rebates_percentage: -5.02, amazon_fees: 62400,
-    current_net_reimbursement: 4180, reimbursement_vs_sales: 2.86, cogs: -43900,
-    storage_fee: 620, placement_fee: -1810, shipment_fees: 70, shipping_charges: 3410, lost_total: -880,
-    platform_fee: 505, platform_fee_inventory_storage: 830, disbursement: 45200,
-    inventory_units: 26900, inventory_coverage_months: 2.48, stockout_skus: 4, low_stock_skus: 18,
-    aged_inventory_percent: 11.7, inbound_units: 7600, dispatched_units: 9460, dispatch_rate: 98.2,
-  },
-];
 
 function toNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -383,273 +304,6 @@ function makeFormatter(currency: string) {
   };
 }
 
-
-const ACTION_THRESHOLDS = {
-  tacosPercent: 20,
-  promotionalRebatePercent: 5,
-  returnRatePercent: 3,
-  minUnitsForReturnSignal: 50,
-  amazonFeePercent: 55,
-  minSalesForFeeSignal: 100,
-  inventoryCoverageMonths: 1.25,
-  dispatchRatePercent: 95,
-};
-
-// Temporary Action Items demo rows.
-// These are intentionally shaped like the future backend response so the UI can
-// switch to live data without changing the action-item rendering logic.
-export const DUMMY_ACTION_ITEM_DATA: MonthlyMetricRow[] = [
-  {
-    sku: "TOTAL", product_name: "TOTAL", month: "july", year: 2026, country: "us",
-    net_sales: 135932.50, quantity: 8846, return_quantity: 160,
-    profit: 77210.59, profit_percentage: 56.80,
-    promotional_rebates: -8011.01, promotional_rebates_percentage: -5.89,
-    amazon_fees: 61441.08, total_ads: 33808.30, advertising_total: 33808.30, ads_spend: 33808.30,
-    tacos_total_advertising_cost_of_sale: 24.87,
-    inventory_units: 18240, inventory_coverage_months: 0.82, stockout_skus: 6, low_stock_skus: 23,
-    aged_inventory_percent: 14.6, inbound_units: 9500, dispatched_units: 8683, dispatch_rate: 91.40,
-  },
-  {
-    sku: "SEMNIW1", product_name: "Classic", month: "july", year: 2026, country: "us",
-    net_sales: 48917.05, quantity: 3744, return_quantity: 74, profit: 27555.36, profit_percentage: 56.33,
-    promotional_rebates: -3126.87, amazon_fees: 23116.63,
-  },
-  {
-    sku: "SEIWHCWI", product_name: "Classic + Wipes", month: "july", year: 2026, country: "us",
-    net_sales: 2357.93, quantity: 177, return_quantity: 8, profit: 895.39, profit_percentage: 37.97,
-    promotional_rebates: -86.26, amazon_fees: 1377.45,
-  },
-  {
-    sku: "SEWIPESLIDCO", product_name: "Wipes Lid", month: "july", year: 2026, country: "us",
-    net_sales: 1005.97, quantity: 70, return_quantity: 4, profit: 459.04, profit_percentage: 45.63,
-    promotional_rebates: -58.97, amazon_fees: 556.94,
-  },
-  {
-    sku: "SEFMTM", product_name: "Turmeric", month: "july", year: 2026, country: "us",
-    net_sales: 210.76, quantity: 24, return_quantity: 0, profit: -45.16, profit_percentage: -21.43,
-    promotional_rebates: -18.20, amazon_fees: 126.16,
-  },
-  {
-    sku: "SEWMNIW", product_name: "Women", month: "july", year: 2026, country: "us",
-    net_sales: 334.09, quantity: 29, return_quantity: 0, profit: -31.23, profit_percentage: -9.35,
-    promotional_rebates: -21.82, amazon_fees: 205.60,
-  },
-];
-
-function firstNumber(row: MonthlyMetricRow | undefined, ...fields: string[]) {
-  if (!row) return null;
-  let zeroFallback: number | null = null;
-  for (const field of fields) {
-    const value = toNumber(row[field]);
-    if (value === null) continue;
-    if (value !== 0) return value;
-    zeroFallback = 0;
-  }
-  return zeroFallback;
-}
-
-function latestActionRows(rows: MonthlyMetricRow[]) {
-  const dated = rows
-    .map((row) => ({ row, info: monthInfo(row) }))
-    .filter((entry): entry is { row: MonthlyMetricRow; info: NonNullable<ReturnType<typeof monthInfo>> } => Boolean(entry.info));
-
-  if (!dated.length) return rows;
-  const latestSortKey = Math.max(...dated.map((entry) => entry.info.sortKey));
-  return dated.filter((entry) => entry.info.sortKey === latestSortKey).map((entry) => entry.row);
-}
-
-function compactCurrency(value: number, currency: string) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    notation: Math.abs(value) >= 1000 ? "compact" : "standard",
-    maximumFractionDigits: Math.abs(value) >= 1000 ? 1 : 0,
-  }).format(value);
-}
-
-function buildActionItems(rows: MonthlyMetricRow[], currencyOverride?: string): ActionItem[] {
-  const currentRows = latestActionRows(rows);
-  if (!currentRows.length) return [];
-
-  const totalRow = currentRows.find(isTotalRow);
-  const skuRows = currentRows.filter((row) => !isTotalRow(row));
-  const country = String(totalRow?.country ?? currentRows[0]?.country ?? "").toLowerCase();
-  const currency = currencyOverride ?? currencyFromCountry(country);
-  const items: ActionItem[] = [];
-
-  const sumSkuField = (...fields: string[]) => skuRows.reduce((sum, row) => sum + (firstNumber(row, ...fields) ?? 0), 0);
-
-  const netSales = firstNumber(totalRow, "net_sales") ?? sumSkuField("net_sales");
-
-  const inventoryUnits = firstNumber(totalRow, "inventory_units", "available_inventory_units") ?? sumSkuField("inventory_units", "available_inventory_units");
-  const inventoryCoverage = firstNumber(totalRow, "inventory_coverage_months", "inventory_coverage") ?? 0;
-  const stockoutSkus = firstNumber(totalRow, "stockout_skus") ?? 0;
-  const lowStockSkus = firstNumber(totalRow, "low_stock_skus") ?? 0;
-
-  if (inventoryUnits > 0 && (inventoryCoverage < ACTION_THRESHOLDS.inventoryCoverageMonths || stockoutSkus > 0 || lowStockSkus > 0)) {
-    items.push({
-      id: "inventory-coverage-risk",
-      category: "Inventory & Dispatch",
-      priority: stockoutSkus > 0 || inventoryCoverage < 1 ? "Critical" : "High",
-      title: "Inventory coverage needs action",
-      reason: `Coverage is ${inventoryCoverage.toFixed(2)} months with ${stockoutSkus} stockout SKU${stockoutSkus === 1 ? "" : "s"} and ${lowStockSkus} low-stock SKU${lowStockSkus === 1 ? "" : "s"}.`,
-      metrics: [
-        { value: `${inventoryCoverage.toFixed(2)} mo`, label: "Coverage" },
-        { value: String(stockoutSkus), label: "Stockout SKUs" },
-        { value: String(lowStockSkus), label: "Low-stock SKUs" },
-      ],
-      action: "Plan replenishment",
-    });
-  }
-
-  const dispatchRate = firstNumber(totalRow, "dispatch_rate") ?? 0;
-  const inboundUnits = firstNumber(totalRow, "inbound_units") ?? sumSkuField("inbound_units");
-  const dispatchedUnits = firstNumber(totalRow, "dispatched_units", "dispatch_units") ?? sumSkuField("dispatched_units", "dispatch_units");
-
-  if (dispatchRate > 0 && dispatchRate < ACTION_THRESHOLDS.dispatchRatePercent) {
-    items.push({
-      id: "dispatch-performance",
-      category: "Inventory & Dispatch",
-      priority: dispatchRate < 90 ? "High" : "Medium",
-      title: "Dispatch performance below target",
-      reason: `Dispatch rate is ${dispatchRate.toFixed(2)}%, below the ${ACTION_THRESHOLDS.dispatchRatePercent}% operating target for the latest month.`,
-      metrics: [
-        { value: `${dispatchRate.toFixed(2)}%`, label: "Dispatch rate" },
-        { value: new Intl.NumberFormat("en-US").format(dispatchedUnits), label: "Dispatched" },
-        { value: new Intl.NumberFormat("en-US").format(inboundUnits), label: "Inbound" },
-      ],
-      action: "Review dispatch gaps",
-    });
-  }
-  const explicitAdsSpend = firstNumber(totalRow, "total_ads", "advertising_fees", "advertising_total", "ads_spend");
-  const componentAdsSpend = (firstNumber(totalRow, "visible_ads") ?? 0)
-    + (firstNumber(totalRow, "dealsvouchar_ads") ?? 0)
-    + (firstNumber(totalRow, "brand_spend") ?? 0);
-  const adsSpend = explicitAdsSpend ?? (componentAdsSpend || sumSkuField("ads_spend", "advertising_total"));
-  const tacos = firstNumber(totalRow, "tacos_total_advertising_cost_of_sale") ?? safePercent(adsSpend, netSales);
-
-  if (adsSpend > 0 && tacos >= ACTION_THRESHOLDS.tacosPercent) {
-    items.push({
-      id: "ads-efficiency",
-      category: "Ads",
-      priority: tacos >= 25 ? "Critical" : "High",
-      title: "Advertising efficiency needs attention",
-      reason: `TACoS is ${tacos.toFixed(2)}% on the latest month, so ad spend is taking a high share of net sales.`,
-      metrics: [
-        { value: `${tacos.toFixed(2)}%`, label: "TACoS" },
-        { value: compactCurrency(Math.abs(adsSpend), currency), label: "Ad spend" },
-        { value: compactCurrency(Math.abs(netSales), currency), label: "Net sales" },
-      ],
-      action: "Optimize campaigns",
-    });
-  }
-
-  const rebateAmountRaw = firstNumber(totalRow, "promotional_rebates") ?? sumSkuField("promotional_rebates");
-  const rebateAmount = Math.abs(rebateAmountRaw);
-  const rebatePercent = Math.abs(firstNumber(totalRow, "promotional_rebates_percentage") ?? safePercent(rebateAmount, netSales));
-  const topRebateSku = [...skuRows]
-    .map((row) => ({ row, amount: Math.abs(firstNumber(row, "promotional_rebates") ?? 0) }))
-    .sort((a, b) => b.amount - a.amount)[0];
-
-  if (rebateAmount > 0 && rebatePercent >= ACTION_THRESHOLDS.promotionalRebatePercent) {
-    items.push({
-      id: "promotional-rebates",
-      category: "Finance",
-      priority: rebatePercent >= 8 ? "High" : "Medium",
-      title: "Promotional rebate leakage",
-      reason: `Promotional rebates are ${rebatePercent.toFixed(2)}% of net sales. Review the biggest rebate-heavy SKUs first.`,
-      metrics: [
-        { value: compactCurrency(rebateAmount, currency), label: "Rebates" },
-        { value: `${rebatePercent.toFixed(2)}%`, label: "of net sales" },
-        { value: String(topRebateSku?.row.sku ?? "—"), label: "Top rebate SKU" },
-      ],
-      action: "Review promotions",
-    });
-  }
-
-  const negativeProfitSkus = skuRows
-    .map((row) => ({
-      row,
-      profit: firstNumber(row, "profit") ?? 0,
-      margin: firstNumber(row, "profit_percentage", "cm1_profit_per") ?? 0,
-    }))
-    .filter((entry) => entry.profit < 0)
-    .sort((a, b) => a.profit - b.profit);
-
-  if (negativeProfitSkus.length) {
-    const totalLoss = Math.abs(negativeProfitSkus.reduce((sum, entry) => sum + entry.profit, 0));
-    const worst = negativeProfitSkus[0];
-    items.push({
-      id: "negative-profit-skus",
-      category: "Finance",
-      priority: negativeProfitSkus.length >= 5 || totalLoss >= 1000 ? "High" : "Medium",
-      title: "Negative-profit SKUs",
-      reason: `${negativeProfitSkus.length} SKU${negativeProfitSkus.length === 1 ? " is" : "s are"} currently below zero profit and should be reviewed before scaling sales.`,
-      metrics: [
-        { value: String(negativeProfitSkus.length), label: "SKUs" },
-        { value: compactCurrency(totalLoss, currency), label: "Total loss" },
-        { value: `${worst.margin.toFixed(2)}%`, label: "Worst margin" },
-      ],
-      action: "Reprice / pause",
-    });
-  }
-
-  const highReturnSkus = skuRows
-    .map((row) => {
-      const quantity = firstNumber(row, "quantity") ?? 0;
-      const returns = firstNumber(row, "return_quantity") ?? 0;
-      return { row, quantity, returns, rate: safePercent(returns, quantity) };
-    })
-    .filter((entry) => entry.quantity >= ACTION_THRESHOLDS.minUnitsForReturnSignal && entry.rate >= ACTION_THRESHOLDS.returnRatePercent)
-    .sort((a, b) => b.rate - a.rate);
-
-  if (highReturnSkus.length) {
-    const worst = highReturnSkus[0];
-    items.push({
-      id: "high-return-rate",
-      category: "Returns",
-      priority: worst.rate >= 5 ? "High" : "Medium",
-      title: "High return-rate SKUs",
-      reason: `${highReturnSkus.length} SKU${highReturnSkus.length === 1 ? " has" : "s have"} elevated returns with enough sales volume to warrant investigation.`,
-      metrics: [
-        { value: String(highReturnSkus.length), label: "SKUs" },
-        { value: `${worst.rate.toFixed(2)}%`, label: "Max return rate" },
-        { value: String(worst.row.sku ?? "—"), label: "Highest SKU" },
-      ],
-      action: "Inspect root cause",
-    });
-  }
-
-  const highFeeSkus = skuRows
-    .map((row) => {
-      const sales = firstNumber(row, "net_sales") ?? 0;
-      const fees = Math.abs(firstNumber(row, "amazon_fees", "amazon_fee", "marketplace_fees") ?? 0);
-      return { row, sales, fees, rate: safePercent(fees, sales) };
-    })
-    .filter((entry) => entry.sales >= ACTION_THRESHOLDS.minSalesForFeeSignal && entry.rate >= ACTION_THRESHOLDS.amazonFeePercent)
-    .sort((a, b) => b.rate - a.rate);
-
-  if (highFeeSkus.length) {
-    const worst = highFeeSkus[0];
-    const impactedFees = highFeeSkus.reduce((sum, entry) => sum + entry.fees, 0);
-    items.push({
-      id: "amazon-fee-pressure",
-      category: "Finance",
-      priority: worst.rate >= 60 ? "High" : "Medium",
-      title: "Amazon fee pressure",
-      reason: `${highFeeSkus.length} SKU${highFeeSkus.length === 1 ? " has" : "s have"} Amazon fees at or above ${ACTION_THRESHOLDS.amazonFeePercent}% of net sales.`,
-      metrics: [
-        { value: String(highFeeSkus.length), label: "SKUs" },
-        { value: `${worst.rate.toFixed(2)}%`, label: "Max fee rate" },
-        { value: compactCurrency(impactedFees, currency), label: "Fees on flagged SKUs" },
-      ],
-      action: "Review fee drivers",
-    });
-  }
-
-  const priorityOrder: Record<Priority, number> = { Critical: 0, High: 1, Medium: 2, Opportunity: 3 };
-  return items.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]).slice(0, 7);
-}
 
 function relationText(label: string, part: number, whole: number, format: (value: number, type: MetricFormat) => string) {
   return `${label}: ${format(safePercent(part, whole), "percent")} of net sales.`;
@@ -877,10 +531,21 @@ function MetricFlipCard({ definition, snapshots, currency }: { definition: Metri
 }
 
 
-function ActionItemsView({ rows, currency, isDemo = false }: { rows: MonthlyMetricRow[]; currency?: string; isDemo?: boolean }) {
+function ActionItemsView({
+  items,
+}: {
+  items: DashboardActionItem[];
+}) {
   const [category, setCategory] = useState<"All" | Category | "Completed">("All");
   const [completed, setCompleted] = useState<Set<string>>(new Set());
-  const actionItems = useMemo(() => buildActionItems(rows, currency), [rows, currency]);
+  const actionItems = useMemo(
+    () => items.filter((item) => item.id !== "amazon-fee-pressure"),
+    [items]
+  );
+  const completedCount = useMemo(
+    () => actionItems.filter((item) => completed.has(item.id)).length,
+    [actionItems, completed]
+  );
 
   const visible = useMemo(() => {
     if (category === "Completed") return actionItems.filter((item) => completed.has(item.id));
@@ -908,15 +573,14 @@ function ActionItemsView({ rows, currency, isDemo = false }: { rows: MonthlyMetr
         </button>)}
       </div>
       <div className="flex items-center gap-2 text-[11px] font-medium text-[#6B7A90]">
-        {isDemo ? <span className="rounded-full bg-[#FFF7E8] px-2.5 py-1 font-semibold text-[#A16A00]">Demo data</span> : null}
-        <span>{actionItems.length - completed.size} open action{actionItems.length - completed.size === 1 ? "" : "s"}</span>
+        <span>{actionItems.length - completedCount} open action{actionItems.length - completedCount === 1 ? "" : "s"}</span>
       </div>
     </div>
 
     {visible.length === 0 ? <div className="rounded-xl border border-dashed border-[#CFE0DC] bg-[#F8FCFB] px-6 py-14 text-center">
       <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E8F6F2] text-green-500"><Icon name="check" className="h-5 w-5" /></div>
-      <p className="font-semibold text-[#17304F]">{rows.length ? "No action items in this view" : "SKU-wise data is not loaded"}</p>
-      <p className="mt-1 text-sm text-[#728096]">{rows.length ? "Only data-backed signals are shown here." : "Pass the same monthly SKU rows used by Business Analysis."}</p>
+      <p className="font-semibold text-[#17304F]">No action items in this view</p>
+      <p className="mt-1 text-sm text-[#728096]">Only data-backed signals are shown here.</p>
     </div> : <div className="overflow-hidden rounded-xl border border-[#DDE5E8] bg-white shadow-[0_1px_2px_rgba(16,35,58,0.03)]">
       <div className="divide-y divide-[#E7ECEF]">
         {visible.map((item) => <div key={item.id} className="grid items-center gap-3 px-4 py-3 text-[12px] lg:grid-cols-[92px_minmax(240px,1fr)_minmax(260px,320px)_145px_28px]">
@@ -946,7 +610,11 @@ function ActionItemsView({ rows, currency, isDemo = false }: { rows: MonthlyMetr
             checked={completed.has(item.id)}
             onChange={() => setCompleted((prev) => {
               const next = new Set(prev);
-              next.has(item.id) ? next.delete(item.id) : next.add(item.id);
+              if (next.has(item.id)) {
+                next.delete(item.id);
+              } else {
+                next.add(item.id);
+              }
               return next;
             })}
             className="h-4 w-4 rounded border-[#BFCBD5] accent-green-500"
@@ -960,19 +628,15 @@ function ActionItemsView({ rows, currency, isDemo = false }: { rows: MonthlyMetr
 export function BusinessAnalysisView({
   monthlyData,
   currency,
-  useDummyFallback,
   loading,
   skuAnalysisContent,
 }: {
   monthlyData: MonthlyMetricRow[];
   currency?: string;
-  useDummyFallback: boolean;
   loading: boolean;
   skuAnalysisContent?: React.ReactNode;
 }) {
-  const usingDummyData = useDummyFallback && monthlyData.length === 0;
-  const effectiveData = usingDummyData ? DUMMY_MONTHLY_DATA : monthlyData;
-  const snapshots = useMemo(() => buildMonthlySnapshots(effectiveData), [effectiveData]);
+  const snapshots = useMemo(() => buildMonthlySnapshots(monthlyData), [monthlyData]);
 
   if (loading && !snapshots.length) {
     return <div className="rounded-xl border border-[#DDE5E8] bg-white px-6 py-16 text-center"><div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#DDE5E8] border-t-[#2878B8]" /><h2 className="text-sm font-semibold text-[#17304F]">Loading Business Analysis...</h2></div>;
@@ -999,7 +663,6 @@ export function BusinessAnalysisView({
         <span className="rounded-full border border-[#DDE5E8] bg-white px-3 py-1.5">{current.label}</span>
         <span className="text-[#9AA7B7]">vs</span>
         <span className="rounded-full border border-[#DDE5E8] bg-white px-3 py-1.5">{previous?.label ?? "Previous month"}</span>
-        {usingDummyData ? <span className="rounded-full bg-[#FFF7E8] px-3 py-1.5 font-semibold text-[#A16A00]">Demo data</span> : null}
       </div>
     </div>
 
@@ -1012,18 +675,34 @@ export function BusinessAnalysisView({
 }
 
 export default function DashboardActionItemsTab({
-  monthlyData = [],
-  currency,
-  useDummyFallback = true,
+  actionItems = [],
+  loading = false,
+  error,
+  onRetry,
 }: {
-  monthlyData?: MonthlyMetricRow[];
-  currency?: string;
-  useDummyFallback?: boolean;
+  actionItems?: DashboardActionItem[];
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }) {
-  const usingDummyData = useDummyFallback && monthlyData.length === 0;
-  const effectiveRows = usingDummyData ? DUMMY_ACTION_ITEM_DATA : monthlyData;
+  if (loading) {
+    return <div className="flex min-h-[260px] w-full items-center justify-center py-12">
+      <div className="text-center">
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#CFE0DC] border-t-[#07836C]" />
+        <p className="mt-3 text-sm font-medium text-[#65758B]">Building action items…</p>
+      </div>
+    </div>;
+  }
+
+  if (error) {
+    return <div className="my-4 rounded-xl border border-[#FFD0C7] bg-[#FFF7F5] px-6 py-10 text-center">
+      <p className="font-semibold text-[#9F2D20]">Action items could not be loaded</p>
+      <p className="mt-1 text-sm text-[#7B514B]">{error}</p>
+      {onRetry ? <button type="button" onClick={onRetry} className="mt-4 rounded-md border border-[#D89A90] bg-white px-4 py-2 text-xs font-semibold text-[#9F2D20]">Try again</button> : null}
+    </div>;
+  }
 
   return <div className="w-full px-0 py-4">
-    <ActionItemsView rows={effectiveRows} currency={currency} isDemo={usingDummyData} />
+    <ActionItemsView items={actionItems} />
   </div>;
 }
