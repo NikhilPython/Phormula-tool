@@ -622,6 +622,21 @@ export default function ViewUserPage() {
 
   const countryProfileColumns: SuperAdminTableColumn<CountryProfileRow>[] = [
     {
+      key: "serial_no",
+      label: "S.No.",
+      render: (row: CountryProfileRow) => {
+        const index = data?.related_country_profiles?.findIndex(
+          (item) => item.id === row.id
+        );
+
+        return (
+          <span className="font-medium text-white/65">
+            {index !== undefined && index >= 0 ? index + 1 : "-"}
+          </span>
+        );
+      },
+    },
+    {
       key: "country",
       label: "Country",
       render: (p) => (
@@ -759,35 +774,30 @@ export default function ViewUserPage() {
   return (
     <div className="w-full">
       <div className="space-y-5 2xl:space-y-6">
-        {/* Page Heading */}
-        <div className="rounded-xl border border-white/10 bg-[#484962] p-4 text-white shadow-[0_16px_38px_rgba(20,22,45,0.22)] 2xl:p-5">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (window.history.length > 1) {
-                  router.back();
-                } else {
-                  router.push("/superadmin/CDPAdminConsole");
-                }
-              }}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white/80 transition hover:border-[#31d9e5]/30 hover:bg-[#31d9e5]/10 hover:text-[#31d9e5]"
-              aria-label="Go back"
-              title="Back"
-            >
-              <ArrowLeft size={17} />
-            </button>
+        {/* PAGE HEADER */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) {
+                router.back();
+              } else {
+                router.push("/superadmin/CDPAdminConsole");
+              }
+            }}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white/80 transition hover:border-[#31d9e5]/40 hover:bg-[#31d9e5]/10 hover:text-[#31d9e5]"
+            aria-label="Go back"
+            title="Back"
+          >
+            <ArrowLeft size={17} />
+          </button>
 
-            <div className="flex flex-col leading-tight">
-              <h1 className="text-lg font-bold tracking-tight text-white 2xl:text-xl">
-                Admin Profile
-              </h1>
-
-              <p className="mt-2 text-xs text-white/60 2xl:text-sm">
-                View user details, business journey, members and marketplace settings.
-              </p>
-            </div>
-          </div>
+          <PageBreadcrumb
+            pageTitle="Admin Profile"
+            variant="superadmin"
+            align="left"
+            textSize="2xl"
+          />
         </div>
 
         {/* Info Cards */}
@@ -795,7 +805,7 @@ export default function ViewUserPage() {
           {infoCards.map((card) => (
             <div
               key={card.key}
-              className="relative min-h-[88px] overflow-hidden rounded-xl border border-white/10 bg-[#484962] p-3 text-white shadow-[0_14px_32px_rgba(20,22,45,0.20)] before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[#31d9e5] 2xl:min-h-[96px] 2xl:p-4"
+              className="relative min-h-[88px] overflow-hidden rounded-xl border-t-4 border-[#31D9E5] bg-[#484962] p-3 text-white shadow-[0_14px_32px_rgba(20,22,45,0.20)] 2xl:min-h-[96px] 2xl:p-4"
             >
               <div className="flex items-center gap-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5] 2xl:h-11 2xl:w-11">
@@ -803,18 +813,14 @@ export default function ViewUserPage() {
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-white/60 2xl:text-sm">
+                  <p className="text-[11px] font-medium text-white/70 2xl:text-xs">
                     {card.title}
                   </p>
 
                   {React.isValidElement(card.value) ? (
                     card.value
                   ) : (
-                    <h3
-                      className={`mt-1 text-lg font-bold tracking-tight text-white 2xl:text-xl ${
-                        card.valueClassName || "truncate"
-                      }`}
-                    >
+                    <h3 className="mt-1 truncate text-base font-bold tracking-tight text-white 2xl:text-lg">
                       {card.value}
                     </h3>
                   )}
