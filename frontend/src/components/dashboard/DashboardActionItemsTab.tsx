@@ -482,7 +482,6 @@ function MetricFlipCard({ definition, snapshots, currency }: { definition: Metri
 
         <div className="relative z-10 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${theme.softBg} ${theme.text}`}><Icon name={definition.icon} className="h-4 w-4" /></span>
             <div>
               <h3 className="text-sm font-semibold leading-4 text-[#17304F]">{definition.title}</h3>
               <p className="mt-0.5 text-[9px] text-[#738299]">{definition.category}</p>
@@ -516,11 +515,11 @@ function MetricFlipCard({ definition, snapshots, currency }: { definition: Metri
         <div className="relative z-10 flex items-center gap-2">
           <span className={`flex h-7 w-7 items-center justify-center rounded-full ${theme.softBg} ${theme.text}`}><Icon name="spark" className="h-3.5 w-3.5" /></span>
           <div>
-            <h3 className="text-[11px] font-semibold text-[#17304F]">{definition.title} analysis</h3>
-            <p className="text-[8px] text-[#75849A]">{current.label} business context</p>
+            <h3 className="text-sm font-semibold text-[#17304F]">{definition.title} analysis</h3>
+            <p className="text-[10px] text-[#75849A]">{current.label} business context</p>
           </div>
         </div>
-        <ul className="relative z-10 mt-3 space-y-1.5 text-[9px] leading-[13px] text-[#40536C]">
+        <ul className="relative z-10 mt-3 space-y-1.5 text-xs leading-[13px] text-[#40536C]">
           <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>Current: <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>{previous ? <> · Previous: <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong></> : null}</span></li>
           <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{movementPoint}</span></li>
           <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{definition.detail(current, format)}</span></li>
@@ -658,11 +657,6 @@ export function BusinessAnalysisView({
           <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">Business Analysis</h2>
           <p className="min-[1700px]:text-sm text-xs text-[#50627A]">Key business metrics and month-over-month movement.</p>
         </div>
-      </div>
-      <div className="flex items-center gap-2 text-[10px] text-[#607188]">
-        <span className="rounded-full border border-[#DDE5E8] bg-white px-3 py-1.5">{current.label}</span>
-        <span className="text-[#9AA7B7]">vs</span>
-        <span className="rounded-full border border-[#DDE5E8] bg-white px-3 py-1.5">{previous?.label ?? "Previous month"}</span>
       </div>
     </div>
 

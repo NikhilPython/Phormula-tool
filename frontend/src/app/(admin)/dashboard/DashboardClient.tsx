@@ -2994,14 +2994,12 @@ export default function DashboardPage() {
     );
 
     useEffect(() => {
-        if (activeTab !== "action") return;
-
-        if (shouldShowDummyUi) {
-            setDashboardActionItems([]);
-            setDashboardActionItemsLoading(false);
-            setDashboardActionItemsError(null);
-            return;
-        }
+    if (shouldShowDummyUi) {
+        setDashboardActionItems([]);
+        setDashboardActionItemsLoading(false);
+        setDashboardActionItemsError(null);
+        return;
+    }
 
         // The endpoint reads the monthly tables populated by the dashboard's
         // source APIs. Wait for that refresh to finish so Action Items cannot
@@ -3088,7 +3086,6 @@ export default function DashboardPage() {
 
         return () => controller.abort();
     }, [
-        activeTab,
         shouldShowDummyUi,
         inventoryCountry,
         invMonthYear.month,
@@ -6837,7 +6834,7 @@ export default function DashboardPage() {
         0
     );
 
-   // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
+    // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
     const rawCostOfAds = Math.abs(rawSponsoredBrandSpend) + Math.abs(rawDealVouchers);
 
     // Prefer backend total ad value first.
@@ -12193,8 +12190,20 @@ export default function DashboardPage() {
             year: currentDisplayMonth.year,
             country: countryName,
 
-            total_quantity: unitsKpi.current,
-            quantity: unitsKpi.current,
+            quantity: toNumber(currentGrand?.quantity ?? 0),
+
+            return_quantity: toNumber(
+                currentGrand?.return_quantity ??
+                currentGrand?.returns_quantity ??
+                currentGrand?.return_qty ??
+                0
+            ),
+
+            total_quantity: toNumber(
+                currentGrand?.total_quantity ??
+                unitsKpi.current
+            ),
+
             net_sales: netSalesKpi.current,
             asp: aspKpi.current,
             platform_fee: currentOtherTransactions,
