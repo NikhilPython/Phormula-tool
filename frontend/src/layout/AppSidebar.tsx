@@ -1053,6 +1053,14 @@ const AppSidebar: React.FC = () => {
       ),
       subItems: [
         {
+          name: "Action Items",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#action-items`,
+        },
+        {
+          name: "Business Analysis",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#business-analysis`,
+        },
+        {
           name: "AI Insights",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
