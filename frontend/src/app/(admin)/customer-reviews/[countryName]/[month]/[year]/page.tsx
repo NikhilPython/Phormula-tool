@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -12,7 +12,10 @@ import {
   Sparkles,
   Star,
   Tag,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
+import NextImage from "next/image";
 import { useParams } from "next/navigation";
 import { API_BASE } from "@/config/env";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
@@ -52,6 +55,7 @@ type Topic = {
       numberOfMentions?: number;
       occurrencePercentage?: number;
     };
+    reviewSnippets?: string[];
   }[];
 };
 
@@ -73,6 +77,27 @@ type TrendTopic = {
       };
     };
   }[];
+};
+
+type TrendTopicGroup = {
+  positiveTrends?: TrendTopic[];
+  negativeTrends?: TrendTopic[];
+  positiveTopics?: TrendTopic[];
+  negativeTopics?: TrendTopic[];
+};
+
+type ReviewTrendsGroup = {
+  positiveTopics?: TrendTopic[];
+  negativeTopics?: TrendTopic[];
+};
+
+type TrendResponsePayload = {
+  reviewTrends?: ReviewTrendsGroup;
+  trends?: TrendTopicGroup;
+  payload?: {
+    reviewTrends?: ReviewTrendsGroup;
+    trends?: TrendTopicGroup;
+  };
 };
 
 type FeedbackResponse = {
@@ -100,14 +125,7 @@ type FeedbackResponse = {
       negativeTopics?: Topic[];
     };
   } | null;
-  trends?: {
-    trends?: {
-      positiveTrends?: TrendTopic[];
-      negativeTrends?: TrendTopic[];
-      positiveTopics?: TrendTopic[];
-      negativeTopics?: TrendTopic[];
-    };
-  } | null;
+  trends?: TrendResponsePayload | null;
   browse_node?: {
     browseNodeId?: string;
     displayName?: string;
@@ -126,6 +144,9 @@ const MARKETPLACE_LABELS: Record<string, string> = {
   uk: "Amazon UK",
   ca: "Amazon CA",
 };
+
+const EMPTY_TOPICS: Topic[] = [];
+const EMPTY_TRENDS: TrendTopic[] = [];
 
 function getToken() {
   if (typeof window === "undefined") return null;
@@ -182,6 +203,116 @@ function findImpactForTopic(topic: Topic, impactTopics: Topic[]) {
   );
 
   return getTopicImpact(match || topic);
+}
+
+function normalizedTopicName(value?: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function uniqueStrings(values: (string | undefined | null)[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  values.forEach((value) => {
+    const cleaned = String(value || "").trim();
+    const key = cleaned.toLowerCase();
+
+    if (!cleaned || seen.has(key)) return;
+
+    seen.add(key);
+    result.push(cleaned);
+  });
+
+  return result;
+}
+
+function mergeSubtopics(
+  primary: Topic["subtopics"] = [],
+  secondary: Topic["subtopics"] = []
+) {
+  const merged = [...primary];
+  const indexByName = new Map(
+    merged.map((subtopic, index) => [normalizedTopicName(subtopic.subtopic), index])
+  );
+
+  secondary.forEach((subtopic) => {
+    const key = normalizedTopicName(subtopic.subtopic);
+    const existingIndex = indexByName.get(key);
+
+    if (!key || existingIndex === undefined) {
+      if (key) indexByName.set(key, merged.length);
+      merged.push(subtopic);
+      return;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...subtopic,
+      ...existing,
+      metrics: {
+        ...subtopic.metrics,
+        ...existing.metrics,
+      },
+      reviewSnippets: uniqueStrings([
+        ...(existing.reviewSnippets || []),
+        ...(subtopic.reviewSnippets || []),
+      ]),
+    };
+  });
+
+  return merged;
+}
+
+function mergeTopicsByName(primary: Topic[], secondary: Topic[]) {
+  const merged = [...primary];
+  const indexByName = new Map(
+    merged.map((topic, index) => [normalizedTopicName(topic.topic), index])
+  );
+
+  secondary.forEach((topic) => {
+    const key = normalizedTopicName(topic.topic);
+    const existingIndex = indexByName.get(key);
+
+    if (!key || existingIndex === undefined) {
+      if (key) indexByName.set(key, merged.length);
+      merged.push(topic);
+      return;
+    }
+
+    const existing = merged[existingIndex];
+    merged[existingIndex] = {
+      ...topic,
+      ...existing,
+      asinMetrics: {
+        ...topic.asinMetrics,
+        ...existing.asinMetrics,
+        starRatingImpact:
+          existing.asinMetrics?.starRatingImpact ?? topic.asinMetrics?.starRatingImpact,
+      },
+      parentAsinMetrics: {
+        ...topic.parentAsinMetrics,
+        ...existing.parentAsinMetrics,
+      },
+      reviewSnippets: uniqueStrings([
+        ...(existing.reviewSnippets || []),
+        ...(topic.reviewSnippets || []),
+      ]),
+      subtopics: mergeSubtopics(existing.subtopics, topic.subtopics),
+    };
+  });
+
+  return merged;
+}
+
+function getTopicReviewSnippets(topic: Topic) {
+  return uniqueStrings([
+    ...(topic.reviewSnippets || []),
+    ...(topic.subtopics || []).flatMap((subtopic) => subtopic.reviewSnippets || []),
+  ]);
+}
+
+function countReviewSnippets(topics: Topic[]) {
+  return topics.reduce((total, topic) => total + getTopicReviewSnippets(topic).length, 0);
 }
 
 function RatingStars({
@@ -242,17 +373,22 @@ function ProductThumb({
   const [sourceIndex, setSourceIndex] = useState(0);
   const sizeClass = size === "small" ? "h-12 w-12" : "h-24 w-24";
   const iconClass = size === "small" ? "h-4 w-4" : "h-6 w-6";
+  const imageSize = size === "small" ? 48 : 96;
   const currentSource = candidates[sourceIndex];
+  const candidateSignature = candidates.join("|");
 
   useEffect(() => {
     setSourceIndex(0);
-  }, [candidates.join("|")]);
+  }, [candidateSignature]);
 
   if (currentSource) {
     return (
-      <img
+      <NextImage
+        unoptimized
         src={currentSource}
         alt={alt}
+        width={imageSize}
+        height={imageSize}
         onError={() => setSourceIndex((index) => index + 1)}
         className={`${sizeClass} shrink-0 rounded-md border border-gray-200 bg-white object-contain`}
       />
@@ -270,25 +406,124 @@ function ProductThumb({
 }
 
 function pickTrendTopics(response: FeedbackResponse | null, sentiment: "positive" | "negative") {
-  const trends = response?.trends?.trends as any;
+  const trendPayload = response?.trends;
+  const trends: TrendTopicGroup | undefined =
+    trendPayload?.reviewTrends ||
+    trendPayload?.trends ||
+    trendPayload?.payload?.reviewTrends ||
+    trendPayload?.payload?.trends;
+
   if (!trends) return [];
 
   if (sentiment === "positive") {
-    return trends.positiveTrends || trends.positiveTopics || [];
+    return trends.positiveTrends || trends.positiveTopics || EMPTY_TRENDS;
   }
 
-  return trends.negativeTrends || trends.negativeTopics || [];
+  return trends.negativeTrends || trends.negativeTopics || EMPTY_TRENDS;
+}
+
+type TrendMetric = NonNullable<TrendTopic["trendMetrics"]>[number];
+
+function trendMetricValue(metric?: TrendMetric) {
+  return (
+    metric?.asinMetrics?.occurrencePercentage ??
+    metric?.asinMetrics?.starRatingImpact ??
+    metric?.browseNodeMetrics?.occurrencePercentage?.allProducts ??
+    metric?.browseNodeMetrics?.occurrencePercentage?.topTwentyFivePercentProducts ??
+    0
+  );
+}
+
+function trendMetricTime(metric: TrendMetric) {
+  const dateValue = metric.dateRange?.endDate || metric.dateRange?.startDate || "";
+  const timestamp = new Date(dateValue).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function sortedTrendMetrics(topic: TrendTopic) {
+  return [...(topic.trendMetrics || [])].sort(
+    (left, right) => trendMetricTime(left) - trendMetricTime(right)
+  );
 }
 
 function latestTrendValue(topic: TrendTopic) {
-  const metrics = topic.trendMetrics || [];
-  const latest = metrics[metrics.length - 1];
+  const metrics = sortedTrendMetrics(topic);
+  return trendMetricValue(metrics[metrics.length - 1]);
+}
+
+function getTrendSummary(topic: TrendTopic) {
+  const metrics = sortedTrendMetrics(topic);
+  const latestMetric = metrics[metrics.length - 1];
+  const previousMetric = metrics[metrics.length - 2];
+  const latestValue = trendMetricValue(latestMetric);
+  const previousValue = trendMetricValue(previousMetric);
+
+  return {
+    metrics,
+    latestMetric,
+    latestValue,
+    delta: metrics.length > 1 ? latestValue - previousValue : 0,
+  };
+}
+
+function formatTrendDelta(delta: number) {
+  if (Math.abs(delta) < 0.05) return "0 pp";
+  return `${delta > 0 ? "+" : ""}${metricValue(delta)} pp`;
+}
+
+function formatTrendPeriod(metric?: TrendMetric) {
+  const value = metric?.dateRange?.endDate || metric?.dateRange?.startDate;
+  if (!value) return "NA";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "NA";
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getLatestTrendPeriod(topics: TrendTopic[]) {
+  const latestMetric = topics
+    .map((topic) => getTrendSummary(topic).latestMetric)
+    .filter((metric): metric is TrendMetric => Boolean(metric))
+    .sort((left, right) => trendMetricTime(right) - trendMetricTime(left))[0];
+
+  return formatTrendPeriod(latestMetric);
+}
+
+function TrendHistoryTicks({
+  metrics,
+  tone,
+}: {
+  metrics: TrendMetric[];
+  tone: "green" | "rose";
+}) {
+  if (!metrics.length) {
+    return <div className="h-2 rounded-full bg-gray-100" aria-hidden="true" />;
+  }
+
+  const values = metrics.map(trendMetricValue);
+  const maxValue = Math.max(1, ...values);
+  const color = tone === "green" ? "bg-emerald-500" : "bg-rose-500";
+
   return (
-    latest?.asinMetrics?.occurrencePercentage ??
-    latest?.asinMetrics?.starRatingImpact ??
-    latest?.browseNodeMetrics?.occurrencePercentage?.allProducts ??
-    latest?.browseNodeMetrics?.occurrencePercentage?.topTwentyFivePercentProducts ??
-    0
+    <div className="flex h-2 gap-1" aria-hidden="true">
+      {metrics.map((metric, index) => (
+        <span
+          key={`${metric.dateRange?.startDate || index}-${index}`}
+          className={`flex-1 rounded-full ${trendMetricValue(metric) > 0 ? color : "bg-gray-100"}`}
+          style={{
+            opacity:
+              trendMetricValue(metric) > 0
+                ? Math.max(0.35, trendMetricValue(metric) / maxValue)
+                : 1,
+          }}
+          title={`${formatTrendPeriod(metric)}: ${metricValue(trendMetricValue(metric), "%")}`}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -303,6 +538,7 @@ function TopicCard({
 }) {
   const impact = findImpactForTopic(topic, impactTopics || []);
   const hasImpact = impact !== null;
+  const reviewSnippets = getTopicReviewSnippets(topic);
   const accent =
     sentiment === "positive"
       ? "border-emerald-200 bg-emerald-50/70 text-emerald-700"
@@ -354,9 +590,9 @@ function TopicCard({
         </div>
       )}
 
-      {!!topic.reviewSnippets?.length && (
+      {!!reviewSnippets.length && (
         <div className="mt-3 space-y-2">
-          {topic.reviewSnippets.slice(0, 3).map((snippet, index) => (
+          {reviewSnippets.map((snippet, index) => (
             <p key={`${snippet}-${index}`} className="rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
               {snippet}
             </p>
@@ -366,7 +602,7 @@ function TopicCard({
 
       {!!topic.subtopics?.length && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {topic.subtopics.slice(0, 4).map((subtopic, index) => (
+          {topic.subtopics.map((subtopic, index) => (
             <span
               key={`${subtopic.subtopic}-${index}`}
               className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
@@ -390,36 +626,84 @@ function TrendBlock({
   tone: "green" | "rose";
 }) {
   const color = tone === "green" ? "bg-emerald-500" : "bg-rose-500";
+  const textColor = tone === "green" ? "text-emerald-700" : "text-rose-700";
+  const badgeColor =
+    tone === "green"
+      ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+      : "border-rose-100 bg-rose-50 text-rose-700";
   const maxValue = Math.max(1, ...topics.map(latestTrendValue));
+  const latestPeriod = getLatestTrendPeriod(topics);
+  const displayTopics = [...topics].sort(
+    (left, right) => latestTrendValue(right) - latestTrendValue(left)
+  );
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center gap-2">
-        <BarChart3 className="h-4 w-4 text-gray-500" />
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+    <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <BarChart3 className="h-4 w-4 shrink-0 text-gray-500" />
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-gray-900">{title}</h3>
+            {!!topics.length && (
+              <div className="text-[11px] font-medium text-gray-500">Period {latestPeriod}</div>
+            )}
+          </div>
+        </div>
+        {!!topics.length && (
+          <span className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold ${badgeColor}`}>
+            {topics.length} topics
+          </span>
+        )}
       </div>
       {topics.length ? (
-        <div className="space-y-3">
-          {topics.slice(0, 6).map((topic, index) => {
-            const value = latestTrendValue(topic);
+        <div className="divide-y divide-gray-100 px-4">
+          {displayTopics.map((topic, index) => {
+            const summary = getTrendSummary(topic);
+            const value = summary.latestValue;
+            const width = value <= 0 ? 0 : Math.min(100, Math.max(6, (value / maxValue) * 100));
+            const hasDelta = Math.abs(summary.delta) >= 0.05;
+            const DeltaIcon = summary.delta > 0 ? TrendingUp : TrendingDown;
+            const deltaClass = hasDelta
+              ? summary.delta > 0
+                ? tone === "green"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-rose-50 text-rose-700"
+                : "bg-gray-100 text-gray-600"
+              : "bg-gray-50 text-gray-500";
+
             return (
-              <div key={`${topic.topic}-${index}`}>
-                <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-                  <span className="truncate font-medium text-gray-700">{topic.topic || "Topic"}</span>
-                  <span className="shrink-0 text-gray-500">{metricValue(value, "%")}</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                  <div
-                    className={`h-full rounded-full ${color}`}
-                    style={{ width: `${Math.min(100, Math.max(4, (value / maxValue) * 100))}%` }}
-                  />
+              <div key={`${topic.topic}-${index}`} className="py-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_112px]">
+                  <div className="min-w-0 self-center">
+                    <div className="truncate text-sm font-medium text-gray-900">
+                      {topic.topic || "Topic"}
+                    </div>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                      <div
+                        className={`h-full rounded-full ${color}`}
+                        style={{ width: `${width}%` }}
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <TrendHistoryTicks metrics={summary.metrics} tone={tone} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 sm:block sm:text-right">
+                    <span className={`text-sm font-semibold ${value > 0 ? textColor : "text-gray-500"}`}>
+                      {metricValue(value, "%")}
+                    </span>
+                    <span className={`inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] font-semibold sm:mt-2 ${deltaClass}`}>
+                      {hasDelta && <DeltaIcon className="h-3 w-3" />}
+                      {formatTrendDelta(summary.delta)}
+                    </span>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       ) : (
-        <p className="text-sm text-gray-500">No trend data returned for this ASIN.</p>
+        <p className="p-4 text-sm text-gray-500">No trend data returned for this ASIN.</p>
       )}
     </section>
   );
@@ -443,16 +727,34 @@ export default function CustomerReviewsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const positiveTopics = feedback?.topics?.topics?.positiveTopics || [];
-  const negativeTopics = feedback?.topics?.topics?.negativeTopics || [];
-  const positiveImpactTopics = feedback?.rating_impact_topics?.topics?.positiveTopics || [];
-  const negativeImpactTopics = feedback?.rating_impact_topics?.topics?.negativeTopics || [];
+  const mentionPositiveTopics = feedback?.topics?.topics?.positiveTopics ?? EMPTY_TOPICS;
+  const mentionNegativeTopics = feedback?.topics?.topics?.negativeTopics ?? EMPTY_TOPICS;
+  const positiveImpactTopics =
+    feedback?.rating_impact_topics?.topics?.positiveTopics ?? EMPTY_TOPICS;
+  const negativeImpactTopics =
+    feedback?.rating_impact_topics?.topics?.negativeTopics ?? EMPTY_TOPICS;
+  const positiveTopics = useMemo(
+    () => mergeTopicsByName(mentionPositiveTopics, positiveImpactTopics),
+    [mentionPositiveTopics, positiveImpactTopics]
+  );
+  const negativeTopics = useMemo(
+    () => mergeTopicsByName(mentionNegativeTopics, negativeImpactTopics),
+    [mentionNegativeTopics, negativeImpactTopics]
+  );
+  const positiveReviewSnippetCount = useMemo(
+    () => countReviewSnippets(positiveTopics),
+    [positiveTopics]
+  );
+  const negativeReviewSnippetCount = useMemo(
+    () => countReviewSnippets(negativeTopics),
+    [negativeTopics]
+  );
   const allTopics = useMemo(
     () => [
-      ...(positiveImpactTopics.length ? positiveImpactTopics : positiveTopics),
-      ...(negativeImpactTopics.length ? negativeImpactTopics : negativeTopics),
+      ...positiveTopics,
+      ...negativeTopics,
     ],
-    [negativeImpactTopics, negativeTopics, positiveImpactTopics, positiveTopics]
+    [negativeTopics, positiveTopics]
   );
   const positiveTrends = useMemo(() => pickTrendTopics(feedback, "positive"), [feedback]);
   const negativeTrends = useMemo(() => pickTrendTopics(feedback, "negative"), [feedback]);
@@ -476,7 +778,7 @@ export default function CustomerReviewsPage() {
     ? "md:grid-cols-2 xl:grid-cols-4"
     : "md:grid-cols-3";
 
-  const fetchProducts = async (query = "") => {
+  const fetchProducts = useCallback(async (query = "") => {
     const token = getToken();
     if (!token) {
       setError("Missing login token. Please sign in again.");
@@ -510,16 +812,14 @@ export default function CustomerReviewsPage() {
       }
 
       setProducts(json.products || []);
-      if (!asin && json.products?.[0]?.asin) {
-        setAsin(json.products[0].asin);
-      }
+      setAsin((currentAsin) => currentAsin || json.products?.[0]?.asin || "");
     } catch (err) {
       setProducts([]);
       setError(err instanceof Error ? err.message : "Failed to load products");
     } finally {
       setProductsLoading(false);
     }
-  };
+  }, [marketplaceId]);
 
   const fetchFeedback = async (targetAsin = asin) => {
     const token = getToken();
@@ -568,7 +868,7 @@ export default function CustomerReviewsPage() {
 
   useEffect(() => {
     fetchProducts();
-  }, [marketplaceId]);
+  }, [fetchProducts]);
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4">
@@ -790,7 +1090,9 @@ export default function CustomerReviewsPage() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">Positive topics</h2>
-                <span className="text-xs text-gray-500">{positiveTopics.length} returned</span>
+                <span className="text-xs text-gray-500">
+                  {positiveTopics.length} topics / {positiveReviewSnippetCount} snippets
+                </span>
               </div>
               {positiveTopics.length ? (
                 positiveTopics.map((topic, index) => (
@@ -811,7 +1113,9 @@ export default function CustomerReviewsPage() {
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-gray-900">Negative topics</h2>
-                <span className="text-xs text-gray-500">{negativeTopics.length} returned</span>
+                <span className="text-xs text-gray-500">
+                  {negativeTopics.length} topics / {negativeReviewSnippetCount} snippets
+                </span>
               </div>
               {negativeTopics.length ? (
                 negativeTopics.map((topic, index) => (
