@@ -4,16 +4,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Database,
   Eye,
-  RefreshCw,
   Search,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-
+import SuperAdminUsersTable from "@/components/admin/table/SuperAdminUsersTable";
+import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import Loader from "@/components/loader/Loader";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
@@ -63,6 +62,27 @@ type AvailabilityRow = {
   };
   status: AvailabilityStatus;
   missing: string[];
+};
+
+type BrandAvailabilityRow = {
+  brand_key: string;
+
+  user_id: number | string;
+  name?: string;
+  email: string;
+
+  brand_name: string;
+  company_name?: string;
+
+  countries: string[];
+  marketplaces: string[];
+
+  checks: AvailabilityRow["checks"];
+
+  status: AvailabilityStatus;
+  missing: string[];
+
+  sourceRows: AvailabilityRow[];
 };
 
 type AvailabilityResponse = {
@@ -119,16 +139,16 @@ const checkLabels: Array<{
   label: string;
   countKey?: keyof AvailabilityRow["counts"];
 }> = [
-  { key: "sku_data", label: "SKU", countKey: "sku_rows" },
-  { key: "pnl_data", label: "P&L", countKey: "pnl_rows" },
-  { key: "ads_connected", label: "Ads" },
-  { key: "inventory_connected", label: "Inventory", countKey: "inventory_rows" },
-  {
-    key: "currency_global_data",
-    label: "Currency/Global",
-    countKey: "global_rows",
-  },
-];
+    { key: "sku_data", label: "SKU", countKey: "sku_rows" },
+    { key: "pnl_data", label: "P&L", countKey: "pnl_rows" },
+    { key: "ads_connected", label: "Ads" },
+    { key: "inventory_connected", label: "Inventory", countKey: "inventory_rows" },
+    {
+      key: "currency_global_data",
+      label: "Currency/Global",
+      countKey: "global_rows",
+    },
+  ];
 
 const getVisibleMissing = (row: AvailabilityRow) =>
   (row.missing || []).filter(
@@ -154,15 +174,127 @@ const normalizeAvailabilityRow = (row: AvailabilityRow): AvailabilityRow => {
   };
 };
 
+const buildBrandAvailabilityRows = (
+  rows: AvailabilityRow[]
+): BrandAvailabilityRow[] => {
+  const groups = new Map<string, AvailabilityRow[]>();
+
+  rows.forEach((row) => {
+    // Brand is the main identity.
+    // Email is only a fallback if brand_name is missing.
+    const brandKey =
+      row.brand_name?.trim().toLowerCase() ||
+      row.email.trim().toLowerCase();
+
+    const existing = groups.get(brandKey) || [];
+
+    existing.push(row);
+
+    groups.set(brandKey, existing);
+  });
+
+  return Array.from(groups.entries()).map(
+    ([brandKey, brandRows]) => {
+      const primary = brandRows[0];
+
+      const countries = Array.from(
+        new Set(
+          brandRows
+            .map((row) => row.country?.trim())
+            .filter(Boolean) as string[]
+        )
+      );
+
+      const marketplaces = Array.from(
+        new Set(
+          brandRows
+            .map((row) => row.marketplace_id?.trim())
+            .filter(Boolean) as string[]
+        )
+      );
+
+      // A brand-level check is true only when
+      // ALL connected country rows pass that check.
+      const checks: AvailabilityRow["checks"] = {
+        sku_data: brandRows.every(
+          (row) => row.checks.sku_data
+        ),
+
+        pnl_data: brandRows.every(
+          (row) => row.checks.pnl_data
+        ),
+
+        ads_connected: brandRows.every(
+          (row) => row.checks.ads_connected
+        ),
+
+        inventory_connected: brandRows.every(
+          (row) => row.checks.inventory_connected
+        ),
+
+        currency_global_data: brandRows.every(
+          (row) => row.checks.currency_global_data
+        ),
+      };
+
+      const missing = Array.from(
+        new Set(
+          brandRows.flatMap((row) =>
+            getVisibleMissing(row)
+          )
+        )
+      );
+
+      const complete = Object.values(checks).every(
+        Boolean
+      );
+
+      const hasStale = brandRows.some(
+        (row) => getVisibleStatus(row) === "Stale"
+      );
+
+      const status: AvailabilityStatus = complete
+        ? "Complete"
+        : missing.length > 0
+          ? "Missing"
+          : hasStale
+            ? "Stale"
+            : "Missing";
+
+      return {
+        brand_key: brandKey,
+
+        user_id: primary.user_id,
+        name: primary.name,
+        email: primary.email,
+
+        brand_name:
+          primary.brand_name || "Brand not added",
+
+        company_name: primary.company_name,
+
+        countries,
+        marketplaces,
+
+        checks,
+        status,
+        missing,
+
+        sourceRows: brandRows,
+      };
+    }
+  );
+};
+
 export default function DataAvailabilityClient() {
   const router = useRouter();
 
   const [rows, setRows] = useState<AvailabilityRow[]>([]);
-  const [summary, setSummary] = useState<AvailabilityResponse["summary"]>();
-  const [month, setMonth] = useState(currentMonth);
-  const [year, setYear] = useState(currentYear);
+  const month = currentMonth();
+  const year = currentYear();
   const [statusFilter, setStatusFilter] =
     useState<(typeof STATUS_OPTIONS)[number]>("All");
+  const [selectedCountry, setSelectedCountry] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [issueSummary, setIssueSummary] = useState<IssueSummary>({
@@ -213,7 +345,6 @@ export default function DataAvailabilityClient() {
       }
 
       setRows((data.rows || []).map(normalizeAvailabilityRow));
-      setSummary(data.summary);
 
       try {
         const issueParams = new URLSearchParams({
@@ -287,7 +418,6 @@ export default function DataAvailabilityClient() {
         error instanceof Error ? error.message : "Failed to load data availability.";
       toast.error(message);
       setRows([]);
-      setSummary(undefined);
       setIssueSummary({
         open: 0,
         resolved: 0,
@@ -303,43 +433,87 @@ export default function DataAvailabilityClient() {
     fetchAvailability();
   }, [fetchAvailability]);
 
-  const filteredRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  const integratedCountries = useMemo(() => {
+    return Array.from(
+      new Set(
+        rows
+          .map((row) => row.country?.trim())
+          .filter(Boolean) as string[]
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
 
-    return rows.filter((row) => {
-      const visibleStatus = getVisibleStatus(row);
+  useEffect(() => {
+    if (
+      selectedCountry !== "All" &&
+      !integratedCountries.includes(selectedCountry)
+    ) {
+      setSelectedCountry("All");
+    }
+  }, [integratedCountries, selectedCountry]);
+
+  const countryRows = useMemo(
+    () =>
+      selectedCountry === "All"
+        ? rows
+        : rows.filter(
+          (row) =>
+            row.country?.trim().toLowerCase() ===
+            selectedCountry.toLowerCase()
+        ),
+    [rows, selectedCountry]
+  );
+
+  const brandRows = useMemo(
+    () => buildBrandAvailabilityRows(countryRows),
+    [countryRows]
+  );
+
+  const filteredBrandRows = useMemo(() => {
+    const query = searchQuery
+      .trim()
+      .toLowerCase();
+
+    return brandRows.filter((brand) => {
       const matchesStatus =
-        statusFilter === "All" ? true : visibleStatus === statusFilter;
+        statusFilter === "All"
+          ? true
+          : brand.status === statusFilter;
 
       const searchable = [
-        row.name,
-        row.email,
-        row.brand_name,
-        row.company_name,
-        row.country,
-        row.marketplace_id,
-        visibleStatus,
-        getVisibleMissing(row).join(", "),
+        brand.brand_name,
+        brand.company_name,
+        brand.name,
+        brand.email,
+        brand.status,
+        brand.missing.join(" "),
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
 
-      return matchesStatus && (!query || searchable.includes(query));
+      return (
+        matchesStatus &&
+        (!query || searchable.includes(query))
+      );
     });
-  }, [rows, searchQuery, statusFilter]);
+  }, [
+    brandRows,
+    searchQuery,
+    statusFilter,
+  ]);
 
   const visibleSummary = useMemo(() => {
     const counts = {
-      total: rows.length,
+      total: brandRows.length,
       complete: 0,
       missing: 0,
       stale: 0,
       failed: 0,
     };
 
-    rows.forEach((row) => {
-      const status = getVisibleStatus(row).toLowerCase() as
+    brandRows.forEach((brand) => {
+      const status = brand.status.toLowerCase() as
         | "complete"
         | "missing"
         | "stale"
@@ -348,325 +522,309 @@ export default function DataAvailabilityClient() {
     });
 
     return counts;
-  }, [rows]);
+  }, [brandRows]);
 
-  const summaryCards: Array<{
-    label: string;
-    value: number;
-    icon: typeof Database;
-    className: string;
-    onClick?: () => void;
-  }> = [
+  const summaryCards = [
     {
-      label: "Total Checks",
+      label: "Total Brands",
       value: visibleSummary.total,
       icon: Database,
-      className: "border-t-[#31d9e5]",
+      detail: "Availability records checked",
     },
     {
-      label: "Complete",
+      label: "CompleteBrands",
       value: visibleSummary.complete,
       icon: CheckCircle2,
-      className: "border-t-emerald-400",
+      detail: "All required data available",
     },
     {
       label: "Missing",
       value: visibleSummary.missing,
       icon: XCircle,
-      className: "border-t-amber-300",
+      detail: "Records with missing data",
     },
     {
       label: "Open Issues",
       value: issueSummary.open,
       icon: AlertTriangle,
-      className: "border-t-red-300",
-      onClick: () => router.push(`/superadmin/Issues?month=${month}&year=${year}`),
+      detail: "Issues requiring attention",
+      onClick: () =>
+        router.push(
+          `/superadmin/Issues?month=${month}&year=${year}`
+        ),
     },
   ];
 
-  return (
-    <div className="w-full">
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-white/10 bg-[#484962] px-5 py-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
-          <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                if (window.history.length > 1) {
-                  router.back();
-                } else {
-                  router.push("/superadmin/SuperAdminDashboard");
-                }
-              }}
-              className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/80 shadow-sm transition hover:bg-white/10 hover:text-[#31d9e5]"
-              aria-label="Go back"
-              title="Back"
-            >
-              <ArrowLeft size={17} />
-            </button>
+  const availabilityColumns = [
+    {
+      key: "serial_no",
+      label: "S.No.",
 
-            <div className="flex flex-col leading-tight">
-              <PageBreadcrumb
-                pageTitle="Data Availability"
-                variant="superadmin"
-                align="left"
-                textSize="2xl"
-              />
+      render: (brand: BrandAvailabilityRow) => {
+        const index =
+          filteredBrandRows.findIndex(
+            (item) =>
+              item.brand_key ===
+              brand.brand_key
+          );
 
-              <p className="mt-2 text-sm text-white/60">
-                Check user data readiness by country, period, source, and sync status.
-              </p>
-            </div>
-          </div>
+        return (
+          <span className="font-medium text-white/65">
+            {index >= 0 ? index + 1 : "-"}
+          </span>
+        );
+      },
+    },
+
+    {
+      key: "brand",
+      label: "Brand",
+      cellClassName: "font-semibold text-white",
+
+      render: (brand: BrandAvailabilityRow) => (
+        <span>
+          {brand.brand_name ||
+            "Not added"}
+        </span>
+      ),
+    },
+
+    {
+      key: "company",
+      label: "Company",
+
+      render: (brand: BrandAvailabilityRow) =>
+        brand.company_name ||
+        "Not added",
+    },
+
+    {
+      key: "admin",
+      label: "Admin",
+
+      render: (brand: BrandAvailabilityRow) => (
+        <span className="font-medium text-white/75">
+          {brand.name || "Not added"}
+        </span>
+      ),
+    },
+
+    {
+      key: "email",
+      label: "Email",
+
+      render: (brand: BrandAvailabilityRow) => (
+        <span className="break-all text-[10px] text-white/55 2xl:text-xs">
+          {brand.email}
+        </span>
+      ),
+    },
+
+    ...checkLabels.map((check) => ({
+      key: check.key,
+      label: check.label,
+
+      render: (
+        brand: BrandAvailabilityRow
+      ) => {
+        const ok =
+          brand.checks[check.key];
+
+        return (
+          <span
+            className={`inline-flex min-w-[52px] items-center justify-center rounded-full border px-2.5 py-1 text-[10px] font-semibold 2xl:text-xs ${ok
+              ? "border-emerald-300/25 bg-emerald-500/10 text-emerald-200"
+              : "border-red-300/25 bg-red-500/10 text-red-100"
+              }`}
+          >
+            {ok ? "Yes" : "No"}
+          </span>
+        );
+      },
+    })),
+
+    {
+      key: "status",
+      label: "Status",
+
+      render: (
+        brand: BrandAvailabilityRow
+      ) => (
+        <div className="flex flex-col items-center">
+          <span
+            className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold 2xl:text-xs ${statusStyles[brand.status]
+              }`}
+          >
+            {brand.status}
+          </span>
+
+          {brand.missing.length > 0 && (
+            <span className="mt-1 max-w-[150px] whitespace-normal text-center text-[10px] leading-4 text-white/40">
+              {brand.missing.join(", ")}
+            </span>
+          )}
         </div>
+      ),
+    },
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+  ];
+
+  return (
+    <div className="w-full text-white">
+      <div className="space-y-5 2xl:space-y-6">
+
+        {/* PAGE HEADER */}
+        <PageBreadcrumb
+          pageTitle="Data Availability"
+          variant="superadmin"
+          align="left"
+          textSize="2xl"
+        />
+
+        {/* SUMMARY CARDS */}
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
             const Icon = card.icon;
 
-            return (
-              <button
-                type="button"
-                key={card.label}
-                onClick={card.onClick}
-                className={`rounded-2xl border border-t-4 border-white/10 bg-[#484962] p-5 text-left text-white shadow-[0_18px_40px_rgba(20,22,45,0.22)] transition ${
-                  card.onClick
-                    ? "hover:-translate-y-0.5 hover:border-red-200/35 hover:bg-[#50516d]"
-                    : ""
-                } ${card.className}`}
-              >
-                <div className="flex items-center gap-4">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
-                    <Icon size={22} />
-                  </span>
+            const content = (
+              <div className="flex h-full items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5] 2xl:h-11 2xl:w-11">
+                  <Icon size={20} strokeWidth={2.1} />
+                </span>
 
-                  <div>
-                    <p className="text-sm font-medium text-white/60">{card.label}</p>
-                    <h3 className="mt-1 text-xl font-bold text-white">
-                      {card.value.toLocaleString()}
-                    </h3>
-                  </div>
+                <div className="min-w-0">
+                  <SummaryMetricCard
+                    title={card.label}
+                    value={card.value.toLocaleString()}
+                    className="!bg-transparent !p-0 !shadow-none"
+                    titleClassName="!text-white/70"
+                    valueClassName="!text-white"
+                  />
+
+                  <p className="mt-1 text-[11px] text-white/45 2xl:text-xs">
+                    {card.detail}
+                  </p>
                 </div>
-              </button>
+              </div>
+            );
+
+            if (card.onClick) {
+              return (
+                <button
+                  key={card.label}
+                  type="button"
+                  onClick={card.onClick}
+                  className="relative min-h-[88px] overflow-hidden rounded-xl border-t-4 border-[#31D9E5] bg-[#484962] p-3 text-left shadow-[0_14px_32px_rgba(20,22,45,0.20)] transition hover:bg-[#50516d] 2xl:min-h-[96px] 2xl:p-4"
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <div
+                key={card.label}
+                className="relative min-h-[88px] overflow-hidden rounded-xl border-t-4 border-[#31D9E5] bg-[#484962] p-3 shadow-[0_14px_32px_rgba(20,22,45,0.20)] 2xl:min-h-[96px] 2xl:p-4"
+              >
+                {content}
+              </div>
             );
           })}
         </section>
 
-        <section className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#484962] p-4 shadow-[0_18px_40px_rgba(20,22,45,0.22)] xl:flex-row xl:items-center xl:justify-between">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:w-[560px]">
+        {/* FILTERS */}
+        <section className="rounded-xl border border-white/10 bg-[#484962] p-4 shadow-[0_16px_38px_rgba(20,22,45,0.20)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <select
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
+                value={selectedCountry}
+                onChange={(event) => setSelectedCountry(event.target.value)}
+                className="h-10 rounded-lg border border-white/10 bg-white/[0.06] px-3 text-xs text-white outline-none focus:border-[#31d9e5] focus:ring-2 focus:ring-[#31d9e5]/15 2xl:text-sm"
               >
-                {MONTHS.map((option) => (
+                <option disabled className="bg-[#37384f] text-white/50">
+                  Select Country
+                </option>
+
+                <option value="All" className="bg-[#37384f] text-white">
+                  All Countries
+                </option>
+
+                {integratedCountries.map((country) => (
                   <option
-                    key={option.value}
-                    value={option.value}
+                    key={country}
+                    value={country}
                     className="bg-[#37384f] text-white"
                   >
-                    {option.label}
+                    {country.toUpperCase()}
                   </option>
                 ))}
               </select>
-
-              <input
-                type="number"
-                value={year}
-                min={2020}
-                max={2100}
-                onChange={(event) => setYear(Number(event.target.value))}
-                className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
-              />
 
               <select
                 value={statusFilter}
                 onChange={(event) =>
                   setStatusFilter(event.target.value as typeof statusFilter)
                 }
-                className="h-11 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm text-white outline-none focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
+                className="h-10 rounded-lg border border-white/10 bg-white/[0.06] px-3 text-xs text-white outline-none focus:border-[#31d9e5] focus:ring-2 focus:ring-[#31d9e5]/15 2xl:text-sm"
               >
-                {STATUS_OPTIONS.map((option) => (
-                  <option
-                    key={option}
-                    value={option}
-                    className="bg-[#37384f] text-white"
-                  >
-                    {option}
-                  </option>
-                ))}
+                <option disabled className="bg-[#37384f] text-white/50">
+                  Select Status
+                </option>
+
+                <option value="All" className="bg-[#37384f] text-white">
+                  All
+                </option>
+
+                <option value="Complete" className="bg-[#37384f] text-white">
+                  Complete
+                </option>
+
+                <option value="Missing" className="bg-[#37384f] text-white">
+                  Missing
+                </option>
               </select>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative w-full sm:w-[360px]">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search user, brand, country or status..."
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-11 text-sm text-white shadow-sm outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
-                />
+            <div className="relative w-full lg:w-[340px] 2xl:w-[380px]">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search ..."
+                className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 pr-9 text-xs text-white outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-2 focus:ring-[#31d9e5]/15 2xl:text-sm"
+              />
 
-                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#31d9e5]">
-                  <Search size={18} />
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={fetchAvailability}
-                disabled={loading}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#31d9e5] px-4 text-sm font-semibold text-[#303247] transition hover:bg-[#28cbd6] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <RefreshCw size={17} className={loading ? "animate-spin" : ""} />
-                Refresh
-              </button>
+              <Search
+                size={14}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#31d9e5]"
+              />
             </div>
           </div>
-
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#484962] text-white shadow-[0_18px_40px_rgba(20,22,45,0.22)]">
-            {loading ? (
-              <Loader fullscreen backgroundClass="bg-[#37384f]/80" />
-            ) : (
-              <div className="max-w-full overflow-x-auto">
-                <table className="min-w-[1260px] w-full border-collapse">
-                  <thead className="border-b border-white/10 bg-white/[0.04]">
-                    <tr>
-                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-white/55">
-                        User
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-white/55">
-                        Country
-                      </th>
-                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-white/55">
-                        Marketplace
-                      </th>
-                      {checkLabels.map((check) => (
-                        <th
-                          key={check.key}
-                          className="px-4 py-4 text-center text-xs font-semibold uppercase tracking-wide text-white/55"
-                        >
-                          {check.label}
-                        </th>
-                      ))}
-                      <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-white/55">
-                        Status
-                      </th>
-                      <th className="px-5 py-4 text-center text-xs font-semibold uppercase tracking-wide text-white/55">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-white/10">
-                    {filteredRows.length > 0 ? (
-                      filteredRows.map((row) => {
-                        const visibleStatus = getVisibleStatus(row);
-                        const visibleMissing = getVisibleMissing(row);
-
-                        return (
-                          <tr
-                            key={`${row.user_id}-${row.country_key}-${row.marketplace_id || "none"}`}
-                            className="transition hover:bg-white/[0.04]"
-                          >
-                          <td className="px-5 py-4">
-                            <div className="max-w-[260px]">
-                              <p className="font-semibold text-white">
-                                {row.name || "Not added"}
-                              </p>
-                              <p className="mt-1 text-xs text-white/55">
-                                {row.brand_name || "Brand not added"} ·{" "}
-                                {row.company_name || "Company not added"}
-                              </p>
-                              <p className="mt-1 break-all text-xs text-white/45">
-                                {row.email}
-                              </p>
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <span className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-3 py-1 text-xs font-semibold text-[#31d9e5]">
-                              {row.country || "-"}
-                            </span>
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-white/65">
-                            {row.marketplace_id || "-"}
-                          </td>
-
-                          {checkLabels.map((check) => {
-                            const ok = row.checks[check.key];
-
-                            return (
-                              <td
-                                key={check.key}
-                                className="px-4 py-4 text-center"
-                              >
-                                <span
-                                  className={`inline-flex min-w-[74px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                                    ok
-                                      ? "border-emerald-300/25 bg-emerald-500/10 text-emerald-200"
-                                      : "border-red-300/25 bg-red-500/10 text-red-100"
-                                  }`}
-                                >
-                                  {ok ? "Yes" : "No"}
-                                </span>
-                              </td>
-                            );
-                          })}
-
-                          <td className="px-5 py-4">
-                            <div className="max-w-[220px]">
-                              <span
-                                className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusStyles[visibleStatus]}`}
-                              >
-                                {visibleStatus}
-                              </span>
-
-                              {visibleMissing.length > 0 && !hasAllVisibleChecks(row) && (
-                                <p className="mt-2 text-xs leading-5 text-white/45">
-                                  {visibleMissing.join(", ")}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                router.push(
-                                  `/superadmin/ViewUserPage/${encodeURIComponent(row.email)}`
-                                )
-                              }
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white/75 shadow-sm transition hover:border-[#31d9e5]/40 hover:bg-[#31d9e5]/10 hover:text-[#31d9e5]"
-                              title="View user"
-                              aria-label={`View ${row.email}`}
-                            >
-                              <Eye size={17} />
-                            </button>
-                          </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={10}
-                          className="px-5 py-16 text-center text-sm text-white/60"
-                        >
-                          No availability rows found for the selected filters.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
         </section>
+
+        {/* AVAILABILITY TABLE */}
+        {loading ? (
+          <div className="relative min-h-[260px] overflow-hidden rounded-xl border border-white/10 bg-[#484962]">
+            <Loader
+              fullscreen
+              contained
+              backgroundClass="bg-[#37384f]/65"
+              roundedClass="rounded-xl"
+            />
+          </div>
+        ) : (
+          <SuperAdminUsersTable
+            data={filteredBrandRows}
+            columns={availabilityColumns}
+            minWidth="1050px"
+            emptyTitle="No availability records found"
+            emptyDescription={
+              searchQuery.trim()
+                ? "Try changing your search or selected filters."
+                : "No availability records are available for the current period."
+            }
+          />
+        )}
       </div>
     </div>
   );

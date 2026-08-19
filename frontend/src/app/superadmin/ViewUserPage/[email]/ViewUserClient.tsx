@@ -19,6 +19,7 @@ import SuperAdminUsersTable, {
 import { toast } from "sonner";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import Loader from "@/components/loader/Loader";
+import { getMarketplaceDisplays } from "@/lib/utils/amazonMarketplaces";
 
 type AnyRecord = Record<string, any>;
 
@@ -100,7 +101,7 @@ type AdminSectionCardProps = {
 
 function AdminSectionCard({ children }: AdminSectionCardProps) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-white/10 bg-[#484962] text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
+    <section className="overflow-hidden rounded-xl border border-white/10 bg-[#484962] text-white shadow-[0_16px_38px_rgba(20,22,45,0.22)]">
       {children}
     </section>
   );
@@ -517,6 +518,40 @@ export default function ViewUserPage() {
       .filter(Boolean)
       .join(", ") || "-";
   }, [data?.marketplace_id, data?.marketplace_ids]);
+  const connectedCountries = useMemo(() => {
+    const source = Array.isArray(data?.countries) && data.countries.length
+      ? data.countries
+      : data?.country
+        ? [data.country]
+        : [];
+
+    return Array.from(
+      new Set(
+        source
+          .flatMap((value) => String(value || "").split(","))
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
+  }, [data?.countries, data?.country]);
+
+  const countriesCardValue =
+    connectedCountries.length > 0 ? (
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {connectedCountries.map((country) => (
+          <span
+            key={country}
+            className="inline-flex rounded-lg border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1.5"
+          >
+            <span className="text-[11px] font-semibold leading-4 text-white 2xl:text-xs">
+              {country}
+            </span>
+          </span>
+        ))}
+      </div>
+    ) : (
+      "-"
+    );
 
   const infoCards = [
     {
@@ -538,10 +573,9 @@ export default function ViewUserPage() {
       icon: <Package size={22} />,
     },
     {
-      key: "marketplaceId",
-      title: "Marketplace IDs",
-      value: marketplaceIdsLabel,
-      valueClassName: "text-sm leading-5 break-all whitespace-normal",
+      key: "countries",
+      title: "Countries",
+      value: countriesCardValue,
       icon: <ClipboardList size={22} />,
     },
     {
@@ -578,7 +612,7 @@ export default function ViewUserPage() {
     return (
       <div className="min-h-screen bg-[#37384f] p-4 text-white sm:p-6">
         <div className="mx-auto max-w-full">
-          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-100">
+          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-xs font-medium text-red-100 2xl:text-sm">
             {error}
           </div>
         </div>
@@ -591,7 +625,7 @@ export default function ViewUserPage() {
       key: "country",
       label: "Country",
       render: (p) => (
-        <span className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-3 py-1 text-xs font-semibold text-[#31d9e5]">
+        <span className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-[11px] font-semibold 2xl:text-xs text-[#31d9e5]">
           {p.country?.toUpperCase() || "-"}
         </span>
       ),
@@ -654,7 +688,7 @@ export default function ViewUserPage() {
       key: "role",
       label: "Role",
       render: (member) => (
-        <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/75">
+        <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold 2xl:text-xs text-white/75">
           {member.role || "-"}
         </span>
       ),
@@ -668,7 +702,7 @@ export default function ViewUserPage() {
             member.countries?.map((country, i) => (
               <span
                 key={`${country}-${i}`}
-                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-xs font-semibold text-[#31d9e5]"
+                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-[11px] font-semibold 2xl:text-xs text-[#31d9e5]"
               >
                 {country}
               </span>
@@ -689,7 +723,7 @@ export default function ViewUserPage() {
             member.modules?.map((module, i) => (
               <span
                 key={`${module}-${i}`}
-                className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-white/75"
+                className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium 2xl:text-xs text-white/75"
               >
                 {module.replaceAll("_", " ")}
               </span>
@@ -709,7 +743,7 @@ export default function ViewUserPage() {
             member.marketplace_ids?.map((id, i) => (
               <span
                 key={`${id}-${i}`}
-                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-xs font-semibold text-[#31d9e5]"
+                className="inline-flex rounded-full border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-2.5 py-1 text-[11px] font-semibold 2xl:text-xs text-[#31d9e5]"
               >
                 {id}
               </span>
@@ -724,9 +758,9 @@ export default function ViewUserPage() {
 
   return (
     <div className="w-full">
-      <div className="space-y-6">
+      <div className="space-y-5 2xl:space-y-6">
         {/* Page Heading */}
-        <div className="rounded-2xl border border-white/10 bg-[#484962] px-5 py-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
+        <div className="rounded-xl border border-white/10 bg-[#484962] p-4 text-white shadow-[0_16px_38px_rgba(20,22,45,0.22)] 2xl:p-5">
           <div className="flex items-start gap-3">
             <button
               type="button"
@@ -737,7 +771,7 @@ export default function ViewUserPage() {
                   router.push("/superadmin/CDPAdminConsole");
                 }
               }}
-              className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/80 shadow-sm transition hover:bg-white/10 hover:text-[#31d9e5]"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white/80 transition hover:border-[#31d9e5]/30 hover:bg-[#31d9e5]/10 hover:text-[#31d9e5]"
               aria-label="Go back"
               title="Back"
             >
@@ -745,11 +779,11 @@ export default function ViewUserPage() {
             </button>
 
             <div className="flex flex-col leading-tight">
-              <h1 className="text-2xl font-bold tracking-tight text-white">
+              <h1 className="text-lg font-bold tracking-tight text-white 2xl:text-xl">
                 Admin Profile
               </h1>
 
-              <p className="mt-2 text-sm text-white/60">
+              <p className="mt-2 text-xs text-white/60 2xl:text-sm">
                 View user details, business journey, members and marketplace settings.
               </p>
             </div>
@@ -761,24 +795,29 @@ export default function ViewUserPage() {
           {infoCards.map((card) => (
             <div
               key={card.key}
-              className="rounded-2xl border border-t-4 border-white/10 border-t-[#31d9e5] bg-[#484962] p-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.22)] transition hover:-translate-y-0.5 hover:bg-[#4f506b] hover:shadow-[0_22px_48px_rgba(20,22,45,0.30)]"
+              className="relative min-h-[88px] overflow-hidden rounded-xl border border-white/10 bg-[#484962] p-3 text-white shadow-[0_14px_32px_rgba(20,22,45,0.20)] before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-[#31d9e5] 2xl:min-h-[96px] 2xl:p-4"
             >
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5] 2xl:h-11 2xl:w-11">
                   {card.icon}
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-white/60">
+                  <p className="text-xs font-medium text-white/60 2xl:text-sm">
                     {card.title}
                   </p>
 
-                  <h3
-                    className={`mt-1 text-xl font-bold tracking-tight text-white ${card.valueClassName || "truncate"
+                  {React.isValidElement(card.value) ? (
+                    card.value
+                  ) : (
+                    <h3
+                      className={`mt-1 text-lg font-bold tracking-tight text-white 2xl:text-xl ${
+                        card.valueClassName || "truncate"
                       }`}
-                  >
-                    {card.value}
-                  </h3>
+                    >
+                      {card.value}
+                    </h3>
+                  )}
                 </div>
               </div>
             </div>
@@ -787,7 +826,7 @@ export default function ViewUserPage() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-100">
+          <div className="rounded-xl border border-red-300/25 bg-red-500/10 px-4 py-3 text-xs font-medium text-red-100 2xl:text-sm">
             {error}
           </div>
         )}
@@ -805,7 +844,7 @@ export default function ViewUserPage() {
             pageTitle="Business Journey"
             variant="superadmin"
             align="left"
-            textSize="2xl"
+            textSize="xl"
           />
 
           <AdminSectionCard>
@@ -813,27 +852,27 @@ export default function ViewUserPage() {
               className={`relative overflow-hidden ${isSummaryExpanded ? "max-h-none" : "max-h-[520px]"
                 }`}
             >
-              <div className="space-y-4 p-5">
+              <div className="space-y-3 p-4 2xl:p-5">
                 {businessJourneySections.map((section, sectionIndex) => (
                   <div
                     key={`${section.title}-${sectionIndex}`}
-                    className="rounded-2xl border border-white/10 bg-white/[0.05] p-5"
+                    className="rounded-xl border border-white/10 bg-white/[0.04] p-4"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#31d9e5]/15 text-sm font-bold text-[#31d9e5]">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#31d9e5]/15 text-xs font-bold text-[#31d9e5]">
                         {sectionIndex + 1}
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-white">
+                        <h3 className="text-xs font-bold text-white 2xl:text-sm">
                           {section.title.replace(/^\d+\.\s*/, "")}
                         </h3>
 
-                        <div className="mt-4 space-y-4">
+                        <div className="mt-3 space-y-3">
                           {section.paragraphs.map((paragraph, paragraphIndex) => (
                             <p
                               key={`${section.title}-${paragraphIndex}`}
-                              className="text-sm leading-7 text-white/65"
+                              className="text-xs leading-6 text-white/65 2xl:text-sm"
                             >
                               {paragraph}
                             </p>
@@ -852,14 +891,14 @@ export default function ViewUserPage() {
 
             {fullSummary.length > 1800 && (
               <div className="flex items-center justify-between border-t border-white/10 px-5 py-4">
-                <p className="text-xs text-slate-500">
+                <p className="text-[11px] text-white/45 2xl:text-xs">
                   {isSummaryExpanded ? "Showing full journey" : "Showing preview"}
                 </p>
 
                 <button
                   type="button"
                   onClick={() => setIsSummaryExpanded((prev) => !prev)}
-                  className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  className="inline-flex h-9 items-center rounded-lg border border-[#31d9e5]/25 bg-[#31d9e5]/10 px-3 text-xs font-semibold text-[#31d9e5] transition hover:bg-[#31d9e5]/15 2xl:text-sm"
                 >
                   {isSummaryExpanded ? "Show less" : "Read full journey"}
                 </button>
@@ -875,7 +914,7 @@ export default function ViewUserPage() {
               pageTitle="Stock, Transit & Alert Thresholds"
               variant="superadmin"
               align="left"
-              textSize="2xl"
+              textSize="xl"
             />
 
             <AdminSectionCard>
@@ -896,7 +935,7 @@ export default function ViewUserPage() {
             pageTitle="Members Information"
             variant="superadmin"
             align="left"
-            textSize="2xl"
+            textSize="xl"
           />
 
           <AdminSectionCard>

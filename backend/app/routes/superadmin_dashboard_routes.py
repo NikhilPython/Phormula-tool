@@ -6,12 +6,31 @@ import json
 import pandas as pd
 from sqlalchemy import inspect
 from app import db
-from app.models.user_models import CurrencyConversion, Category, UserAdmin , User, UploadHistory, CountryProfile, Member, UserObjective, amazon_user, Inventory, MonthwiseInventory, SuperAdminIssue
+from app.models.user_models import (
+    CurrencyConversion,
+    Category,
+    UserAdmin,
+    User,
+    UploadHistory,
+    CountryProfile,
+    Member,
+    UserObjective,
+    amazon_user,
+    Inventory,
+    MonthwiseInventory,
+    SuperAdminIssue,
+)
 from sqlalchemy.exc import IntegrityError
 from flask import current_app
 import io,jwt, re
 from datetime import datetime, timezone, timedelta
 from app.utils.amazon_utils import amazon_client, db_url, db_url1
+from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
+from app.routes.conversion_rate_routes import (
+    MONTHS_REVERSE_MAP,
+    SEED_COMBOS,
+    upsert_conversion_rate,
+)
 from app.utils.us_process_utils import (
     process_skuwise_us_data,
     process_us_yearly_skuwise_data,
@@ -741,10 +760,187 @@ def _scan_automated_issues(month_name, month_number, year, requested_user_id=Non
         "open_count": open_count,
         "issues": [_issue_to_dict(issue) for issue in issues],
     }
+MARKETPLACE_COUNTRY = {
+    "ATVPDKIKX0DER": "us",
+    "A1F83G8C2ARO7P": "uk",
+    "A2EUQ1WTGCTBG2": "canada",
+}
+
+
+FORMULA_COUNTRY_LABELS = {
+    "uk": "UK",
+    "us": "US",
+    "canada": "Canada",
+}
+
+FORMULA_TRANSACTION_STATUS = {
+    "us": "RELEASED,DEFERRED",
+}
+
+FORMULA_SUPPORTED_COUNTRIES = {
+    "uk",
+    "us",
+}
+
+FORMULA_EXCLUDED_COUNTRIES = {
+    "global",
+    "global_inr",
+    "global_cad",
+    "global_gbp",
+    "uk_usd",
+}
+
+FORMULA_SOURCE_PATTERN = re.compile(
+    r"^user_(?P<user_id>\d+)_"
+    r"(?P<country>[a-zA-Z]+)_"
+    r"(?P<month>"
+    r"january|february|march|april|may|june|"
+    r"july|august|september|october|november|december"
+    r")"
+    r"(?P<year>\d{4})_data$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_formula_country(value):
+    value = (value or "").strip().lower()
+
+    aliases = {
+        "united kingdom": "uk",
+        "great britain": "uk",
+        "gb": "uk",
+        "united states": "us",
+        "usa": "us",
+        "ca": "canada",
+    }
+
+    return aliases.get(value, value)
+
+
+def _marketplace_id_for_formula_country(country):
+    for marketplace_id, marketplace_country in MARKETPLACE_COUNTRY.items():
+        if marketplace_country == country:
+            return marketplace_id
+
+    return None
+
+
+def _available_formula_marketplaces():
+    active_users = User.query.filter_by(status=True).all()
+    active_user_ids = {user.id for user in active_users}
+
+    if not active_user_ids:
+        return []
+
+    engine = db.get_engine()
+    inspector = inspect(engine)
+    available_by_country = {}
+
+    for table_name in inspector.get_table_names():
+        match = FORMULA_SOURCE_PATTERN.match(table_name)
+
+        if not match:
+            continue
+
+        user_id = int(match.group("user_id"))
+        country = _normalize_formula_country(match.group("country"))
+
+        if user_id not in active_user_ids:
+            continue
+
+        if country in FORMULA_EXCLUDED_COUNTRIES:
+            continue
+
+        if country not in FORMULA_SUPPORTED_COUNTRIES:
+            continue
+
+        country_info = available_by_country.setdefault(
+            country,
+            {
+                "source_tables": set(),
+                "user_ids": set(),
+            },
+        )
+        country_info["source_tables"].add(table_name)
+        country_info["user_ids"].add(user_id)
+
+    formula_marketplaces = []
+
+    for country, country_info in available_by_country.items():
+        formula_marketplaces.append({
+            "label": FORMULA_COUNTRY_LABELS.get(country, country.upper()),
+            "country": country,
+            "marketplaceId": _marketplace_id_for_formula_country(country),
+            "transactionStatus": FORMULA_TRANSACTION_STATUS.get(
+                country,
+                "RELEASED",
+            ),
+            "sourceTableCount": len(country_info["source_tables"]),
+            "userCount": len(country_info["user_ids"]),
+        })
+
+    return sorted(
+        formula_marketplaces,
+        key=lambda item: item["label"],
+    )
+
+
+def _amazon_connection_rows_for_user(user_id):
+    rows = (
+        amazon_user.query
+        .filter_by(user_id=user_id)
+        .order_by(amazon_user.id.asc())
+        .all()
+    )
+    connected_rows = [row for row in rows if getattr(row, "is_connected", False)]
+
+    return connected_rows or rows
+
+
+def _safe_amazon_connection_dict(row):
+    return {
+        "region": getattr(row, "region", None),
+        "marketplace_id": getattr(row, "marketplace_id", None),
+        "marketplace_name": getattr(row, "marketplace_name", None),
+        "seller_id": getattr(row, "seller_id", None),
+        "currency": getattr(row, "currency", None),
+        "is_connected": getattr(row, "is_connected", None),
+        "country": getattr(row, "country_name", None),
+        "country_code": getattr(row, "country_code", None),
+        "stock_unit": getattr(row, "stock_unit", None),
+        "transit_time": getattr(row, "transit_time", None),
+    }
 
 
 def _safe_user_dict(u: User):
     countries, marketplace_ids = _connected_amazon_countries(u.id)
+    amazon_connections = _amazon_connection_rows_for_user(u.id)
+    marketplace_ids = [
+        row.marketplace_id
+        for row in amazon_connections
+        if getattr(row, "marketplace_id", None)
+    ]
+    primary_connection = amazon_connections[0] if amazon_connections else None
+    primary_marketplace_id = (
+        getattr(u, "marketplace_id", None)
+        or (
+            getattr(primary_connection, "marketplace_id", None)
+            if primary_connection
+            else None
+        )
+    )
+    primary_country = (
+        getattr(u, "country", None)
+        or (
+            getattr(primary_connection, "country_name", None)
+            if primary_connection
+            else None
+        )
+        or MARKETPLACE_COUNTRY.get(primary_marketplace_id or "")
+    )
+    connected_marketplaces_count = getattr(u, "connected_marketplaces_count", None)
+    if marketplace_ids:
+        connected_marketplaces_count = len(marketplace_ids)
 
     return {
         "id": u.id,
@@ -752,31 +948,147 @@ def _safe_user_dict(u: User):
         "email": u.email,
         "company_name": getattr(u, "company_name", None),
         "brand_name": getattr(u, "brand_name", None),
-        "country": getattr(u, "country", None),
-        "marketplace_id": getattr(u, "marketplace_id", None),
         "countries": countries,
+        "country": primary_country,
+        "marketplace_id": primary_marketplace_id,
         "marketplace_ids": marketplace_ids,
+        "amazon_connections": [
+            _safe_amazon_connection_dict(row)
+            for row in amazon_connections
+        ],
         "annual_sales_range": getattr(u, "annual_sales_range", None),
         "target_sales": float(u.target_sales) if getattr(u, "target_sales", None) is not None else None,
         "address": getattr(u, "address", None),
+        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+        "is_verified": getattr(u, "is_verified", None),
+        "homeCurrency": getattr(u, "homeCurrency", None),
+        "amazon_user_exists": getattr(u, "amazon_user_exists", None),
+        "amazon_ads_exists": getattr(u, "amazon_ads_exists", None),
+        "user_table_exists": getattr(u, "user_table_exists", None),
+        "sku_sheet_exists": getattr(u, "sku_sheet_exists", None),
+        "steps_exists": getattr(u, "steps_exists", None),
+        "amazon_connected": getattr(u, "amazon_connected", None),
+        "connected_marketplaces_count": connected_marketplaces_count,
         # ✅ ADD THIS LINE
-        "status": u.status
+        "status": u.status,
 
     }
-
 
 def _safe_admin_dict(ua: UserAdmin):
+    # Find matching user record by email
+    linked_user = User.query.filter_by(email=ua.email).first()
+
+    address = {}
+
+    if linked_user:
+        address = getattr(linked_user, "address", None) or {}
+    else:
+        address = getattr(ua, "address", None) or {}
+
+    native_country = (
+        address.get("country")
+        if isinstance(address, dict)
+        else getattr(address, "country", None)
+    )
+
     return {
         "id": ua.id,
-        "name": getattr(ua, "name", None),
-        "email": ua.email,
-        "company_name": getattr(ua, "company_name", None),
-        "brand_name": getattr(ua, "brand_name", None),
-        "country": getattr(ua, "country", None),
-        "marketplace_id": getattr(ua, "marketplace_id", None),
-        "annual_sales_range": getattr(ua, "annual_sales_range", None),
-    }
 
+        "name": (
+            getattr(ua, "name", None)
+            or (
+                getattr(linked_user, "name", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "email": ua.email,
+
+        "phone_number": (
+            getattr(ua, "phone_number", None)
+            or getattr(ua, "phone", None)
+            or getattr(ua, "mobile_number", None)
+            or (
+                getattr(linked_user, "phone_number", None)
+                if linked_user
+                else None
+            )
+            or (
+                getattr(linked_user, "phone", None)
+                if linked_user
+                else None
+            )
+            or (
+                getattr(linked_user, "mobile_number", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "brand_name": (
+            getattr(ua, "brand_name", None)
+            or (
+                getattr(linked_user, "brand_name", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "company_name": (
+            getattr(ua, "company_name", None)
+            or (
+                getattr(linked_user, "company_name", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "country": (
+            getattr(ua, "country", None)
+            or (
+                getattr(linked_user, "country", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "native_country": native_country,
+
+        "address": address,
+
+        "marketplace_id": (
+            getattr(ua, "marketplace_id", None)
+            or (
+                getattr(linked_user, "marketplace_id", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "annual_sales_range": (
+            getattr(ua, "annual_sales_range", None)
+            or (
+                getattr(linked_user, "annual_sales_range", None)
+                if linked_user
+                else None
+            )
+        ),
+
+        "created_at": (
+            ua.created_at.isoformat()
+            if getattr(ua, "created_at", None)
+            else (
+                linked_user.created_at.isoformat()
+                if linked_user and getattr(linked_user, "created_at", None)
+                else None
+            )
+        ),
+
+        "is_admin": getattr(ua, "is_admin", None),
+        "is_superadmin": getattr(ua, "is_superadmin", None),
+        "is_verified": getattr(ua, "is_verified", None),
+    }
 
 # --------------------------- routes ---------------------------
 
@@ -962,6 +1274,30 @@ def get_superadmin_dashboard():
         )
 
         countries, marketplace_ids = _connected_amazon_countries(user_id)
+        amazon_connections = _amazon_connection_rows_for_user(user_id)
+        marketplace_ids = [
+            row.marketplace_id
+            for row in amazon_connections
+            if getattr(row, "marketplace_id", None)
+        ]
+        primary_connection = amazon_connections[0] if amazon_connections else None
+        primary_marketplace_id = (
+            getattr(selected_user, "marketplace_id", None)
+            or (
+                getattr(primary_connection, "marketplace_id", None)
+                if primary_connection
+                else None
+            )
+        )
+        primary_country = (
+            getattr(selected_user, "country", None)
+            or (
+                getattr(primary_connection, "country_name", None)
+                if primary_connection
+                else None
+            )
+            or MARKETPLACE_COUNTRY.get(primary_marketplace_id or "")
+        )
 
         return jsonify({
             "email": email_to_search,
@@ -969,10 +1305,14 @@ def get_superadmin_dashboard():
             "name": getattr(selected_user, "name", None),
             "company_name": getattr(selected_user, "company_name", None),
             "brand_name": getattr(selected_user, "brand_name", None),
-            "country": getattr(selected_user, "country", None),
-            "marketplace_id": getattr(selected_user, "marketplace_id", None),
             "countries": countries,
+            "country": primary_country,
+            "marketplace_id": primary_marketplace_id,
             "marketplace_ids": marketplace_ids,
+            "amazon_connections": [
+                _safe_amazon_connection_dict(row)
+                for row in amazon_connections
+            ],
             "annual_sales_range": getattr(selected_user, "annual_sales_range", None),
             "target_sales": float(selected_user.target_sales) if getattr(selected_user, "target_sales", None) is not None else None,
             "address": getattr(selected_user, "address", None),
@@ -1025,6 +1365,7 @@ def get_superadmin_dashboard():
         return jsonify({
             "user_admins": [_safe_admin_dict(ua) for ua in user_admins],
             "users": [_safe_user_dict(u) for u in users],
+            "formula_marketplaces": _available_formula_marketplaces(),
         }), 200
 
     except Exception as e:
@@ -1451,6 +1792,26 @@ def get_superadmin_issues():
         }), 500
 
 
+@superadmin_dashboard_bp.route(
+    "/superadmin/dashboard/formula_marketplaces",
+    methods=["GET"],
+)
+def get_formula_marketplaces():
+    ok, err = _is_superadmin_authenticated()
+    if not ok:
+        payload, code = err
+        return jsonify(payload), code
+
+    try:
+        return jsonify({
+            "formula_marketplaces": _available_formula_marketplaces(),
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "message": f"Error fetching formula marketplaces: {str(e)}",
+        }), 500
+
+
 @superadmin_dashboard_bp.route('/superadmin/dashboard/upload_currency_file', methods=['POST'])
 def upload_currency_file():
     # Authentication check - prioritize token over query parameter
@@ -1644,6 +2005,89 @@ def upload_currency_file():
             'message': 'An error occurred while processing the currency conversion file',
             'error': str(e)
         }), 500
+
+
+@superadmin_dashboard_bp.route('/superadmin/dashboard/fetch_currency_rates', methods=['POST'])
+def fetch_currency_rates():
+    ok, err = _is_superadmin_authenticated()
+    if not ok:
+        payload, code = err
+        return jsonify(payload), code
+
+    data = request.get_json(silent=True) or {}
+    now = datetime.now(timezone.utc)
+    month_number = int(data.get("month") or now.month)
+    year = int(data.get("year") or now.year)
+    month_name = MONTHS_REVERSE_MAP.get(month_number)
+
+    if not month_name:
+        return jsonify({"message": "Month must be between 1 and 12"}), 400
+
+    results = []
+    errors = []
+
+    for user_currency, country, selected_currency in SEED_COMBOS:
+        try:
+            if user_currency.lower() == selected_currency.lower():
+                row = upsert_conversion_rate(
+                    user_currency=user_currency,
+                    country=country,
+                    selected_currency=selected_currency,
+                    month=month_name,
+                    year=year,
+                    rate=1.0,
+                    fetch_if_missing=False,
+                )
+            else:
+                row = upsert_conversion_rate(
+                    user_currency=user_currency,
+                    country=country,
+                    selected_currency=selected_currency,
+                    month=month_name,
+                    year=year,
+                    rate=None,
+                    fetch_if_missing=True,
+                )
+
+            results.append({
+                "id": row.id,
+                "user_currency": row.user_currency,
+                "country": row.country,
+                "selected_currency": row.selected_currency,
+                "month": row.month,
+                "year": row.year,
+                "conversion_rate": row.conversion_rate,
+            })
+        except Exception as e:
+            db.session.rollback()
+            errors.append({
+                "user_currency": user_currency,
+                "country": country,
+                "selected_currency": selected_currency,
+                "month": month_name,
+                "year": year,
+                "error": str(e),
+            })
+
+    if errors and not results:
+        return jsonify({
+            "success": False,
+            "message": "Currency rates could not be fetched automatically",
+            "period": {"month": month_name, "year": year},
+            "errors": errors,
+        }), 502
+
+    return jsonify({
+        "success": len(errors) == 0,
+        "message": (
+            f"Fetched {len(results)} currency conversion rows for {month_name} {year}"
+            if not errors
+            else f"Fetched {len(results)} rows with {len(errors)} errors"
+        ),
+        "period": {"month": month_name, "year": year},
+        "data": results,
+        "errors": errors,
+    }), 200
         
 @superadmin_dashboard_bp.route('/superadmin/dashboard/view_currency_file', methods=['GET'])
 def view_currency_file():
