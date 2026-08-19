@@ -22,7 +22,6 @@ ACTION_THRESHOLDS = {
     "inventory_coverage_months": 2.0,
     "tacos_percent": 20.0,
     "promotional_rebate_percent": 5.0,
-    "return_rate_percent": 3.0,
 }
 
 PRIORITY_ORDER = {"Critical": 0, "High": 1, "Medium": 2, "Opportunity": 3}
@@ -475,7 +474,8 @@ def build_action_items(
             "affected_skus": [str(row.get("sku")) for row in negative_profit if row.get("sku")],
         })
 
-    high_returns: list[tuple[dict[str, Any], float]] = []
+    return_rows: list[tuple[dict[str, Any], float, float]] = []
+
     for row in rows:
         quantity = abs(
             _first_number(
@@ -485,29 +485,63 @@ def build_action_items(
                 "total_quantity",
             )
         )
-        returns = abs(_first_number(row, "return_quantity", "returned_quantity"))
+
+        returns = abs(
+            _first_number(
+                row,
+                "return_quantity",
+                "returned_quantity",
+            )
+        )
+
         rate = returns / quantity * 100.0 if quantity else 0.0
-        if rate >= ACTION_THRESHOLDS["return_rate_percent"]:
-            high_returns.append((row, rate))
-    high_returns.sort(key=lambda entry: entry[1], reverse=True)
-    if high_returns:
-        worst, worst_rate = high_returns[0]
+
+        # No return-rate threshold.
+        # Keep every SKU.
+        return_rows.append((row, returns, rate))
+
+
+    if return_rows:
+        # Find the product with the highest RETURNED QUANTITY,
+        # not the highest return-rate percentage.
+        highest_row, highest_returns, highest_rate = max(
+            return_rows,
+            key=lambda entry: entry[1],
+        )
+
         items.append({
             "id": "high-return-rate",
             "category": "Returns",
-            "priority": "High" if worst_rate >= 5 else "Medium",
-            "title": "High return-rate SKUs",
+            "priority": "High" if highest_rate >= 5 else "Medium",
+            "title": "Product returns",
             "reason": (
-                f"{len(high_returns)} SKU{'s have' if len(high_returns) != 1 else ' has'} "
-                f"return rates at or above {ACTION_THRESHOLDS['return_rate_percent']:.2f}%."
+                f"Return performance across {len(return_rows)} "
+                f"SKU{'s' if len(return_rows) != 1 else ''}."
             ),
             "metrics": [
-                {"value": str(len(high_returns)), "label": "SKUs ≥3%"},
-                {"value": f"{worst_rate:.2f}%", "label": "Max return rate"},
-                {"value": str(worst.get("sku") or worst.get("product_name") or "—"), "label": "Highest SKU"},
+                {
+                    "value": str(len(return_rows)),
+                    "label": "Total SKUs",
+                },
+                {
+                    "value": f"{highest_returns:,.0f}",
+                    "label": "Highest returns",
+                },
+                {
+                    "value": str(
+                        highest_row.get("product_name")
+                        or highest_row.get("Product Name")
+                        or "—"
+                    ),
+                    "label": "Highest product",
+                },
             ],
             "action": "Inspect root cause",
-            "affected_skus": [str(row.get("sku")) for row, _rate in high_returns if row.get("sku")],
+            "affected_skus": [
+                str(row.get("sku"))
+                for row, _returns, _rate in return_rows
+                if row.get("sku")
+            ],
         })
 
     items.sort(key=lambda item: PRIORITY_ORDER.get(item.get("priority"), 99))
