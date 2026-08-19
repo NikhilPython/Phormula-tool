@@ -2513,7 +2513,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           "net_sales"
         )}`}
       >
-        {isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%
+        ({isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%)
       </span>
     );
   };

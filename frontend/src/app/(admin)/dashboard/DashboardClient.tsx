@@ -64,7 +64,11 @@ import DashboardLiveSalesTab from "./DashboardLiveSalesTab";
 import DashboardProductwisePnlSection from "./DashboardProductwisePnlSection";
 import DashboardMtdPlSection from "./DashboardMtdPlSection";
 import DashboardInventoryInsightsTab from "./DashboardInventoryInsightsTab";
-import DashboardActionItemsTab, { BusinessAnalysisView, type MonthlyMetricRow } from "@/components/dashboard/DashboardActionItemsTab";
+import DashboardActionItemsTab, {
+    BusinessAnalysisView,
+    type DashboardActionItem,
+    type MonthlyMetricRow,
+} from "@/components/dashboard/DashboardActionItemsTab";
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import {
     AGEING_TREND_BUCKET_OPTIONS,
@@ -145,6 +149,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 // const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
+const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
@@ -1694,6 +1699,11 @@ export default function DashboardPage() {
         useState<string | null>(null);
     const [inventoryUnavailableNotice, setInventoryUnavailableNotice] =
         useState<InventoryUnavailableNotice | null>(null);
+    const [dashboardActionItems, setDashboardActionItems] = useState<DashboardActionItem[]>([]);
+    const [dashboardActionItemsLoading, setDashboardActionItemsLoading] = useState(false);
+    const [dashboardActionItemsError, setDashboardActionItemsError] = useState<string | null>(null);
+    const [dashboardActionItemsRefreshKey, setDashboardActionItemsRefreshKey] = useState(0);
+    const [dashboardActionSourcesReadyKey, setDashboardActionSourcesReadyKey] = useState<string | null>(null);
 
     type PlSortConfig = {
         key: string;
@@ -2982,6 +2992,111 @@ export default function DashboardPage() {
             ),
         [inventoryCountry, invMonthYear.month, invMonthYear.year]
     );
+
+    useEffect(() => {
+    if (shouldShowDummyUi) {
+        setDashboardActionItems([]);
+        setDashboardActionItemsLoading(false);
+        setDashboardActionItemsError(null);
+        return;
+    }
+
+        // The endpoint reads the monthly tables populated by the dashboard's
+        // source APIs. Wait for that refresh to finish so Action Items cannot
+        // race ahead and render values from an older table snapshot.
+        if (dashboardActionSourcesReadyKey !== inventoryInsightsRequestKey) {
+            setDashboardActionItems([]);
+            setDashboardActionItemsLoading(true);
+            setDashboardActionItemsError(null);
+            return;
+        }
+
+        const controller = new AbortController();
+
+        const loadActionItems = async () => {
+            const token = typeof window !== "undefined"
+                ? localStorage.getItem("jwtToken")
+                : null;
+
+            if (!token) {
+                setDashboardActionItems([]);
+                setDashboardActionItemsLoading(false);
+                setDashboardActionItemsError("Authorization token is missing");
+                return;
+            }
+
+            setDashboardActionItemsLoading(true);
+            setDashboardActionItemsError(null);
+
+            try {
+                const params = new URLSearchParams({
+                    country_key: inventoryCountry,
+                    month_name: invMonthYear.month,
+                    year: invMonthYear.year,
+                    start_day: String(selectedStartDay ?? 1),
+                    end_day: String(
+                        Math.min(
+                            selectedEndDay ?? dashboardAllowedDay,
+                            dashboardAllowedDay
+                        )
+                    ),
+                });
+
+                const response = await fetch(
+                    `${DASHBOARD_ACTION_ITEMS_ENDPOINT}?${params.toString()}`,
+                    {
+                        method: "GET",
+                        headers: {
+                            Accept: "application/json",
+                            Authorization: `Bearer ${token}`,
+                        },
+                        cache: "no-store",
+                        signal: controller.signal,
+                    }
+                );
+                const payload = await response.json().catch(() => null);
+
+                if (!response.ok || payload?.success === false) {
+                    throw new Error(
+                        payload?.message ||
+                        payload?.error ||
+                        `Action items failed: ${response.status}`
+                    );
+                }
+
+                setDashboardActionItems(
+                    Array.isArray(payload?.items) ? payload.items : []
+                );
+            } catch (error: unknown) {
+                if (error instanceof DOMException && error.name === "AbortError") return;
+                setDashboardActionItems([]);
+                setDashboardActionItemsError(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to load dashboard action items"
+                );
+            } finally {
+                if (!controller.signal.aborted) {
+                    setDashboardActionItemsLoading(false);
+                }
+            }
+        };
+
+        void loadActionItems();
+
+        return () => controller.abort();
+    }, [
+        shouldShowDummyUi,
+        inventoryCountry,
+        invMonthYear.month,
+        invMonthYear.year,
+        selectedStartDay,
+        selectedEndDay,
+        dashboardAllowedDay,
+        inventoryInsightsRequestKey,
+        dashboardActionSourcesReadyKey,
+        dashboardActionItemsRefreshKey,
+    ]);
 
     const inventoryInsightsReportCountry =
         platform === "global" ? selectedGlobalInventoryCountry : countryName;
@@ -4448,6 +4563,7 @@ export default function DashboardPage() {
         const runId = dashboardLoadRunIdRef.current + 1;
         dashboardLoadRunIdRef.current = runId;
         dashboardLoadCancelledRef.current = false;
+        setDashboardActionSourcesReadyKey(null);
         const ensureDashboardLoadActive = () => {
             if (
                 dashboardLoadCancelledRef.current ||
@@ -4555,6 +4671,10 @@ export default function DashboardPage() {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
             }
 
+            // All three Action Items inputs have now completed their refresh:
+            // P&L monthly data, current/aged inventory, and Live BI.
+            setDashboardActionSourcesReadyKey(inventoryInsightsRequestKey);
+
             setStep(3, "Plotting Graph", 40, "Preparing charts and tables...");
             await waitForPaint();
             ensureDashboardLoadActive();
@@ -4621,6 +4741,7 @@ export default function DashboardPage() {
         fetchShopifyPrev,
         fetchInventory,
         runAdsBackgroundSync,
+        inventoryInsightsRequestKey,
     ]);
 
     const liveDashboardCountry = useMemo(() => {
@@ -5388,6 +5509,10 @@ export default function DashboardPage() {
                     isManualRefreshRef.current = false;
 
                     applyDashboardCachePayload(cacheResult.payload);
+                    // No source refresh runs on a cache hit. The persisted
+                    // monthly tables are therefore the current Action Items
+                    // source for this cached dashboard snapshot.
+                    setDashboardActionSourcesReadyKey(inventoryInsightsRequestKey);
 
                     const cacheRefreshAt =
                         normalizeRefreshTimestamp(cacheResult.payload?.lastUpdatedAt) ??
@@ -5443,6 +5568,7 @@ export default function DashboardPage() {
         applyDashboardCachePayload,
         normalizeRefreshTimestamp,
         runDashboardLoadWithSteps,
+        inventoryInsightsRequestKey,
     ]);
 
     /* ===================== AMAZON DERIVED DATA ===================== */
@@ -6708,7 +6834,7 @@ export default function DashboardPage() {
         0
     );
 
-   // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
+    // Old UI logic used brand spend minus deals/vouchers as additional ad cost.
     const rawCostOfAds = Math.abs(rawSponsoredBrandSpend) + Math.abs(rawDealVouchers);
 
     // Prefer backend total ad value first.
@@ -12064,8 +12190,20 @@ export default function DashboardPage() {
             year: currentDisplayMonth.year,
             country: countryName,
 
-            total_quantity: unitsKpi.current,
-            quantity: unitsKpi.current,
+            quantity: toNumber(currentGrand?.quantity ?? 0),
+
+            return_quantity: toNumber(
+                currentGrand?.return_quantity ??
+                currentGrand?.returns_quantity ??
+                currentGrand?.return_qty ??
+                0
+            ),
+
+            total_quantity: toNumber(
+                currentGrand?.total_quantity ??
+                unitsKpi.current
+            ),
+
             net_sales: netSalesKpi.current,
             asp: aspKpi.current,
             platform_fee: currentOtherTransactions,
@@ -12205,14 +12343,18 @@ export default function DashboardPage() {
                 )}
 
                 {activeTab === "action" && (
-                    <DashboardActionItemsTab />
+                    <DashboardActionItemsTab
+                        actionItems={dashboardActionItems}
+                        loading={dashboardActionItemsLoading}
+                        error={dashboardActionItemsError}
+                        onRetry={() => setDashboardActionItemsRefreshKey((value) => value + 1)}
+                    />
                 )}
 
                 {activeTab === "analysis" && (
                     <BusinessAnalysisView
                         monthlyData={businessAnalysisMonthlyData}
                         currency={displayCurrency}
-                        useDummyFallback={shouldShowDummyUi}
                         loading={
                             !shouldShowDummyUi &&
                             (loading || (platform === "global" && previousSkuwiseGlobalLoading))

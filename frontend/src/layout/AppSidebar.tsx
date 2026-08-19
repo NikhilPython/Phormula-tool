@@ -542,6 +542,10 @@ const AppSidebar: React.FC = () => {
         redirectPath = `/live-dashboard/${firstAllowedCountry}/${month}/${year}`;
         break;
 
+      case "customer-reviews":
+        redirectPath = `/customer-reviews/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
       case "pnl-dashboard":
         redirectPath = `/pnl-dashboard/${ranged}/${firstAllowedCountry}/${month}/${year}`;
         break;
@@ -950,6 +954,10 @@ const AppSidebar: React.FC = () => {
           newPath = `/live-dashboard/${newCountryName}/${month}/${year}`;
           break;
 
+        case "customer-reviews":
+          newPath = `/customer-reviews/${newCountryName}/${month}/${year}`;
+          break;
+
         case "pnl-dashboard":
           newPath = `/pnl-dashboard/${ranged}/${newCountryName}/${month}/${year}`;
           break;
@@ -1045,6 +1053,14 @@ const AppSidebar: React.FC = () => {
       ),
       subItems: [
         {
+          name: "Action Items",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#action-items`,
+        },
+        {
+          name: "Business Analysis",
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#business-analysis`,
+        },
+        {
           name: "AI Insights",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#ai-insights`,
         },
@@ -1059,6 +1075,10 @@ const AppSidebar: React.FC = () => {
         {
           name: "Inventory Insights",
           path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-insights`,
+        },
+        {
+          name: "Customer Reviews",
+          path: `/customer-reviews/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
         },
       ],
     },

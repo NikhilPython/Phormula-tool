@@ -1888,7 +1888,12 @@ def fetch_high_alert_threshold(user_id: int, country_key: str):
 
     return round(threshold_months, 2)
 
-def build_high_alert_coverage_summary(rows, user_id, country_key):
+def build_high_alert_coverage_summary(
+    rows,
+    user_id,
+    country_key,
+    high_alert_threshold_override=None,
+):
     """
     Calculates average coverage ratio only for High Alert SKUs.
 
@@ -1899,7 +1904,11 @@ def build_high_alert_coverage_summary(rows, user_id, country_key):
       if the weekly policy is missing, threshold = 2.0 months
     """
 
-    high_alert_threshold = fetch_high_alert_threshold(user_id, country_key)
+    high_alert_threshold = (
+        float(high_alert_threshold_override)
+        if high_alert_threshold_override is not None
+        else fetch_high_alert_threshold(user_id, country_key)
+    )
 
     if high_alert_threshold is None:
         high_alert_threshold = 2.0
