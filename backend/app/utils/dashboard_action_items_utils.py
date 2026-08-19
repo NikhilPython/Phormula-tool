@@ -166,9 +166,48 @@ def _load_inventory_facts(
                 high_alert_thresholds.append(threshold)
 
             categories = build_inventory_categories(rows)
+
+            # Build a lookup of monthly/30-day units sold from the original
+            # inventory rows before they are reduced to category items.
+            units_sold_by_sku: dict[str, float] = {}
+
+            for row in rows:
+                sku = str(
+                    row.get("SKU")
+                    or row.get("sku")
+                    or ""
+                ).strip()
+
+                if not sku:
+                    continue
+
+                units_sold = 0.0
+
+                # The inventory API uses a dynamic column such as:
+                # "Current Month Units Sold (August)"
+                for key, value in row.items():
+                    if str(key).startswith("Current Month Units Sold"):
+                        units_sold = _number(value)
+                        break
+
+                units_sold_by_sku[sku] = units_sold
+
+
             for item in (categories.get("liquidate") or {}).get("items") or []:
                 enriched = dict(item)
                 enriched["country"] = child_country
+
+                sku = str(
+                    item.get("sku")
+                    or item.get("SKU")
+                    or ""
+                ).strip()
+
+                enriched["current_month_units_sold"] = units_sold_by_sku.get(
+                    sku,
+                    0.0,
+                )
+
                 liquidate_items.append(enriched)
 
             loaded_countries.append(child_country)
@@ -347,22 +386,60 @@ def build_action_items(
 
     age_totals = inventory.get("age_totals") or {}
     liquidate_items = inventory.get("liquidate_items") or []
-    units_271_365 = _number(age_totals.get("inv-age-271-to-365-days"))
-    units_365_plus = _number(age_totals.get("inv-age-365-plus-days"))
-    if liquidate_items and (units_271_365 > 0 or units_365_plus > 0):
+
+    units_181_270 = _number(
+        age_totals.get("inv-age-181-to-270-days")
+    )
+
+    units_271_365 = _number(
+        age_totals.get("inv-age-271-to-365-days")
+    )
+
+    units_365_plus = _number(
+        age_totals.get("inv-age-365-plus-days")
+    )
+
+    total_aged_units = units_181_270 + units_271_365 + units_365_plus
+
+    # Average coverage ratio for products in the aged/liquidate bucket.
+    # Total sales only for products that are in the aged/liquidate bucket.
+    aged_products_30_day_sales = sum(
+        _number(item.get("current_month_units_sold"))
+        for item in liquidate_items
+    )
+
+    # Coverage ratio =
+    # total aged units / combined sales of those aged products
+    aged_coverage_ratio = (
+        total_aged_units / aged_products_30_day_sales
+        if aged_products_30_day_sales > 0
+        else 0.0
+    )
+
+    if liquidate_items and total_aged_units > 0:
         items.append({
             "id": "aged-inventory",
             "category": "Inventory & Dispatch",
             "priority": "High" if units_365_plus > 0 else "Medium",
             "title": "Aged inventory requires a clearance plan",
             "reason": (
-                f"{len(liquidate_items)} SKU{'s' if len(liquidate_items) != 1 else ''} "
-                "contain inventory aged 271 days or more."
+                f"{len(liquidate_items)} "
+                f"product{'s' if len(liquidate_items) != 1 else ''} "
+                "contain inventory aged 181 days or more."
             ),
             "metrics": [
-                {"value": f"{units_271_365:,.0f}", "label": "271–365 day units"},
-                {"value": f"{units_365_plus:,.0f}", "label": "365+ day units"},
-                {"value": str(len(liquidate_items)), "label": "Affected SKUs"},
+                {
+                    "value": f"{aged_coverage_ratio:.2f} mo",
+                    "label": "Coverage ratio",
+                },
+                {
+                    "value": f"{total_aged_units:,.0f}",
+                    "label": "Aged units",
+                },
+                {
+                    "value": str(len(liquidate_items)),
+                    "label": "Products",
+                },
             ],
             "action": "Plan liquidation",
             "affected_skus": [
@@ -409,28 +486,29 @@ def build_action_items(
             "affected_skus": [],
         })
 
-    rebate_amount = abs(
-        _first_number(totals, "promotional_rebates")
-        or _number(aligned_totals.get("promotional_rebates"))
-        or _sum(rows, "promotional_rebates")
+    # Find the product with the highest promotional rebate percentage.
+    top_rebate = max(
+        rows,
+        key=lambda row: abs(
+            _first_number(
+                row,
+                "promotional_rebates_percentage",
+            )
+        ),
+        default={},
     )
-    rebate_percent = abs(
-        _first_number(totals, "promotional_rebates_percentage")
-    )
-    if not rebate_percent and rebate_amount and net_sales:
-        rebate_percent = rebate_amount / abs(net_sales) * 100.0
-    if rebate_amount and rebate_percent >= ACTION_THRESHOLDS["promotional_rebate_percent"]:
-        top_rebate = max(
-            rows,
-            key=lambda row: abs(
-                _first_number(
-                    row,
-                    "promotional_rebates_percentage",
-                )
-            ),
-            default={},
-        )
 
+    top_rebate_percent = abs(
+        _first_number(
+            top_rebate,
+            "promotional_rebates_percentage",
+        )
+    )
+
+    # Show the action only when at least one product exceeds 10%.
+    # Since top_rebate is the product with the highest percentage,
+    # checking this one product is enough.
+    if top_rebate and top_rebate_percent > 10:
         top_rebate_amount = abs(
             _first_number(
                 top_rebate,
@@ -445,24 +523,22 @@ def build_action_items(
             )
         )
 
-        top_rebate_percent = abs(
-            _first_number(
-                top_rebate,
-                "promotional_rebates_percentage",
-            )
+        product_name = str(
+            top_rebate.get("product_name")
+            or top_rebate.get("Product Name")
+            or "—"
         )
 
         items.append({
             "id": "promotional-rebates",
             "category": "Finance",
-            "priority": "High" if rebate_percent >= 8 else "Medium",
+            "priority": "High",
             "title": "Promotional rebate leakage",
-            "reason": f"Promotional rebates are {rebate_percent:.2f}% of net sales.",
+            "reason": (
+                f"{product_name} has promotional rebates of "
+                f"{top_rebate_percent:.2f}% of net sales."
+            ),
             "metrics": [
-                {
-                    "value": _money(top_rebate_amount, symbol),
-                    "label": "Rebates",
-                },
                 {
                     "value": _money(top_rebate_net_sales, symbol),
                     "label": "Net sales",
@@ -480,12 +556,13 @@ def build_action_items(
                     "label": "Top rebate product",
                 },
             ],
+
             "action": "Review promotions",
             "affected_skus": [
                 str(top_rebate.get("sku"))
             ] if top_rebate.get("sku") else [],
         })
-
+        
     negative_profit = sorted(
         [row for row in rows if _number(row.get("cm2_profit")) < 0],
         key=lambda row: _number(row.get("cm2_profit")),
