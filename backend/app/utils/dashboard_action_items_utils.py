@@ -422,9 +422,36 @@ def build_action_items(
     if rebate_amount and rebate_percent >= ACTION_THRESHOLDS["promotional_rebate_percent"]:
         top_rebate = max(
             rows,
-            key=lambda row: abs(_first_number(row, "promotional_rebates")),
+            key=lambda row: abs(
+                _first_number(
+                    row,
+                    "promotional_rebates_percentage",
+                )
+            ),
             default={},
         )
+
+        top_rebate_amount = abs(
+            _first_number(
+                top_rebate,
+                "promotional_rebates",
+            )
+        )
+
+        top_rebate_net_sales = abs(
+            _first_number(
+                top_rebate,
+                "net_sales",
+            )
+        )
+
+        top_rebate_percent = abs(
+            _first_number(
+                top_rebate,
+                "promotional_rebates_percentage",
+            )
+        )
+
         items.append({
             "id": "promotional-rebates",
             "category": "Finance",
@@ -432,48 +459,89 @@ def build_action_items(
             "title": "Promotional rebate leakage",
             "reason": f"Promotional rebates are {rebate_percent:.2f}% of net sales.",
             "metrics": [
-                {"value": _money(rebate_amount, symbol), "label": "Rebates"},
-                {"value": f"{rebate_percent:.2f}%", "label": "of net sales"},
-                {"value": str(top_rebate.get("product_name") or top_rebate.get("Product Name") or "—"), "label": "Top rebate product",},
+                {
+                    "value": _money(top_rebate_amount, symbol),
+                    "label": "Rebates",
+                },
+                {
+                    "value": _money(top_rebate_net_sales, symbol),
+                    "label": "Net sales",
+                },
+                {
+                    "value": f"{top_rebate_percent:.2f}%",
+                    "label": "Promo %",
+                },
+                {
+                    "value": str(
+                        top_rebate.get("product_name")
+                        or top_rebate.get("Product Name")
+                        or "—"
+                    ),
+                    "label": "Top rebate product",
+                },
             ],
             "action": "Review promotions",
-            "affected_skus": [str(top_rebate.get("sku"))] if top_rebate.get("sku") else [],
+            "affected_skus": [
+                str(top_rebate.get("sku"))
+            ] if top_rebate.get("sku") else [],
         })
 
     negative_profit = sorted(
         [row for row in rows if _number(row.get("cm2_profit")) < 0],
         key=lambda row: _number(row.get("cm2_profit")),
     )
+
     if negative_profit:
-        total_loss = abs(sum(_number(row.get("cm2_profit")) for row in negative_profit))
-        margins: list[float] = []
-        for row in negative_profit:
-            margin = _first_number(
-                row,
-                "cm2_profit_per",
-                "cm2_margin_curr",
-                "profit_percentage",
+        total_loss = abs(
+            sum(
+                _number(row.get("cm2_profit"))
+                for row in negative_profit
             )
-            sales = abs(_first_number(row, "net_sales", "net_sales_curr"))
-            if not margin and sales:
-                margin = _number(row.get("cm2_profit")) / sales * 100.0
-            margins.append(margin)
-        worst_margin = min(margins, default=0.0)
+        )
+
+        # negative_profit is sorted from most negative CM2 to least negative.
+        # Therefore the first row is the worst CM2 product.
+        worst_product = negative_profit[0]
+
         items.append({
             "id": "negative-profit-skus",
             "category": "Finance",
-            "priority": "High" if len(negative_profit) >= 5 or total_loss >= 1000 else "Medium",
+            "priority": (
+                "High"
+                if len(negative_profit) >= 5 or total_loss >= 1000
+                else "Medium"
+            ),
             "title": "Negative-CM2 SKUs",
-            "reason": f"{len(negative_profit)} SKU{'s are' if len(negative_profit) != 1 else ' is'} currently below zero CM2 profit.",
+            "reason": (
+                f"{len(negative_profit)} "
+                f"SKU{'s are' if len(negative_profit) != 1 else ' is'} "
+                "currently below zero CM2 profit."
+            ),
             "metrics": [
-                {"value": str(len(negative_profit)), "label": "SKUs"},
-                {"value": _money(total_loss, symbol), "label": "Total loss"},
-                {"value": f"{worst_margin:.2f}%", "label": "Worst margin"},
+                {
+                    "value": str(len(negative_profit)),
+                    "label": "SKUs",
+                },
+                {
+                    "value": _money(total_loss, symbol),
+                    "label": "Total loss",
+                },
+                {
+                    "value": str(
+                        worst_product.get("product_name")
+                        or worst_product.get("Product Name")
+                        or "—"
+                    ),
+                    "label": "Worst product",
+                },
             ],
             "action": "Reprice / pause",
-            "affected_skus": [str(row.get("sku")) for row in negative_profit if row.get("sku")],
+            "affected_skus": [
+                str(row.get("sku"))
+                for row in negative_profit
+                if row.get("sku")
+            ],
         })
-
     return_rows: list[tuple[dict[str, Any], float, float]] = []
 
     for row in rows:
