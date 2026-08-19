@@ -434,7 +434,7 @@ def build_action_items(
             "metrics": [
                 {"value": _money(rebate_amount, symbol), "label": "Rebates"},
                 {"value": f"{rebate_percent:.2f}%", "label": "of net sales"},
-                {"value": str(top_rebate.get("sku") or top_rebate.get("product_name") or "—"), "label": "Top rebate SKU"},
+                {"value": str(top_rebate.get("product_name") or top_rebate.get("Product Name") or "—"), "label": "Top rebate product",},
             ],
             "action": "Review promotions",
             "affected_skus": [str(top_rebate.get("sku"))] if top_rebate.get("sku") else [],

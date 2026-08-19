@@ -115,6 +115,7 @@ def create_app():
     from app.routes.email_routes import email_bp
     from app.routes.notification_routes import notification_bp
     from app.routes.inventory_current_routes import inventory_current_bp
+    from app.routes.dashboard_action_items_routes import dashboard_action_items_bp
     from app.routes.check_routes import check_bp
     from app.routes.customer_feedback_routes import customer_feedback_bp
 
