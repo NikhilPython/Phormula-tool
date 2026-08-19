@@ -254,16 +254,17 @@ export default function SignUpForm() {
     if (!result.success || isLoading) return;
 
     try {
-      const localDigits = form.phoneRaw;
+      const localDigits = form.phoneRaw.replace(/\D/g, "");
       const dialDigits = form.phoneDialCode.replace(/\D/g, "");
+
       const fullPhone = `+${dialDigits}${localDigits}`;
-      const formatted = formatPhoneNumber(fullPhone);
+      const formattedPhone = `+${dialDigits} ${localDigits}`;
 
       await registerUser({
         name: form.name.trim(),
         email: form.email.trim(),
         password: form.password,
-        phone_number: formatted,
+        phone_number: formattedPhone,
         phone_number_raw: fullPhone,
       }).unwrap();
     } catch {
@@ -454,8 +455,8 @@ export default function SignUpForm() {
                                 >
                                   <span
                                     className={`inline-flex h-4 w-4 items-center justify-center rounded-full border ${rule.ok
-                                        ? "border-green-500 text-green-600"
-                                        : "border-red-500 text-red-600"
+                                      ? "border-green-500 text-green-600"
+                                      : "border-red-500 text-red-600"
                                       }`}
                                     aria-hidden="true"
                                   >

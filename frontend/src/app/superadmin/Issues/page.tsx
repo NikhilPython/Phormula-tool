@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import IssuesClient from "./client";
+import IssuesClient from "./IssuesClient";
 
 export const metadata: Metadata = {
   title: "Issues | Phormula Super Admin",

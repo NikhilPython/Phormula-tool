@@ -13,6 +13,7 @@ type SummaryMetricCardProps = {
   title: string;
   value: React.ReactNode;
   className?: string;     // container styles (bg/border)
+  titleClassName?: string;
   valueClassName?: string;
   comparisons?: ComparisonRow[];
 };
@@ -21,6 +22,7 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
   title,
   value,
   className = "",
+  titleClassName = "",
   valueClassName = "",
   comparisons = [],
 }) => {
@@ -32,7 +34,14 @@ const SummaryMetricCard: React.FC<SummaryMetricCardProps> = ({
       ].join(" ")}
     >
       <div className="flex justify-between items-center ">
-        <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">{title}</span>
+        <span
+          className={[
+            "text-[10px] 2xl:text-xs font-medium",
+            titleClassName || "text-charcoal-500",
+          ].join(" ")}
+        >
+          {title}
+        </span>
       </div>
 
       <div

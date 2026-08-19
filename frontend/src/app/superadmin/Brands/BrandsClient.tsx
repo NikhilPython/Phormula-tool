@@ -9,6 +9,10 @@ import { toast } from "sonner";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SuperAdminUsersTable from "@/components/admin/table/SuperAdminUsersTable";
 import Loader from "@/components/loader/Loader";
+import {
+    getMarketplaceCountryLabel,
+    getMarketplaceDisplay,
+} from "@/lib/utils/amazonMarketplaces";
 
 const MIN_LOADER_MS = 3000;
 
@@ -19,7 +23,9 @@ type BrandRow = {
     name: string;
     company_name: string;
     country?: string;
+    countries?: string[];
     marketplace_id?: string;
+    marketplace_ids?: string[];
     status?: string | boolean;
     address?: {
         building?: string;
@@ -33,6 +39,21 @@ type BrandRow = {
 type DashboardResponse = {
     users?: BrandRow[];
     message?: string;
+};
+
+const getBrandCountries = (brand: BrandRow) => {
+    const values =
+        Array.isArray(brand.countries) && brand.countries.length
+            ? brand.countries
+            : String(brand.country || "").split(",");
+
+    return Array.from(
+        new Set(
+            values
+                .map((country) => String(country).trim())
+                .filter(Boolean)
+        )
+    );
 };
 
 const BrandsPage = () => {
@@ -200,7 +221,7 @@ const BrandsPage = () => {
 
                         <p className="mt-1 text-sm text-white/60">
                             Are you sure you want to {nextLabel}{" "}
-                            <span className="font-medium text-white">{brand.email}</span>?
+                            <span className="font-medium text-white">{brand.brand_name}</span>?
                         </p>
                     </div>
 
@@ -281,7 +302,7 @@ const BrandsPage = () => {
         }
     };
 
-    const confirmDeleteBrand = (email: string) => {
+    const confirmDeleteBrand = (email: string, brandName: string) => {
         toast.custom(
             (toastId) => (
                 <div className="w-[360px] rounded-xl border border-white/10 bg-[#37384f] p-4 text-white shadow-[0_24px_55px_rgba(20,22,45,0.45)]">
@@ -290,7 +311,7 @@ const BrandsPage = () => {
 
                         <p className="mt-1 text-sm text-white/60">
                             This will permanently delete{" "}
-                            <span className="font-medium text-white">{email}</span>.
+                            <span className="font-medium text-white">{brandName}</span>.
                         </p>
                     </div>
 
@@ -344,7 +365,9 @@ const BrandsPage = () => {
                 (brand.brand_name || "").toLowerCase().includes(query) ||
                 (brand.company_name || "").toLowerCase().includes(query) ||
                 (brand.address?.country || "").toLowerCase().includes(query) ||
-                (brand.country || "").toLowerCase().includes(query) ||
+                getBrandCountries(brand).some((country) =>
+                    country.toLowerCase().includes(query)
+                ) ||
                 (brand.name || "").toLowerCase().includes(query) ||
                 (brand.email || "").toLowerCase().includes(query) ||
                 (brand.marketplace_id || "").toLowerCase().includes(query)
@@ -356,38 +379,7 @@ const BrandsPage = () => {
         <div className="w-full">
             <div className="space-y-6">
                 {/* Page Heading */}
-                <div className="rounded-2xl border border-white/10 bg-[#484962] px-5 py-5 text-white shadow-[0_18px_40px_rgba(20,22,45,0.25)]">
-                    <div className="flex items-start gap-3">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (window.history.length > 1) {
-                                    router.back();
-                                } else {
-                                    router.push("/superadmin/CDPAdminConsole");
-                                }
-                            }}
-                            className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/80 shadow-sm transition hover:bg-white/10 hover:text-[#31d9e5]"
-                            aria-label="Go back"
-                            title="Back"
-                        >
-                            <ArrowLeft size={17} />
-                        </button>
 
-                        <div className="flex flex-col leading-tight">
-                            <PageBreadcrumb
-                                pageTitle="Brands"
-                                variant="superadmin"
-                                align="left"
-                                textSize="2xl"
-                            />
-
-                            <p className="mt-2 text-sm text-white/60">
-                                View all brand details, status and marketplace information.
-                            </p>
-                        </div>
-                    </div>
-                </div>
 
                 <section className="space-y-3">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -398,17 +390,17 @@ const BrandsPage = () => {
                             textSize="2xl"
                         />
 
-                        <div className="relative w-full md:w-[360px]">
+                        <div className="relative w-full md:w-[260px] 2xl:w-[300px]">
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search by Brand, Company, Name or Email..."
-                                className="h-[42px] w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 pr-11 text-sm text-white shadow-sm outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-4 focus:ring-[#31d9e5]/15"
+                                className="h-9 w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 pr-9 text-xs text-white outline-none placeholder:text-white/40 focus:border-[#31d9e5] focus:ring-2 focus:ring-[#31d9e5]/15"
                             />
 
-                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#31d9e5]">
-                                <FaSearch />
+                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#31d9e5]">
+                                <FaSearch size={13} />
                             </span>
                         </div>
                     </div>
@@ -427,6 +419,21 @@ const BrandsPage = () => {
                             }
                             columns={[
                                 {
+                                    key: "serial_no",
+                                    label: "S.No.",
+                                    render: (brand) => {
+                                        const index = filteredBrandRows.findIndex(
+                                            (item) => String(item.id) === String(brand.id)
+                                        );
+
+                                        return (
+                                            <span className="font-medium text-white/65">
+                                                {index >= 0 ? index + 1 : "-"}
+                                            </span>
+                                        );
+                                    },
+                                },
+                                {
                                     key: "brand_name",
                                     label: "Brand Name",
                                     cellClassName: "font-semibold text-white",
@@ -443,17 +450,32 @@ const BrandsPage = () => {
                                     render: (brand) => brand.address?.country?.trim() || "Not added",
                                 },
                                 {
-                                    key: "marketplace",
-                                    label: "Marketplace",
-                                    render: (brand) => (
-                                        <span className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium capitalize text-white/75">
-                                            {brand.country || "Not added"}
-                                        </span>
-                                    ),
+                                    key: "countries",
+                                    label: "Country",
+                                    render: (brand) => {
+                                        const countries = getBrandCountries(brand);
+
+                                        return countries.length ? (
+                                            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                                                {countries.map((country) => (
+                                                    <span
+                                                        key={country}
+                                                        className="inline-flex rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-medium text-white/75"
+                                                    >
+                                                        {country.toUpperCase()}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="text-white/45">
+                                                Not added
+                                            </span>
+                                        );
+                                    },
                                 },
                                 {
                                     key: "name",
-                                    label: "Name",
+                                    label: "Admin Name",
                                     render: (brand) => brand.name || "Not added",
                                 },
                                 {
@@ -462,6 +484,43 @@ const BrandsPage = () => {
                                     render: (brand) => (
                                         <span className="break-all">{brand.email || "Not added"}</span>
                                     ),
+                                },
+                                {
+                                    key: "status",
+                                    label: "Status",
+                                    render: (brand) => {
+                                        const brandStatus = normalizeStatus(brand.status);
+                                        const isBusy = !!actionLoading[brand.email];
+
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={() => confirmToggleStatus(brand)}
+                                                disabled={isBusy}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${brandStatus === "active"
+                                                    ? "bg-[#31d9e5]"
+                                                    : "bg-white/20"
+                                                    } ${isBusy ? "cursor-not-allowed opacity-60" : ""}`}
+                                                title={
+                                                    brandStatus === "active"
+                                                        ? "Disable brand"
+                                                        : "Enable brand"
+                                                }
+                                                aria-label={
+                                                    brandStatus === "active"
+                                                        ? `Disable ${brand.email}`
+                                                        : `Enable ${brand.email}`
+                                                }
+                                            >
+                                                <span
+                                                    className={`inline-block h-4 w-4 rounded-full bg-white shadow transition ${brandStatus === "active"
+                                                        ? "translate-x-6"
+                                                        : "translate-x-1"
+                                                        }`}
+                                                />
+                                            </button>
+                                        );
+                                    },
                                 },
                                 {
                                     key: "actions",
@@ -483,7 +542,12 @@ const BrandsPage = () => {
 
                                                 <button
                                                     type="button"
-                                                    onClick={() => confirmDeleteBrand(brand.email)}
+                                                    onClick={() =>
+                                                        confirmDeleteBrand(
+                                                            brand.email,
+                                                            brand.brand_name
+                                                        )
+                                                    }
                                                     disabled={isBusy}
                                                     className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-300/25 bg-red-500/10 text-red-200 shadow-sm transition hover:bg-red-500/20 hover:text-red-100 ${isBusy ? "cursor-not-allowed opacity-60" : ""
                                                         }`}

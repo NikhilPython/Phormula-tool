@@ -5,8 +5,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-    LayoutDashboard,
     Users,
+    UserCheck,
     RefreshCw,
     LogOut,
     Menu,
@@ -19,24 +19,73 @@ import {
     Building2,
     Database,
     AlertTriangle,
+    Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 
-const FORMULA_MARKETPLACES = [
-    {
-        label: "UK",
-        country: "uk",
-        marketplaceId: "A1F83G8C2ARO7P",
-    },
-    {
-        label: "US",
-        country: "us",
-        marketplaceId: "ATVPDKIKX0DER",
-    },
-] as const;
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
-type FormulaMarketplace = (typeof FORMULA_MARKETPLACES)[number];
-type FormulaCountry = FormulaMarketplace["country"];
+type FormulaMarketplace = {
+    label: string;
+    country: string;
+    marketplaceId?: string | null;
+    transactionStatus?: string | null;
+    sourceTableCount?: number;
+};
+
+type SuperAdminHash = "accounts" | "admins" | "users" | "data" | "system";
+
+const SUPERADMIN_HASHES: SuperAdminHash[] = [
+    "accounts",
+    "admins",
+    "users",
+    "data",
+    "system",
+];
+
+function getSuperAdminHash(hash?: string) {
+    const navItems = [
+        {
+            label: "Accounts",
+            href: "/superadmin/SuperAdminDashboard#accounts",
+            icon: Users,
+        },
+        {
+            label: "Admins",
+            href: "/superadmin/Admins",
+            icon: Shield,
+        },
+        {
+            label: "Members",
+            href: "/superadmin/SuperAdminDashboard#users",
+            icon: UserCheck,
+        },
+        {
+            label: "Data Ops",
+            href: "/superadmin/SuperAdminDashboard#data",
+            icon: Database,
+        },
+        {
+            label: "System",
+            href: "/superadmin/SuperAdminDashboard#system",
+            icon: Activity,
+        },
+        {
+            label: "Data Checker",
+            href: "/superadmin/DataAvailability",
+            icon: Database,
+        },
+        {
+            label: "Issues",
+            href: "/superadmin/Issues",
+            icon: AlertTriangle,
+        },
+    ];
+    const value = (hash || "").replace("#", "");
+    return SUPERADMIN_HASHES.includes(value as SuperAdminHash)
+        ? (value as SuperAdminHash)
+        : "accounts";
+}
 
 export default function SuperAdminLayoutClient({
     children,
@@ -51,9 +100,13 @@ export default function SuperAdminLayoutClient({
     const [showSettings, setShowSettings] = useState(false);
     const [formulaUpdating, setFormulaUpdating] = useState(false);
     const [showFormulaCountryModal, setShowFormulaCountryModal] = useState(false);
-    const [selectedFormulaCountry, setSelectedFormulaCountry] =
-        useState<FormulaCountry>("uk");
+    const [formulaMarketplaces, setFormulaMarketplaces] = useState<
+        FormulaMarketplace[]
+    >([]);
+    const [selectedFormulaCountry, setSelectedFormulaCountry] = useState("");
     const [superAdminEmail, setSuperAdminEmail] = useState<string>("");
+    const [currentHash, setCurrentHash] =
+        useState<SuperAdminHash>("accounts");
 
     const publicSuperAdminRoutes = [
         "/superadmin/CDPAdminConsole",
@@ -76,6 +129,70 @@ export default function SuperAdminLayoutClient({
         setSuperAdminEmail(storedEmail || "");
     }, [isPublicRoute, router]);
 
+    useEffect(() => {
+        if (isPublicRoute) return;
+
+        const fetchFormulaMarketplaces = async () => {
+            const token = localStorage.getItem("superadmin_token");
+            if (!token) return;
+
+            try {
+                const response = await fetch(
+                    `${API_BASE}/superadmin/dashboard/formula_marketplaces`,
+                    {
+                        method: "GET",
+                        headers: {
+                            Authorization: `Bearer ${token}`,
+                        },
+                    }
+                );
+                const data = await response.json().catch(() => ({}));
+                const marketplaces = Array.isArray(data?.formula_marketplaces)
+                    ? data.formula_marketplaces
+                    : [];
+
+                setFormulaMarketplaces(marketplaces);
+                setSelectedFormulaCountry((currentCountry) =>
+                    marketplaces.some(
+                        (marketplace: FormulaMarketplace) =>
+                            marketplace.country === currentCountry
+                    )
+                        ? currentCountry
+                        : marketplaces[0]?.country || ""
+                );
+            } catch {
+                setFormulaMarketplaces([]);
+                setSelectedFormulaCountry("");
+            }
+        };
+
+        fetchFormulaMarketplaces();
+    }, [isPublicRoute]);
+
+    useEffect(() => {
+        if (isPublicRoute) return;
+
+        const syncHash = (event?: Event) => {
+            const customHash = (event as CustomEvent<{ hash?: string }>)?.detail
+                ?.hash;
+            setCurrentHash(getSuperAdminHash(customHash || window.location.hash));
+        };
+
+        syncHash();
+        window.addEventListener("hashchange", syncHash);
+        window.addEventListener("popstate", syncHash);
+        window.addEventListener("page-hash-navigate", syncHash as EventListener);
+
+        return () => {
+            window.removeEventListener("hashchange", syncHash);
+            window.removeEventListener("popstate", syncHash);
+            window.removeEventListener(
+                "page-hash-navigate",
+                syncHash as EventListener
+            );
+        };
+    }, [isPublicRoute, pathname]);
+
     if (isPublicRoute) {
         return <>{children}</>;
     }
@@ -84,31 +201,67 @@ export default function SuperAdminLayoutClient({
         {
             label: "Dashboard",
             href: "/superadmin/SuperAdminDashboard",
-            icon: LayoutDashboard,
-        },
-        {
-            label: "Admins",
-            href: "/superadmin/Admins",
             icon: Users,
         },
         {
             label: "Brands",
             href: "/superadmin/Brands",
-            icon: Building2,
+            icon: UserCheck,
+        },
+        {
+            label: "Admins",
+            href: "/superadmin/Admins",
+            icon: Shield,
+        },
+        {
+            label: "System",
+            href: "/superadmin/System",
+            icon: Activity,
         },
         {
             label: "Data Checker",
             href: "/superadmin/DataAvailability",
             icon: Database,
         },
-        {
-            label: "Issues",
-            href: "/superadmin/Issues",
-            icon: AlertTriangle,
-        },
+        // {
+        //     label: "Issues",
+        //     href: "/superadmin/Issues",
+        //     icon: AlertTriangle,
+        // },
     ];
 
+    const handleNavClick = (
+        event: React.MouseEvent<HTMLAnchorElement>,
+        href: string
+    ) => {
+        setSidebarOpen(false);
 
+        // Normal routes like /Admins, /Brands, /Issues
+        if (!href.includes("#")) {
+            return;
+        }
+
+        // Hash based dashboard sections
+        const [targetPath, targetHash = "accounts"] = href.split("#");
+
+        if (pathname !== targetPath) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const nextUrl = `${targetPath}#${targetHash}`;
+
+        window.history.pushState(null, "", nextUrl);
+
+        setCurrentHash(getSuperAdminHash(targetHash));
+
+        window.dispatchEvent(
+            new CustomEvent("page-hash-navigate", {
+                detail: { hash: targetHash },
+            })
+        );
+    };
 
     const handleLogout = async () => {
         setShowSettings(false);
@@ -137,7 +290,7 @@ export default function SuperAdminLayoutClient({
         }
     };
 
-    const handleFormulaUpdate = async (country: FormulaCountry) => {
+    const handleFormulaUpdate = async (country: string) => {
         const token = localStorage.getItem("superadmin_token");
 
         if (!token) {
@@ -146,7 +299,7 @@ export default function SuperAdminLayoutClient({
             return;
         }
 
-        const selectedMarketplace = FORMULA_MARKETPLACES.find(
+        const selectedMarketplace = formulaMarketplaces.find(
             (marketplace) => marketplace.country === country
         );
 
@@ -161,11 +314,13 @@ export default function SuperAdminLayoutClient({
 
             const params = new URLSearchParams({
                 country: selectedMarketplace.country,
-                marketplace_id: selectedMarketplace.marketplaceId,
+                marketplace_id: selectedMarketplace.marketplaceId || "",
+                transaction_status:
+                    selectedMarketplace.transactionStatus || "RELEASED",
             });
 
             const url =
-                `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/formula_update?${params.toString()}`;
+                `${API_BASE}/amazon_api/formula_update?${params.toString()}`;
 
             const response = await fetch(url, {
                 method: "GET",
@@ -235,13 +390,28 @@ export default function SuperAdminLayoutClient({
                         <nav className="space-y-2">
                             {navItems.map((item) => {
                                 const Icon = item.icon;
-                                const isActive = pathname === item.href;
+
+                                const hasHash = item.href.includes("#");
+
+                                let isActive = false;
+
+                                if (hasHash) {
+                                    const [itemPath, itemHash = "accounts"] = item.href.split("#");
+
+                                    isActive =
+                                        pathname === itemPath &&
+                                        currentHash === itemHash;
+                                } else {
+                                    isActive =
+                                        pathname === item.href ||
+                                        pathname.startsWith(`${item.href}/`);
+                                }
 
                                 return (
                                     <Link
                                         key={item.label}
                                         href={item.href}
-                                        onClick={() => setSidebarOpen(false)}
+                                        onClick={(event) => handleNavClick(event, item.href)}
                                         className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${isActive
                                             ? "bg-[#31d9e5] text-[#303247] shadow-[0_10px_22px_rgba(20,220,230,0.18)]"
                                             : "text-white/75 hover:bg-white/[0.07] hover:text-white"
@@ -347,10 +517,18 @@ export default function SuperAdminLayoutClient({
                                                 type="button"
                                                 onClick={() => {
                                                     setShowSettings(false);
-                                                    setSelectedFormulaCountry("uk");
+                                                    setSelectedFormulaCountry(
+                                                        (currentCountry) =>
+                                                            currentCountry ||
+                                                            formulaMarketplaces[0]?.country ||
+                                                            ""
+                                                    );
                                                     setShowFormulaCountryModal(true);
                                                 }}
-                                                disabled={formulaUpdating}
+                                                disabled={
+                                                    formulaUpdating ||
+                                                    formulaMarketplaces.length === 0
+                                                }
                                                 className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium text-white/80 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                                             >
                                                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#31d9e5]/15 text-[#31d9e5]">
@@ -396,35 +574,48 @@ export default function SuperAdminLayoutClient({
                             </div>
 
                             <div className="space-y-3 px-6 py-5">
-                                {FORMULA_MARKETPLACES.map((marketplace) => (
-                                    <label
-                                        key={marketplace.marketplaceId}
-                                        className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === marketplace.country
-                                            ? "border-[#31d9e5] bg-[#31d9e5]/10"
-                                            : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
-                                            }`}
-                                    >
-                                        <div>
-                                            <p className="font-medium text-white">
-                                                {marketplace.label}
-                                            </p>
-                                            <p className="text-xs text-white/55">
-                                                Marketplace: {marketplace.marketplaceId}
-                                            </p>
-                                        </div>
+                                {formulaMarketplaces.length > 0 ? (
+                                    formulaMarketplaces.map((marketplace) => (
+                                        <label
+                                            key={marketplace.country}
+                                            className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 transition ${selectedFormulaCountry === marketplace.country
+                                                ? "border-[#31d9e5] bg-[#31d9e5]/10"
+                                                : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"
+                                                }`}
+                                        >
+                                            <div>
+                                                <p className="font-medium text-white">
+                                                    {marketplace.label}
+                                                </p>
+                                                <p className="text-xs text-white/55">
+                                                    Marketplace:{" "}
+                                                    {marketplace.marketplaceId ||
+                                                        "Unavailable"}
+                                                </p>
+                                            </div>
 
-                                        <input
-                                            type="radio"
-                                            name="formula_country"
-                                            value={marketplace.country}
-                                            checked={selectedFormulaCountry === marketplace.country}
-                                            onChange={() =>
-                                                setSelectedFormulaCountry(marketplace.country)
-                                            }
-                                            className="h-4 w-4 accent-[#31d9e5]"
-                                        />
-                                    </label>
-                                ))}
+                                            <input
+                                                type="radio"
+                                                name="formula_country"
+                                                value={marketplace.country}
+                                                checked={
+                                                    selectedFormulaCountry ===
+                                                    marketplace.country
+                                                }
+                                                onChange={() =>
+                                                    setSelectedFormulaCountry(
+                                                        marketplace.country
+                                                    )
+                                                }
+                                                className="h-4 w-4 accent-[#31d9e5]"
+                                            />
+                                        </label>
+                                    ))
+                                ) : (
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-5 text-sm text-white/60">
+                                        No formula-ready countries found.
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex justify-end gap-3 border-t border-white/10 px-6 py-4">
@@ -440,12 +631,14 @@ export default function SuperAdminLayoutClient({
                                 <button
                                     type="button"
                                     onClick={() => handleFormulaUpdate(selectedFormulaCountry)}
-                                    disabled={formulaUpdating}
+                                    disabled={formulaUpdating || !selectedFormulaCountry}
                                     className="rounded-lg bg-[#31d9e5] px-4 py-2 text-sm font-semibold text-[#303247] transition hover:bg-[#28cbd6] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     {formulaUpdating
                                         ? "Updating..."
-                                        : `Update ${selectedFormulaCountry.toUpperCase()}`}
+                                        : selectedFormulaCountry
+                                            ? `Update ${selectedFormulaCountry.toUpperCase()}`
+                                            : "Update"}
                                 </button>
                             </div>
                         </div>

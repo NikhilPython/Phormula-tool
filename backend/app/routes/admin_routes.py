@@ -16,6 +16,26 @@ admin_bp = Blueprint('admin', __name__)
 
 otp_store = {}
 
+def require_superadmin_token():
+    auth_header = request.headers.get('Authorization')
+
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None, (jsonify({'message': 'Authorization token required'}), 401)
+
+    token = auth_header.split(' ')[1]
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+    except jwt.ExpiredSignatureError:
+        return None, (jsonify({'message': 'Token expired'}), 401)
+    except jwt.InvalidTokenError:
+        return None, (jsonify({'message': 'Invalid token'}), 401)
+
+    if not payload.get('is_superadmin'):
+        return None, (jsonify({'message': 'SuperAdmin access required'}), 403)
+
+    return payload, None
+
 def generate_otp():
     """Generate a 6-digit OTP"""
     return ''.join(random.choices(string.digits, k=6))
@@ -458,6 +478,10 @@ def superadmin_logout():
 @admin_bp.route('/create_admin', methods=['POST'])
 def create_admin():
     try:
+        _, auth_error = require_superadmin_token()
+        if auth_error:
+            return auth_error
+
         data = request.get_json()
 
         if not data or not data.get('email') or not data.get('password'):
@@ -489,7 +513,16 @@ def create_admin():
         db.session.add(new_admin)
         db.session.commit()
 
-        return jsonify({'message': 'Admin created successfully'}), 201
+        return jsonify({
+            'message': 'Admin created successfully',
+            'admin': {
+                'id': new_admin.id,
+                'email': new_admin.email,
+                'is_admin': new_admin.is_admin,
+                'is_superadmin': new_admin.is_superadmin,
+                'is_verified': new_admin.is_verified,
+            }
+        }), 201
 
     except Exception as e:
         db.session.rollback()
@@ -500,6 +533,10 @@ def create_admin():
 @admin_bp.route('/delete_admin', methods=['DELETE'])
 def delete_admin_by_email():
     try:
+        _, auth_error = require_superadmin_token()
+        if auth_error:
+            return auth_error
+
         data = request.get_json()
 
         if not data or not data.get('email'):
@@ -507,20 +544,27 @@ def delete_admin_by_email():
 
         email = data['email']
 
-        # Find admin by email
+        # Keep backward compatibility: this endpoint was historically used for
+        # user-brand accounts and admin accounts despite the route name.
         user = User.query.filter_by(email=email).first()
-        if not user:
-            return jsonify({'message': 'Admin not found'}), 404
+        user_admin = UserAdmin.query.filter_by(email=email).first()
 
-        # Delete the admin
-        db.session.delete(user)
+        if not user and not user_admin:
+            return jsonify({'message': 'Account not found'}), 404
+
+        if user:
+            db.session.delete(user)
+
+        if user_admin:
+            db.session.delete(user_admin)
+
         db.session.commit()
 
-        return jsonify({'message': 'Admin deleted successfully'}), 200
+        return jsonify({'message': 'Account deleted successfully'}), 200
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': f'Failed to delete admin: {str(e)}'}), 500
+        return jsonify({'message': f'Failed to delete account: {str(e)}'}), 500
 
 
 
