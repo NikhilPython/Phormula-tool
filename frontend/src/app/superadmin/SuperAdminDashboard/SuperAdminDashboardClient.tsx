@@ -773,7 +773,7 @@ export default function SuperAdminDashboardPage() {
   ).length;
   const verifiedUsers = usersData.filter((user) => user.is_verified).length;
 
-  const totalAdmins = adminsData.length;
+  const totalAdmins = userOnlyRows.length;
 
   const totalBrands = new Set(
     userOnlyRows
