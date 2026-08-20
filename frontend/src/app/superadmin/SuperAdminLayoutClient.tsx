@@ -22,6 +22,10 @@ import {
     Activity,
 } from "lucide-react";
 import { toast } from "sonner";
+import { MdDashboard } from "react-icons/md";
+import { FaTags } from "react-icons/fa";
+import { RiAdminFill } from "react-icons/ri";
+import { BsDatabaseCheck } from "react-icons/bs";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -71,7 +75,7 @@ function getSuperAdminHash(hash?: string) {
             icon: Activity,
         },
         {
-            label: "Data Checker",
+            label: "Data Availability",
             href: "/superadmin/DataAvailability",
             icon: Database,
         },
@@ -201,17 +205,17 @@ export default function SuperAdminLayoutClient({
         {
             label: "Dashboard",
             href: "/superadmin/SuperAdminDashboard",
-            icon: Users,
+            icon: MdDashboard,
         },
         {
             label: "Brands",
             href: "/superadmin/Brands",
-            icon: UserCheck,
+            icon: FaTags,
         },
         {
             label: "Admins",
             href: "/superadmin/Admins",
-            icon: Shield,
+            icon: RiAdminFill,
         },
         {
             label: "System",
@@ -219,9 +223,9 @@ export default function SuperAdminLayoutClient({
             icon: Activity,
         },
         {
-            label: "Data Checker",
+            label: "Data Availability",
             href: "/superadmin/DataAvailability",
-            icon: Database,
+            icon: BsDatabaseCheck,
         },
         // {
         //     label: "Issues",

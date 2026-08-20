@@ -532,13 +532,13 @@ export default function DataAvailabilityClient() {
       detail: "Availability records checked",
     },
     {
-      label: "CompleteBrands",
+      label: "Complete Brands",
       value: visibleSummary.complete,
       icon: CheckCircle2,
       detail: "All required data available",
     },
     {
-      label: "Missing",
+      label: "Incomplete Brands",
       value: visibleSummary.missing,
       icon: XCircle,
       detail: "Records with missing data",
