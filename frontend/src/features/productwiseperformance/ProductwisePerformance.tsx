@@ -1463,64 +1463,64 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             />
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-            {sortedMetrics.map((m, i) => {
-  const { main, delta } = splitMetricValue(m.value);
+              {sortedMetrics.map((m, i) => {
+                const { main, delta } = splitMetricValue(m.value);
 
-  // ✅ Dummy mode:
-  // every metric shows plain 0
-  // no currency formatting
-  // no percentage
-  // no delta
-  const displayMain = isPreviewMode
-    ? "0"
-    : formatRecommendationCardMainValue(
-        m.label,
-        main
-      );
+                // ✅ Dummy mode:
+                // every metric shows plain 0
+                // no currency formatting
+                // no percentage
+                // no delta 
+                const displayMain = isPreviewMode
+                  ? "0"
+                  : formatRecommendationCardMainValue(
+                    m.label,
+                    main
+                  );
 
-  const formattedTitle = m.label
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-    .replace("Cm1", "CM1");
+                const formattedTitle = m.label
+                  .replace(/\b\w/g, (char) => char.toUpperCase())
+                  .replace("Cm1", "CM1");
 
-  const isNegativeDelta = delta?.includes("-");
+                const isNegativeDelta = delta?.includes("-");
 
-  return (
-    <div
-      key={`${m.label}-${i}`}
-      className={[
-        "w-full rounded-xl bg-white shadow-sm p-3",
-        "h-[82px] flex flex-col justify-between",
-        getMetricCardAccentClass(m.label, i),
-      ].join(" ")}
-    >
-      <div>
-        <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-          {formattedTitle}
-        </span>
-      </div>
+                return (
+                  <div
+                    key={`${m.label}-${i}`}
+                    className={[
+                      "w-full rounded-xl bg-white shadow-sm p-3",
+                      "h-[82px] flex flex-col justify-between",
+                      getMetricCardAccentClass(m.label, i),
+                    ].join(" ")}
+                  >
+                    <div>
+                      <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+                        {formattedTitle}
+                      </span>
+                    </div>
 
-      <div className="flex items-end leading-tight tabular-nums">
-        <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
-          {displayMain}
-        </span>
+                    <div className="flex items-end leading-tight tabular-nums">
+                      <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
+                        {displayMain}
+                      </span>
 
-        {/* ✅ Deltas only for real data */}
-        {!isPreviewMode && delta && (
-          <span
-            className={[
-              "ml-auto text-[10px] 2xl:text-xs font-semibold whitespace-nowrap",
-              isNegativeDelta
-                ? "text-red-600"
-                : "text-emerald-600",
-            ].join(" ")}
-          >
-            {formatMetricDelta(delta)}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-})}
+                      {/* ✅ Deltas only for real data */}
+                      {!isPreviewMode && delta && (
+                        <span
+                          className={[
+                            "ml-auto text-[10px] 2xl:text-xs font-semibold whitespace-nowrap",
+                            isNegativeDelta
+                              ? "text-red-600"
+                              : "text-emerald-600",
+                          ].join(" ")}
+                        >
+                          {formatMetricDelta(delta)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

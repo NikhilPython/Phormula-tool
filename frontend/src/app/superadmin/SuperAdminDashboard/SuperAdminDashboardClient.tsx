@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LuBadgeCheck, LuBadgeX } from "react-icons/lu";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const MIN_LOADER_MS = 3000;
@@ -814,8 +815,8 @@ export default function SuperAdminDashboardPage() {
   ).length;
 
   const summaryCards = [
-    { title: "Active Brands", value: activeBrands, icon: Tags },
-    { title: "Inactive Brands", value: inactiveBrands, icon: AlertTriangle },
+    { title: "Active Brands", value: activeBrands, icon: LuBadgeCheck },
+    { title: "Inactive Brands", value: inactiveBrands, icon: LuBadgeX },
     { title: "Admins", value: totalAdmins, icon: UserCog },
     { title: "Companies", value: totalCompanies, icon: Building2 },
     { title: "Countries", value: totalCountries, icon: Globe2 },

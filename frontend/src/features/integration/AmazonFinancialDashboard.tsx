@@ -1079,11 +1079,11 @@ async function runForecastAndPoSequence(params: {
   );
 
   params.setStep(
-  8,
-  "Forecast",
-  100,
-  "Inventory forecast ready"
-);
+    8,
+    "Forecast",
+    100,
+    "Inventory forecast ready"
+  );
 
   return {
     redirectMonthSlug: currentGoingMonthLower,
@@ -1736,6 +1736,68 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     return () => window.clearInterval(interval);
   }, [busy, calculateDynamicProgressPercentage, calculateDynamicRemainingSeconds]);
 
+  useEffect(() => {
+    if (!busy) {
+      etaPlanRef.current = null;
+      setRemainingSeconds(null);
+      setDynamicProgress(0);
+      return;
+    }
+
+    // existing ETA code...
+  }, [
+    busy,
+    calculateDynamicProgressPercentage,
+    calculateDynamicRemainingSeconds,
+  ]);
+
+
+  // ======================================================
+  // BLOCK ADS API WHILE AMAZON DATA FETCH IS RUNNING
+  // ======================================================
+  useEffect(() => {
+    if (!busy) return;
+
+    const originalFetch = window.fetch;
+
+    window.fetch = async (
+      input: RequestInfo | URL,
+      init?: RequestInit
+    ): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url.includes("/api/ads/monthly_sp_sd_to_db")) {
+        console.warn(
+          "Blocked /api/ads/monthly_sp_sd_to_db while fetching dashboard data"
+        );
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            skipped: true,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      }
+
+      return originalFetch(input, init);
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [busy]);
+
   const markStepComplete = (step: number) => {
     setCompletedSteps((prev) => new Set([...prev, step]));
   };
@@ -1911,8 +1973,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
   const platform = `amazon_${countryUsed}`;
 
-
-
   const handleFetchByMonth = () =>
     wrap(async () => {
       const yRaw = parseInt(selYear, 10);
@@ -2007,9 +2067,33 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setStep(4, "Product Information", 100, "Product information synced successfully");
       markStepComplete(4);
 
-      // Step 5: Inventory
-      // Step 5: Inventory
-      setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
+      // Step 5: Historic Data
+      setStep(
+        5,
+        "Historic Data",
+        0,
+        getHistoricFetchMessage({
+          year: y,
+          monthNum: mNum,
+        })
+      );
+
+      await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
+        fetchMonthlyTransactionsExcel({
+          year: y,
+          month: mNum,
+          marketplace_id: marketplaceIdUsed,
+          country: countryUsed,
+          run_upload_pipeline: true,
+          store_in_db: true,
+        })
+      );
+
+      markStepComplete(5);
+
+
+      // Step 6: Inventory
+      setStep(6, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
       // 1) Hit aged-surcharge FIRST
       await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
@@ -2032,11 +2116,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         );
       });
 
-      setStep(5, "Inventory", 35, "Syncing aged inventory data...");
+      setStep(6, "Inventory", 35, "Syncing aged inventory data...");
 
-      // 2) Existing aged inventory API
       await runEtaUnit("inventoryAged", async () => {
         await syncInventoryAgedOnce(countryUsed);
+
         alreadyHitApiKeys.add(
           liveDataApiKey(
             "amazon_inventory_aged",
@@ -2046,9 +2130,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         );
       });
 
-      setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
+      setStep(6, "Inventory", 70, "Syncing inventory ledger summary...");
 
-      // 3) Existing ledger summary API
       await runEtaUnit("inventoryLedger", () =>
         fetchInventoryLedgerSummary({
           marketplace_id: marketplaceIdUsed,
@@ -2058,29 +2141,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         })
       );
 
-      setStep(5, "Inventory", 100, "Inventory data synced successfully");
-      markStepComplete(5);
-
-      // Step 6: Historic Data (per month, ~20 seconds)
-      setStep(
-        6,
-        "Historic Data",
-        0,
-        getHistoricFetchMessage({
-          year: y,
-          monthNum: mNum,
-        })
-      );
-      await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-        fetchMonthlyTransactionsExcel({
-          year: y,
-          month: mNum,
-          marketplace_id: marketplaceIdUsed,
-          country: countryUsed,
-          run_upload_pipeline: true,
-          store_in_db: true,
-        })
-      );
+      setStep(6, "Inventory", 100, "Inventory data synced successfully");
       markStepComplete(6);
 
       // Step 7: Live Data
@@ -2160,7 +2221,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     wrap(async () => {
       const isLifetime = selectedPeriod === 24;
 
-      // Note: buildLifetimeRange already clamps to allowed window
       const months = isLifetime
         ? buildLifetimeRange()
         : buildMonthRange((selectedPeriod as number) || 0);
@@ -2178,41 +2238,68 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
 
-      
-
       // Reset progress
       setCurrentStep(1);
       setCompletedSteps(new Set());
-      setRangeProgress({ currentMonth: 0, totalMonths: months.length, ok: 0, fail: 0 });
+      setRangeProgress({
+        currentMonth: 0,
+        totalMonths: months.length,
+        ok: 0,
+        fail: 0,
+      });
+
       startEtaPlan(
         buildFetchEtaUnits({
           months,
-          surchargeMonths: selectedPeriod === 24 ? months.slice(-12) : months,
+          surchargeMonths:
+            selectedPeriod === 24 ? months.slice(-12) : months,
           includeLiveData: true,
           includeForecast: !!(selectedPeriod && selectedPeriod >= 6),
         })
       );
 
+      // =========================================================
       // Step 1: Currency Conversion
-      setStep(1, "Currency Conversion", 0, "Converting currency rates...");
+      // =========================================================
+      setStep(
+        1,
+        "Currency Conversion",
+        0,
+        "Converting currency rates..."
+      );
+
       await runEtaUnit(
         "currency",
-        () => new Promise<void>((resolve) => setTimeout(resolve, 500))
+        () =>
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, 500)
+          )
       );
+
       markStepComplete(1);
 
-      // Step 2: Category Fees (takes ~4 minutes, only once)
-      setStep(2, "Category Fees", 0, "Syncing category fees...");
+      // =========================================================
+      // Step 2: Category Fees
+      // =========================================================
+      setStep(
+        2,
+        "Category Fees",
+        0,
+        "Syncing category fees..."
+      );
 
-      // Simulate progress for ~4 minutes
       const progressInterval = setInterval(() => {
         setStepProgress((prev) => {
           if (prev.percentage < 95) {
-            return { ...prev, percentage: prev.percentage + 1 };
+            return {
+              ...prev,
+              percentage: prev.percentage + 1,
+            };
           }
+
           return prev;
         });
-      }, 2400); // Update every 2.4 seconds to reach ~95% in ~4 minutes
+      }, 2400);
 
       try {
         await runEtaUnit("categoryFees", () =>
@@ -2224,25 +2311,55 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             month: months[0].mNum,
           })
         );
+
         clearInterval(progressInterval);
-        setStep(2, "Category Fees", 100, "Category fees synced successfully");
-        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        setStep(
+          2,
+          "Category Fees",
+          100,
+          "Category fees synced successfully"
+        );
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500)
+        );
+
         markStepComplete(2);
       } catch (e) {
         clearInterval(progressInterval);
         console.error("fees priming failed", e);
       }
 
+      // =========================================================
       // Step 3: Fee Preview
-      setStep(3, "Fee Preview", 0, "Preparing fee preview...");
+      // =========================================================
+      setStep(
+        3,
+        "Fee Preview",
+        0,
+        "Preparing fee preview..."
+      );
+
       await runEtaUnit(
         "feePreview",
-        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+        () =>
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, 1000)
+          )
       );
+
       markStepComplete(3);
 
+      // =========================================================
       // Step 4: Product Information
-      setStep(4, "Product Information", 0, "Fetching Amazon product information...");
+      // =========================================================
+      setStep(
+        4,
+        "Product Information",
+        0,
+        "Fetching Amazon product information..."
+      );
 
       await runEtaUnit("productInfo", () =>
         fetchProductInformation({
@@ -2252,100 +2369,37 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         })
       );
 
-      setStep(4, "Product Information", 100, "Product information synced successfully");
+      setStep(
+        4,
+        "Product Information",
+        100,
+        "Product information synced successfully"
+      );
+
       markStepComplete(4);
 
-      // Step 5: Inventory
-      setStep(5, "Inventory", 0, "Syncing aged surcharge inventory data...");
+      // =========================================================
+      // Step 5: Historic Data
+      // =========================================================
+      setStep(
+        5,
+        "Historic Data",
+        0,
+        `Fetching data for ${months.length} months...`
+      );
 
-      try {
-        const ledgerRange = buildLedgerRange(
-          selectedPeriod === 24 ? "lifetime" : Number(selectedPeriod)
-        );
-
-        // 1) Hit aged-surcharge FIRST
-        // If 24 months is selected, fetch aged-surcharge only for latest 12 months
-        const surchargeMonths =
-          selectedPeriod === 24 ? months.slice(-12) : months;
-
-        for (let i = 0; i < surchargeMonths.length; i++) {
-          const { y, mNum } = surchargeMonths[i];
-
-          const pct = Math.round(((i + 1) / surchargeMonths.length) * 30);
-
-          setStep(
-            5,
-            "Inventory",
-            pct,
-            `Syncing aged surcharge for ${formatFetchMonth(y, mNum)} (${i + 1}/${surchargeMonths.length})...`
-          );
-
-          await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
-            await syncInventoryAgedSurchargeOnce({
-              country: countryUsed,
-              marketplace_id: marketplaceIdUsed,
-              month: mNum,
-              year: y,
-              store_in_db: true,
-            });
-
-            alreadyHitApiKeys.add(
-              liveDataApiKey(
-                "amazon_inventory_aged_surcharge",
-                dashboardCountry,
-                marketplaceIdUsed,
-                y,
-                two(mNum)
-              )
-            );
-          });
-        }
-
-        setStep(5, "Inventory", 35, "Syncing aged inventory data...");
-
-        // 2) Existing aged inventory API
-        await runEtaUnit("inventoryAged", async () => {
-          await syncInventoryAgedOnce(countryUsed);
-          alreadyHitApiKeys.add(
-            liveDataApiKey(
-              "amazon_inventory_aged",
-              dashboardCountry,
-              marketplaceIdUsed
-            )
-          );
-        });
-
-        setStep(5, "Inventory", 70, "Syncing inventory ledger summary...");
-
-        // 3) Existing ledger-summary API
-        await runEtaUnit("inventoryLedger", () =>
-          fetchInventoryLedgerSummary({
-            marketplace_id: marketplaceIdUsed,
-            start_date: ledgerRange.start_date,
-            end_date: ledgerRange.end_date,
-            store_in_db: true,
-            keep_first_last: false,
-          })
-        );
-
-        setStep(5, "Inventory", 100, "Inventory data synced successfully");
-        markStepComplete(5);
-      } catch (e) {
-        console.error("inventory sync failed", e);
-        throw e;
-      }
-
-      // Step 6: Historic Data (per month, ~20 seconds each)
-      setStep(6, "Historic Data", 0, `Fetching data for ${months.length} months...`);
       let ok = 0;
       let fail = 0;
 
       for (let i = 0; i < months.length; i++) {
         const { y, mNum, mIdx } = months[i];
-        const monthProgress = Math.round(((i + 1) / months.length) * 100);
+
+        const monthProgress = Math.round(
+          ((i + 1) / months.length) * 100
+        );
 
         setStep(
-          6,
+          5,
           "Historic Data",
           monthProgress,
           getHistoricFetchMessage({
@@ -2355,35 +2409,209 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             totalMonths: months.length,
           })
         );
-        setRangeProgress({ currentMonth: i + 1, totalMonths: months.length, ok, fail });
+
+        setRangeProgress({
+          currentMonth: i + 1,
+          totalMonths: months.length,
+          ok,
+          fail,
+        });
 
         try {
-          await runEtaUnit(`historicMonth:${y}-${two(mNum)}`, () =>
-            fetchMonthlyTransactionsExcel({
-              year: y,
-              month: mNum,
-              marketplace_id: marketplaceIdUsed,
-              country: countryUsed,
-              run_upload_pipeline: true,
-              store_in_db: true,
-            })
+          await runEtaUnit(
+            `historicMonth:${y}-${two(mNum)}`,
+            () =>
+              fetchMonthlyTransactionsExcel({
+                year: y,
+                month: mNum,
+                marketplace_id: marketplaceIdUsed,
+                country: countryUsed,
+                run_upload_pipeline: true,
+                store_in_db: true,
+              })
           );
+
           ok++;
-          setRangeProgress((prev) => ({ ...prev, ok }));
+
+          setRangeProgress((prev) => ({
+            ...prev,
+            ok,
+          }));
         } catch (e: any) {
-          console.error("monthly_transactions failed for", y, mNum, e?.message || e);
+          console.error(
+            "monthly_transactions failed for",
+            y,
+            mNum,
+            e?.message || e
+          );
+
           fail++;
-          setRangeProgress((prev) => ({ ...prev, fail }));
+
+          setRangeProgress((prev) => ({
+            ...prev,
+            fail,
+          }));
         }
 
-        const monthSlug = fullMonthNames[mIdx].toLowerCase();
-        updateLatestFetchedPeriod(monthSlug, String(y));
-      }
-      markStepComplete(6);
+        const monthSlug =
+          fullMonthNames[mIdx].toLowerCase();
 
+        updateLatestFetchedPeriod(
+          monthSlug,
+          String(y)
+        );
+      }
+
+      markStepComplete(5);
+
+      // =========================================================
+      // Step 6: Inventory Data
+      // =========================================================
+      setStep(
+        6,
+        "Inventory",
+        0,
+        "Syncing aged surcharge inventory data..."
+      );
+
+      try {
+        const ledgerRange = buildLedgerRange(
+          selectedPeriod === 24
+            ? "lifetime"
+            : Number(selectedPeriod)
+        );
+
+        const surchargeMonths =
+          selectedPeriod === 24
+            ? months.slice(-12)
+            : months;
+
+        // ---------------------------------------------------------
+        // 6.1 Aged Surcharge
+        // ---------------------------------------------------------
+        for (
+          let i = 0;
+          i < surchargeMonths.length;
+          i++
+        ) {
+          const { y, mNum } = surchargeMonths[i];
+
+          const pct = Math.round(
+            ((i + 1) / surchargeMonths.length) * 30
+          );
+
+          setStep(
+            6,
+            "Inventory",
+            pct,
+            `Syncing aged surcharge for ${formatFetchMonth(
+              y,
+              mNum
+            )} (${i + 1}/${surchargeMonths.length})...`
+          );
+
+          await runEtaUnit(
+            `inventorySurcharge:${y}-${two(mNum)}`,
+            async () => {
+              await syncInventoryAgedSurchargeOnce({
+                country: countryUsed,
+                marketplace_id: marketplaceIdUsed,
+                month: mNum,
+                year: y,
+                store_in_db: true,
+              });
+
+              alreadyHitApiKeys.add(
+                liveDataApiKey(
+                  "amazon_inventory_aged_surcharge",
+                  dashboardCountry,
+                  marketplaceIdUsed,
+                  y,
+                  two(mNum)
+                )
+              );
+            }
+          );
+        }
+
+        // ---------------------------------------------------------
+        // 6.2 Aged Inventory
+        // ---------------------------------------------------------
+        setStep(
+          6,
+          "Inventory",
+          35,
+          "Syncing aged inventory data..."
+        );
+
+        await runEtaUnit(
+          "inventoryAged",
+          async () => {
+            await syncInventoryAgedOnce(
+              countryUsed
+            );
+
+            alreadyHitApiKeys.add(
+              liveDataApiKey(
+                "amazon_inventory_aged",
+                dashboardCountry,
+                marketplaceIdUsed
+              )
+            );
+          }
+        );
+
+        // ---------------------------------------------------------
+        // 6.3 Inventory Ledger
+        // ---------------------------------------------------------
+        setStep(
+          6,
+          "Inventory",
+          70,
+          "Syncing inventory ledger summary..."
+        );
+
+        await runEtaUnit(
+          "inventoryLedger",
+          () =>
+            fetchInventoryLedgerSummary({
+              marketplace_id:
+                marketplaceIdUsed,
+              start_date:
+                ledgerRange.start_date,
+              end_date:
+                ledgerRange.end_date,
+              store_in_db: true,
+              keep_first_last: false,
+            })
+        );
+
+        setStep(
+          6,
+          "Inventory",
+          100,
+          "Inventory data synced successfully"
+        );
+
+        markStepComplete(6);
+      } catch (e) {
+        console.error(
+          "inventory sync failed",
+          e
+        );
+
+        throw e;
+      }
+
+      // =========================================================
+      // IMPORTANT:
+      // Get last historic month after Historic + Inventory finish
+      // =========================================================
       const last = months[months.length - 1];
 
+      // =========================================================
       // Step 7: Live Data
+      // =========================================================
       await runLiveDataRefreshApis({
         step: 7,
         country: countryUsed,
@@ -2393,64 +2621,127 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         alreadyHitApiKeys,
       });
 
+      // =========================================================
       // Step 8: Inventory Forecast + Purchase Order
+      // =========================================================
+      const latestMonthSlug =
+        fullMonthNames[last.mIdx].toLowerCase();
 
-      const latestMonthSlug = fullMonthNames[last.mIdx].toLowerCase();
+      let redirectMonthSlug =
+        latestMonthSlug;
 
-      let redirectMonthSlug = latestMonthSlug;
-      let redirectYear = String(last.y);
+      let redirectYear =
+        String(last.y);
 
-      if (selectedPeriod && selectedPeriod >= 6) {
-        const forecastResult = await runForecastAndPoSequence({
-          country: countryUsed,
-          marketplaceId: marketplaceIdUsed,
-          year: last.y,
-          month: last.mNum,
-          setStep,
-          runEtaUnit,
-        });
+      if (
+        selectedPeriod &&
+        selectedPeriod >= 6
+      ) {
+        const forecastResult =
+          await runForecastAndPoSequence({
+            country: countryUsed,
+            marketplaceId:
+              marketplaceIdUsed,
+            year: last.y,
+            month: last.mNum,
+            setStep,
+            runEtaUnit,
+          });
 
-        redirectMonthSlug = forecastResult.redirectMonthSlug;
-        redirectYear = forecastResult.redirectYear;
+        redirectMonthSlug =
+          forecastResult.redirectMonthSlug;
+
+        redirectYear =
+          forecastResult.redirectYear;
 
         markStepComplete(8);
       }
 
+      // =========================================================
       // Plotting Graph
-      const plottingGraphStep = selectedPeriod && selectedPeriod >= 6 ? 9 : 8;
+      // =========================================================
+      const plottingGraphStep =
+        selectedPeriod &&
+          selectedPeriod >= 6
+          ? 9
+          : 8;
 
-      setStep(plottingGraphStep, "Plotting Graph", 0, "Preparing charts...");
-      await runEtaUnit(
-        "plottingGraph",
-        () => new Promise<void>((resolve) => setTimeout(resolve, 1000))
+      setStep(
+        plottingGraphStep,
+        "Plotting Graph",
+        0,
+        "Preparing charts..."
       );
 
-      setStep(plottingGraphStep, "Plotting Graph", 100, "Charts ready");
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await runEtaUnit(
+        "plottingGraph",
+        () =>
+          new Promise<void>((resolve) =>
+            setTimeout(resolve, 1000)
+          )
+      );
 
-      markStepComplete(plottingGraphStep);
+      setStep(
+        plottingGraphStep,
+        "Plotting Graph",
+        100,
+        "Charts ready"
+      );
 
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500)
+      );
 
+      markStepComplete(
+        plottingGraphStep
+      );
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, 600)
+      );
+
+      // =========================================================
+      // Completion Message
+      // =========================================================
       setMessage(
-        selectedPeriod && selectedPeriod >= 6
-          ? `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
-          }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y}-${two(last.mNum)}.`
-          : `Fetch complete for ${countryUsed}: ${isLifetime ? "lifetime (allowed window)" : `${selectedPeriod} months`
+        selectedPeriod &&
+          selectedPeriod >= 6
+          ? `Fetch complete for ${countryUsed}: ${isLifetime
+            ? "lifetime (allowed window)"
+            : `${selectedPeriod} months`
+          }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y
+          }-${two(last.mNum)}.`
+          : `Fetch complete for ${countryUsed}: ${isLifetime
+            ? "lifetime (allowed window)"
+            : `${selectedPeriod} months`
           }, ok ${ok}, failed ${fail}. Dashboard graphs are ready.`
       );
 
-      localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
-      window.dispatchEvent(new Event("storage"));
+      localStorage.setItem(
+        "selectedPlatform",
+        `amazon-${countryUsed}`
+      );
 
-      // ✅ Send MTD email for first-time users
+      window.dispatchEvent(
+        new Event("storage")
+      );
+
+      // Send MTD email
       try {
-        await ensureMtdEmailSentOnce(countryUsed);
+        await ensureMtdEmailSentOnce(
+          countryUsed
+        );
       } catch (e) {
-        console.error("MTD email send failed", e);
+        console.error(
+          "MTD email send failed",
+          e
+        );
       }
 
-      if (onClose) onClose();
+      if (onClose) {
+        onClose();
+      }
+
       router.push(
         `/pnl-dashboard/MTD/${countryUsed}/${redirectMonthSlug}/${redirectYear}?amazonFetch=success&promptAmazonAds=1`
       );
@@ -2506,8 +2797,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       { num: 2, label: "Category Fees" },
       { num: 3, label: "Fee Preview" },
       { num: 4, label: "Product Information" },
-      { num: 5, label: "Inventory Data" },
-      { num: 6, label: "Historic Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Inventory Data" },
       { num: 7, label: "Live Data" },
       { num: 8, label: "Inventory Forecast" },
       { num: 9, label: "Plotting Graph" },
@@ -2517,8 +2808,8 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       { num: 2, label: "Category Fees" },
       { num: 3, label: "Fee Preview" },
       { num: 4, label: "Product Information" },
-      { num: 5, label: "Inventory Data" },
-      { num: 6, label: "Historic Data" },
+      { num: 5, label: "Historic Data" },
+      { num: 6, label: "Inventory Data" },
       { num: 7, label: "Live Data" },
       { num: 8, label: "Plotting Graph" },
     ];
