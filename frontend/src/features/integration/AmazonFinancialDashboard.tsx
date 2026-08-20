@@ -13,6 +13,12 @@ import Button from "@/components/ui/button/Button";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { buildCountryMarketplaceMap } from "@/lib/utils/countryMarketplace";
 import { StepBadge } from "@/components/common/StepBadge";
+import { normalizeCurrentInventoryResponse } from "@/lib/inventory/fetchCurrentInventoryData";
+import { buildInventoryInsightsFromResponses } from "@/app/(admin)/dashboard/DashboardInventoryInsightsUtils";
+import type {
+  InventoryAgeSummaryApiResponse,
+  InventoryCurrentApiResponse,
+} from "@/app/(admin)/dashboard/DashboardTypes";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -177,6 +183,42 @@ function toDashboardCountryKey(country: string) {
   if (normalized === "united states" || normalized === "usa") return "us";
 
   return normalized;
+}
+
+function dashboardPlatformForCountry(country: string) {
+  return `amazon-${toDashboardCountryKey(country)}`;
+}
+
+function dashboardRegionForCountry(country: string) {
+  return toDashboardCountryKey(country).toUpperCase();
+}
+
+function dashboardCurrencyForCountry(country: string) {
+  const countryKey = toDashboardCountryKey(country);
+  if (countryKey === "uk") return "GBP";
+  if (countryKey === "ca") return "CAD";
+  return "USD";
+}
+
+function getCurrentDashboardPeriod(country: string) {
+  const countryKey = toDashboardCountryKey(country);
+  const timeZone =
+    countryKey === "us"
+      ? "America/Los_Angeles"
+      : countryKey === "ca"
+        ? "America/Toronto"
+        : "Europe/London";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date());
+
+  const year = Number(parts.find((part) => part.type === "year")?.value);
+  const monthNum = Number(parts.find((part) => part.type === "month")?.value);
+
+  return { year, monthNum };
 }
 
 function liveDataApiKey(
@@ -785,6 +827,138 @@ async function fetchDashboardInventoryAgeSummary(params: {
 
   return apiJson(`/inventory_current_age_summary?${qs.toString()}`, {
     method: "GET",
+  });
+}
+
+async function fetchDashboardTargetSummary(params: {
+  country: string;
+  month: string;
+  year: number;
+}) {
+  const qs = new URLSearchParams({
+    country: toDashboardCountryKey(params.country),
+    month: params.month,
+    year: String(params.year),
+  });
+
+  return apiJson(`/target-summary?${qs.toString()}`, { method: "GET" });
+}
+
+function getPreviousMonthPeriod(year: number, monthNum: number) {
+  const previous = new Date(Date.UTC(year, monthNum - 2, 1));
+  return {
+    year: previous.getUTCFullYear(),
+    month: fullMonthNames[previous.getUTCMonth()],
+  };
+}
+
+async function saveAmazonLiveDashboardCache(params: {
+  country: string;
+  monthNum: number;
+  year: number;
+  mtdPayload: any;
+  liveBiPayload: any;
+  currentInventoryPayload: any;
+  inventoryCurrentPayload: any;
+  inventoryAgeSummaryPayload: any;
+}) {
+  const countryKey = toDashboardCountryKey(params.country);
+  const monthName = fullMonthNames[params.monthNum - 1];
+  const previousPeriod = getPreviousMonthPeriod(params.year, params.monthNum);
+
+  const [currentTargetResult, previousTargetResult] = await Promise.allSettled([
+    fetchDashboardTargetSummary({
+      country: countryKey,
+      month: monthName,
+      year: params.year,
+    }),
+    fetchDashboardTargetSummary({
+      country: countryKey,
+      month: previousPeriod.month,
+      year: previousPeriod.year,
+    }),
+  ]);
+
+  const normalizedInventory = normalizeCurrentInventoryResponse(
+    params.currentInventoryPayload || {},
+    countryKey
+  );
+
+  let inventoryInsightsData = null;
+  if (params.inventoryCurrentPayload?.success) {
+    try {
+      inventoryInsightsData = buildInventoryInsightsFromResponses(
+        [params.inventoryCurrentPayload as InventoryCurrentApiResponse],
+        params.inventoryAgeSummaryPayload?.success
+          ? [params.inventoryAgeSummaryPayload as InventoryAgeSummaryApiResponse]
+          : [],
+        countryKey,
+        dashboardCurrencyForCountry(countryKey),
+        "365+ days",
+        countryKey
+      );
+    } catch (error) {
+      console.error("Failed to build cached inventory insights", error);
+    }
+  }
+
+  const savedAt = Date.now();
+  // Inventory can legitimately be unavailable for a newly connected seller.
+  // MTD + Live BI are the required sources for a usable Live Dashboard cache.
+  const cacheIsComplete = Boolean(params.mtdPayload && params.liveBiPayload);
+
+  return apiJson("/amazon_api/live-dashboard/save", {
+    method: "POST",
+    body: JSON.stringify({
+      country: countryKey,
+      platform: dashboardPlatformForCountry(countryKey),
+      region: dashboardRegionForCountry(countryKey),
+      month: params.monthNum,
+      year: params.year,
+      startDay: null,
+      endDay: null,
+      savedAt,
+      cachePayload: {
+        schemaVersion: 2,
+        complete: cacheIsComplete,
+        source: "amazon_financial_dashboard",
+
+        data: params.mtdPayload,
+        liveBiPayload: params.liveBiPayload,
+        biPeriods: params.liveBiPayload?.periods ?? null,
+        biDailySeries: params.liveBiPayload?.daily_series ?? null,
+        biAlignedTotals: params.liveBiPayload?.aligned_totals ?? null,
+
+        invRows: normalizedInventory.rows,
+        inventoryAlerts: normalizedInventory.alerts,
+        inventoryInsightsData,
+        inventoryInsightsError: null,
+        inventoryUnavailableNotice: null,
+        selectedAgeingTrendBucket: "365+ days",
+
+        monthlySpRows: [],
+        monthlySpTotalSpend: null,
+        targetSummaries: {
+          [countryKey]: currentTargetResult.status === "fulfilled"
+            ? currentTargetResult.value?.data ?? null
+            : null,
+        },
+        prevTargetSummaries: {
+          [countryKey]: previousTargetResult.status === "fulfilled"
+            ? previousTargetResult.value?.data ?? null
+            : null,
+        },
+        shopifyRows: [],
+        shopifyPrevRows: [],
+        previousSkuwiseGlobalData: null,
+        globalCountryPayloads: {},
+
+        liveBiReady: Boolean(params.liveBiPayload),
+        biStatus: params.liveBiPayload ? "ready" : "idle",
+        lastRefreshAt: savedAt,
+        savedAt,
+      },
+    }),
   });
 }
 
@@ -1816,11 +1990,12 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     step: number;
     country: string;
     marketplaceId: string;
-    year: number;
-    monthNum: number;
     alreadyHitApiKeys: Set<string>;
   }) => {
-    const monthName = fullMonthNames[params.monthNum - 1];
+    // Historical finance fetches end at the previous completed month, but the
+    // Live Dashboard always represents the marketplace's current MTD period.
+    const livePeriod = getCurrentDashboardPeriod(params.country);
+    const monthName = fullMonthNames[livePeriod.monthNum - 1];
     const monthSlug = monthName.toLowerCase();
     const dashboardCountry = toDashboardCountryKey(params.country);
 
@@ -1838,7 +2013,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     setStep(params.step, "Live Data", 0, "Preparing live dashboard data...");
 
     setStep(params.step, "Live Data", 15, "Fetching Amazon MTD transactions...");
-    await runEtaUnit("liveMtd", () =>
+    const mtdPayload = await runEtaUnit("liveMtd", () =>
       runIfNotHit(
         liveDataApiKey("amazon_mtd_transactions", dashboardCountry),
         () =>
@@ -1851,6 +2026,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     );
 
     setStep(params.step, "Live Data", 40, "Refreshing current inventory data...");
+    let currentInventoryPayload: any = null;
     try {
       await runEtaUnit("liveCurrentInventory", async () => {
         await runIfNotHit(
@@ -1874,18 +2050,18 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             })
         );
 
-        await runIfNotHit(
+        currentInventoryPayload = await runIfNotHit(
           liveDataApiKey(
             "current_inventory",
             dashboardCountry,
             monthSlug,
-            params.year
+            livePeriod.year
           ),
           () =>
             refreshDashboardCurrentInventory({
               country: dashboardCountry,
               month: monthSlug,
-              year: params.year,
+              year: livePeriod.year,
             })
         );
       });
@@ -1894,21 +2070,23 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     }
 
     setStep(params.step, "Live Data", 60, "Fetching inventory insight data...");
+    let inventoryCurrentPayload: any = null;
+    let inventoryAgeSummaryPayload: any = null;
     try {
       await runEtaUnit("liveInventoryInsights", async () => {
-        await Promise.all([
+        const [currentPayload, ageSummaryPayload] = await Promise.all([
           runIfNotHit(
             liveDataApiKey(
               "inventory_current",
               dashboardCountry,
               monthSlug,
-              params.year
+              livePeriod.year
             ),
             () =>
               fetchDashboardInventoryCurrent({
                 country: dashboardCountry,
                 month: monthSlug,
-                year: params.year,
+                year: livePeriod.year,
               })
           ),
           runIfNotHit(
@@ -1916,37 +2094,60 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
               "inventory_current_age_summary",
               dashboardCountry,
               monthSlug,
-              params.year
+              livePeriod.year
             ),
             () =>
               fetchDashboardInventoryAgeSummary({
                 country: dashboardCountry,
                 month: monthSlug,
-                year: params.year,
+                year: livePeriod.year,
               })
           ),
         ]);
+
+        inventoryCurrentPayload = currentPayload;
+        inventoryAgeSummaryPayload = ageSummaryPayload;
       });
     } catch (e) {
       console.error("Live Data inventory insight fetch failed", e);
     }
 
     setStep(params.step, "Live Data", 80, "Fetching live MTD BI data...");
-    await runEtaUnit("liveBi", () =>
+    const liveBiPayload = await runEtaUnit("liveBi", () =>
       runIfNotHit(
-        liveDataApiKey("live_mtd_bi", dashboardCountry, monthSlug, params.year),
+        liveDataApiKey("live_mtd_bi", dashboardCountry, monthSlug, livePeriod.year),
         () =>
           fetchLiveMtdBi({
             country: dashboardCountry,
             month: monthName,
-            year: params.year,
+            year: livePeriod.year,
             dataOnlyRefresh: true,
           })
       )
     );
 
+    setStep(params.step, "Live Data", 95, "Saving live dashboard cache...");
+    await saveAmazonLiveDashboardCache({
+      country: dashboardCountry,
+      monthNum: livePeriod.monthNum,
+      year: livePeriod.year,
+      mtdPayload,
+      liveBiPayload,
+      currentInventoryPayload,
+      inventoryCurrentPayload,
+      inventoryAgeSummaryPayload,
+    });
+
     setStep(params.step, "Live Data", 100, "Live dashboard data ready");
     markStepComplete(params.step);
+
+    return {
+      mtdPayload,
+      liveBiPayload,
+      currentInventoryPayload,
+      inventoryCurrentPayload,
+      inventoryAgeSummaryPayload,
+    };
   };
 
 
@@ -1970,8 +2171,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     for (let y = earliest.y; y <= latest.y; y++) ys.push(y);
     return ys;
   }, [earliest.y, latest.y]);
-
-  const platform = `amazon_${countryUsed}`;
 
   const handleFetchByMonth = () =>
     wrap(async () => {
@@ -2149,8 +2348,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         step: 7,
         country: countryUsed,
         marketplaceId: marketplaceIdUsed,
-        year: y,
-        monthNum: mNum,
         alreadyHitApiKeys,
       });
 
@@ -2201,7 +2398,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.`
       );
 
-      localStorage.setItem("selectedPlatform", `amazon-${countryUsed}`);
+      localStorage.setItem("selectedPlatform", dashboardPlatformForCountry(countryUsed));
       window.dispatchEvent(new Event("storage"));
 
       // ✅ Send MTD email for first-time users
@@ -2616,8 +2813,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         step: 7,
         country: countryUsed,
         marketplaceId: marketplaceIdUsed,
-        year: last.y,
-        monthNum: last.mNum,
         alreadyHitApiKeys,
       });
 
@@ -2719,7 +2914,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       localStorage.setItem(
         "selectedPlatform",
-        `amazon-${countryUsed}`
+        dashboardPlatformForCountry(countryUsed)
       );
 
       window.dispatchEvent(

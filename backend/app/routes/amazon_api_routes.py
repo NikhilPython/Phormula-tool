@@ -4523,6 +4523,8 @@ def save_live_dashboard_data():
         country TEXT NOT NULL,
         platform TEXT NOT NULL DEFAULT '',
         region TEXT NOT NULL DEFAULT '',
+        month INT NULL,
+        year INT NULL,
         start_day INT NULL,
         end_day INT NULL,
         cache_key TEXT NOT NULL UNIQUE,
@@ -4532,16 +4534,28 @@ def save_live_dashboard_data():
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    ALTER TABLE public.{table_name}
+        ADD COLUMN IF NOT EXISTS month INT NULL;
+
+    ALTER TABLE public.{table_name}
+        ADD COLUMN IF NOT EXISTS year INT NULL;
+
     CREATE INDEX IF NOT EXISTS idx_live_dashboard_cache_user_country
     ON public.{table_name} (user_id, country, platform, region);
+
+    CREATE INDEX IF NOT EXISTS idx_live_dashboard_cache_lookup
+    ON public.{table_name}
+        (user_id, country, platform, region, year, month, start_day, end_day);
     """
 
-    def build_cache_key(user_id, country, platform, region, start_day, end_day):
+    def build_cache_key(user_id, country, platform, region, month, year, start_day, end_day):
         return (
             f"{user_id}:"
             f"{country}:"
             f"{platform}:"
             f"{region}:"
+            f"{year if year is not None else 'na'}:"
+            f"{month if month is not None else 'na'}:"
             f"{start_day if start_day is not None else 'na'}:"
             f"{end_day if end_day is not None else 'na'}"
         )
@@ -4552,6 +4566,11 @@ def save_live_dashboard_data():
         country = _safe_ident(body.get("country") or "uk")
         platform = str(body.get("platform") or "").strip().lower()
         region = str(body.get("region") or "").strip()
+
+        month = body.get("month")
+        year = body.get("year")
+        month = int(month) if month not in (None, "", "null") else None
+        year = int(year) if year not in (None, "", "null") else None
 
         start_day = body.get("startDay", body.get("start_day"))
         end_day = body.get("endDay", body.get("end_day"))
@@ -4570,21 +4589,23 @@ def save_live_dashboard_data():
             country=country,
             platform=platform,
             region=region,
+            month=month,
+            year=year,
             start_day=start_day,
             end_day=end_day,
         )
 
         upsert_sql = f"""
         INSERT INTO public.{table_name}
-            (user_id, country, platform, region, start_day, end_day, cache_key, saved_at, payload)
+            (user_id, country, platform, region, month, year, start_day, end_day, cache_key, saved_at, payload)
         VALUES
-            (:user_id, :country, :platform, :region, :start_day, :end_day, :cache_key, :saved_at, CAST(:payload AS jsonb))
+            (:user_id, :country, :platform, :region, :month, :year, :start_day, :end_day, :cache_key, :saved_at, CAST(:payload AS jsonb))
         ON CONFLICT (cache_key)
         DO UPDATE SET
             payload = EXCLUDED.payload,
             saved_at = EXCLUDED.saved_at,
             updated_at = CURRENT_TIMESTAMP
-        RETURNING id, user_id, country, platform, region, start_day, end_day,
+        RETURNING id, user_id, country, platform, region, month, year, start_day, end_day,
                   cache_key, saved_at, created_at, updated_at
         """
 
@@ -4598,6 +4619,8 @@ def save_live_dashboard_data():
                         "country": country,
                         "platform": platform,
                         "region": region,
+                        "month": month,
+                        "year": year,
                         "start_day": start_day,
                         "end_day": end_day,
                         "cache_key": cache_key,
@@ -4625,6 +4648,11 @@ def save_live_dashboard_data():
     platform = str(request.args.get("platform") or "").strip().lower()
     region = str(request.args.get("region") or "").strip()
 
+    month = request.args.get("month")
+    year = request.args.get("year")
+    month = int(month) if month not in (None, "", "null") else None
+    year = int(year) if year not in (None, "", "null") else None
+
     start_day = request.args.get("start_day")
     end_day = request.args.get("end_day")
 
@@ -4636,21 +4664,27 @@ def save_live_dashboard_data():
         country=country,
         platform=platform,
         region=region,
+        month=month,
+        year=year,
         start_day=start_day,
         end_day=end_day,
     )
 
-    # When the UI does not pass a range, do not read the old na:na row.
-    # Return the most recently saved cache for this dashboard instead.
+    # Default MTD and custom-range snapshots are separate cache entries.
+    # Never let the latest custom range become the default dashboard cache.
     if start_day is None and end_day is None:
         select_sql = f"""
-        SELECT id, user_id, country, platform, region, start_day, end_day,
+        SELECT id, user_id, country, platform, region, month, year, start_day, end_day,
                cache_key, saved_at, payload, created_at, updated_at
         FROM public.{table_name}
         WHERE user_id = :user_id
           AND country = :country
           AND platform = :platform
           AND region = :region
+          AND month IS NOT DISTINCT FROM :month
+          AND year IS NOT DISTINCT FROM :year
+          AND start_day IS NULL
+          AND end_day IS NULL
         ORDER BY saved_at DESC NULLS LAST, updated_at DESC, id DESC
         LIMIT 1
         """
@@ -4659,10 +4693,12 @@ def save_live_dashboard_data():
             "country": country,
             "platform": platform,
             "region": region,
+            "month": month,
+            "year": year,
         }
     else:
         select_sql = f"""
-        SELECT id, user_id, country, platform, region, start_day, end_day,
+        SELECT id, user_id, country, platform, region, month, year, start_day, end_day,
                cache_key, saved_at, payload, created_at, updated_at
         FROM public.{table_name}
         WHERE cache_key = :cache_key
@@ -4696,6 +4732,8 @@ def save_live_dashboard_data():
                 "country": data["country"],
                 "platform": data["platform"],
                 "region": data["region"],
+                "month": data["month"],
+                "year": data["year"],
                 "start_day": data["start_day"],
                 "end_day": data["end_day"],
                 "cache_key": data["cache_key"],

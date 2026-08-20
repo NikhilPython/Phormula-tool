@@ -2,6 +2,15 @@
 
 export type InventoryRow = Record<string, string | number | null>;
 
+export type NormalizedCurrentInventoryResponse = {
+  rows: InventoryRow[];
+  alerts: Record<string, { alert?: string; alert_type?: string }>;
+  filename?: string;
+  excelBase64?: string;
+  warnings?: string[];
+  meta?: any;
+};
+
 const normalizeSku = (v: any) =>
   String(v || "")
     .trim()
@@ -291,46 +300,10 @@ function getDummyInventoryAlerts() {
   };
 }
 
-export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
-  rows: InventoryRow[];
-  alerts: Record<string, { alert?: string; alert_type?: string }>;
-  filename?: string;
-  excelBase64?: string;
-  warnings?: string[];
-  meta?: any;
-}> {
-  const { baseURL, token, country, month, year, marketplaceIds, signal } = args;
-
-  const syncMarketplaceIds = getInventoryMarketplaceIds(country, marketplaceIds);
-
-  for (const marketplaceId of syncMarketplaceIds) {
-    throwIfAborted(signal);
-    await hitAgedInventoryOnce(baseURL, token, marketplaceId, signal);
-    throwIfAborted(signal);
-    await hitAwdInventory(baseURL, token, marketplaceId, signal);
-  }
-
-  throwIfAborted(signal);
-
-  const res = await fetch(getCurrentInventoryEndpoint(baseURL), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ month, year, country }),
-    signal,
-  });
-
-  throwIfAborted(signal);
-
-  if (!res.ok) {
-    const errJson = await res.json().catch(() => ({}));
-    throw new Error(errJson?.error || "Failed to fetch CurrentInventory data");
-  }
-
-  const json = await res.json().catch(() => ({}));
-
+export function normalizeCurrentInventoryResponse(
+  json: any,
+  country: string
+): NormalizedCurrentInventoryResponse {
   const isGlobal = String(country || "").toLowerCase() === "global";
 
   const pickArray = (...values: any[]): any[] => {
@@ -383,7 +356,6 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
       ...(Array.isArray(json?.warnings_us) ? json.warnings_us : []),
     ];
   } else {
-    // Countrywise response: keep existing behavior
     normalizedAlerts = normalizeAlertsMap(json?.inventory_alerts || {});
 
     apiRows = pickArray(
@@ -417,10 +389,7 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
     rows: apiRows.map((row) => {
       const normalized = normalizeInventoryRow(row);
 
-      if (!isGlobal) {
-        // Countrywise rows stay exactly as before
-        return normalized;
-      }
+      if (!isGlobal) return normalized;
 
       const rowCountry = String((row as any)?.country || "").toUpperCase();
       const sku = normalizeSku((row as any)?.SKU ?? (row as any)?.sku);
@@ -443,4 +412,42 @@ export async function fetchCurrentInventoryData(args: FetchArgs): Promise<{
     warnings,
     meta: json?.meta || responseData?.meta,
   };
+}
+
+export async function fetchCurrentInventoryData(
+  args: FetchArgs
+): Promise<NormalizedCurrentInventoryResponse> {
+  const { baseURL, token, country, month, year, marketplaceIds, signal } = args;
+
+  const syncMarketplaceIds = getInventoryMarketplaceIds(country, marketplaceIds);
+
+  for (const marketplaceId of syncMarketplaceIds) {
+    throwIfAborted(signal);
+    await hitAgedInventoryOnce(baseURL, token, marketplaceId, signal);
+    throwIfAborted(signal);
+    await hitAwdInventory(baseURL, token, marketplaceId, signal);
+  }
+
+  throwIfAborted(signal);
+
+  const res = await fetch(getCurrentInventoryEndpoint(baseURL), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ month, year, country }),
+    signal,
+  });
+
+  throwIfAborted(signal);
+
+  if (!res.ok) {
+    const errJson = await res.json().catch(() => ({}));
+    throw new Error(errJson?.error || "Failed to fetch CurrentInventory data");
+  }
+
+  const json = await res.json().catch(() => ({}));
+
+  return normalizeCurrentInventoryResponse(json, country);
 }

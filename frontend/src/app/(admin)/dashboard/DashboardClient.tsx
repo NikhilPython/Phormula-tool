@@ -4783,6 +4783,8 @@ export default function DashboardPage() {
                     country: liveDashboardCountry,
                     platform: String(platform || "").toLowerCase(),
                     region: String(activeDateRegion || ""),
+                    month: monthToNumber(currMonthName.toLowerCase()),
+                    year: currYear,
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
                     savedAt: Date.now(),
@@ -4802,6 +4804,8 @@ export default function DashboardPage() {
             liveDashboardCountry,
             platform,
             activeDateRegion,
+            currMonthName,
+            currYear,
             selectedStartDay,
             selectedEndDay,
         ]
@@ -4900,6 +4904,8 @@ export default function DashboardPage() {
                 country: liveDashboardCountry,
                 platform: String(platform || "").toLowerCase(),
                 region: String(activeDateRegion || ""),
+                month: String(monthToNumber(currMonthName.toLowerCase())),
+                year: String(currYear),
             });
             if (rangeStartDay != null) {
                 params.set("start_day", String(rangeStartDay));
@@ -4925,9 +4931,12 @@ export default function DashboardPage() {
             }
 
             const payload = json?.data?.payload ?? null;
+            const isUsablePayload = Boolean(
+                payload?.complete === true && Number(payload?.schemaVersion) >= 2
+            );
 
             return {
-                found: Boolean(json?.found && payload),
+                found: Boolean(json?.found && payload && isUsablePayload),
                 payload,
                 updatedAt: json?.data?.updated_at ?? json?.data?.created_at ?? null,
             };
@@ -4935,6 +4944,8 @@ export default function DashboardPage() {
         liveDashboardCountry,
         platform,
         activeDateRegion,
+        currMonthName,
+        currYear,
         selectedStartDay,
         selectedEndDay,
     ]);
@@ -5053,6 +5064,10 @@ export default function DashboardPage() {
             region: country.toUpperCase(),
         });
 
+        const countryPeriod = getRegionYearMonth(country.toUpperCase() as RegionKey);
+        params.set("month", String(monthToNumber(countryPeriod.monthName.toLowerCase())));
+        params.set("year", String(countryPeriod.year));
+
         if (selectedStartDay != null) params.set("start_day", String(selectedStartDay));
         if (selectedEndDay != null) params.set("end_day", String(selectedEndDay));
 
@@ -5061,9 +5076,16 @@ export default function DashboardPage() {
         });
 
         const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.success || !json?.data?.payload) return null;
+        const payload = json?.data?.payload;
+        if (
+            !res.ok ||
+            !json?.success ||
+            !payload ||
+            payload?.complete !== true ||
+            Number(payload?.schemaVersion) < 2
+        ) return null;
 
-        return json.data.payload;
+        return payload;
     }, [selectedStartDay, selectedEndDay]);
 
     const usdFrom = (value: any, country: "uk" | "us") => {
@@ -8181,6 +8203,9 @@ export default function DashboardPage() {
         const finalLastRefreshAt = lastRefreshAt ?? Date.now();
 
         return {
+            schemaVersion: 2,
+            complete: true,
+            source: "dashboard_client",
             data,
             adsSpendTotal,
             cm2Profit,
