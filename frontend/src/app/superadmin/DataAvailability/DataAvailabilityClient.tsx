@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   CheckCircle2,
+  CircleDashed,
   Database,
   Eye,
   Search,
@@ -15,6 +16,7 @@ import SuperAdminUsersTable from "@/components/admin/table/SuperAdminUsersTable"
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import Loader from "@/components/loader/Loader";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { LuCircleCheckBig, LuCircleX, LuLayers3 } from "react-icons/lu";
 
 const MONTHS = [
   { value: "january", label: "January" },
@@ -528,19 +530,19 @@ export default function DataAvailabilityClient() {
     {
       label: "Total Brands",
       value: visibleSummary.total,
-      icon: Database,
+      icon: LuLayers3,
       detail: "Availability records checked",
     },
     {
       label: "Complete Brands",
       value: visibleSummary.complete,
-      icon: CheckCircle2,
+      icon: LuCircleCheckBig,
       detail: "All required data available",
     },
     {
       label: "Incomplete Brands",
       value: visibleSummary.missing,
-      icon: XCircle,
+      icon: LuCircleX,
       detail: "Records with missing data",
     },
     {
