@@ -26,57 +26,6 @@ type AdminRow = {
   };
 };
 
-// const dummyAdmins: AdminRow[] = [
-//   {
-//     id: 1,
-//     brand_name: "Skin Elements",
-//     company_name: "Skin Elements Pvt Ltd",
-//     name: "ABC",
-//     email: "abc@skinelements.com",
-//     country: "UK",
-//     marketplace_id: "A1F83G8C2ARO7P",
-//     status: "active",
-//     address: {
-//       country: "India",
-//       city: "New Delhi",
-//       state: "Delhi",
-//       zipcode: "110001",
-//     },
-//   },
-//   {
-//     id: 2,
-//     brand_name: "Glow Naturals",
-//     company_name: "Glow Naturals Ltd",
-//     name: "Nikhil Dubey",
-//     email: "backend@skinelements.com",
-//     country: "US",
-//     marketplace_id: "ATVPDKIKX0DER",
-//     status: "inactive",
-//     address: {
-//       country: "India",
-//       city: "Mumbai",
-//       state: "Maharashtra",
-//       zipcode: "400001",
-//     },
-//   },
-//   {
-//     id: 3,
-//     brand_name: "Pure Care",
-//     company_name: "Pure Care Wellness",
-//     name: "Amit Sharma",
-//     email: "amit@example.com",
-//     country: "Global",
-//     marketplace_id: "GLOBAL-001",
-//     status: "active",
-//     address: {
-//       country: "United Kingdom",
-//       city: "London",
-//       state: "England",
-//       zipcode: "SW1A",
-//     },
-//   },
-// ];
-
 const sortByNewestId = (rows: AdminRow[]) =>
   [...rows].sort((a, b) => {
     const aNumber = typeof a.id === "number" ? a.id : Number(a.id);
@@ -139,10 +88,17 @@ const AdminPage = () => {
           throw new Error(data?.message || "Failed to fetch admins");
         }
 
+        const users = Array.isArray(data?.users) ? data.users : [];
+
         setAdmins(
-          Array.isArray(data?.user_admins)
-            ? data.user_admins
-            : []
+          users.map((user: AdminRow) => ({
+            ...user,
+            native_country:
+              user.native_country ||
+              user.address?.country ||
+              user.country ||
+              "",
+          }))
         );
       } catch (error) {
         console.error("Failed to fetch admins:", error);
@@ -168,9 +124,11 @@ const AdminPage = () => {
         admin.name,
         admin.email,
         admin.phone_number,
+        admin.company_name,
         admin.brand_name,
         admin.native_country,
         admin.address?.country,
+        admin.country,
       ]
         .filter(Boolean)
         .some((value) =>
@@ -178,37 +136,6 @@ const AdminPage = () => {
         )
     );
   }, [admins, searchQuery]);
-
-  // const handleToggleStatus = (admin: AdminRow) => {
-  //   setActionLoading((prev) => ({
-  //     ...prev,
-  //     [admin.email]: true,
-  //   }));
-
-  //   setAdmins((prev) =>
-  //     prev.map((item) => {
-  //       if (item.email !== admin.email) {
-  //         return item;
-  //       }
-
-  //       const currentStatus = normalizeStatus(item.status);
-
-  //       return {
-  //         ...item,
-  //         status: currentStatus === "active" ? "inactive" : "active",
-  //       };
-  //     })
-  //   );
-
-  //   setActionLoading((prev) => ({
-  //     ...prev,
-  //     [admin.email]: false,
-  //   }));
-  // };
-
-  // const handleDeleteAdmin = (email: string) => {
-  //   setAdmins((prev) => prev.filter((admin) => admin.email !== email));
-  // };
 
   return (
     <div className="w-full text-white">

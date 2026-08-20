@@ -911,16 +911,18 @@ def _safe_amazon_connection_dict(row):
         "transit_time": getattr(row, "transit_time", None),
     }
 
-
 def _safe_user_dict(u: User):
     countries, marketplace_ids = _connected_amazon_countries(u.id)
     amazon_connections = _amazon_connection_rows_for_user(u.id)
+
     marketplace_ids = [
         row.marketplace_id
         for row in amazon_connections
         if getattr(row, "marketplace_id", None)
     ]
+
     primary_connection = amazon_connections[0] if amazon_connections else None
+
     primary_marketplace_id = (
         getattr(u, "marketplace_id", None)
         or (
@@ -929,6 +931,7 @@ def _safe_user_dict(u: User):
             else None
         )
     )
+
     primary_country = (
         getattr(u, "country", None)
         or (
@@ -938,28 +941,63 @@ def _safe_user_dict(u: User):
         )
         or MARKETPLACE_COUNTRY.get(primary_marketplace_id or "")
     )
-    connected_marketplaces_count = getattr(u, "connected_marketplaces_count", None)
+
+    connected_marketplaces_count = getattr(
+        u,
+        "connected_marketplaces_count",
+        None
+    )
+
     if marketplace_ids:
         connected_marketplaces_count = len(marketplace_ids)
+
+    phone_number = (
+        getattr(u, "phone_number", None)
+        or getattr(u, "phone", None)
+        or getattr(u, "mobile_number", None)
+        or getattr(u, "mobile", None)
+    )
 
     return {
         "id": u.id,
         "name": getattr(u, "name", None),
         "email": u.email,
+
+        # ADD THIS
+        "phone_number": phone_number,
+
         "company_name": getattr(u, "company_name", None),
         "brand_name": getattr(u, "brand_name", None),
         "countries": countries,
         "country": primary_country,
         "marketplace_id": primary_marketplace_id,
         "marketplace_ids": marketplace_ids,
+
         "amazon_connections": [
             _safe_amazon_connection_dict(row)
             for row in amazon_connections
         ],
-        "annual_sales_range": getattr(u, "annual_sales_range", None),
-        "target_sales": float(u.target_sales) if getattr(u, "target_sales", None) is not None else None,
+
+        "annual_sales_range": getattr(
+            u,
+            "annual_sales_range",
+            None
+        ),
+
+        "target_sales": (
+            float(u.target_sales)
+            if getattr(u, "target_sales", None) is not None
+            else None
+        ),
+
         "address": getattr(u, "address", None),
-        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+
+        "created_at": (
+            u.created_at.isoformat()
+            if getattr(u, "created_at", None)
+            else None
+        ),
+
         "is_verified": getattr(u, "is_verified", None),
         "homeCurrency": getattr(u, "homeCurrency", None),
         "amazon_user_exists": getattr(u, "amazon_user_exists", None),
@@ -969,9 +1007,7 @@ def _safe_user_dict(u: User):
         "steps_exists": getattr(u, "steps_exists", None),
         "amazon_connected": getattr(u, "amazon_connected", None),
         "connected_marketplaces_count": connected_marketplaces_count,
-        # ✅ ADD THIS LINE
         "status": u.status,
-
     }
 
 def _safe_admin_dict(ua: UserAdmin):
