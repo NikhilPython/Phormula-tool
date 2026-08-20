@@ -836,8 +836,15 @@ def _post_live_dashboard_cache(
     saved_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     cache_payload = {
+        "schemaVersion": 2,
+        # This scheduled snapshot does not yet include inventory/target UI
+        # payloads, so the frontend must not treat it as a complete page cache.
+        "complete": False,
         "data": mtd_payload,
         "liveBiPayload": live_bi_payload,
+        "biPeriods": (live_bi_payload or {}).get("periods"),
+        "biDailySeries": (live_bi_payload or {}).get("daily_series"),
+        "biAlignedTotals": (live_bi_payload or {}).get("aligned_totals"),
         "monthlySpPayload": ads_payload,
         "biStatus": "ready" if live_bi_payload else "idle",
         "liveBiReady": bool(live_bi_payload),
@@ -852,6 +859,8 @@ def _post_live_dashboard_cache(
         "country": meta["country"],
         "platform": meta["platform"],
         "region": meta["region"],
+        "month": today.month,
+        "year": today.year,
         "startDay": 1,
         "endDay": today.day,
         "savedAt": saved_at_ms,
