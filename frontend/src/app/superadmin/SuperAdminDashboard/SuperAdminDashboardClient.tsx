@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { LuBadgeCheck, LuBadgeX } from "react-icons/lu";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 const MIN_LOADER_MS = 3000;
@@ -1522,9 +1523,15 @@ export default function SuperAdminDashboardPage() {
       <section className="rounded-xl border border-white/10 bg-[#484962] p-4 text-white shadow-[0_16px_38px_rgba(20,22,45,0.22)] 2xl:p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h2 className="text-lg font-bold leading-tight text-white 2xl:text-xl">
+            {/* <h2 className="text-lg font-bold leading-tight text-white 2xl:text-xl">
               Recent Brands
-            </h2>
+            </h2> */}
+            <PageBreadcrumb
+              pageTitle="Recent Brands"
+              variant="superadmin"
+              align="left"
+              textSize="xl"
+            />
             <p className="mt-1 text-xs text-white/60 2xl:text-sm">
               View, search, and manage registered user brands.
             </p>
@@ -2080,11 +2087,17 @@ export default function SuperAdminDashboardPage() {
         <div className="rounded-xl border border-white/10 bg-[#484962] p-4 shadow-[0_16px_38px_rgba(20,22,45,0.22)] 2xl:p-5">
           <div className="flex flex-col leading-tight">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <h1 className="text-lg font-bold tracking-tight text-white 2xl:text-xl">
+              {/* <h1 className="text-lg font-bold tracking-tight text-white 2xl:text-xl">
                 Welcome,
-              </h1>
+              </h1> */}
+              <PageBreadcrumb
+                pageTitle="Welcome,"
+                variant="superadmin"
+                align="left"
+                textSize="xl"
+              />
 
-              <span className="text-lg font-bold tracking-tight text-[#31d9e5] 2xl:text-xl">
+              <span className="text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold tracking-tight text-[#31d9e5]">
                 Super Admin!
               </span>
             </div>

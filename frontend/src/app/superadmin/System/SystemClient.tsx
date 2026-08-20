@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
     AlertTriangle,
+    BadgeDollarSign,
     Building2,
     Database,
     Store,
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import { LuUserRoundX, LuWorkflow } from "react-icons/lu";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -561,14 +563,14 @@ export default function DataOperationsClient() {
             id: "inactive-users",
             label: "Inactive Users",
             count: inactiveUsers,
-            icon: AlertTriangle,
+            icon: LuUserRoundX,
             detail: "Disabled user accounts are included in this count.",
         },
         {
             id: "currency-coverage",
             label: "Currency Rates",
             count: visibleCurrencyRecords.length,
-            icon: Database,
+            icon: BadgeDollarSign,
             detail: `Rates loaded for ${currentCurrencyPeriod.label}.`,
         },
     ];
@@ -763,7 +765,7 @@ export default function DataOperationsClient() {
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-start gap-3">
                                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
-                                    <Database size={19} />
+                                    <BadgeDollarSign size={19} />
                                 </span>
 
                                 <div>
@@ -790,7 +792,7 @@ export default function DataOperationsClient() {
                         </div>
                     </div>
 
-                    {/* FORMULA UPDATES */}
+                   
                     {/* FORMULA UPDATES */}
                     <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -798,7 +800,7 @@ export default function DataOperationsClient() {
                             {/* LEFT - TITLE */}
                             <div className="flex items-start gap-3 xl:min-w-[320px]">
                                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#31d9e5]/15 text-[#31d9e5]">
-                                    <Database size={19} />
+                                    <LuWorkflow size={19} />
                                 </span>
 
                                 <div>
