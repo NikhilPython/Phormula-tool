@@ -238,6 +238,19 @@ const DUMMY_PRODUCTWISE_DATA: APIResponse = {
   },
 };
 
+const DUMMY_PERFORMANCE_SUMMARY = `
+Demo Product A is currently shown in preview mode.
+
+Inventory
+No inventory data has been fetched yet.
+
+Key Concerns
+Connect Amazon and fetch your data to generate real SKU-level insights.
+
+Conclusion
+This is sample data only. Your actual product performance will appear here after the first successful data fetch.
+`;
+
 const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   embedded = false,
   countryNameProp,
@@ -293,6 +306,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const routeCountryName = (params?.countryName as string) || undefined;
   const monthParam = (params?.month as string) || undefined;
   const yearParam = (params?.year as string) || undefined;
+
+  const previewMonth = String(
+    embedded ? selectedMonthProp : monthParam
+  ).toUpperCase();
+
+  const previewYear = String(
+    embedded ? selectedYearProp : yearParam
+  ).toUpperCase();
 
   const isPreviewMode =
     String(embedded ? selectedMonthProp : monthParam).toUpperCase() === "NA" &&
@@ -428,7 +449,15 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   useEffect(() => {
     if (!isDrawerOpen || !selectedSku) return;
 
+    // ✅ New user / demo preview:
+    // Do not hit backend because user tables do not exist yet.
+    if (isPreviewMode) {
+      return;
+    }
+
     const currentInsight = skuInsights[selectedSku];
+
+    if (currentInsight?.best_performance) return;
 
     // ✅ already loaded, don't call again
     if (currentInsight?.best_performance) return;
@@ -489,6 +518,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     platformCountryName,
     countryName,
     viewCurrency,
+    isPreviewMode,
   ]);
 
   useEffect(() => {
@@ -1433,54 +1463,64 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             />
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              {sortedMetrics.map((m, i) => {
-                const { main, delta } = splitMetricValue(m.value);
+            {sortedMetrics.map((m, i) => {
+  const { main, delta } = splitMetricValue(m.value);
 
-                const displayMain = formatRecommendationCardMainValue(
-                  m.label,
-                  main
-                );
+  // ✅ Dummy mode:
+  // every metric shows plain 0
+  // no currency formatting
+  // no percentage
+  // no delta
+  const displayMain = isPreviewMode
+    ? "0"
+    : formatRecommendationCardMainValue(
+        m.label,
+        main
+      );
 
-                const formattedTitle = m.label
-                  .replace(/\b\w/g, (char) => char.toUpperCase())
-                  .replace("Cm1", "CM1");
+  const formattedTitle = m.label
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cm1", "CM1");
 
-                const isNegativeDelta = delta?.includes("-");
+  const isNegativeDelta = delta?.includes("-");
 
-                return (
-                  <div
-                    key={`${m.label}-${i}`}
-                    className={[
-                      "w-full rounded-xl bg-white shadow-sm p-3 2xl:p-3",
-                      "flex flex-col justify-between min-h-[78px]",
-                      getMetricCardAccentClass(m.label, i),
-                    ].join(" ")}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-                        {formattedTitle}
-                      </span>
-                    </div>
+  return (
+    <div
+      key={`${m.label}-${i}`}
+      className={[
+        "w-full rounded-xl bg-white shadow-sm p-3",
+        "h-[82px] flex flex-col justify-between",
+        getMetricCardAccentClass(m.label, i),
+      ].join(" ")}
+    >
+      <div>
+        <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
+          {formattedTitle}
+        </span>
+      </div>
 
-                    <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
-                      <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
-                        {displayMain}
-                      </span>
+      <div className="flex items-end leading-tight tabular-nums">
+        <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
+          {displayMain}
+        </span>
 
-                      {delta && (
-                        <span
-                          className={[
-                            "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
-                            isNegativeDelta ? "text-red-600" : "text-emerald-600",
-                          ].join(" ")}
-                        >
-                          {formatMetricDelta(delta)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+        {/* ✅ Deltas only for real data */}
+        {!isPreviewMode && delta && (
+          <span
+            className={[
+              "ml-auto text-[10px] 2xl:text-xs font-semibold whitespace-nowrap",
+              isNegativeDelta
+                ? "text-red-600"
+                : "text-emerald-600",
+            ].join(" ")}
+          >
+            {formatMetricDelta(delta)}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+})}
             </div>
           </div>
         )}
@@ -1541,9 +1581,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
             isOtherSkus={!!insightData.isOtherSkus}
             otherSkuProductNames={
               insightData.isOtherSkus
-                ? (insightData.includedSkus || []).map((item) => item.product_name)
+                ? (insightData.includedSkus || []).map(
+                  (item) => item.product_name
+                )
                 : []
             }
+            isPreviewMode={isPreviewMode}
           />
         </div>
 
@@ -2231,6 +2274,14 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   useEffect(() => {
     if (!selectedSku) return;
 
+    // Never call ProductSummaryAI before user data has been fetched.
+    if (isPreviewMode) {
+      setSummaryLoading(false);
+      setSummaryError(null);
+      setPerformanceSummary(DUMMY_PERFORMANCE_SUMMARY);
+      return;
+    }
+
     const insightData = skuInsights[selectedSku];
 
     const productName =
@@ -2267,8 +2318,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         setPerformanceSummary(summary);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
+
         console.error("ProductPerformanceSummary Error:", e);
-        setSummaryError(e?.message || "Failed to load performance summary");
+
+        setSummaryError(
+          e?.message || "Failed to load performance summary"
+        );
       } finally {
         setSummaryLoading(false);
       }
@@ -2285,6 +2340,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     countryName,
     countryNameProp,
     viewCurrency,
+    isPreviewMode,
   ]);
 
   const orderedCards = useMemo(() => {

@@ -84,6 +84,7 @@ interface ProductJourneyInlineGraphProps {
   displayCurrency?: CurrencyCode;
   isOtherSkus?: boolean;
   otherSkuProductNames?: string[];
+  isPreviewMode?: boolean;
 }
 
 const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
@@ -92,6 +93,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   displayCurrency,
   isOtherSkus = false,
   otherSkuProductNames = [],
+  isPreviewMode = false,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -218,6 +220,36 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   const monthShort = (d: Date) => d.toLocaleString("en-US", { month: "short" });
   const monthLabel = (d: Date) => `${monthShort(d)}'${String(d.getFullYear()).slice(-2)}`;
 
+  const buildZeroJourneySeries = (): ProductMetricPoint[] => {
+    const today = new Date();
+
+    return Array.from({ length: 12 }, (_, idx) => {
+      const d = new Date(today.getFullYear(), today.getMonth() - (11 - idx), 1);
+
+      return {
+        month: monthLabel(d),
+        net_sales: 0,
+        cm1_profit: 0,
+        units_sold: 0,
+        asp: 0,
+        sales_mix: 0,
+        profit_mix: 0,
+        inventory_units: 0,
+        unit_wise_profitability: 0,
+        cm2_profit: 0,
+        cm2_profit_percentage: 0,
+        cm2_profit_per_unit: 0,
+      };
+    });
+  };
+
+  const buildDummyJourneyData = (): Record<CountryKey, ProductMetricPoint[]> => ({
+    uk: buildZeroJourneySeries(),
+    global: buildZeroJourneySeries(),
+    us: buildZeroJourneySeries(),
+    ca: buildZeroJourneySeries(),
+  });
+
   const monthNameToIndex: Record<string, number> = {
     january: 0,
     february: 1,
@@ -278,6 +310,15 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   const [resolvedRequestKey, setResolvedRequestKey] = useState<string | null>(null);
 
   useEffect(() => {
+    // ✅ Preview mode: show dummy zero graph, do not hit backend
+    if (isPreviewMode) {
+      setLoading(false);
+      setError("");
+      setResolvedRequestKey(journeyRequestKey);
+      setJourneyData(buildDummyJourneyData());
+      return;
+    }
+
     const cleanProductName = String(productname || "").trim();
 
     if (!cleanProductName) {
@@ -426,10 +467,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                 label,
                 Number(Number(row.unit_wise_profitability ?? 0).toFixed(2))
               );
-              valueMaps[country].cm2_profit.set(
-                label,
-                Number(row.cm2_profit ?? 0)
-              );
+              valueMaps[country].cm2_profit.set(label, Number(row.cm2_profit ?? 0));
               valueMaps[country].cm2_profit_percentage.set(
                 label,
                 Number(row.cm2_profit_percentage ?? 0)
@@ -505,6 +543,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
     isOtherSkus,
     otherSkuKey,
     journeyRequestKey,
+    isPreviewMode,
   ]);
 
   const isJourneyLoading =
@@ -980,7 +1019,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                       align="left"
                       textSize="xl"
                     />
-                    
+
                   </div>
                 </div>
 
