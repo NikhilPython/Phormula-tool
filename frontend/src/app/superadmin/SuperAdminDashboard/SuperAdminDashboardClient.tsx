@@ -1548,7 +1548,6 @@ export default function SuperAdminDashboardPage() {
           <div className="relative mt-5 min-h-[240px] overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
             <Loader
               fullscreen
-              contained
               backgroundClass="bg-[#37384f]/65"
               roundedClass="rounded-xl"
             />

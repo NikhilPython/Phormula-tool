@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import IssuesClient from "./IssuesClient";
 
 export const metadata: Metadata = {
@@ -11,5 +12,15 @@ export const metadata: Metadata = {
 };
 
 export default function IssuesPage() {
-  return <IssuesClient />;
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[260px] items-center justify-center">
+          <div className="text-sm text-white/60">Loading issues...</div>
+        </div>
+      }
+    >
+      <IssuesClient />
+    </Suspense>
+  );
 }

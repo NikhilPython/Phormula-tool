@@ -807,7 +807,6 @@ export default function DataAvailabilityClient() {
           <div className="relative min-h-[260px] overflow-hidden rounded-xl border border-white/10 bg-[#484962]">
             <Loader
               fullscreen
-              contained
               backgroundClass="bg-[#37384f]/65"
               roundedClass="rounded-xl"
             />
