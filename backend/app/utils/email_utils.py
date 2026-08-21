@@ -37,288 +37,467 @@ def test_send_email():
     except Exception as e:
         print(f"Failed to send test email: {e}")
 
-def send_welcome_and_verification_emails(email, name, verification_link):
-    try:
-        welcome_msg = Message(
-            "Welcome to Phormula",
-            sender=("Phormula Care Team", "care@phormula.io"),
-            recipients=[email]
-        )
-
-        welcome_msg.html = f"""
+def _welcome_shell(title: str, body_html: str) -> str:
+    """Shared Phormula transactional-email shell."""
+    return f"""
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <style>
     @media only screen and (max-width: 600px) {{
-      .email-container {{
-        width: 100% !important;
-        max-width: 100% !important;
-      }}
-
-      .top-report-title {{
-        font-size: 14px !important;
-        line-height: 18px !important;
-      }}
-
-      .content-cell {{
-        padding:22px 24px 26px 24px !important;
-      }}
-
-      .note-cell {{
-        padding:14px 24px 16px 24px !important;
-      }}
-
-      .cta-wrap {{
-        text-align:center !important;
-      }}
-
-      .cta-button {{
-        display:inline-block !important;
-        margin:0 auto !important;
-        text-align:center !important;
-      }}
+      .email-container {{ width:100% !important; max-width:100% !important; }}
+      .content-cell {{ padding:22px 24px 26px 24px !important; }}
+      .top-report-title {{ font-size:14px !important; }}
     }}
   </style>
 </head>
-
-<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif;">
+<body style="margin:0; padding:0; font-family:Arial, Helvetica, sans-serif; background:#ffffff;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
-    <tr>
-      <td align="center">
-
-        <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="
-          background:#ffffff;
-          width:600px;
-          max-width:600px;
-          border-collapse:collapse;
-        ">
-
-          <!-- top green bar -->
-          <tr>
-            <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed; border-collapse:collapse;">
-                <tr>
-                  <td width="110" style="text-align:left; vertical-align:middle; white-space:nowrap;">
-                    <img
-                      src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
-                      alt="Phormula"
-                      width="40"
-                      style="display:block; width:40px; max-width:40px; height:auto; border:0;"
-                    />
-                  </td>
-
-                  <td width="382" align="right" class="top-report-title" style="
-                    font-size:16px;
-                    line-height:18px;
-                    color:#f8edce;
-                    text-align:right;
-                    vertical-align:middle;
-                    white-space:nowrap;
-                  ">
-                    Account Verification
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- logo/title -->
-          <tr>
-            <td align="center" style="
-              padding:28px 30px 18px 30px;
-              background:#ffffff;
-              border-left:1px solid #e4e7ec;
-              border-right:1px solid #e4e7ec;
-            ">
-              <img
-                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
-                alt="Phormula Logo"
-                width="220"
-                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
-              />
-
-              <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
-                Welcome to Phormula
-              </div>
-            </td>
-          </tr>
-
-          <!-- divider -->
-          <tr>
-            <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
-          </tr>
-
-          <!-- body -->
-          <tr>
-            <td class="content-cell" style="
-              padding:22px 32px 26px 32px;
-              color:#444444;
-              font-size:14px;
-              line-height:1.7;
-              text-align:left;
-              border-left:1px solid #e4e7ec;
-              border-right:1px solid #e4e7ec;
-            ">
-              <p style="margin:0 0 18px 0; text-align:left;">
-                Hey <strong>{name}</strong>,
-              </p>
-
-              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
-                Welcome to <strong>Phormula</strong>, a platform built for modern D2C brands.
-                We’re delighted to have you on board.
-              </p>
-
-              <p style="margin:0 0 18px 0; text-align:justify; text-justify:inter-word;">
-                To begin your journey and securely access the Phormula experience,
-                please verify your email address by clicking the button below.
-              </p>
-
-              <!-- info box -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="
-                margin:20px 0 22px 0;
-                background:#eef7f3;
-                border:1px solid #cfe9dc;
-                border-collapse:collapse;
-              ">
-                <tr>
-                  <td style="padding:16px 18px;">
-                    <div style="font-size:14px; font-weight:bold; color:#37455f; margin-bottom:10px;">
-                      What happens after verification?
-                    </div>
-
-                    <ul style="
-                      margin:0;
-                      padding-left:18px;
-                      color:#444444;
-                      font-size:14px;
-                      line-height:1.8;
-                      text-align:left;
-                    ">
-                      <li>Secure access to your Phormula account</li>
-                      <li>Business insights designed for modern D2C brands</li>
-                      <li>Tools to help you scale, optimize, and grow confidently</li>
-                    </ul>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- CTA -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
-                width:100%;
-                margin:26px 0 24px 0;
-                border-collapse:collapse;
-              ">
-                <tr>
-                  <td align="center" class="cta-wrap" style="
-                    text-align:center !important;
-                    padding:0;
-                    margin:0;
-                  ">
-                    <a href="{verification_link}" class="cta-button" style="
-                      display:inline-block;
-                      background:#37455f;
-                      color:#f8edce;
-                      padding:12px 30px;
-                      text-decoration:none;
-                      font-size:14px;
-                      font-weight:bold;
-                      border-radius:10px;
-                      text-align:center;
-                      line-height:20px;
-                      margin:0 auto;
-                    ">
-                      Activate My Account
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
-                Once confirmed, you’ll unlock powerful tools and insights designed to help you
-                scale, optimize, and grow your brand with confidence.
-              </p>
-
-              <p style="margin:0 0 16px 0; color:#777777; text-align:justify; text-justify:inter-word;">
-                If you did not create a Phormula account, you may safely ignore this email.
-              </p>
-
-              <p style="margin:0 0 18px 0; color:#777777; text-align:justify; text-justify:inter-word;">
-                For any questions or assistance, our support team is available at
-                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
-                  care@phormula.io
-                </a>.
-              </p>
-
-              <p style="margin:18px 0 0 0; text-align:left;">
-                Warm regards,
-              </p>
-
-              <p style="margin:0; text-align:left;">
-                <strong>The Phormula Team</strong>
-              </p>
-
-              <p style="margin:0; text-align:left;">
-                <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">
-                  care@phormula.io
-                </a>
-              </p>
-            </td>
-          </tr>
-
-          <!-- full-width note section -->
-          <tr>
-            <td class="note-cell" style="
-              border-top:1px solid #dddddd;
-              padding:14px 32px 16px 32px;
-              background:#ffffff;
-              font-size:12px;
-              color:#999999;
-              line-height:1.6;
-              text-align:left;
-              border-left:1px solid #e4e7ec;
-              border-right:1px solid #e4e7ec;
-            ">
-              This email was generated automatically by Phormula.
-            </td>
-          </tr>
-
-          <!-- footer -->
-          <tr>
-            <td align="center" style="
-              background:#5ea68e;
-              padding:12px 18px;
-              color:#f8edce;
-              font-size:12px;
-              line-height:1.5;
-              text-align:center;
-            ">
-              © 2026 Phormula. All rights reserved.
-            </td>
-          </tr>
-
-        </table>
-
-      </td>
-    </tr>
+    <tr><td align="center">
+      <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0"
+             style="width:600px; max-width:600px; border-collapse:collapse; background:#ffffff;">
+        <tr>
+          <td style="background:#5ea68e; padding:18px 24px; color:#ffffff;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td width="110">
+                  <img src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                       alt="Phormula" width="40" style="display:block; width:40px; height:auto; border:0;" />
+                </td>
+                <td align="right" class="top-report-title"
+                    style="font-size:16px; color:#f8edce; white-space:nowrap;">{html.escape(title)}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:28px 30px 18px; border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;">
+            <img src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                 alt="Phormula Logo" width="220"
+                 style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px; border:0;" />
+            <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">Welcome to Phormula</div>
+          </td>
+        </tr>
+        <tr><td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td></tr>
+        <tr>
+          <td class="content-cell" style="padding:22px 32px 26px; color:#444444; font-size:14px; line-height:1.7; border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;">
+            {body_html}
+          </td>
+        </tr>
+        <tr>
+          <td style="border-top:1px solid #dddddd; padding:14px 32px 16px; background:#ffffff; font-size:12px; color:#999999; border-left:1px solid #e4e7ec; border-right:1px solid #e4e7ec;">
+            This email was generated automatically by Phormula.
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="background:#5ea68e; padding:12px 18px; color:#f8edce; font-size:12px;">
+            © 2026 Phormula. All rights reserved.
+          </td>
+        </tr>
+      </table>
+    </td></tr>
   </table>
 </body>
 </html>
 """
 
-        if not welcome_msg.html:
-            print("Error: HTML content is empty")
-            return
 
-        mail.send(welcome_msg)
+def send_verification_otp_email(email, name, otp, expires_minutes=10):
+    """
+    Send a secure one-time verification code email.
+    OTP must never be logged or returned through an API response.
+    """
 
-    except Exception as e:
-        print(f"Failed to send email to {email}: {e}")
-        raise e
+    display_name = html.escape((name or "there").strip())
+    safe_otp = html.escape(str(otp))
+
+    msg = Message(
+        "Verify your Phormula account",
+        sender=("Phormula Care Team", "care@phormula.io"),
+        recipients=[email],
+    )
+
+    msg.html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+      <style>
+        @media only screen and (max-width: 600px) {{
+          .email-card {{
+            width: 100% !important;
+            max-width: 100% !important;
+          }}
+
+          .content {{
+            padding: 26px 22px !important;
+          }}
+
+          .otp-code {{
+            font-size: 28px !important;
+            letter-spacing: 7px !important;
+          }}
+        }}
+      </style>
+    </head>
+
+    <body style="
+      margin:0;
+      padding:0;
+      background:#f7f9f8;
+      font-family:Arial, Helvetica, sans-serif;
+    ">
+
+      <table
+        role="presentation"
+        width="100%"
+        cellpadding="0"
+        cellspacing="0"
+        border="0"
+        style="background:#f7f9f8; padding:30px 15px;"
+      >
+        <tr>
+          <td align="center">
+
+            <table
+              class="email-card"
+              role="presentation"
+              width="560"
+              cellpadding="0"
+              cellspacing="0"
+              border="0"
+              style="
+                width:560px;
+                max-width:560px;
+                background:#ffffff;
+                border-radius:16px;
+                overflow:hidden;
+                border:1px solid #e5e7eb;
+                box-shadow:0 8px 24px rgba(16,24,40,0.06);
+              "
+            >
+
+              <!-- HEADER -->
+              <tr>
+                <td style="
+                  background:#5EA68E;
+                  padding:16px 24px;
+                ">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td align="left">
+                        <img
+                          src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
+                          alt="Phormula"
+                          width="38"
+                          style="
+                            display:block;
+                            width:38px;
+                            height:auto;
+                            border:0;
+                          "
+                        />
+                      </td>
+
+                      <td
+                        align="right"
+                        style="
+                          color:#F8EDCE;
+                          font-size:14px;
+                          font-weight:600;
+                        "
+                      >
+                        Account Verification
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- CONTENT -->
+              <tr>
+                <td
+                  class="content"
+                  style="
+                    padding:34px 42px 32px;
+                    text-align:center;
+                  "
+                >
+
+                  <!-- BRAND -->
+                  <img
+                    src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
+                    alt="Phormula"
+                    width="190"
+                    style="
+                      display:block;
+                      width:190px;
+                      max-width:190px;
+                      height:auto;
+                      margin:0 auto 26px;
+                      border:0;
+                    "
+                  />
+
+                  <!-- ICON -->
+                  <table
+                    role="presentation"
+                    align="center"
+                    cellpadding="0"
+                    cellspacing="0"
+                    border="0"
+                    style="margin:0 auto 18px;"
+                  >
+                    <tr>
+                      <td
+                        align="center"
+                        style="
+                          width:58px;
+                          height:58px;
+                          background:#EEF7F3;
+                          border-radius:50%;
+                          font-size:26px;
+                          color:#5EA68E;
+                        "
+                      >
+                        ✉
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="
+                    margin:0;
+                    font-size:24px;
+                    line-height:1.3;
+                    color:#303030;
+                    font-weight:700;
+                  ">
+                    Verify your email
+                  </h1>
+
+                  <p style="
+                    margin:10px 0 0;
+                    font-size:14px;
+                    line-height:1.7;
+                    color:#667085;
+                  ">
+                    Hi <strong style="color:#37455F;">{display_name}</strong>,
+                    use the verification code below to complete your Phormula registration.
+                  </p>
+
+                  <!-- OTP -->
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellpadding="0"
+                    cellspacing="0"
+                    border="0"
+                    style="margin:28px 0 20px;"
+                  >
+                    <tr>
+                      <td align="center">
+
+                        <table
+                          role="presentation"
+                          cellpadding="0"
+                          cellspacing="0"
+                          border="0"
+                          style="
+                            background:#F4FAF7;
+                            border:1px solid #D1E9E2;
+                            border-radius:14px;
+                          "
+                        >
+                          <tr>
+                            <td style="
+                              padding:18px 28px;
+                              text-align:center;
+                            ">
+
+                              <div style="
+                                margin-bottom:7px;
+                                font-size:11px;
+                                line-height:1.4;
+                                color:#667085;
+                                font-weight:600;
+                                text-transform:uppercase;
+                                letter-spacing:1.3px;
+                              ">
+                                Verification Code
+                              </div>
+
+                              <div
+                                class="otp-code"
+                                style="
+                                  font-size:34px;
+                                  line-height:1.2;
+                                  font-weight:700;
+                                  letter-spacing:10px;
+                                  color:#37455F;
+                                  white-space:nowrap;
+                                "
+                              >
+                                {safe_otp}
+                              </div>
+
+                            </td>
+                          </tr>
+                        </table>
+
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- EXPIRY -->
+                  <p style="
+                    margin:0;
+                    font-size:13px;
+                    line-height:1.6;
+                    color:#667085;
+                  ">
+                    This code expires in
+                    <strong style="color:#37455F;">
+                      {int(expires_minutes)} minutes
+                    </strong>.
+                  </p>
+
+                  <!-- SECURITY BOX -->
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellpadding="0"
+                    cellspacing="0"
+                    border="0"
+                    style="
+                      margin-top:24px;
+                      background:#F9FAFB;
+                      border:1px solid #EAECF0;
+                      border-radius:10px;
+                    "
+                  >
+                    <tr>
+                      <td style="
+                        padding:14px 16px;
+                        text-align:left;
+                        font-size:12px;
+                        line-height:1.65;
+                        color:#667085;
+                      ">
+                        <strong style="color:#344054;">
+                          Security reminder
+                        </strong>
+                        <br />
+                        Never share this verification code with anyone.
+                        Phormula will never ask you for this code outside
+                        the verification screen.
+                      </td>
+                    </tr>
+                  </table>
+
+                  <p style="
+                    margin:22px 0 0;
+                    font-size:12px;
+                    line-height:1.6;
+                    color:#98A2B3;
+                  ">
+                    If you didn't create a Phormula account,
+                    you can safely ignore this email.
+                  </p>
+
+                  <div style="
+                    margin-top:28px;
+                    padding-top:20px;
+                    border-top:1px solid #EAECF0;
+                    text-align:left;
+                  ">
+                    <p style="
+                      margin:0;
+                      font-size:13px;
+                      line-height:1.6;
+                      color:#667085;
+                    ">
+                      Warm regards,<br />
+                      <strong style="color:#344054;">
+                        The Phormula Team
+                      </strong>
+                    </p>
+
+                    <p style="
+                      margin:3px 0 0;
+                      font-size:12px;
+                    ">
+                      <a
+                        href="mailto:care@phormula.io"
+                        style="
+                          color:#5EA68E;
+                          text-decoration:none;
+                        "
+                      >
+                        care@phormula.io
+                      </a>
+                    </p>
+                  </div>
+
+                </td>
+              </tr>
+
+              <!-- FOOTER -->
+              <tr>
+                <td
+                  align="center"
+                  style="
+                    background:#5EA68E;
+                    padding:12px 18px;
+                    color:#F8EDCE;
+                    font-size:11px;
+                    line-height:1.5;
+                  "
+                >
+                  © 2026 Phormula. All rights reserved.
+                </td>
+              </tr>
+
+            </table>
+
+          </td>
+        </tr>
+      </table>
+
+    </body>
+    </html>
+    """
+
+    mail.send(msg)
     
+
+def send_welcome_email(email, name):
+    """Welcome-only email for identities already verified by the provider (for example Google)."""
+    display_name = html.escape((name or "there").strip())
+    body_html = f"""
+      <p style="margin:0 0 18px;">Hey <strong>{display_name}</strong>,</p>
+      <p style="margin:0 0 14px; text-align:justify;">
+        Welcome to <strong>Phormula</strong>, a platform built for modern D2C brands. Your account is ready to use.
+      </p>
+      <p style="margin:0 0 16px; color:#777777; text-align:justify;">
+        If you did not create this account, please contact our support team.
+      </p>
+      <p style="margin:18px 0 0;">Warm regards,<br/><strong>The Phormula Team</strong><br/>
+        <a href="mailto:care@phormula.io" style="color:#37455f; text-decoration:none;">care@phormula.io</a>
+      </p>
+    """
+
+    msg = Message(
+        "Welcome to Phormula",
+        sender=("Phormula Care Team", "care@phormula.io"),
+        recipients=[email],
+    )
+    msg.html = _welcome_shell("Welcome", body_html)
+    mail.send(msg)
+
 
 def send_reset_email(to_email, reset_url, name=None):
     display_name = (name or "there").strip()

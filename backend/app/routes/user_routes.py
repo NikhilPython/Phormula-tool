@@ -1,17 +1,16 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Blueprint, request, session, jsonify, redirect 
 from app.utils.token_utils import (
-    decode_token, generate_reset_token, confirm_verification_token,
-    generate_token, generate_verification_token, get_effective_user_id_from_token
+    decode_token, generate_reset_token, generate_token, get_effective_user_id_from_token
 )
 import os 
-from datetime import datetime, timezone 
+from datetime import datetime, timezone, timedelta 
 import pandas as pd
 from sqlalchemy import inspect
 from sqlalchemy import and_, or_
 import numpy as np 
 from app.utils.data_utils import  create_user_session
-from app.utils.email_utils import send_welcome_and_verification_emails , send_reset_email
+from app.utils.email_utils import send_verification_otp_email, send_welcome_email, send_reset_email
 from app import db
 from app.models.user_models import User, CountryProfile, Category , amazon_user, Member
 import jwt
@@ -78,6 +77,42 @@ COUNTRY_TO_MARKETPLACE = {
     "canada": "A2EUQ1WTGCTBG2",
 }
 
+
+EMAIL_OTP_EXPIRY_MINUTES = 10
+EMAIL_OTP_RESEND_COOLDOWN_SECONDS = 60
+EMAIL_OTP_MAX_ATTEMPTS = 5
+
+
+def _generate_email_otp() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _assign_email_verification_otp(user) -> str:
+    otp = _generate_email_otp()
+    now = datetime.now(timezone.utc)
+    user.email_verification_otp_hash = generate_password_hash(otp)
+    user.email_verification_otp_expires_at = now + timedelta(minutes=EMAIL_OTP_EXPIRY_MINUTES)
+    user.email_verification_otp_attempts = 0
+    user.email_verification_otp_sent_at = now
+    return otp
+
+
+def _utc_value(value):
+    """Normalize a DB datetime to aware UTC for safe comparisons."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _otp_resend_retry_after(user) -> int:
+    sent_at = _utc_value(getattr(user, "email_verification_otp_sent_at", None))
+    if not sent_at:
+        return 0
+    elapsed = (datetime.now(timezone.utc) - sent_at).total_seconds()
+    return max(0, int(EMAIL_OTP_RESEND_COOLDOWN_SECONDS - elapsed))
+
 def compute_marketplace_ids_from_country(country_value: str) -> str:
     if not country_value:
         return ""
@@ -122,66 +157,83 @@ def update_amazon_connection_summary(user_id):
 @user_bp.route('/register', methods=['POST'])
 def register():
     try:
-        data = request.get_json() or {}
-        name = data.get('name')
-        email = (data.get('email') or "").strip().lower()
+        data = request.get_json(silent=True) or {}
+        name = (data.get('name') or '').strip() or None
+        email = (data.get('email') or '').strip().lower()
         password = data.get('password')
         phone_number = data.get('phone_number')
 
         if not email or not password:
             return jsonify({'success': False, 'message': 'Email and password are required'}), 400
 
+        existing_user = User.query.filter_by(email=email).first()
+
+        if existing_user and existing_user.is_verified:
+            return jsonify({
+                'success': False,
+                'message': 'Email already exists. Please login.'
+            }), 409
+
         hashed_password = generate_password_hash(
             password, method='pbkdf2:sha256', salt_length=8
         )
 
-        # Check if user already exists
-        existing_user = User.query.filter_by(email=email).first()
         if existing_user:
-            return jsonify({
-                'success': False,
-                'message': 'Email already exists. Please choose a different email. Please Login.'
-            }), 409
+            # Safe recovery for an unfinished signup. Email ownership is still
+            # required because the account remains unverified until OTP success.
+            user = existing_user
+            if name:
+                user.name = name
+            if phone_number:
+                user.phone_number = phone_number
+            user.password = hashed_password
+        else:
+            token = ''.join(
+                secrets.choice(string.ascii_letters + string.digits)
+                for _ in range(8)
+            )
+            token_name = f"user_{token}"
 
-        # Generate token_name for new user
-        token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
-        token_name = f"user_{token}"
+            user = User(
+                name=name,
+                email=email,
+                password=hashed_password,
+                phone_number=phone_number,
+                token_name=token_name,
+                is_verified=False,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.session.add(user)
 
-        # Register new user with token_name
-        new_user = User(
-            name=name,
-            email=email,
-            password=hashed_password,
-            phone_number=phone_number,
-            token_name=token_name,
-            is_verified=False,  # ✅ ensure default false
-            created_at=datetime.now(timezone.utc)
-        )
-        db.session.add(new_user)
+        otp = _assign_email_verification_otp(user)
         db.session.commit()
 
-        # ✅ Generate verification token and link (IMPORTANT: link should hit BACKEND)
-        verification_token = generate_verification_token(email)
-
-        # change port if your flask runs somewhere else
-        verification_link = f'http://127.0.0.1:5000/verify-email/{verification_token}'
-
-        # Send welcome and verification emails
         try:
-            send_welcome_and_verification_emails(email, name, verification_link)
+            send_verification_otp_email(
+                user.email,
+                user.name,
+                otp,
+                EMAIL_OTP_EXPIRY_MINUTES,
+            )
         except Exception as e:
+            # Keep the unverified user so resend can recover without creating duplicates.
+            print(f"Verification OTP email failed for {email}: {e}")
             return jsonify({
                 'success': False,
-                'message': 'Failed to send verification or welcome email',
-                'error': str(e)
-            }), 500
+                'message': 'Account created, but the verification code could not be sent. Please use resend.',
+                'requires_verification': True,
+                'email': email,
+            }), 503
 
         return jsonify({
             'success': True,
-            'message': 'User registered successfully. Please check your email to verify your account.',
-            'show_country_selection': True,
-            'user_id': new_user.id,
-            'token_name': token_name
+            'message': 'Verification code sent to your email.',
+            'requires_verification': True,
+            'email': user.email,
+            'user_id': user.id,
+            'token_name': user.token_name,
+            'otp_expires_in_seconds': EMAIL_OTP_EXPIRY_MINUTES * 60,
+            'resend_available_in_seconds': EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
         }), 201
 
     except Exception as e:
@@ -190,8 +242,9 @@ def register():
         return jsonify({
             'success': False,
             'message': 'Server error during registration',
-            'error': str(e)
+            'error': str(e),
         }), 500
+
 
 @user_bp.route('/login', methods=['POST'])
 def login():
@@ -199,7 +252,7 @@ def login():
     if data is None:
         return jsonify({'success': False, 'message': 'Invalid input'}), 400
 
-    email = data.get('email')
+    email = (data.get('email') or '').strip().lower()
     password = data.get('password')
 
     if not email or not password:
@@ -210,7 +263,13 @@ def login():
         return jsonify({'success': False, 'message': 'User not found'}), 404
 
     if not user.is_verified:
-        return jsonify({'error': 'Your email is not verified. Please verify your email first.'}), 403
+        return jsonify({
+            'success': False,
+            'error': 'Your email is not verified. Please verify your email first.',
+            'message': 'Your email is not verified. Please verify your email first.',
+            'requires_verification': True,
+            'email': user.email,
+        }), 403
 
     if check_password_hash(user.password, password):
         session['user_id'] = user.id
@@ -269,7 +328,6 @@ def reset_password(token):
         return jsonify({'success': False, 'message': 'User not found.'}), 404
 
     user.password = generate_password_hash(password, method='pbkdf2:sha256', salt_length=8)
-    user.is_verified = True
     db.session.commit()
 
     return jsonify({'success': True, 'message': 'Password reset successfully.'}), 200
@@ -322,8 +380,7 @@ def google_register():
             created = True
 
             try:
-                verification_link = 'http://127.0.0.1:5000/signin'
-                send_welcome_and_verification_emails(email, name, verification_link)
+                send_welcome_email(email, name)
             except Exception as e:
                 print(f"Failed to send welcome email to {email}: {e}")
 
@@ -354,29 +411,56 @@ def google_register():
 
 
 @user_bp.route('/resend_verification', methods=['POST'])
+@user_bp.route('/resend-verification-otp', methods=['POST'])
 def resend_verification_email():
-    data = request.get_json()
-    email = data.get('email')
-    name = data.get('name')  
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
 
     if not email:
-        return jsonify({'success': False, 'message': 'Email is required'}), 400  # If email is not provided
+        return jsonify({'success': False, 'message': 'Email is required'}), 400
 
-    # Check if the user exists
     user = User.query.filter_by(email=email).first()
     if not user:
         return jsonify({'success': False, 'message': 'User not found'}), 404
 
-    # Generate new verification token
-    verification_token = generate_verification_token(email)
-    verification_link = f'http://127.0.0.1:5000/verify_email/{verification_token}'
+    if user.is_verified:
+        return jsonify({
+            'success': True,
+            'message': 'Email is already verified.',
+            'already_verified': True,
+        }), 200
 
-    # Try sending the verification email
+    retry_after = _otp_resend_retry_after(user)
+    if retry_after > 0:
+        return jsonify({
+            'success': False,
+            'message': f'Please wait {retry_after} seconds before requesting another code.',
+            'retry_after_seconds': retry_after,
+        }), 429
+
+    otp = _assign_email_verification_otp(user)
+    db.session.commit()
+
     try:
-        send_welcome_and_verification_emails(email, name, verification_link)
-        return jsonify({'success': True, 'message': 'Verification email resent successfully.'})
+        send_verification_otp_email(
+            user.email,
+            user.name,
+            otp,
+            EMAIL_OTP_EXPIRY_MINUTES,
+        )
     except Exception as e:
-        return jsonify({'success': False, 'message': 'Failed to resend verification email', 'error': str(e)}), 500
+        print(f"Failed to resend verification OTP to {email}: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to resend verification code.',
+        }), 503
+
+    return jsonify({
+        'success': True,
+        'message': 'A new verification code has been sent.',
+        'otp_expires_in_seconds': EMAIL_OTP_EXPIRY_MINUTES * 60,
+        'resend_available_in_seconds': EMAIL_OTP_RESEND_COOLDOWN_SECONDS,
+    }), 200
 
 
 
@@ -658,38 +742,95 @@ def add_sales():
     }), 201
 
 
-@user_bp.route('/verify-email/<token>', methods=['GET'])
-def verify_email(token):
-    try:
-        email = confirm_verification_token(token)
-        email = (email or "").strip().lower()
+@user_bp.route('/verify-email-otp', methods=['POST'])
+def verify_email_otp():
+    data = request.get_json(silent=True) or {}
+    email = (data.get('email') or '').strip().lower()
+    otp = ''.join(ch for ch in str(data.get('otp') or '') if ch.isdigit())
 
-        if not email:
-            return redirect('http://localhost:3000/verify-email?status=failed')
+    if not email or not otp:
+        return jsonify({
+            'success': False,
+            'message': 'Email and verification code are required.',
+        }), 400
 
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            return redirect('http://localhost:3000/verify-email?status=failed')
+    if len(otp) != 6:
+        return jsonify({
+            'success': False,
+            'message': 'Verification code must be 6 digits.',
+        }), 400
 
-        # ✅ mark verified (idempotent)
-        user.is_verified = True
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'User not found.'}), 404
+
+    if user.is_verified:
+        return jsonify({
+            'success': True,
+            'message': 'Email is already verified.',
+            'already_verified': True,
+            'user_id': user.id,
+        }), 200
+
+    otp_hash = user.email_verification_otp_hash
+    expires_at = _utc_value(user.email_verification_otp_expires_at)
+
+    if not otp_hash or not expires_at:
+        return jsonify({
+            'success': False,
+            'message': 'No active verification code. Please request a new code.',
+            'code': 'OTP_NOT_FOUND',
+        }), 400
+
+    if datetime.now(timezone.utc) > expires_at:
+        user.email_verification_otp_hash = None
+        user.email_verification_otp_expires_at = None
         db.session.commit()
+        return jsonify({
+            'success': False,
+            'message': 'Verification code has expired. Please request a new code.',
+            'code': 'OTP_EXPIRED',
+        }), 400
 
-        # ✅ Create user-specific database after successful email verification
-        try:
-            create_user_session(db_url)
-        except Exception as e:
-            print(f"create_user_session error: {e}")
+    attempts = int(user.email_verification_otp_attempts or 0)
+    if attempts >= EMAIL_OTP_MAX_ATTEMPTS:
+        return jsonify({
+            'success': False,
+            'message': 'Too many incorrect attempts. Please request a new code.',
+            'code': 'OTP_TOO_MANY_ATTEMPTS',
+        }), 429
 
-        # Store user session after verification
-        session['user_id'] = user.id
+    if not check_password_hash(otp_hash, otp):
+        user.email_verification_otp_attempts = attempts + 1
+        db.session.commit()
+        remaining = max(0, EMAIL_OTP_MAX_ATTEMPTS - user.email_verification_otp_attempts)
+        return jsonify({
+            'success': False,
+            'message': 'Invalid verification code.',
+            'code': 'OTP_INVALID',
+            'attempts_remaining': remaining,
+        }), 400
 
-        # ✅ redirect to frontend page that you already have
-        return redirect(f'http://localhost:3000/verify-email?status=success&email={email}')
+    user.is_verified = True
 
-    except Exception as e:
-        print(f"Email verification error: {str(e)}")
-        return redirect('http://localhost:3000/verify-email?status=failed')
+    user.email_verification_otp_hash = None
+    user.email_verification_otp_expires_at = None
+    user.email_verification_otp_attempts = 0
+    user.email_verification_otp_sent_at = None
+
+    db.session.commit()
+
+    session["user_id"] = user.id
+    token = generate_token(user.id)
+
+    return jsonify({
+        "success": True,
+        "message": "Email verified successfully.",
+        "token": token,
+        "user_id": user.id,
+        "is_member": False,
+        "show_country_selection": True
+    }), 200
 
 
 @user_bp.route('/switch_profile/<int:profile_id>', methods=['GET'])
