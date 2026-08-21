@@ -244,10 +244,23 @@ def load_awd_inventory(
     marketplace_id: str,
     country_key: str,
 ) -> pd.DataFrame:
-    """Load AWD quantities by SKU from whichever database contains inventory_awd."""
+    """Load AWD quantities only for marketplaces that actually support AWD.
+
+    Important: UK must never fall back to US AWD rows.
+    """
     empty_result = pd.DataFrame(columns=[
         "sku", "total_onhand_quantity", "total_inbound_quantity"
     ])
+
+    # AWD is enabled only for the US marketplace in this integration.
+    if str(marketplace_id or "").strip() != "ATVPDKIKX0DER":
+        logger.info(
+            "Skipping current-inventory AWD merge for unsupported marketplace=%s country=%s user=%s",
+            marketplace_id,
+            country_key,
+            user_id,
+        )
+        return empty_result
 
     for engine_name, engine in [
         ("primary", primary_db_engine),
@@ -323,28 +336,9 @@ def load_awd_inventory(
             )
             awd_df = pd.read_sql_query(query, engine, params=params)
 
-            # Retry without marketplace filtering when old data stores a name or blank value.
-            if awd_df.empty and ("marketplace_id" in columns or "marketplace" in columns):
-                fallback_filters = []
-                fallback_params = {}
-                if "user_id" in columns:
-                    fallback_filters.append("user_id = :uid")
-                    fallback_params["uid"] = user_id
-                if "country" in columns:
-                    fallback_filters.append("LOWER(country) = :country")
-                    fallback_params["country"] = country_key.lower()
-                fallback_where = " AND ".join(fallback_filters) if fallback_filters else "1=1"
-                fallback_query = text(
-                    f'SELECT "{sku_col}" AS sku, '
-                    f'"{onhand_col}" AS total_onhand_quantity, '
-                    f'"{inbound_col}" AS total_inbound_quantity '
-                    f'FROM {table_ref} WHERE {fallback_where}'
-                )
-                awd_df = pd.read_sql_query(
-                    fallback_query,
-                    engine,
-                    params=fallback_params,
-                )
+            # Never retry without marketplace filtering. If no AWD row exists for the
+            # requested marketplace, return/continue with zero AWD data. This prevents
+            # US AWD inventory from leaking into UK current-inventory tables.
 
             if awd_df.empty:
                 logger.warning(
@@ -830,18 +824,28 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
             summary_available
         )
 
-        # Combined FBA + AWD inventory metrics.
-        # total_stock = FBA available + AWD on-hand quantity + FBA fc-transfer
+        # Combined inventory metrics. AWD is valid only for the US marketplace.
+        awd_supported = marketplace_id == "ATVPDKIKX0DER"
+        if not awd_supported:
+            # Hard safety reset for UK/non-AWD marketplaces.
+            final_df["total_onhand_quantity"] = 0
+            final_df["total_inbound_quantity"] = 0
+
         final_df["total_stock"] = (
             safe_numeric(final_df.get("available"), 0)
-            + safe_numeric(final_df.get("total_onhand_quantity"), 0)
             + safe_numeric(final_df.get("fc-transfer"), 0)
+            + (
+                safe_numeric(final_df.get("total_onhand_quantity"), 0)
+                if awd_supported else 0
+            )
         )
 
-        # total_transit = FBA inbound shipped + AWD inbound quantity
         final_df["total_transit"] = (
             safe_numeric(final_df.get("inbound-shipped"), 0)
-            + safe_numeric(final_df.get("total_inbound_quantity"), 0)
+            + (
+                safe_numeric(final_df.get("total_inbound_quantity"), 0)
+                if awd_supported else 0
+            )
         )
 
         final_df["Inventory Inwarded"] = final_df["inbound_quantity"]
@@ -992,17 +996,27 @@ def generate_inventory_for_country(user_id, country_key, month_name, year):
 
             final_df.drop(columns=["_asin_clean_for_inventory"], inplace=True, errors="ignore")
 
-        # Recalculate combined FBA + AWD metrics after duplicate-ASIN adjustments.
-        # total_stock = FBA available + AWD on-hand quantity + FBA fc-transfer
+        # Recalculate after duplicate-ASIN adjustments, preserving the same
+        # marketplace guard so UK can never regain US AWD quantities.
+        if not awd_supported:
+            final_df["total_onhand_quantity"] = 0
+            final_df["total_inbound_quantity"] = 0
+
         final_df["total_stock"] = (
             safe_numeric(final_df.get("available"), 0)
-            + safe_numeric(final_df.get("total_onhand_quantity"), 0)
             + safe_numeric(final_df.get("fc-transfer"), 0)
+            + (
+                safe_numeric(final_df.get("total_onhand_quantity"), 0)
+                if awd_supported else 0
+            )
         )
 
         final_df["total_transit"] = (
             safe_numeric(final_df.get("inbound-shipped"), 0)
-            + safe_numeric(final_df.get("total_inbound_quantity"), 0)
+            + (
+                safe_numeric(final_df.get("total_inbound_quantity"), 0)
+                if awd_supported else 0
+            )
         )
 
         final_df.rename(columns={"sku": "SKU", "product_name": "Product Name"}, inplace=True)

@@ -2962,13 +2962,39 @@ def _attach_awd_quantities_to_rows(
         if row.get("normalized_sku")
     }
 
-    current_inventory_awd_by_sku = _fetch_current_inventory_awd_by_sku(
-        conn=conn,
-        user_id=user_id,
-        country=country,
-        snapshot_date=period_end,
-    )
-    awd_inventory_by_sku = _fetch_awd_inventory_by_sku(conn, user_id, marketplace_id)
+    # AWD is only valid for explicitly supported marketplaces (currently US).
+    # Never read AWD/on-hand values from a UK currentinventory table because those
+    # columns may contain stale US AWD data copied during an earlier inventory sync.
+    if marketplace_id in AWD_SUPPORTED_MARKETPLACES:
+        current_inventory_awd_by_sku = _fetch_current_inventory_awd_by_sku(
+            conn=conn,
+            user_id=user_id,
+            country=country,
+            snapshot_date=period_end,
+            marketplace_id=marketplace_id,
+        )
+        awd_inventory_by_sku = _fetch_awd_inventory_by_sku(conn, user_id, marketplace_id)
+    else:
+        # Non-AWD marketplace (for example UK): remove any stale AWD values
+        # that may have been copied into the currentinventory table, including
+        # their contribution to total_stock / total_transit.
+        try:
+            _sanitize_non_awd_current_inventory_table(
+                conn=conn,
+                user_id=user_id,
+                country=country,
+                snapshot_date=period_end,
+            )
+        except Exception:
+            logger.exception(
+                "Failed sanitizing non-AWD currentinventory table for country=%s marketplace=%s",
+                country,
+                marketplace_id,
+            )
+
+        current_inventory_awd_by_sku = {}
+        awd_inventory_by_sku = {}
+        awd_by_sku = {}
 
     for item in items:
         sku = str(item.get("msku") or "").strip().upper()
@@ -2987,13 +3013,99 @@ def _current_inventory_table_name(user_id: int, country: str, snapshot_date: dat
     return f"currentinventory_{int(user_id)}_{country_key}_{month_name}{snapshot_date.year}_table"
 
 
+
+def _sanitize_non_awd_current_inventory_table(
+    conn,
+    user_id: int,
+    country: str | None,
+    snapshot_date: date,
+) -> int:
+    """Remove AWD-only quantities from a non-AWD currentinventory table.
+
+    For marketplaces such as UK, total_onhand_quantity / total_inbound_quantity
+    must not contain US AWD values. Recalculate total_stock without AWD on-hand:
+        total_stock = available + fc-transfer
+    and total_transit without AWD inbound:
+        total_transit = inbound-shipped
+    """
+    if not country:
+        return 0
+
+    try:
+        table_name = _current_inventory_table_name(user_id, country, snapshot_date)
+    except Exception:
+        return 0
+
+    if not _table_exists(conn, "public", table_name):
+        return 0
+
+    columns = {
+        row["column_name"]
+        for row in conn.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        """), {"table_name": table_name}).mappings().all()
+    }
+
+    def pick(*candidates):
+        return next((c for c in candidates if c in columns), None)
+
+    available_col = pick("available", "available_quantity")
+    fc_transfer_col = pick("fc-transfer", "fc_transfer", "fc_transfer_quantity")
+    inbound_shipped_col = pick("inbound-shipped", "inbound_shipped")
+
+    set_parts = []
+    for col in (
+        "total_onhand_quantity",
+        "total_inbound_quantity",
+        "available_distributable_quantity",
+        "reserved_distributable_quantity",
+        "replenishment_quantity",
+    ):
+        if col in columns:
+            set_parts.append(f'"{col}" = 0')
+
+    if "total_stock" in columns:
+        stock_terms = []
+        if available_col:
+            stock_terms.append(f'COALESCE("{available_col}"::numeric, 0)')
+        if fc_transfer_col:
+            stock_terms.append(f'COALESCE("{fc_transfer_col}"::numeric, 0)')
+        set_parts.append(
+            f'"total_stock" = {" + ".join(stock_terms) if stock_terms else "0"}'
+        )
+
+    if "total_transit" in columns:
+        transit_expr = (
+            f'COALESCE("{inbound_shipped_col}"::numeric, 0)'
+            if inbound_shipped_col else "0"
+        )
+        set_parts.append(f'"total_transit" = {transit_expr}')
+
+    if not set_parts:
+        return 0
+
+    result = conn.execute(text(
+        f'UPDATE public."{table_name}" SET ' + ", ".join(set_parts)
+    ))
+    return int(result.rowcount or 0)
+
 def _fetch_current_inventory_awd_by_sku(
     conn,
     user_id: int,
     country: str | None,
     snapshot_date: date,
+    marketplace_id: str | None = None,
 ) -> dict[str, dict]:
     if not country:
+        return {}
+
+    # Safety guard: currentinventory AWD columns must only be consumed for
+    # marketplaces that genuinely support AWD. This prevents US AWD quantities
+    # from leaking into UK dispatch/inventory views.
+    if marketplace_id and marketplace_id not in AWD_SUPPORTED_MARKETPLACES:
         return {}
 
     try:
