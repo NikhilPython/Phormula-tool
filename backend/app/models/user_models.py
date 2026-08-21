@@ -204,6 +204,11 @@ class User(db.Model):
     marketplace_id = db.Column(db.String(200), nullable=True)
     is_google_user = db.Column(db.Boolean, default=False)
     is_verified = db.Column(db.Boolean, default=False)
+    # Email OTP verification
+    email_verification_otp_hash = db.Column(db.String(255), nullable=True)
+    email_verification_otp_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    email_verification_otp_attempts = db.Column(db.Integer, nullable=False, default=0)
+    email_verification_otp_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
     homeCurrency = db.Column(db.String(50), nullable=True)
     tax_id = db.Column(JSON, nullable=True)
     address = db.Column(JSON, nullable=True)

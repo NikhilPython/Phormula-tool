@@ -7,13 +7,12 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { EyeCloseIcon, EyeIcon } from "@/icons";
 import Link from "next/link";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import "react-phone-input-2/lib/style.css";
 import PhoneInput from "@/components/form/group-input/PhoneInput";
 import { useRegisterMutation } from "@/lib/api/authApi";
 import { formatPhoneNumber } from "@/lib/utils/phone";
 import Button from "../ui/button/Button";
-import { Modal } from "../ui/modal";
 import { useRouter } from "next/navigation";
 import { ALL_COUNTRIES } from "@/lib/utils/countryCodes";
 import { auth, googleProvider } from "@/lib/firebase/firebase";
@@ -31,6 +30,7 @@ import {
   type SignUpFormErrors,
   type SignUpFormValues,
 } from "@/lib/validations/authValidation";
+import VerifyEmailOtpModal from "./VerifyEmailOtpModal";
 
 type PhoneMeta = {
   dialCode: string;
@@ -58,12 +58,13 @@ const initialTouched: TouchedFields = {
 export default function SignUpForm() {
   const router = useRouter();
 
-  const [registerUser, { isLoading, isSuccess, error: regError }] =
-    useRegisterMutation();
+  const [registerUser, { isLoading, error: regError }] =
+  useRegisterMutation();
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+ const [showOtpModal, setShowOtpModal] = useState(false);
+const [verificationEmail, setVerificationEmail] = useState("");
 
   const [form, setForm] = useState<SignUpFormValues>({
     name: "",
@@ -79,9 +80,7 @@ export default function SignUpForm() {
   const [touched, setTouched] = useState<TouchedFields>(initialTouched);
   const [errors, setErrors] = useState<SignUpFormErrors>({});
 
-  useEffect(() => {
-    if (isSuccess) setShowSuccessModal(true);
-  }, [isSuccess]);
+  
 
   const validateForm = (values: SignUpFormValues = form) => {
     const result = signUpSchema.safeParse(values);
@@ -260,13 +259,21 @@ export default function SignUpForm() {
       const fullPhone = `+${dialDigits}${localDigits}`;
       const formattedPhone = `+${dialDigits} ${localDigits}`;
 
-      await registerUser({
-        name: form.name.trim(),
-        email: form.email.trim(),
-        password: form.password,
-        phone_number: formattedPhone,
-        phone_number_raw: fullPhone,
-      }).unwrap();
+      const response = await registerUser({
+  name: form.name.trim(),
+  email: form.email.trim().toLowerCase(),
+  password: form.password,
+  phone_number: formattedPhone,
+  phone_number_raw: fullPhone,
+}).unwrap();
+
+if (response?.success) {
+  const registeredEmail =
+    form.email.trim().toLowerCase();
+
+  setVerificationEmail(registeredEmail);
+  setShowOtpModal(true);
+}
     } catch {
       // handled by regError
     }
@@ -608,35 +615,13 @@ export default function SignUpForm() {
           </div>
         </div>
       </div>
-
-      <Modal
-        isOpen={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        showCloseButton={false}
-        className="m-4 max-w-sm"
-      >
-        <div className="w-full rounded-xl bg-white px-6 py-8 text-center shadow-lg">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-500">
-            <svg className="h-7 w-7 text-white" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M20 6L9 17L4 12"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <h2 className="text-xl font-semibold text-gray-800">
-            Registration Successful!
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            You need to verify your email first. Please check your inbox for the
-            verification email.
-          </p>
-        </div>
-      </Modal>
+      {showOtpModal && (
+  <VerifyEmailOtpModal
+    open={showOtpModal}
+    email={verificationEmail}
+    onClose={() => setShowOtpModal(false)}
+  />
+)}
     </div>
   );
 }

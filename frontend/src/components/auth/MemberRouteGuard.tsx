@@ -260,7 +260,8 @@ export default function MemberRouteGuard({
     pathname.startsWith("/login") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/forgot-password") ||
-    pathname.startsWith("/reset-password");
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/verify-email");
 
   const { data, isLoading } = useGetUserDataQuery(undefined, {
     skip: isPublicRoute,
