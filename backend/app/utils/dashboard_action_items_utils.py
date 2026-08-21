@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from calendar import month_name, monthrange
 from datetime import date, datetime, timezone
+from io import BytesIO
 from typing import Any, Iterable
 
+import pandas as pd
+from sqlalchemy import func
+
+from app.models.user_models import StoredFile
 from app.routes.inventory_current_routes import (
     GLOBAL_COUNTRIES,
     build_high_alert_coverage_summary,
@@ -343,6 +348,135 @@ def _load_live_rows(
     }
 
 
+def _latest_dispatch_file(
+    *, user_id: int, country: str, month: str, year: int
+) -> StoredFile | None:
+    return (
+        StoredFile.query
+        .filter(
+            StoredFile.user_id == int(user_id),
+            func.lower(StoredFile.country) == country.lower(),
+            StoredFile.kind == "dispatch",
+            func.lower(StoredFile.month) == month.lower(),
+            StoredFile.year == str(year),
+        )
+        .order_by(StoredFile.id.desc())
+        .first()
+    )
+
+
+def _load_dispatch_facts(
+    *, user_id: int, country: str, month: str, year: int
+) -> dict[str, Any]:
+    errors: list[str] = []
+    files: list[StoredFile] = []
+
+    if country == "global":
+        global_file = _latest_dispatch_file(
+            user_id=user_id,
+            country="global",
+            month=month,
+            year=year,
+        )
+        if global_file:
+            files.append(global_file)
+        else:
+            for child_country in GLOBAL_COUNTRIES:
+                child_file = _latest_dispatch_file(
+                    user_id=user_id,
+                    country=child_country,
+                    month=month,
+                    year=year,
+                )
+                if child_file:
+                    files.append(child_file)
+    else:
+        dispatch_file = _latest_dispatch_file(
+            user_id=user_id,
+            country=country,
+            month=month,
+            year=year,
+        )
+        if dispatch_file:
+            files.append(dispatch_file)
+
+    air_dispatch = 0.0
+    sea_dispatch = 0.0
+    affected_product_keys: set[str] = set()
+    affected_skus: set[str] = set()
+    loaded_files: list[str] = []
+
+    for stored_file in files:
+        try:
+            file_bytes = stored_file.data
+            if isinstance(file_bytes, memoryview):
+                file_bytes = file_bytes.tobytes()
+            if not file_bytes:
+                raise ValueError("stored dispatch file is empty")
+
+            workbook = pd.ExcelFile(BytesIO(file_bytes))
+            dispatch_sheet = next(
+                (
+                    sheet
+                    for sheet in workbook.sheet_names
+                    if str(sheet).strip().lower() == "dispatch"
+                ),
+                workbook.sheet_names[0] if workbook.sheet_names else None,
+            )
+            if not dispatch_sheet:
+                raise ValueError("dispatch worksheet is missing")
+
+            frame = pd.read_excel(workbook, sheet_name=dispatch_sheet)
+            frame.columns = [str(column).strip() for column in frame.columns]
+
+            if "AIR" not in frame.columns or "SEA" not in frame.columns:
+                raise ValueError("AIR or SEA column is missing")
+
+            for row_index, row in frame.iterrows():
+                record = row.to_dict()
+                if _is_total_row(record):
+                    continue
+
+                air_units = max(0.0, _number(record.get("AIR")))
+                sea_units = max(0.0, _number(record.get("SEA")))
+                if air_units + sea_units <= 0:
+                    continue
+
+                air_dispatch += air_units
+                sea_dispatch += sea_units
+
+                sku = str(record.get("sku") or record.get("SKU") or "").strip()
+                product_name = str(
+                    record.get("Product Name")
+                    or record.get("product_name")
+                    or ""
+                ).strip()
+                product_key = (
+                    f"sku:{sku.upper()}"
+                    if sku
+                    else f"product:{product_name.lower()}"
+                    if product_name
+                    else f"row:{stored_file.id}:{row_index}"
+                )
+                affected_product_keys.add(product_key)
+                if sku:
+                    affected_skus.add(sku)
+
+            loaded_files.append(stored_file.filename)
+        except Exception as exc:
+            errors.append(f"{stored_file.country}: {exc}")
+
+    return {
+        "loaded": bool(loaded_files),
+        "files": loaded_files,
+        "air_dispatch": air_dispatch,
+        "sea_dispatch": sea_dispatch,
+        "product_count": len(affected_product_keys),
+        "affected_skus": sorted(affected_skus),
+        "errors": errors,
+    }
+
+
 def _sum(rows: Iterable[dict[str, Any]], *keys: str) -> float:
     return sum(_first_number(row, *keys) for row in rows)
 
@@ -351,6 +485,7 @@ def build_action_items(
     *,
     inventory: dict[str, Any],
     live: dict[str, Any],
+    dispatch: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build the stable, UI-ready ActionItem contract from compact facts."""
     items: list[dict[str, Any]] = []
@@ -359,6 +494,30 @@ def build_action_items(
     aligned_totals = live.get("aligned_totals") or {}
     fee_totals = live.get("fee_totals") or {}
     symbol = (live.get("currency") or {}).get("symbol") or "$"
+
+    dispatch = dispatch or {}
+    dispatch_product_count = int(_number(dispatch.get("product_count")))
+    if dispatch.get("loaded") and dispatch_product_count > 0:
+        air_dispatch = _number(dispatch.get("air_dispatch"))
+        sea_dispatch = _number(dispatch.get("sea_dispatch"))
+        items.append({
+            "id": "dispatch-required",
+            "category": "Inventory & Dispatch",
+            "priority": "Critical",
+            "title": "Dispatch plan requires action",
+            "reason": (
+                f"{dispatch_product_count} "
+                f"product{'s' if dispatch_product_count != 1 else ''} require "
+                "air or sea dispatch."
+            ),
+            "metrics": [
+                {"value": f"{air_dispatch:,.0f}", "label": "Air dispatch"},
+                {"value": f"{sea_dispatch:,.0f}", "label": "Sea dispatch"},
+                {"value": str(dispatch_product_count), "label": "Products"},
+            ],
+            "action": "Review dispatch",
+            "affected_skus": dispatch.get("affected_skus") or [],
+        })
 
     high_alert_items = inventory.get("high_alert_items") or []
     if high_alert_items:
@@ -721,10 +880,24 @@ def get_dashboard_action_items(
         start_day=start_day,
         end_day=end_day,
     )
-    if not inventory.get("loaded") and not live.get("loaded"):
+    dispatch = _load_dispatch_facts(
+        user_id=int(user_id),
+        country=normalized_country,
+        month=normalized_month,
+        year=int(year),
+    )
+    if (
+        not inventory.get("loaded")
+        and not live.get("loaded")
+        and not dispatch.get("loaded")
+    ):
         raise RuntimeError("No action-item source data is available for the selected period")
 
-    items = build_action_items(inventory=inventory, live=live)
+    items = build_action_items(
+        inventory=inventory,
+        live=live,
+        dispatch=dispatch,
+    )
 
     return {
         "success": True,
@@ -743,10 +916,12 @@ def get_dashboard_action_items(
             "inventory_current": bool(inventory.get("loaded")),
             "inventory_current_age_summary": bool(inventory.get("age_loaded")),
             "live_mtd_bi": bool(live.get("loaded")),
+            "dispatch": bool(dispatch.get("loaded")),
         },
         "source_errors": {
             "inventory": inventory.get("errors") or [],
             "live_bi": live.get("errors") or [],
+            "dispatch": dispatch.get("errors") or [],
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

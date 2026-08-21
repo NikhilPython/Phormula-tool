@@ -3057,6 +3057,10 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 "asp": 0.0,
                 "profit_percentage": 0.0,
                 "platform_fee": 0.0,
+                "misc_transaction": 0.0,
+                "lost_total": 0.0,
+                "platform_fee_inventory_storage": 0.0,
+                "platformfeenew": 0.0,
                 "advertising_fees": 0.0,
                 "cm2_profit": 0.0,
                 "promotional_rebates": 0.0,
@@ -3189,6 +3193,23 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     platform_fee_total = float(platform_fee_total or 0.0)
     advertising_fee_total = float(advertising_fee_total or 0.0)
 
+    # Preserve the total-only components used to explain Other Transactions.
+    # These are intentionally aggregated from the raw previous-period table,
+    # rather than inferred from product rows.
+    def sum_first_available(*column_names):
+        for column_name in column_names:
+            if column_name in df.columns:
+                return float(safe_num(df[column_name]).sum())
+        return 0.0
+
+    misc_transaction_total = sum_first_available("misc_transaction", "misc_transactions")
+    lost_total = sum_first_available("lost_total")
+    inventory_storage_fee_total = sum_first_available(
+        "platform_fee_inventory_storage",
+        "platform_storage_fee",
+    )
+    subscription_fee_total = sum_first_available("platformfeenew", "platform_fee_new")
+
     cm2_profit = float(profit_total) - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit / net_sales_total * 100) if net_sales_total else 0.0
 
@@ -3204,6 +3225,10 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         "asp": round(asp, 2),
 
         "platform_fee": round(platform_fee_total, 2),
+        "misc_transaction": round(misc_transaction_total, 2),
+        "lost_total": round(lost_total, 2),
+        "platform_fee_inventory_storage": round(inventory_storage_fee_total, 2),
+        "platformfeenew": round(subscription_fee_total, 2),
         "advertising_fees": round(advertising_fee_total, 2),
         "cm2_profit": round(cm2_profit, 2),
         "profit_percentage": round(profit_percentage, 2),

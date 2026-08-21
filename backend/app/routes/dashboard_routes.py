@@ -1965,10 +1965,71 @@ def getDispatchfile():
         df = recalculate_coverage_before_dispatch(df, country.lower())
         output = build_global_dispatch_file([df])
 
+        dispatch_bytes = output.getvalue()
+        dispatch_filename = (
+            f"dispatch_{user_id}_{country.lower()}_"
+            f"{requested_month}_{requested_year}.xlsx"
+        )
+
+        save_dispatch_query = text("""
+            INSERT INTO public.stored_files
+            (
+                user_id,
+                country,
+                kind,
+                month,
+                year,
+                filename,
+                content_type,
+                data,
+                created_at
+            )
+            VALUES
+            (
+                :user_id,
+                :country,
+                'dispatch',
+                :month,
+                :year,
+                :filename,
+                :content_type,
+                :data,
+                NOW()
+            )
+            ON CONFLICT ON CONSTRAINT uq_stored_files_period
+            DO UPDATE SET
+                filename = EXCLUDED.filename,
+                content_type = EXCLUDED.content_type,
+                data = EXCLUDED.data,
+                created_at = NOW()
+        """)
+
+        with engine.begin() as conn:
+            conn.execute(
+                save_dispatch_query,
+                {
+                    "user_id": user_id,
+                    "country": country.lower(),
+                    "month": requested_month,
+                    "year": str(requested_year),
+                    "filename": dispatch_filename,
+                    "content_type": (
+                        "application/vnd.openxmlformats-officedocument."
+                        "spreadsheetml.sheet"
+                    ),
+                    "data": dispatch_bytes,
+                }
+            )
+
+        output.seek(0)
+
         return send_file(
             output,
-            download_name=filename or f"{country.lower()}_dispatch.xlsx",
-            mimetype=content_type or 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            download_name=dispatch_filename,
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
             as_attachment=False
         )
 

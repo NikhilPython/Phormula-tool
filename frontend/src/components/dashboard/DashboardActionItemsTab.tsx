@@ -74,7 +74,7 @@ export type MonthlyMetricRow = Record<string, string | number | null | undefined
 
 type MovementStatus = "up" | "down" | "stable";
 type MetricFormat = "currency" | "percent" | "number" | "decimal";
-type MetricCategory = "Revenue & Demand" | "Profitability" | "Advertising & Promotion" | "Fees & Other Costs";
+type MetricCategory = "Revenue & Demand" | "Profitability" | "Advertising & Promotion" | "Fees & Other Costs" | "Inventory & Dispatch";
 
 type MonthSnapshot = {
   key: string;
@@ -170,7 +170,12 @@ function buildSnapshot(rows: MonthlyMetricRow[]): MonthSnapshot | null {
   const quantity = valueFromTotalOrSum("quantity");
   const returnQuantity = valueFromTotalOrSum("return_quantity");
   const totalQuantity = valueFromTotalOrSum("total_quantity");
+  const agedInventory181To270 = valueFromTotalOrSum("aged_inventory_181_270");
+  const agedInventory271To365 = valueFromTotalOrSum("aged_inventory_271_365");
+  const agedInventory365Plus = valueFromTotalOrSum("aged_inventory_365_plus");
+  const agedInventory180Plus = valueFromTotalOrSum("aged_inventory_180_plus");
   const grossSales = valueFromTotalOrSum("gross_sales");
+  const refundSales = Math.abs(valueFromTotalOrSum("refund_sales", "refunded_sales"));
   const netSales = valueFromTotalOrSum("net_sales");
   const profit = valueFromTotalOrSum("profit");
   const promotionalRebates = valueFromTotalOrSum("promotional_rebates");
@@ -205,9 +210,14 @@ function buildSnapshot(rows: MonthlyMetricRow[]): MonthSnapshot | null {
     country: String(totalRow?.country ?? rows[0]?.country ?? "").toLowerCase(),
     values: {
       grossSales,
+      refundSales,
       netSales,
       quantity,
       totalQuantity,
+      agedInventory181To270,
+      agedInventory271To365,
+      agedInventory365Plus,
+      agedInventory180Plus,
       returnQuantity,
       returnRate: safePercent(returnQuantity, quantity),
       asp,
@@ -234,9 +244,16 @@ function buildSnapshot(rows: MonthlyMetricRow[]): MonthSnapshot | null {
       placementFee: valueFromTotalOrSum("placement_fee"),
       shipmentFees: valueFromTotalOrSum("shipment_fees"),
       shippingCharges: valueFromTotalOrSum("shipping_charges"),
-      lostTotal: valueFromTotalOrSum("lost_total"),
+      lostTotal: Math.abs(valueFromTotalOrSum("lost_total")),
+      miscTransaction: Math.abs(valueFromTotalOrSum("misc_transaction", "misc_transactions")),
+      platformInventoryStorageFee: Math.abs(valueFromTotalOrSum("platform_fee_inventory_storage")),
+      subscriptionFees: Math.abs(valueFromTotalOrSum("platformfeenew", "platform_fee_new")),
       platformFee: valueFromTotalOrSum("platform_fee"),
-      inventoryStorageFee: valueFromTotalOrSum("platform_fee_inventory_storage"),
+      inventoryStorageFee: valueFromTotalOrSum(
+        "storage_fee",
+        "platform_fee_inventory_storage",
+        "inventory_storage_fees"
+      ),
       disbursement: valueFromTotalOrSum("disbursement"),
       inventoryUnits: valueFromTotalOrSum("inventory_units", "available_inventory_units"),
       inventoryCoverageMonths: valueFromTotal("inventory_coverage_months", "inventory_coverage") ?? 0,
@@ -263,6 +280,588 @@ function buildMonthlySnapshots(rows: MonthlyMetricRow[]) {
     .sort((a, b) => a.sortKey - b.sortKey)
     .map((group) => buildSnapshot(group.rows))
     .filter((snapshot): snapshot is MonthSnapshot => Boolean(snapshot));
+}
+
+function unitsFromRow(row: MonthlyMetricRow) {
+  for (const field of ["total_quantity", "quantity"]) {
+    const value = toNumber(row[field]);
+    if (value !== null) return value;
+  }
+  return 0;
+}
+
+type ContributorMetric = "units" | "netSales" | "asp";
+
+function contributorValue(row: MonthlyMetricRow, metric: ContributorMetric) {
+  if (metric === "units") return unitsFromRow(row);
+  if (metric === "netSales") return toNumber(row.net_sales) ?? 0;
+  return toNumber(row.asp) ?? 0;
+}
+
+function buildProductContributorInsight(
+  rows: MonthlyMetricRow[],
+  metric: ContributorMetric,
+  displayedOverallDelta?: number
+) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const periods = [...groups.values()].sort((a, b) => a.sortKey - b.sortKey);
+  const currentPeriod = periods[periods.length - 1];
+  const previousPeriod = periods[periods.length - 2];
+
+  if (!currentPeriod || !previousPeriod) {
+    return "No previous-month SKU baseline is available.";
+  }
+
+  type ContributorEntry = { sku: string; productName: string; value: number };
+  const aggregateValues = (periodRows: MonthlyMetricRow[]) => {
+    const result = new Map<string, ContributorEntry>();
+
+    periodRows.forEach((row) => {
+      const sku = String(row.sku ?? row.SKU ?? "").trim();
+      const productName = String(
+        row.product_name ?? row["Product Name"] ?? ""
+      ).trim();
+      if (!sku && !productName) return;
+
+      const key = sku
+        ? `sku:${sku.toUpperCase()}`
+        : `product:${productName.toLowerCase()}`;
+      const current = result.get(key);
+      result.set(key, {
+        sku: sku || current?.sku || "",
+        productName: productName || current?.productName || "",
+        value: (current?.value ?? 0) + contributorValue(row, metric),
+      });
+    });
+
+    return result;
+  };
+
+  const currentValues = aggregateValues(currentPeriod.rows);
+  const previousValues = aggregateValues(previousPeriod.rows);
+  const allKeys = new Set([...currentValues.keys(), ...previousValues.keys()]);
+  const movements = [...allKeys]
+    .map((key) => {
+      const current = currentValues.get(key);
+      const previous = previousValues.get(key);
+      const currentValue = current?.value ?? 0;
+      const previousValue = previous?.value ?? 0;
+      const delta = currentValue - previousValue;
+
+      return {
+        label: (
+          current?.productName
+          || previous?.productName
+          || current?.sku
+          || previous?.sku
+          || "Product"
+        ),
+        delta,
+        percentage: previousValue
+          ? (delta / Math.abs(previousValue)) * 100
+          : null,
+      };
+    })
+    .filter((item) => item.delta !== 0);
+
+  const currentTotal = [...currentValues.values()].reduce((sum, item) => sum + item.value, 0);
+  const previousTotal = [...previousValues.values()].reduce((sum, item) => sum + item.value, 0);
+  const overallDelta = Number.isFinite(displayedOverallDelta)
+    ? Number(displayedOverallDelta)
+    : currentTotal - previousTotal;
+  const direction = overallDelta < 0 ? "decline" : overallDelta > 0 ? "growth" : "movement";
+  const directionalMovements = movements.filter((item) =>
+    direction === "decline"
+      ? item.delta < 0
+      : direction === "growth"
+        ? item.delta > 0
+        : true
+  );
+  const candidates = directionalMovements.length ? directionalMovements : movements;
+  const rankedContributors = [...candidates]
+    .sort((a, b) =>
+      direction === "decline"
+        ? a.delta - b.delta
+        : direction === "growth"
+          ? b.delta - a.delta
+          : Math.abs(b.delta) - Math.abs(a.delta)
+    );
+  const contributors = rankedContributors.slice(0, 1);
+  const secondContributor = rankedContributors[1];
+
+  if (
+    secondContributor
+    && (
+      secondContributor.percentage === null
+      || Math.abs(secondContributor.percentage) >= 10
+    )
+  ) {
+    contributors.push(secondContributor);
+  }
+
+  if (!contributors.length) {
+    return "No product-level movement was recorded.";
+  }
+
+  const contributorText = contributors
+    .map((item) => {
+      const percentageText = item.percentage === null
+        ? "new"
+        : `${item.percentage > 0 ? "+" : ""}${item.percentage.toFixed(1)}%`;
+      return `${item.label} (${percentageText})`;
+    })
+    .join(", ");
+
+  return `Top ${direction} product${contributors.length === 1 ? "" : "s"}: ${contributorText}.`;
+}
+
+function buildAcosContributorInsight(
+  rows: MonthlyMetricRow[],
+  displayedOverallDelta?: number
+) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const periods = [...groups.values()].sort((a, b) => a.sortKey - b.sortKey);
+  const currentPeriod = periods.at(-1);
+  const previousPeriod = periods.at(-2);
+  if (!currentPeriod || !previousPeriod) {
+    return "No previous-month product ACOS baseline is available.";
+  }
+
+  type AcosEntry = {
+    sku: string;
+    productName: string;
+    adsSpend: number;
+    netSales: number;
+    directAcosTotal: number;
+    directAcosCount: number;
+  };
+  const aggregate = (periodRows: MonthlyMetricRow[]) => {
+    const result = new Map<string, AcosEntry>();
+
+    periodRows.forEach((row) => {
+      const sku = String(row.sku ?? row.SKU ?? "").trim();
+      const productName = String(row.product_name ?? row["Product Name"] ?? "").trim();
+      if (!sku && !productName) return;
+
+      const key = sku
+        ? `sku:${sku.toUpperCase()}`
+        : `product:${productName.toLowerCase()}`;
+      const current = result.get(key);
+      const directAcos = toNumber(row.acos ?? row.ads_acos ?? row.acos_percentage);
+      result.set(key, {
+        sku: sku || current?.sku || "",
+        productName: productName || current?.productName || "",
+        adsSpend: (current?.adsSpend ?? 0) + Math.abs(toNumber(row.ads_spend) ?? 0),
+        netSales: (current?.netSales ?? 0) + Math.abs(toNumber(row.net_sales) ?? 0),
+        directAcosTotal: (current?.directAcosTotal ?? 0) + (directAcos ?? 0),
+        directAcosCount: (current?.directAcosCount ?? 0) + (directAcos === null ? 0 : 1),
+      });
+    });
+
+    return result;
+  };
+
+  const currentEntries = aggregate(currentPeriod.rows);
+  const previousEntries = aggregate(previousPeriod.rows);
+  const acosValue = (entry?: AcosEntry) => {
+    if (!entry) return 0;
+    if (entry.netSales > 0 && entry.adsSpend > 0) {
+      return (entry.adsSpend / entry.netSales) * 100;
+    }
+    return entry.directAcosCount > 0
+      ? entry.directAcosTotal / entry.directAcosCount
+      : 0;
+  };
+
+  const overallDelta = Number.isFinite(displayedOverallDelta)
+    ? Number(displayedOverallDelta)
+    : 0;
+  const direction = overallDelta < 0 ? "decline" : overallDelta > 0 ? "increase" : "movement";
+  const movements = [...new Set([...currentEntries.keys(), ...previousEntries.keys()])]
+    .map((key) => {
+      const current = currentEntries.get(key);
+      const previous = previousEntries.get(key);
+      const currentAcos = acosValue(current);
+      const previousAcos = acosValue(previous);
+      return {
+        label: current?.productName || previous?.productName || current?.sku || previous?.sku || "Product",
+        currentAcos,
+        previousAcos,
+        delta: currentAcos - previousAcos,
+      };
+    })
+    .filter((item) =>
+      direction === "decline"
+        ? item.delta < 0
+        : direction === "increase"
+          ? item.delta > 0
+          : item.delta !== 0
+    )
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  const strongest = movements[0];
+  if (!strongest) {
+    return `No product ACOS movement aligned with the overall TACoS ${direction}.`;
+  }
+
+  const verb = strongest.delta > 0 ? "increased" : "decreased";
+  return `Main ACOS driver of TACoS ${direction}: ${strongest.label} ${verb} from ${strongest.previousAcos.toFixed(1)}% to ${strongest.currentAcos.toFixed(1)}% (${strongest.delta > 0 ? "+" : ""}${strongest.delta.toFixed(1)} pp).`;
+}
+
+function buildPromotionalRebateInsight(rows: MonthlyMetricRow[]) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const periods = [...groups.values()].sort((a, b) => a.sortKey - b.sortKey);
+  const currentPeriod = periods.at(-1);
+  const previousPeriod = periods.at(-2);
+  if (!currentPeriod) {
+    return {
+      highest: "No product-level promotional rebate data is available.",
+      improved: "",
+    };
+  }
+
+  type RebateEntry = {
+    sku: string;
+    productName: string;
+    rebate: number;
+    netSales: number;
+    directRateTotal: number;
+    directRateCount: number;
+  };
+  const aggregate = (periodRows: MonthlyMetricRow[]) => {
+    const result = new Map<string, RebateEntry>();
+
+    periodRows.forEach((row) => {
+      const sku = String(row.sku ?? row.SKU ?? "").trim();
+      const productName = String(row.product_name ?? row["Product Name"] ?? "").trim();
+      if (!sku && !productName) return;
+
+      const key = sku
+        ? `sku:${sku.toUpperCase()}`
+        : `product:${productName.toLowerCase()}`;
+      const current = result.get(key);
+      const directRate = toNumber(
+        row.promotional_rebates_percentage ?? row.promotion_rebates_percentage
+      );
+      result.set(key, {
+        sku: sku || current?.sku || "",
+        productName: productName || current?.productName || "",
+        rebate: (current?.rebate ?? 0) + Math.abs(toNumber(row.promotional_rebates) ?? 0),
+        netSales: (current?.netSales ?? 0) + Math.abs(toNumber(row.net_sales) ?? 0),
+        directRateTotal: (current?.directRateTotal ?? 0) + Math.abs(directRate ?? 0),
+        directRateCount: (current?.directRateCount ?? 0) + (directRate === null ? 0 : 1),
+      });
+    });
+
+    return result;
+  };
+
+  const currentEntries = aggregate(currentPeriod.rows);
+  const previousEntries = previousPeriod ? aggregate(previousPeriod.rows) : new Map<string, RebateEntry>();
+  const rebateRate = (entry?: RebateEntry) => {
+    if (!entry) return 0;
+    if (entry.netSales > 0 && entry.rebate > 0) {
+      return (entry.rebate / entry.netSales) * 100;
+    }
+    return entry.directRateCount > 0
+      ? entry.directRateTotal / entry.directRateCount
+      : 0;
+  };
+  const labelFor = (entry: RebateEntry) => entry.productName || entry.sku || "Product";
+
+  const highestProducts = [...currentEntries.values()]
+    .map((entry) => ({ label: labelFor(entry), rate: rebateRate(entry) }))
+    .filter((item) => item.rate > 0)
+    .sort((a, b) => b.rate - a.rate)
+    .slice(0, 2);
+  const highest = highestProducts.length
+    ? `Highest promotional rebate rates: ${highestProducts.map((item) => `${item.label} (${item.rate.toFixed(1)}%)`).join(", ")}.`
+    : "No product currently has a promotional rebate percentage.";
+
+  if (!previousPeriod) return { highest, improved: "" };
+
+  const improvements = [...currentEntries.entries()]
+    .map(([key, currentEntry]) => {
+      const previousEntry = previousEntries.get(key);
+      if (!previousEntry) return null;
+      const currentRate = rebateRate(currentEntry);
+      const previousRate = rebateRate(previousEntry);
+      if (previousRate <= 0 || currentRate >= previousRate) return null;
+      const relativeImprovement = ((previousRate - currentRate) / previousRate) * 100;
+      return {
+        label: labelFor(currentEntry),
+        currentRate,
+        previousRate,
+        percentagePointChange: currentRate - previousRate,
+        relativeImprovement,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .filter((item) => item.relativeImprovement >= 10)
+    .sort((a, b) => a.percentagePointChange - b.percentagePointChange);
+
+  const mostImproved = improvements[0];
+  const improved = mostImproved
+    ? `Material improvement: ${mostImproved.label} fell from ${mostImproved.previousRate.toFixed(1)}% to ${mostImproved.currentRate.toFixed(1)}% (${mostImproved.percentagePointChange.toFixed(1)} pp).`
+    : "";
+
+  return { highest, improved };
+}
+
+function buildHighestReturnSkuInsight(rows: MonthlyMetricRow[]) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const currentPeriod = [...groups.values()]
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .at(-1);
+  if (!currentPeriod) return null;
+
+  const bySku = new Map<string, { sku: string; productName: string; soldUnits: number; returnedUnits: number }>();
+  currentPeriod.rows.forEach((row) => {
+    const sku = String(row.sku ?? row.SKU ?? "").trim();
+    const productName = String(row.product_name ?? row["Product Name"] ?? "").trim();
+    if (!sku) return;
+
+    const key = sku.toUpperCase();
+    const current = bySku.get(key);
+    bySku.set(key, {
+      sku,
+      productName: productName || current?.productName || "",
+      soldUnits: (current?.soldUnits ?? 0) + Math.max(0, toNumber(row.quantity) ?? 0),
+      returnedUnits: (current?.returnedUnits ?? 0) + Math.abs(toNumber(row.return_quantity) ?? 0),
+    });
+  });
+
+  const highest = [...bySku.values()]
+    .filter((item) => item.soldUnits > 0 && item.returnedUnits > 0)
+    .map((item) => ({
+      ...item,
+      returnRate: (item.returnedUnits / item.soldUnits) * 100,
+    }))
+    .sort((a, b) => b.returnRate - a.returnRate)[0];
+
+  return highest
+    ? { label: highest.productName || highest.sku, returnRate: highest.returnRate }
+    : null;
+}
+
+function buildHighestRefundSalesSkuInsight(rows: MonthlyMetricRow[]) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const currentPeriod = [...groups.values()]
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .at(-1);
+  if (!currentPeriod) return null;
+
+  const bySku = new Map<string, { sku: string; productName: string; grossSales: number; refundSales: number }>();
+  currentPeriod.rows.forEach((row) => {
+    const sku = String(row.sku ?? row.SKU ?? "").trim();
+    const productName = String(row.product_name ?? row["Product Name"] ?? "").trim();
+    if (!sku) return;
+
+    const key = sku.toUpperCase();
+    const current = bySku.get(key);
+    bySku.set(key, {
+      sku,
+      productName: productName || current?.productName || "",
+      grossSales: (current?.grossSales ?? 0) + Math.abs(toNumber(row.gross_sales) ?? 0),
+      refundSales: (current?.refundSales ?? 0) + Math.abs(toNumber(row.refund_sales ?? row.refunded_sales) ?? 0),
+    });
+  });
+
+  const highest = [...bySku.values()]
+    .filter((item) => item.grossSales > 0 && item.refundSales > 0)
+    .map((item) => ({
+      ...item,
+      refundRate: (item.refundSales / item.grossSales) * 100,
+    }))
+    .sort((a, b) => b.refundRate - a.refundRate)[0];
+
+  return highest
+    ? { label: highest.productName || highest.sku, refundRate: highest.refundRate }
+    : null;
+}
+
+function buildAspRangeInsight(rows: MonthlyMetricRow[]) {
+  const groups = new Map<string, { sortKey: number; rows: MonthlyMetricRow[] }>();
+
+  rows.forEach((row) => {
+    const info = monthInfo(row);
+    if (!info || isTotalRow(row)) return;
+    const group = groups.get(info.key) ?? { sortKey: info.sortKey, rows: [] };
+    group.rows.push(row);
+    groups.set(info.key, group);
+  });
+
+  const currentPeriod = [...groups.values()]
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .at(-1);
+  if (!currentPeriod) return null;
+
+  const products = currentPeriod.rows
+    .map((row) => {
+      const productName = String(row.product_name ?? row["Product Name"] ?? "").trim();
+      const sku = String(row.sku ?? row.SKU ?? "").trim();
+      return {
+        label: productName || sku,
+        asp: toNumber(row.asp) ?? 0,
+      };
+    })
+    .filter((item) => item.label && item.asp > 0);
+
+  if (!products.length) return null;
+
+  const highest = [...products].sort((a, b) => b.asp - a.asp)[0];
+  const lowest = [...products].sort((a, b) => a.asp - b.asp)[0];
+  return { highest, lowest };
+}
+
+function buildCm2FactorInsight(current: MonthSnapshot, previous?: MonthSnapshot) {
+  if (!previous) return "No previous-month CM2 factor baseline is available.";
+
+  const cm2Delta = (current.values.cm2Profit ?? 0) - (previous.values.cm2Profit ?? 0);
+  if (cm2Delta === 0) return "CM2 Profit was unchanged month over month.";
+  const cm2Direction = cm2Delta > 0 ? "growth" : "decline";
+
+  const factors = [
+    { label: "CM1 Profit", key: "profit", cm2Effect: 1 },
+    { label: "Ads", key: "adsSpend", cm2Effect: -1 },
+    { label: "Shipping Charges", key: "shippingCharges", cm2Effect: -1 },
+    { label: "Inventory Storage Charges", key: "inventoryStorageFee", cm2Effect: -1 },
+  ]
+    .map((factor) => {
+      const currentValue = current.values[factor.key] ?? 0;
+      const previousValue = previous.values[factor.key] ?? 0;
+      const delta = currentValue - previousValue;
+      return {
+        ...factor,
+        currentValue,
+        previousValue,
+        delta,
+        cm2Impact: delta * factor.cm2Effect,
+        percentage: percentageChange(currentValue, previousValue),
+      };
+    })
+    .filter((factor) =>
+      cm2Delta > 0 ? factor.cm2Impact > 0 : factor.cm2Impact < 0
+    )
+    .sort((a, b) => Math.abs(b.cm2Impact) - Math.abs(a.cm2Impact));
+
+  if (!factors.length) {
+    return `None of the selected factors contributed to the CM2 ${cm2Direction}.`;
+  }
+
+  const strongest = factors.slice(0, 1);
+  const second = factors[1];
+  if (
+    second &&
+    Math.abs(second.cm2Impact) >= Math.abs(strongest[0].cm2Impact) * 0.1
+  ) {
+    strongest.push(second);
+  }
+
+  const factorText = strongest.map((factor) => {
+    if (factor.percentage === null) {
+      return `${factor.label} moved from zero`;
+    }
+    const direction = factor.delta > 0 ? "increased" : "decreased";
+    return `${factor.label} ${direction} ${Math.abs(factor.percentage).toFixed(1)}%`;
+  }).join(", ");
+
+  return `Main factor${strongest.length === 1 ? "" : "s"} behind CM2 ${cm2Direction}: ${factorText}.`;
+}
+
+function buildOtherExpenseInsight(
+  current: MonthSnapshot,
+  previous: MonthSnapshot | undefined,
+  format: (value: number, type: MetricFormat) => string
+) {
+  if (!previous) return "No previous-month expense baseline is available.";
+
+  const totalDelta = (current.values.platformFee ?? 0) - (previous.values.platformFee ?? 0);
+  if (totalDelta === 0) return "Other expense was unchanged month over month.";
+
+  const factors = [
+    { label: "Misc. Transactions", key: "miscTransaction" },
+    { label: "Lost Inventory", key: "lostTotal" },
+    { label: "Inventory Storage", key: "platformInventoryStorageFee" },
+    { label: "Subscription Fees", key: "subscriptionFees" },
+  ].map((factor) => {
+    const currentValue = current.values[factor.key] ?? 0;
+    const previousValue = previous.values[factor.key] ?? 0;
+    return {
+      ...factor,
+      currentValue,
+      previousValue,
+      delta: currentValue - previousValue,
+      percentage: percentageChange(currentValue, previousValue),
+    };
+  });
+
+  const describe = (factor: typeof factors[number]) => {
+    const movement = factor.percentage === null
+      ? "new expense"
+      : `${factor.percentage > 0 ? "+" : ""}${factor.percentage.toFixed(1)}%`;
+    return `${factor.label}: ${format(factor.previousValue, "currency")} → ${format(factor.currentValue, "currency")} (${movement})`;
+  };
+  const movingFactors = factors
+    .filter((factor) => factor.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  if (!movingFactors.length) {
+    return "The tracked Other expense components were unchanged.";
+  }
+
+  const strongest = movingFactors.slice(0, 1);
+  const second = movingFactors[1];
+  if (second && Math.abs(second.delta) >= Math.abs(strongest[0].delta) * 0.1) {
+    strongest.push(second);
+  }
+
+  return `Largest component changes affecting Other expense: ${strongest.map(describe).join(", ")}.`;
 }
 
 function percentageChange(current: number, previous?: number) {
@@ -343,15 +942,6 @@ const metricDefinitions: MetricDefinition[] = [
     detail: (s, f) => `CM2 margin is ${f(s.values.cm2Margin, "percent")} on current net sales.`,
   },
   {
-    key: "adsSpend",
-    title: "Ads",
-    category: "Advertising & Promotion",
-    icon: "megaphone",
-    format: "currency",
-    inverseTrend: true,
-    detail: (s, f) => `Ad spend is ${f(s.values.tacos, "percent")} of net sales (TACoS). Lower ad spend versus the previous month is treated as favorable.`,
-  },
-  {
     key: "tacos",
     title: "TACoS",
     category: "Advertising & Promotion",
@@ -361,11 +951,21 @@ const metricDefinitions: MetricDefinition[] = [
     detail: (s, f) => `Total advertising cost is ${f(s.values.tacos, "percent")} of net sales. Lower TACoS is better.`,
   },
   {
+    key: "agedInventory180Plus",
+    title: "Ageing Inventory 180+",
+    category: "Inventory & Dispatch",
+    icon: "box",
+    format: "number",
+    inverseTrend: true,
+    detail: (s, f) => `181–270 days: ${f(s.values.agedInventory181To270, "number")}; 271–365 days: ${f(s.values.agedInventory271To365, "number")}; 365+ days: ${f(s.values.agedInventory365Plus, "number")}.`,
+  },
+  {
     key: "platformFee",
     title: "Other",
     category: "Fees & Other Costs",
     icon: "coin",
     format: "currency",
+    inverseTrend: true,
     detail: (s, f) => `Other Transactions are ${f(safePercent(Math.abs(s.values.platformFee), s.values.netSales), "percent")} of net sales.`,
   },
   {
@@ -374,6 +974,7 @@ const metricDefinitions: MetricDefinition[] = [
     category: "Advertising & Promotion",
     icon: "spark",
     format: "currency",
+    inverseTrend: true,
     detail: (s, f) => `Promotional rebate is ${f(Math.abs(s.values.rebatePercent), "percent")} of net sales.`,
   },
 ];
@@ -453,14 +1054,30 @@ function Sparkline({ values, status }: { values: number[]; status: MovementStatu
   );
 }
 
-function MetricFlipCard({ definition, snapshots, currency }: { definition: MetricDefinition; snapshots: MonthSnapshot[]; currency: string }) {
+function MetricFlipCard({
+  definition,
+  snapshots,
+  currency,
+  unitContributorData,
+}: {
+  definition: MetricDefinition;
+  snapshots: MonthSnapshot[];
+  currency: string;
+  unitContributorData: MonthlyMetricRow[];
+}) {
   const format = makeFormatter(currency);
   const current = snapshots[snapshots.length - 1];
   const previous = snapshots[snapshots.length - 2];
   const currentValue = current.values[definition.key] ?? 0;
   const previousValue = previous?.values[definition.key];
   const delta = percentageChange(currentValue, previousValue);
-  const rawStatus = movementStatus(delta);
+  const rawStatus = definition.key === "agedInventory180Plus" && delta !== null
+    ? delta > 0
+      ? "up"
+      : delta < 0
+        ? "down"
+        : "stable"
+    : movementStatus(delta);
   const status: MovementStatus = definition.inverseTrend
     ? rawStatus === "up"
       ? "down"
@@ -474,6 +1091,75 @@ function MetricFlipCard({ definition, snapshots, currency }: { definition: Metri
   const movementPoint = delta === null
     ? "Add at least one previous month to activate MoM comparison."
     : `${definition.title} ${Math.abs(delta) < 0.005 ? "was flat" : delta > 0 ? "increased" : "decreased"} by ${Math.abs(delta).toFixed(2)}% month over month.${definition.inverseTrend && Math.abs(delta) >= 0.005 ? (delta > 0 ? " Higher is unfavorable." : " Lower is favorable.") : ""}`;
+  const isUnitsSold = definition.key === "totalQuantity";
+  const isNetSales = definition.key === "netSales";
+  const isAsp = definition.key === "asp";
+  const isCm2Profit = definition.key === "cm2Profit";
+  const isTacos = definition.key === "tacos";
+  const isOtherExpense = definition.key === "platformFee";
+  const isPromotionalRebate = definition.key === "promotionalRebates";
+  const hasProductMovementAnalysis = isUnitsSold || isNetSales || isAsp;
+  const hasCustomMovementAnalysis = hasProductMovementAnalysis || isCm2Profit || isTacos || isOtherExpense || isPromotionalRebate;
+  const productContributorInsight = hasProductMovementAnalysis
+    ? buildProductContributorInsight(
+        unitContributorData,
+        isUnitsSold ? "units" : isNetSales ? "netSales" : "asp",
+        previousValue === undefined ? undefined : currentValue - previousValue
+      )
+    : "";
+  const highestReturnSku = isUnitsSold
+    ? buildHighestReturnSkuInsight(unitContributorData)
+    : null;
+  const unitsReturnInsight = highestReturnSku
+    ? `${format(current.values.returnQuantity ?? 0, "number")} units returned; ${highestReturnSku.label} had the highest return rate (${highestReturnSku.returnRate.toFixed(1)}%).`
+    : definition.detail(current, format);
+  const highestRefundSalesSku = isNetSales
+    ? buildHighestRefundSalesSkuInsight(unitContributorData)
+    : null;
+  const refundSalesInsight = highestRefundSalesSku
+    ? `${format(Math.abs(current.values.refundSales ?? 0), "currency")} refund sales; ${highestRefundSalesSku.label} had the highest refund-sales rate (${highestRefundSalesSku.refundRate.toFixed(1)}%).`
+    : `${format(Math.abs(current.values.refundSales ?? 0), "currency")} refund sales this month.`;
+  const aspRange = isAsp ? buildAspRangeInsight(unitContributorData) : null;
+  const aspRangeInsight = aspRange
+    ? `Highest ASP: ${aspRange.highest.label} (${format(aspRange.highest.asp, "currency")}); lowest ASP: ${aspRange.lowest.label} (${format(aspRange.lowest.asp, "currency")}).`
+    : "No product-level ASP data is available.";
+  const cm2FactorInsight = isCm2Profit
+    ? buildCm2FactorInsight(current, previous)
+    : "";
+  const acosContributorInsight = isTacos
+    ? buildAcosContributorInsight(
+        unitContributorData,
+        previousValue === undefined ? undefined : currentValue - previousValue
+      )
+    : "";
+  const otherExpenseInsight = isOtherExpense
+    ? buildOtherExpenseInsight(current, previous, format)
+    : null;
+  const promotionalRebateInsight = isPromotionalRebate
+    ? buildPromotionalRebateInsight(unitContributorData)
+    : null;
+  const customSecondInsight = isCm2Profit
+    ? cm2FactorInsight
+    : isTacos
+      ? acosContributorInsight
+      : isOtherExpense
+        ? otherExpenseInsight ?? ""
+        : isPromotionalRebate
+          ? promotionalRebateInsight?.highest ?? ""
+          : productContributorInsight;
+  const customThirdInsight = isUnitsSold
+    ? unitsReturnInsight
+    : isNetSales
+      ? refundSalesInsight
+      : isAsp
+        ? aspRangeInsight
+        : isTacos
+          ? ""
+          : isOtherExpense
+            ? ""
+            : isPromotionalRebate
+              ? promotionalRebateInsight?.improved ?? ""
+              : definition.detail(current, format);
 
   return <div className="group h-[158px] [perspective:1400px] transition-[transform,filter] duration-500 ease-out hover:-translate-y-1.5 hover:scale-[1.012] focus-within:-translate-y-1.5 focus-within:scale-[1.012]">
     <div className="relative h-full w-full transition-transform duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)_rotateX(2deg)_translateZ(8px)] group-focus-within:[transform:rotateY(180deg)_rotateX(2deg)_translateZ(8px)]">
@@ -520,9 +1206,28 @@ function MetricFlipCard({ definition, snapshots, currency }: { definition: Metri
           </div>
         </div>
         <ul className="relative z-10 mt-3 space-y-1.5 text-xs leading-[13px] text-[#40536C]">
-          <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>Current: <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>{previous ? <> · Previous: <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong></> : null}</span></li>
-          <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{movementPoint}</span></li>
-          <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{definition.detail(current, format)}</span></li>
+          {hasCustomMovementAnalysis ? <>
+            <li className="flex gap-2">
+              <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />
+              <span>
+                Previous <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong>
+                {" → "}Current <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>
+                {" "}<strong className={theme.text}>({deltaText})</strong>
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />
+              <span>{customSecondInsight}</span>
+            </li>
+            {customThirdInsight ? <li className="flex gap-2">
+              <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />
+              <span>{customThirdInsight}</span>
+            </li> : null}
+          </> : <>
+            <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>Current: <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>{previous ? <> · Previous: <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong></> : null}</span></li>
+            <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{movementPoint}</span></li>
+            <li className="flex gap-2"><span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} /><span>{definition.detail(current, format)}</span></li>
+          </>}
         </ul>
       </article>
     </div>
@@ -626,11 +1331,13 @@ function ActionItemsView({
 
 export function BusinessAnalysisView({
   monthlyData,
+  unitContributorData = [],
   currency,
   loading,
   skuAnalysisContent,
 }: {
   monthlyData: MonthlyMetricRow[];
+  unitContributorData?: MonthlyMetricRow[];
   currency?: string;
   loading: boolean;
   skuAnalysisContent?: React.ReactNode;
@@ -661,7 +1368,7 @@ export function BusinessAnalysisView({
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {metricDefinitions.map((definition) => <MetricFlipCard key={definition.key} definition={definition} snapshots={snapshots} currency={resolvedCurrency} />)}
+      {metricDefinitions.map((definition) => <MetricFlipCard key={definition.key} definition={definition} snapshots={snapshots} currency={resolvedCurrency} unitContributorData={unitContributorData} />)}
     </div>
 
     {skuAnalysisContent ? <div className="pt-1">{skuAnalysisContent}</div> : null}

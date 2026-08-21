@@ -12208,14 +12208,83 @@ export default function DashboardPage() {
         const currentPromotions = Math.abs(toNumber(mtdPromotionsCurrentDisplay));
         const previousPromotions = Math.abs(toNumber(mtdPromotionsPreviousDisplay));
 
+        // The 180+ total includes every ageing bucket from day 181 onward.
+        // Global combines the country summaries into one platform total.
+        const ageingByPeriod = new Map<string, {
+            age181To270: number;
+            age271To365: number;
+            age365Plus: number;
+        }>();
+        const ageingResponses = inventoryAgeSummaryResponses.flatMap((response) => {
+            if (
+                platform === "global" &&
+                response?.country_results &&
+                typeof response.country_results === "object"
+            ) {
+                return Object.values(response.country_results);
+            }
+            return [response];
+        });
+
+        ageingResponses.forEach((response) => {
+            const summaries = Array.isArray(response?.month_summary)
+                ? response.month_summary
+                : [];
+
+            summaries.forEach((summary) => {
+                const monthNumber = Number(summary?.month_number);
+                const year = Number(summary?.year);
+                if (!Number.isFinite(monthNumber) || !Number.isFinite(year)) return;
+
+                const key = `${year}-${monthNumber}`;
+                const current = ageingByPeriod.get(key) ?? {
+                    age181To270: 0,
+                    age271To365: 0,
+                    age365Plus: 0,
+                };
+                ageingByPeriod.set(key, {
+                    age181To270: current.age181To270 + toNumber(summary?.totals?.["inv-age-181-to-270-days"] ?? 0),
+                    age271To365: current.age271To365 + toNumber(summary?.totals?.["inv-age-271-to-365-days"] ?? 0),
+                    age365Plus: current.age365Plus + toNumber(summary?.totals?.["inv-age-365-plus-days"] ?? 0),
+                });
+            });
+        });
+
+        const ageingForPeriod = (period: { monthName: string; year: number }) => {
+            const monthNumber = inventoryMonthIndexMap[period.monthName.toLowerCase()] + 1;
+            const ageing = ageingByPeriod.get(`${period.year}-${monthNumber}`) ?? {
+                age181To270: 0,
+                age271To365: 0,
+                age365Plus: 0,
+            };
+            return {
+                aged_inventory_181_270: ageing.age181To270,
+                aged_inventory_271_365: ageing.age271To365,
+                aged_inventory_365_plus: ageing.age365Plus,
+                aged_inventory_180_plus:
+                    ageing.age181To270 + ageing.age271To365 + ageing.age365Plus,
+            };
+        };
+
+        const currentAgeing = ageingForPeriod(currentDisplayMonth);
+        const previousAgeing = ageingForPeriod(previousDisplayMonth);
+
         const currentRow: MonthlyMetricRow = {
             sku: "TOTAL",
             product_name: "TOTAL",
             month: currentDisplayMonth.monthName.toLowerCase(),
             year: currentDisplayMonth.year,
             country: countryName,
+            ...currentAgeing,
 
             quantity: toNumber(currentGrand?.quantity ?? 0),
+
+            gross_sales: toNumber(currentGrand?.gross_sales ?? 0),
+            refund_sales: Math.abs(toNumber(
+                currentGrand?.refund_sales ??
+                currentGrand?.refunded_sales ??
+                0
+            )),
 
             return_quantity: toNumber(
                 currentGrand?.return_quantity ??
@@ -12231,6 +12300,29 @@ export default function DashboardPage() {
 
             net_sales: netSalesKpi.current,
             asp: aspKpi.current,
+            profit: toNumber(currentGrand?.profit ?? currentGrand?.cm1_profit ?? 0),
+            shipping_charges: Math.abs(toNumber(
+                currentGrand?.shipping_charges ??
+                currentGrand?.shipment_charges ??
+                currentGrand?.shipment_fees ??
+                0
+            )),
+            storage_fee: Math.abs(toNumber(
+                currentGrand?.storage_fee ??
+                currentGrand?.platform_fee_inventory_storage ??
+                currentGrand?.inventory_storage_fees ??
+                0
+            )),
+            misc_transaction: Math.abs(toNumber(
+                currentGrand?.misc_transaction ?? currentGrand?.misc_transactions ?? 0
+            )),
+            lost_total: Math.abs(toNumber(currentGrand?.lost_total ?? 0)),
+            platform_fee_inventory_storage: Math.abs(toNumber(
+                currentGrand?.platform_fee_inventory_storage ?? 0
+            )),
+            platformfeenew: Math.abs(toNumber(
+                currentGrand?.platformfeenew ?? currentGrand?.platform_fee_new ?? 0
+            )),
             platform_fee: currentOtherTransactions,
             other_transactions: currentOtherTransactions,
             total_cm2_profit: cm2Kpi.current,
@@ -12247,11 +12339,77 @@ export default function DashboardPage() {
             month: previousDisplayMonth.monthName.toLowerCase(),
             year: previousDisplayMonth.year,
             country: countryName,
+            ...previousAgeing,
 
             total_quantity: unitsKpi.previous,
             quantity: unitsKpi.previous,
+            gross_sales: toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.gross_sales ?? previousGlobalDerived.gross_sales ?? 0
+                    : previousTotals.gross_sales ?? 0
+            ),
+            refund_sales: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.refund_sales ?? previousGlobalDerived.refund_sales ?? 0
+                    : previousTotals.refund_sales ?? previousTotals.refunded_sales ?? 0
+            )),
             net_sales: netSalesKpi.previous,
             asp: aspKpi.previous,
+            profit: toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.profit ?? previousGlobalDerived.profit ?? 0
+                    : previousTotals.profit ?? previousTotals.cm1_profit ?? 0
+            ),
+            shipping_charges: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.shipping_charges ??
+                        previousGlobalDerived.shipping_charges ??
+                        previousGlobalDerived.shipment_charges ??
+                        previousGlobalDerived.shipment_fees ??
+                        0
+                    : previousTotals.shipping_charges ??
+                        previousTotals.shipment_charges ??
+                        previousTotals.shipment_fees ??
+                        0
+            )),
+            storage_fee: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.storage_fee ??
+                        previousGlobalDerived.storage_fee ??
+                        previousGlobalGrand.platform_fee_inventory_storage ??
+                        previousGlobalDerived.platform_fee_inventory_storage ??
+                        0
+                    : previousTotals.storage_fee ??
+                        previousTotals.platform_fee_inventory_storage ??
+                        previousTotals.inventory_storage_fees ??
+                        0
+            )),
+            misc_transaction: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.misc_transaction ??
+                        previousGlobalDerived.misc_transaction ??
+                        0
+                    : previousTotals.misc_transaction ?? previousTotals.misc_transactions ?? 0
+            )),
+            lost_total: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.lost_total ?? previousGlobalDerived.lost_total ?? 0
+                    : previousTotals.lost_total ?? 0
+            )),
+            platform_fee_inventory_storage: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.platform_fee_inventory_storage ??
+                        previousGlobalDerived.platform_fee_inventory_storage ??
+                        0
+                    : previousTotals.platform_fee_inventory_storage ?? 0
+            )),
+            platformfeenew: Math.abs(toNumber(
+                platform === "global"
+                    ? previousGlobalGrand.platformfeenew ??
+                        previousGlobalDerived.platformfeenew ??
+                        0
+                    : previousTotals.platformfeenew ?? previousTotals.platform_fee_new ?? 0
+            )),
             platform_fee: previousOtherTransactions,
             other_transactions: previousOtherTransactions,
             total_cm2_profit: cm2Kpi.previous,
@@ -12270,6 +12428,7 @@ export default function DashboardPage() {
         grandTotalRowRaw,
         grandTotalRowDisplay,
         previousSkuwiseGlobalData,
+        inventoryAgeSummaryResponses,
         data,
         platform,
         amazonDataCurrency,
@@ -12286,6 +12445,97 @@ export default function DashboardPage() {
         stickyPreviousTotals.cm2MarginPct,
         totalRowCm2Margins,
         prev?.profitPct,
+    ]);
+
+    const businessAnalysisUnitContributorData = useMemo<MonthlyMetricRow[]>(() => {
+        if (shouldShowDummyUi) return [];
+
+        const mapSkuRows = (
+            rows: any[],
+            period: { monthName: string; year: number }
+        ): MonthlyMetricRow[] => rows
+            .filter((row: any) => {
+                const sku = String(row?.sku ?? "").trim().toUpperCase();
+                const productName = String(row?.product_name ?? "").trim().toLowerCase();
+                return (
+                    !row?.isTotal &&
+                    sku !== "TOTAL" &&
+                    sku !== "GRAND_TOTAL" &&
+                    productName !== "total" &&
+                    productName !== "grand total"
+                );
+            })
+            .map((row: any) => ({
+                sku: String(row?.sku ?? "").trim(),
+                product_name: String(row?.product_name ?? "").trim(),
+                month: period.monthName.toLowerCase(),
+                year: period.year,
+                country: countryName,
+                total_quantity: toNumber(
+                    row?.total_quantity ??
+                    row?.net_quantity ??
+                    row?.quantity ??
+                    0
+                ),
+                quantity: toNumber(
+                    row?.return_rate_base_quantity ??
+                    row?.quantity ??
+                    row?.total_quantity ??
+                    0
+                ),
+                return_quantity: Math.abs(toNumber(
+                    row?.return_quantity ??
+                    row?.returns_quantity ??
+                    row?.return_qty ??
+                    0
+                )),
+                gross_sales: toNumber(
+                    row?.gross_sales ??
+                    row?.product_sales ??
+                    0
+                ),
+                refund_sales: Math.abs(toNumber(
+                    row?.refund_sales ??
+                    row?.refunded_sales ??
+                    0
+                )),
+                net_sales: toNumber(row?.net_sales ?? 0),
+                asp: toNumber(row?.asp ?? 0),
+                ads_spend: Math.abs(toNumber(
+                    row?.ads_spend ??
+                    (
+                        toNumber(row?.product_spend ?? 0) +
+                        toNumber(row?.display_spend ?? 0) +
+                        toNumber(row?.brand_spend ?? 0)
+                    )
+                )),
+                acos: toNumber(
+                    row?.acos ??
+                    row?.ads_acos ??
+                    row?.acos_percentage ??
+                    0
+                ),
+                promotional_rebates: Math.abs(toNumber(
+                    row?.promotional_rebates ?? row?.promotion_rebates ?? 0
+                )),
+                promotional_rebates_percentage: Math.abs(toNumber(
+                    row?.promotional_rebates_percentage ??
+                    row?.promotion_rebates_percentage ??
+                    0
+                )),
+            }));
+
+        return [
+            ...mapSkuRows(previousSkuwiseRowsForDelta, previousDisplayMonth),
+            ...mapSkuRows(monthlySkuwiseRows, currentDisplayMonth),
+        ];
+    }, [
+        shouldShowDummyUi,
+        previousSkuwiseRowsForDelta,
+        monthlySkuwiseRows,
+        previousDisplayMonth,
+        currentDisplayMonth,
+        countryName,
     ]);
 
     const shouldScrollMtdProductwiseTable =
@@ -12379,6 +12629,7 @@ export default function DashboardPage() {
                 {activeTab === "analysis" && (
                     <BusinessAnalysisView
                         monthlyData={businessAnalysisMonthlyData}
+                        unitContributorData={businessAnalysisUnitContributorData}
                         currency={displayCurrency}
                         loading={
                             !shouldShowDummyUi &&
