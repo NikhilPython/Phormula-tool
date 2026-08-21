@@ -6919,6 +6919,7 @@ def get_fba_inbound_dispatch_inputs():
         "IN_TRANSIT",
         "DELIVERED",
         "CHECKED_IN",
+        "VOIDED",
     }
 
     invalid_statuses = [
@@ -8058,8 +8059,8 @@ def _get_fba_inbound_shipments_impl():
         if x.strip()
     ]
     allowed_statuses = {
-        "WORKING", "READY_TO_SHIP", "SHIPPED", "RECEIVING", "CANCELLED",
-        "DELETED", "CLOSED", "ERROR", "IN_TRANSIT", "DELIVERED", "CHECKED_IN",
+        "WORKING", "READY_TO_SHIP", "ACTIVE", "SHIPPED", "RECEIVING", "CANCELLED",
+        "DELETED", "CLOSED", "ERROR", "IN_TRANSIT", "DELIVERED", "CHECKED_IN", "VOIDED",
     }
     invalid_statuses = [s for s in status_values if s not in allowed_statuses]
     if invalid_statuses:

@@ -141,6 +141,35 @@ const COUNTRY_TO_MARKETPLACE: Record<string, string> = {
 }
 
 const AWD_SUPPORTED_COUNTRIES = new Set(['us', 'usa'])
+
+const FBA_ALL_STATUSES = [
+  'WORKING',
+  'READY_TO_SHIP',
+  'ACTIVE',
+  'SHIPPED',
+  'RECEIVING',
+  'IN_TRANSIT',
+  'CHECKED_IN',
+  'CLOSED',
+  'DELIVERED',
+  'CANCELLED',
+  'DELETED',
+  'ERROR',
+  'VOIDED',
+] as const
+
+const FBA_ACTIONABLE_STATUSES = new Set([
+  'WORKING',
+  'READY_TO_SHIP',
+  'ACTIVE',
+  'SHIPPED',
+  'RECEIVING',
+  'IN_TRANSIT',
+  'CHECKED_IN',
+])
+
+const isActionableFbaStatus = (status: unknown) =>
+  FBA_ACTIONABLE_STATUSES.has(String(status || '').trim().toUpperCase())
 const SHIPMENT_DETAILS_CANCELLED_MESSAGE = 'Shipment details editing was cancelled.'
 const SHIPMENT_DETAILS_REQUIRED_MESSAGE =
   'Please fill dispatch date, shipment type, and expected reach date for every shipment before opening Dispatch.'
@@ -1314,9 +1343,9 @@ export default function DispatchPage({
 
     if (!marketplaceId) return []
 
-    const shipmentStatuses = ['uk', 'gb'].includes(countryKey)
-      ? 'SHIPPED'
-      : 'WORKING,READY_TO_SHIP,ACTIVE,IN_TRANSIT'
+    // Show every known FBA status in the shipment-details view for every marketplace.
+    // Terminal statuses are display-only and are excluded from dispatch-date validation below.
+    const shipmentStatuses = FBA_ALL_STATUSES.join(',')
 
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(
@@ -1363,9 +1392,10 @@ export default function DispatchPage({
     const requests: Promise<Response>[] = []
 
     if (['uk', 'gb'].includes(countryKey)) {
+      // Refresh all FBA shipment statuses instead of SHIPPED only.
       requests.push(
         fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=SHIPPED&store_in_db=true`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=${encodeURIComponent(FBA_ALL_STATUSES.join(','))}&store_in_db=true`,
           { method: 'GET', headers }
         )
       )
@@ -1631,7 +1661,11 @@ export default function DispatchPage({
       return
     }
 
-    const missing = inboundInputRows.find(
+    const rowsRequiringDispatchDetails = inboundInputRows.filter(
+      (row) => row.source === 'AWD' || isActionableFbaStatus(row.shipment_status)
+    )
+
+    const missing = rowsRequiringDispatchDetails.find(
       (row) => !row.dispatch_date || !row.shipment_type || !row.expected_reach_date
     )
     if (missing) {
@@ -1639,7 +1673,7 @@ export default function DispatchPage({
       return
     }
 
-    const invalidDispatchDate = inboundInputRows.find((row) =>
+    const invalidDispatchDate = rowsRequiringDispatchDetails.find((row) =>
       isBeforeMinDate(row.dispatch_date, getDispatchMinDate(row))
     )
     if (invalidDispatchDate) {
@@ -1649,7 +1683,7 @@ export default function DispatchPage({
       return
     }
 
-    const invalidExpectedReachDate = inboundInputRows.find((row) =>
+    const invalidExpectedReachDate = rowsRequiringDispatchDetails.find((row) =>
       isBeforeMinDate(row.expected_reach_date, getExpectedReachMinDate(row))
     )
     if (invalidExpectedReachDate) {
@@ -1681,7 +1715,7 @@ export default function DispatchPage({
           expected_reach_date: row.expected_reach_date,
         }))
       const normalizedFbaRows = normalizedInboundRows
-        .filter((row) => row.source === 'FBA')
+        .filter((row) => row.source === 'FBA' && isActionableFbaStatus(row.shipment_status))
         .map((row) => ({
           ...fbaInputRows.find((fbaRow) => fbaRow.shipment_id === row.shipment_id),
           shipment_id: row.shipment_id,
