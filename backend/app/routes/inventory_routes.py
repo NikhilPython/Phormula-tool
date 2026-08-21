@@ -6740,27 +6740,81 @@ def get_fba_inbound_dispatch_inputs():
     try:
         user_id = _get_auth_user_id_from_request()
     except jwt.ExpiredSignatureError:
-        return jsonify({"success": False, "error": "Token has expired"}), 401
+        return jsonify({
+            "success": False,
+            "error": "Token has expired"
+        }), 401
     except jwt.InvalidTokenError:
-        return jsonify({"success": False, "error": "Invalid token"}), 401
+        return jsonify({
+            "success": False,
+            "error": "Invalid token"
+        }), 401
 
     if not user_id:
-        return jsonify({"success": False, "error": "Authorization token is missing or invalid"}), 401
+        return jsonify({
+            "success": False,
+            "error": "Authorization token is missing or invalid"
+        }), 401
 
-    marketplace_id = (request.args.get("marketplace_id") or amazon_client.marketplace_id or "").strip()
+    # ---------------------------------------------------------
+    # Marketplace
+    # ---------------------------------------------------------
+    marketplace_id = (
+        request.args.get("marketplace_id")
+        or amazon_client.marketplace_id
+        or ""
+    ).strip()
+
     if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
-        return jsonify({"success": False, "error": "Unsupported marketplace", "marketplace_id": marketplace_id}), 400
+        return jsonify({
+            "success": False,
+            "error": "Unsupported marketplace",
+            "marketplace_id": marketplace_id
+        }), 400
 
+    # ---------------------------------------------------------
+    # Shipment statuses
+    #
+    # Default Dispatch statuses:
+    # WORKING
+    # READY_TO_SHIP
+    # ACTIVE
+    # IN_TRANSIT
+    #
+    # You can still override them using:
+    # ?shipment_statuses=WORKING,IN_TRANSIT
+    # ---------------------------------------------------------
     status_values = [
         value.strip().upper().replace("-", "_")
-        for value in (request.args.get("shipment_statuses") or request.args.get("statuses") or "IN_TRANSIT").split(",")
+        for value in (
+            request.args.get("shipment_statuses")
+            or request.args.get("statuses")
+            or "WORKING,READY_TO_SHIP,ACTIVE,IN_TRANSIT"
+        ).split(",")
         if value.strip()
     ]
+
     allowed_statuses = {
-        "WORKING", "READY_TO_SHIP", "SHIPPED", "RECEIVING", "CANCELLED",
-        "DELETED", "CLOSED", "ERROR", "IN_TRANSIT", "DELIVERED", "CHECKED_IN",
+        "WORKING",
+        "READY_TO_SHIP",
+        "ACTIVE",
+        "SHIPPED",
+        "RECEIVING",
+        "CANCELLED",
+        "DELETED",
+        "CLOSED",
+        "ERROR",
+        "IN_TRANSIT",
+        "DELIVERED",
+        "CHECKED_IN",
     }
-    invalid_statuses = [value for value in status_values if value not in allowed_statuses]
+
+    invalid_statuses = [
+        value
+        for value in status_values
+        if value not in allowed_statuses
+    ]
+
     if invalid_statuses:
         return jsonify({
             "success": False,
@@ -6768,76 +6822,250 @@ def get_fba_inbound_dispatch_inputs():
             "invalid_statuses": invalid_statuses,
             "allowed_statuses": sorted(allowed_statuses),
         }), 400
-    status_sql = ", ".join(f"'{value}'" for value in status_values)
 
+    if not status_values:
+        return jsonify({
+            "success": False,
+            "error": "At least one shipment status is required"
+        }), 400
+
+    # Because values have already been validated against a fixed whitelist,
+    # this is safe to insert into the SQL IN clause.
+    status_sql = ", ".join(
+        f"'{value}'"
+        for value in status_values
+    )
+
+    # ---------------------------------------------------------
+    # Get shipment data
+    # ---------------------------------------------------------
     try:
         with amazon_conn() as conn:
-            _ensure_inventory_fba_inbound_shipments_table(conn)
-            rows = conn.execute(text(f"""
-                WITH normalized AS (
-                    SELECT
-                        COALESCE(NULLIF(TRIM("shipmentId"), ''), shipment_id) AS shipment_id,
-                        COALESCE(NULLIF(TRIM(status), ''), shipment_status) AS shipment_status,
-                        COALESCE(NULLIF(TRIM(msku), ''), seller_sku) AS sku,
-                        fnsku,
-                        asin,
-                        COALESCE(quantity, quantity_shipped, 0) AS quantity,
-                        "createdAt" AS created_at,
-                        COALESCE("lastUpdatedAt", updated_at::TEXT) AS updated_at,
-                        dispatch_date,
-                        shipment_type,
-                        expected_reach_date,
-                        name
-                    FROM public.inventory_fba_inbound_shipments
-                    WHERE user_id = :user_id
-                      AND marketplace_id = :marketplace_id
-                      AND COALESCE(quantity, quantity_shipped, 0) > 0
-                      AND UPPER(REPLACE(COALESCE(NULLIF(status, ''), shipment_status, ''), '-', '_')) IN ({status_sql})
-                )
-                SELECT
-                    shipment_id,
-                    MAX(shipment_status) AS shipment_status,
-                    STRING_AGG(DISTINCT sku, ', ') AS sku,
-                    STRING_AGG(DISTINCT COALESCE(fnsku, ''), ', ') FILTER (WHERE COALESCE(fnsku, '') <> '') AS fnsku,
-                    STRING_AGG(DISTINCT COALESCE(asin, ''), ', ') FILTER (WHERE COALESCE(asin, '') <> '') AS asin,
-                    SUM(COALESCE(quantity, 0)) AS quantity,
-                    MIN(created_at) AS created_at,
-                    MAX(updated_at) AS updated_at,
-                    MAX(dispatch_date) AS dispatch_date,
-                    MAX(shipment_type) AS shipment_type,
-                    MAX(expected_reach_date) AS expected_reach_date,
-                    MAX(name) AS name
-                FROM normalized
-                WHERE COALESCE(shipment_id, '') <> ''
-                  AND COALESCE(sku, '') <> ''
-                GROUP BY shipment_id
-                ORDER BY MIN(created_at) ASC NULLS LAST, shipment_id ASC
-            """), {
-                "user_id": int(user_id),
-                "marketplace_id": marketplace_id,
-            }).mappings().all()
-    except Exception as exc:
-        logger.exception("Failed to read FBA dispatch inputs")
-        return jsonify({"success": False, "error": str(exc)}), 500
 
+            _ensure_inventory_fba_inbound_shipments_table(conn)
+
+            rows = conn.execute(
+                text(f"""
+                    WITH normalized AS (
+                        SELECT
+
+                            COALESCE(
+                                NULLIF(TRIM("shipmentId"), ''),
+                                shipment_id
+                            ) AS shipment_id,
+
+                            UPPER(
+                                REPLACE(
+                                    COALESCE(
+                                        NULLIF(TRIM(status), ''),
+                                        shipment_status,
+                                        ''
+                                    ),
+                                    '-',
+                                    '_'
+                                )
+                            ) AS shipment_status,
+
+                            COALESCE(
+                                NULLIF(TRIM(msku), ''),
+                                seller_sku
+                            ) AS sku,
+
+                            fnsku,
+                            asin,
+
+                            COALESCE(
+                                quantity,
+                                quantity_shipped,
+                                0
+                            ) AS quantity,
+
+                            "createdAt" AS created_at,
+
+                            COALESCE(
+                                "lastUpdatedAt",
+                                updated_at::TEXT
+                            ) AS updated_at,
+
+                            dispatch_date,
+                            shipment_type,
+                            expected_reach_date,
+                            name
+
+                        FROM public.inventory_fba_inbound_shipments
+
+                        WHERE user_id = :user_id
+
+                          AND marketplace_id = :marketplace_id
+
+                          AND COALESCE(
+                                quantity,
+                                quantity_shipped,
+                                0
+                              ) > 0
+
+                          AND UPPER(
+                                REPLACE(
+                                    COALESCE(
+                                        NULLIF(TRIM(status), ''),
+                                        shipment_status,
+                                        ''
+                                    ),
+                                    '-',
+                                    '_'
+                                )
+                              ) IN ({status_sql})
+                    )
+
+                    SELECT
+
+                        shipment_id,
+
+                        MAX(shipment_status)
+                            AS shipment_status,
+
+                        STRING_AGG(
+                            DISTINCT sku,
+                            ', '
+                        ) AS sku,
+
+                        STRING_AGG(
+                            DISTINCT COALESCE(fnsku, ''),
+                            ', '
+                        )
+                        FILTER (
+                            WHERE COALESCE(fnsku, '') <> ''
+                        ) AS fnsku,
+
+                        STRING_AGG(
+                            DISTINCT COALESCE(asin, ''),
+                            ', '
+                        )
+                        FILTER (
+                            WHERE COALESCE(asin, '') <> ''
+                        ) AS asin,
+
+                        SUM(
+                            COALESCE(quantity, 0)
+                        ) AS quantity,
+
+                        MIN(created_at)
+                            AS created_at,
+
+                        MAX(updated_at)
+                            AS updated_at,
+
+                        MAX(dispatch_date)
+                            AS dispatch_date,
+
+                        MAX(shipment_type)
+                            AS shipment_type,
+
+                        MAX(expected_reach_date)
+                            AS expected_reach_date,
+
+                        MAX(name)
+                            AS name
+
+                    FROM normalized
+
+                    WHERE COALESCE(shipment_id, '') <> ''
+
+                      AND COALESCE(sku, '') <> ''
+
+                    GROUP BY shipment_id
+
+                    ORDER BY
+                        MIN(created_at) ASC NULLS LAST,
+                        shipment_id ASC
+                """),
+                {
+                    "user_id": int(user_id),
+                    "marketplace_id": marketplace_id,
+                }
+            ).mappings().all()
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to read FBA dispatch inputs"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 500
+
+    # ---------------------------------------------------------
+    # Prepare response
+    # ---------------------------------------------------------
     items = []
+
     for row in rows:
         item = dict(row)
-        item["quantity"] = int(item.get("quantity") or 0)
-        for key in ("updated_at",):
-            value = item.get(key)
-            item[key] = value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
-        for key in ("dispatch_date", "expected_reach_date"):
-            value = item.get(key)
-            item[key] = value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)
+
+        item["quantity"] = int(
+            item.get("quantity") or 0
+        )
+
+        # created_at
+        created_at = item.get("created_at")
+
+        if hasattr(created_at, "isoformat"):
+            item["created_at"] = created_at.isoformat()
+        elif created_at:
+            item["created_at"] = str(created_at)
+        else:
+            item["created_at"] = None
+
+        # updated_at
+        updated_at = item.get("updated_at")
+
+        if hasattr(updated_at, "isoformat"):
+            item["updated_at"] = updated_at.isoformat()
+        elif updated_at:
+            item["updated_at"] = str(updated_at)
+        else:
+            item["updated_at"] = None
+
+        # dispatch_date
+        dispatch_date = item.get("dispatch_date")
+
+        if hasattr(dispatch_date, "isoformat"):
+            item["dispatch_date"] = dispatch_date.isoformat()
+        elif dispatch_date:
+            item["dispatch_date"] = str(dispatch_date)
+        else:
+            item["dispatch_date"] = None
+
+        # expected reach date
+        expected_reach_date = item.get(
+            "expected_reach_date"
+        )
+
+        if hasattr(expected_reach_date, "isoformat"):
+            item["expected_reach_date"] = (
+                expected_reach_date.isoformat()
+            )
+        elif expected_reach_date:
+            item["expected_reach_date"] = str(
+                expected_reach_date
+            )
+        else:
+            item["expected_reach_date"] = None
+
         items.append(item)
 
+    # ---------------------------------------------------------
+    # Response
+    # ---------------------------------------------------------
     return jsonify({
         "success": True,
         "marketplace_id": marketplace_id,
         "shipment_statuses": status_values,
+        "count": len(items),
         "items": items,
     }), 200
+
 
 
 @inventory_bp.route("/amazon_api/awd/inbound-shipments/dispatch-inputs", methods=["POST"])

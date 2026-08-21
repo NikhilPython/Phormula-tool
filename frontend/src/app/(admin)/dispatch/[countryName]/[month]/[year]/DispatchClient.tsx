@@ -1311,11 +1311,17 @@ export default function DispatchPage({
   async function fetchFbaDispatchInputs(token: string): Promise<FbaDispatchInputRow[]> {
     const countryKey = countryName.trim().toLowerCase()
     const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
+
     if (!marketplaceId) return []
-    const shipmentStatuses = ['uk', 'gb'].includes(countryKey) ? 'SHIPPED' : 'IN_TRANSIT'
+
+    const shipmentStatuses = ['uk', 'gb'].includes(countryKey)
+      ? 'SHIPPED'
+      : 'WORKING,READY_TO_SHIP,ACTIVE,IN_TRANSIT'
 
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=${encodeURIComponent(shipmentStatuses)}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(
+        marketplaceId
+      )}&shipment_statuses=${encodeURIComponent(shipmentStatuses)}`,
       {
         method: 'GET',
         headers: {
@@ -1325,7 +1331,9 @@ export default function DispatchPage({
     )
 
     const text = await response.text()
+
     let data: any = {}
+
     try {
       data = text ? JSON.parse(text) : {}
     } catch {
@@ -1333,10 +1341,14 @@ export default function DispatchPage({
     }
 
     if (!response.ok || data?.success === false) {
-      throw new Error(data?.error || 'Failed to fetch FBA shipment details')
+      throw new Error(
+        data?.error || 'Failed to fetch FBA shipment details'
+      )
     }
 
-    return Array.isArray(data?.items) ? data.items : []
+    return Array.isArray(data?.items)
+      ? data.items
+      : []
   }
 
   async function fetchAndStoreInboundShipments(token: string) {
@@ -2455,13 +2467,13 @@ export default function DispatchPage({
       {
         key: 'status',
         header: 'Status',
-        width: '8%',
+        width: '10%',
         render: (_row, value) => renderStatusBadge(value),
       },
       {
         key: 'dispatchDate',
         header: 'Dispatch Date',
-        width: '13%',
+        width: '11%',
         render: (row) => (
           <div className="mx-auto w-full min-w-0 max-w-[145px] 2xl:max-w-none">
             <ShipmentDatePicker
