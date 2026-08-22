@@ -778,7 +778,7 @@ def build_action_items(
                 if row.get("sku")
             ],
         })
-    return_rows: list[tuple[dict[str, Any], float, float]] = []
+    return_rows: list[tuple[dict[str, Any], float, float, float]] = []
 
     for row in rows:
         quantity = abs(
@@ -800,50 +800,52 @@ def build_action_items(
 
         rate = returns / quantity * 100.0 if quantity else 0.0
 
-        # No return-rate threshold.
-        # Keep every SKU.
-        return_rows.append((row, returns, rate))
+        if rate > 2.0:
+            return_rows.append((row, returns, rate, quantity))
 
 
     if return_rows:
-        # Find the product with the highest RETURNED QUANTITY,
-        # not the highest return-rate percentage.
-        highest_row, highest_returns, highest_rate = max(
-            return_rows,
-            key=lambda entry: entry[1],
+        product_count = len(return_rows)
+        return_quantity_sum = sum(
+            returns for _row, returns, _rate, _quantity in return_rows
+        )
+        return_quantity_base = sum(
+            quantity for _row, _returns, _rate, quantity in return_rows
+        )
+        aggregate_return_rate = (
+            return_quantity_sum / return_quantity_base * 100.0
+            if return_quantity_base
+            else 0.0
         )
 
         items.append({
             "id": "high-return-rate",
             "category": "Returns",
-            "priority": "High" if highest_rate >= 5 else "Medium",
+            "priority": "High" if aggregate_return_rate >= 5 else "Medium",
             "title": "Product returns",
             "reason": (
-                f"Return performance across {len(return_rows)} "
-                f"SKU{'s' if len(return_rows) != 1 else ''}."
+                f"{product_count} "
+                f"product{'s are' if product_count != 1 else ' is'} "
+                "above the 2.00% return-rate threshold."
             ),
             "metrics": [
                 {
-                    "value": str(len(return_rows)),
-                    "label": "Total SKUs",
+                    "value": str(product_count),
+                    "label": "Products",
                 },
                 {
-                    "value": f"{highest_returns:,.0f}",
-                    "label": "Highest returns",
+                    "value": f"{aggregate_return_rate:.2f}%",
+                    "label": "Return rate",
                 },
                 {
-                    "value": str(
-                        highest_row.get("product_name")
-                        or highest_row.get("Product Name")
-                        or "—"
-                    ),
-                    "label": "Highest product",
+                    "value": f"{return_quantity_sum:,.0f}",
+                    "label": "Return qty",
                 },
             ],
             "action": "Inspect root cause",
             "affected_skus": [
                 str(row.get("sku"))
-                for row, _returns, _rate in return_rows
+                for row, _returns, _rate, _quantity in return_rows
                 if row.get("sku")
             ],
         })

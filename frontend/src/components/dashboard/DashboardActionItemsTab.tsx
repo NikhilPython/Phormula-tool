@@ -827,7 +827,7 @@ function buildOtherExpenseInsight(
   const factors = [
     { label: "Misc. Transactions", key: "miscTransaction" },
     { label: "Lost Inventory", key: "lostTotal" },
-    { label: "Inventory Storage", key: "platformInventoryStorageFee" },
+    { label: "Inventory Charges", key: "platformInventoryStorageFee" },
     { label: "Subscription Fees", key: "subscriptionFees" },
   ].map((factor) => {
     const currentValue = current.values[factor.key] ?? 0;
@@ -1178,7 +1178,7 @@ function MetricFlipCard({
 
         <div className=" z-10 mt-8 flex min-h-0  items-start justify-between gap-4">
           <div className="min-w-0 shrink-0">
-            <div className="min-[1700px]:text-[24px] text-sm font-semibold tracking-[-0.025em] text-charcoal-500">{format(currentValue, definition.format)}</div>
+            <div className="min-[1700px]:text-[24px] text-base font-semibold tracking-[-0.025em] text-charcoal-500">{format(currentValue, definition.format)}</div>
             <div className=" flex items-center gap-1.5">
               <span className={`text-[12px] font-semibold ${theme.text}`}>{deltaText}</span>
             </div>
