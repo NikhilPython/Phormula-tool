@@ -108,7 +108,7 @@ import { useHeaderNotifications } from "@/components/context/NotificationContext
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
 import { CalendarDays } from "lucide-react";
-
+import CustomerReviewsClient from "@/app/(admin)/customer-reviews/[countryName]/[month]/[year]/CustomerReviewsClient";
 import type {
     AgeingBucket,
     AgeingRiskHeatmapRow,
@@ -2994,12 +2994,12 @@ export default function DashboardPage() {
     );
 
     useEffect(() => {
-    if (shouldShowDummyUi) {
-        setDashboardActionItems([]);
-        setDashboardActionItemsLoading(false);
-        setDashboardActionItemsError(null);
-        return;
-    }
+        if (shouldShowDummyUi) {
+            setDashboardActionItems([]);
+            setDashboardActionItemsLoading(false);
+            setDashboardActionItemsError(null);
+            return;
+        }
 
         // The endpoint reads the monthly tables populated by the dashboard's
         // source APIs. Wait for that refresh to finish so Action Items cannot
@@ -8749,7 +8749,8 @@ export default function DashboardPage() {
         | "live"
         | "productwise"
         | "summary"
-        | "inventory";
+        | "inventory"
+        | "reviews";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "action", label: "Action Items" },
@@ -8758,6 +8759,10 @@ export default function DashboardPage() {
         { id: "live", label: "MTD Sales" },
         { id: "productwise", label: "P&L Breakdown" },
         { id: "inventory", label: "Inventory Insights" },
+
+        ...(countryName !== "global"
+            ? [{ id: "reviews" as TopTab, label: "Customer Reviews" }]
+            : []),
     ];
 
     const HASH_TO_TAB: Record<string, TopTab> = {
@@ -8765,9 +8770,9 @@ export default function DashboardPage() {
         "business-analysis": "analysis",
         "live-sales": "live",
         "ai-insights": "summary",
-        // "mtd-pl": "productwise",
         "pnl-mtd": "productwise",
         "inventory-insights": "inventory",
+        "customer-reviews": "reviews",
     };
 
     const TAB_TO_HASH: Record<TopTab, string> = {
@@ -8777,6 +8782,7 @@ export default function DashboardPage() {
         summary: "ai-insights",
         productwise: "pnl-mtd",
         inventory: "inventory-insights",
+        reviews: "customer-reviews",
     };
 
     const handleConnectAmazonPreview = () => {
@@ -12363,32 +12369,32 @@ export default function DashboardPage() {
             shipping_charges: Math.abs(toNumber(
                 platform === "global"
                     ? previousGlobalGrand.shipping_charges ??
-                        previousGlobalDerived.shipping_charges ??
-                        previousGlobalDerived.shipment_charges ??
-                        previousGlobalDerived.shipment_fees ??
-                        0
+                    previousGlobalDerived.shipping_charges ??
+                    previousGlobalDerived.shipment_charges ??
+                    previousGlobalDerived.shipment_fees ??
+                    0
                     : previousTotals.shipping_charges ??
-                        previousTotals.shipment_charges ??
-                        previousTotals.shipment_fees ??
-                        0
+                    previousTotals.shipment_charges ??
+                    previousTotals.shipment_fees ??
+                    0
             )),
             storage_fee: Math.abs(toNumber(
                 platform === "global"
                     ? previousGlobalGrand.storage_fee ??
-                        previousGlobalDerived.storage_fee ??
-                        previousGlobalGrand.platform_fee_inventory_storage ??
-                        previousGlobalDerived.platform_fee_inventory_storage ??
-                        0
+                    previousGlobalDerived.storage_fee ??
+                    previousGlobalGrand.platform_fee_inventory_storage ??
+                    previousGlobalDerived.platform_fee_inventory_storage ??
+                    0
                     : previousTotals.storage_fee ??
-                        previousTotals.platform_fee_inventory_storage ??
-                        previousTotals.inventory_storage_fees ??
-                        0
+                    previousTotals.platform_fee_inventory_storage ??
+                    previousTotals.inventory_storage_fees ??
+                    0
             )),
             misc_transaction: Math.abs(toNumber(
                 platform === "global"
                     ? previousGlobalGrand.misc_transaction ??
-                        previousGlobalDerived.misc_transaction ??
-                        0
+                    previousGlobalDerived.misc_transaction ??
+                    0
                     : previousTotals.misc_transaction ?? previousTotals.misc_transactions ?? 0
             )),
             lost_total: Math.abs(toNumber(
@@ -12399,15 +12405,15 @@ export default function DashboardPage() {
             platform_fee_inventory_storage: Math.abs(toNumber(
                 platform === "global"
                     ? previousGlobalGrand.platform_fee_inventory_storage ??
-                        previousGlobalDerived.platform_fee_inventory_storage ??
-                        0
+                    previousGlobalDerived.platform_fee_inventory_storage ??
+                    0
                     : previousTotals.platform_fee_inventory_storage ?? 0
             )),
             platformfeenew: Math.abs(toNumber(
                 platform === "global"
                     ? previousGlobalGrand.platformfeenew ??
-                        previousGlobalDerived.platformfeenew ??
-                        0
+                    previousGlobalDerived.platformfeenew ??
+                    0
                     : previousTotals.platformfeenew ?? previousTotals.platform_fee_new ?? 0
             )),
             platform_fee: previousOtherTransactions,
@@ -12905,6 +12911,10 @@ export default function DashboardPage() {
                         useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
                         storageCostCurrencySymbol={currencySymbol}
                     />
+                )}
+
+                {activeTab === "reviews" && (
+                    <CustomerReviewsClient />
                 )}
             </PreviewLockedSection>
 

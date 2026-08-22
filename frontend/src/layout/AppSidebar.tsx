@@ -1078,7 +1078,7 @@ const AppSidebar: React.FC = () => {
         },
         {
           name: "Customer Reviews",
-          path: `/customer-reviews/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+          path: `/live-dashboard/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#customer-reviews`,
         },
       ],
     },
