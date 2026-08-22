@@ -855,7 +855,7 @@ export default function WorkspaceSetupOnboarding({
                           Name
                         </p>
 
-                        <p className="mt-1 truncate text-sm 2xl:text-[15px] font-bold text-[#26322C]">
+                        <p className="mt-1 truncate text-xs 2xl:text-sm font-bold text-[#26322C]">
                           {form.name || "-"}
                         </p>
                       </div>
@@ -1319,7 +1319,7 @@ export default function WorkspaceSetupOnboarding({
       <Modal
         isOpen={skuViewModal.isOpen}
         onClose={skuViewModal.closeModal}
-        className="m-4 max-w-[1200px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+        className="m-4 max-w-4xl border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
       >
         <div className="relative w-full rounded-2xl bg-white p-5 dark:bg-gray-900 lg:p-6">
           <div className="flex items-start justify-between gap-4 border-b border-[#E8ECEA] pb-4">
