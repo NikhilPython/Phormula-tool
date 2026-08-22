@@ -1102,10 +1102,10 @@ function MetricFlipCard({
   const hasCustomMovementAnalysis = hasProductMovementAnalysis || isCm2Profit || isTacos || isOtherExpense || isPromotionalRebate;
   const productContributorInsight = hasProductMovementAnalysis
     ? buildProductContributorInsight(
-        unitContributorData,
-        isUnitsSold ? "units" : isNetSales ? "netSales" : "asp",
-        previousValue === undefined ? undefined : currentValue - previousValue
-      )
+      unitContributorData,
+      isUnitsSold ? "units" : isNetSales ? "netSales" : "asp",
+      previousValue === undefined ? undefined : currentValue - previousValue
+    )
     : "";
   const highestReturnSku = isUnitsSold
     ? buildHighestReturnSkuInsight(unitContributorData)
@@ -1128,9 +1128,9 @@ function MetricFlipCard({
     : "";
   const acosContributorInsight = isTacos
     ? buildAcosContributorInsight(
-        unitContributorData,
-        previousValue === undefined ? undefined : currentValue - previousValue
-      )
+      unitContributorData,
+      previousValue === undefined ? undefined : currentValue - previousValue
+    )
     : "";
   const otherExpenseInsight = isOtherExpense
     ? buildOtherExpenseInsight(current, previous, format)
@@ -1173,7 +1173,7 @@ function MetricFlipCard({
               <p className="mt-0.5 text-[9px] text-[#738299]">{definition.category}</p>
             </div>
           </div>
-          <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${theme.softBg} ${theme.text}`}>{theme.label}</span>
+          <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${theme.softBg} ${theme.text}`}></span>
         </div>
 
         <div className=" z-10 mt-8 flex min-h-0  items-start justify-between gap-4">
@@ -1201,11 +1201,13 @@ function MetricFlipCard({
         <div className="relative z-10 flex items-center gap-2">
           <span className={`flex h-7 w-7 items-center justify-center rounded-full ${theme.softBg} ${theme.text}`}><Icon name="spark" className="h-3.5 w-3.5" /></span>
           <div>
-            <h3 className="text-sm font-semibold text-[#17304F]">{definition.title} analysis</h3>
-            <p className="text-[10px] text-[#75849A]">{current.label} business context</p>
+            <h3 className="text-sm font-semibold text-[#17304F]">{definition.title} Analysis</h3>
+            <p className="min-[1700px]:text-[10px] text-[9px] text-[#75849A]">
+              {current.label} business context
+            </p>
           </div>
         </div>
-        <ul className="relative z-10 mt-3 space-y-1.5 text-xs leading-[13px] text-[#40536C]">
+        <ul className="relative z-10 min-[1700px]:mt-3 mt-2.5 min-[1700px]:space-y-1.5 space-y-1 min-[1700px]:text-[12px] text-[10px] min-[1700px]:leading-[13px] leading-[11px] text-[#40536C]">
           {hasCustomMovementAnalysis ? <>
             <li className="flex gap-2">
               <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />

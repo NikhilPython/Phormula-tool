@@ -8,6 +8,7 @@ import {
   FiCloud,
   FiDownload,
   FiEdit3,
+  FiEye,
   FiLock,
   FiPlus,
   FiUser,
@@ -20,10 +21,15 @@ import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { Modal } from "@/components/ui/modal";
 import SkuMultiCountryUpload from "@/components/ui/modal/SkuMultiCountryUpload";
+import DataTable, { Row as TableRow, ColumnDef } from "@/components/ui/table/DataTable";
 import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useModal } from "@/hooks/useModal";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { useForgotPasswordMutation } from "@/lib/api/profileApi";
+import {
+  useLazyGetCurrentSkuSheetQuery,
+  useDownloadCurrentSkuSheetMutation,
+} from "@/lib/api/skuApi";
 import {
   companyInfoSchema,
   getCompanyInfoFieldErrors,
@@ -44,6 +50,22 @@ const CURRENCY_OPTIONS = ["USD"];
 
 const inputClass =
   "!h-9 2xl:!h-11 w-full rounded-xl border border-[#DDE5E1] bg-white px-3 !text-[12px] 2xl:!text-[14px] text-[#273140] outline-none transition placeholder:text-[#9AA5A0] focus:border-green-500 focus:ring-4 focus:ring-green-500/10 disabled:bg-[#F5F7F6] disabled:text-[#7E8984]";
+
+
+const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = [
+  { key: "s_no", header: "S. No." },
+  { key: "product_name", header: "Product Name" },
+  { key: "product_barcode", header: "Product Barcode" },
+  { key: "asin", header: "ASIN" },
+  { key: "sku_uk", header: "SKU_UK" },
+  { key: "sku_us", header: "SKU_US" },
+  { key: "sku_canada", header: "SKU_CANADA" },
+  { key: "landing_cost", header: "Landing Cost" },
+  { key: "currency", header: "Currency" },
+  { key: "date", header: "Date" },
+  { key: "local_stock", header: "Local Stock" },
+  { key: "in_transit_units", header: "In Transit Units" },
+];
 
 type FormState = {
   name: string;
@@ -184,7 +206,22 @@ export default function WorkspaceSetupOnboarding({
   className,
 }: WorkspaceSetupOnboardingProps) {
   const skuModal = useModal();
+  const skuViewModal = useModal();
   const connected = useConnectedPlatforms();
+
+  const [
+    getCurrentSkuSheet,
+    {
+      data: currentSkuSheet,
+      isFetching: isSkuSheetLoading,
+      error: skuSheetError,
+    },
+  ] = useLazyGetCurrentSkuSheetQuery();
+
+  const [
+    downloadCurrentSkuSheet,
+    { isLoading: isDownloadingSkuSheet },
+  ] = useDownloadCurrentSkuSheetMutation();
   const reduxToken = useSelector((state: any) => state.auth?.token);
 
   const [data, setData] = useState<any>(null);
@@ -454,6 +491,34 @@ export default function WorkspaceSetupOnboarding({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleViewSkuSheet = async () => {
+    skuViewModal.openModal();
+
+    try {
+      await getCurrentSkuSheet().unwrap();
+    } catch (error) {
+      console.error("Failed to load SKU sheet:", error);
+    }
+  };
+
+  const handleDownloadCurrentSkuSheet = async () => {
+    try {
+      const blob = await downloadCurrentSkuSheet().unwrap();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "SKU Information.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download SKU sheet:", error);
+      window.alert("Failed to download SKU sheet.");
+    }
   };
 
   const handleCompanyChange =
@@ -1081,13 +1146,31 @@ export default function WorkspaceSetupOnboarding({
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={handleDownloadSkuTemplate}
-                className="mx-auto mt-3 inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
-              >
-                Download format here <FiDownload size={14} />
-              </button>
+              <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={handleDownloadSkuTemplate}
+                  className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
+                >
+                  Download format here
+                  <FiDownload size={14} />
+                </button>
+
+                {hasSkuSheet && (
+                  <>
+                    <span className="h-4 w-px bg-[#DDE5E1]" />
+
+                    <button
+                      type="button"
+                      onClick={handleViewSkuSheet}
+                      className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#41708F] transition hover:text-[#315c78]"
+                    >
+                      View your sheet
+                      <FiEye size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             </Panel>
           </div>
@@ -1230,6 +1313,97 @@ export default function WorkspaceSetupOnboarding({
               }, 300);
             }}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={skuViewModal.isOpen}
+        onClose={skuViewModal.closeModal}
+        className="m-4 max-w-[1200px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+      >
+        <div className="relative w-full rounded-2xl bg-white p-5 dark:bg-gray-900 lg:p-6">
+          <div className="flex items-start justify-between gap-4 border-b border-[#E8ECEA] pb-4">
+            <div>
+              <h2 className="text-base font-bold text-[#37455F] dark:text-white">
+                Your SKU Sheet
+              </h2>
+              <p className="mt-1 text-xs text-[#78847E] dark:text-gray-400">
+                This is your currently uploaded SKU information.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadCurrentSkuSheet}
+                disabled={isDownloadingSkuSheet || !currentSkuSheet?.rows?.length}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#B9D8C9] bg-[#F8FCFA] px-3 text-xs font-semibold text-[#0E8558] transition hover:bg-[#EFF9F4] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiDownload size={14} />
+                {isDownloadingSkuSheet ? "Downloading..." : "Download Sheet"}
+              </button>
+
+              <button
+                type="button"
+                onClick={skuViewModal.closeModal}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DDE5E1] text-[#66746D] transition hover:bg-[#F5F8F6]"
+                aria-label="Close SKU sheet"
+              >
+                <FiX size={16} />
+              </button>
+            </div>
+          </div>
+
+          {isSkuSheetLoading ? (
+            <div className="grid min-h-[350px] place-items-center">
+              <div className="text-center">
+                <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#DDE5E1] border-t-green-500" />
+                <p className="mt-3 text-xs font-medium text-[#78847E]">
+                  Loading your SKU sheet...
+                </p>
+              </div>
+            </div>
+          ) : skuSheetError ? (
+            <div className="grid min-h-[300px] place-items-center text-center">
+              <div>
+                <p className="text-sm font-semibold text-[#B75A5A]">
+                  Could not load your SKU sheet
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void getCurrentSkuSheet()}
+                  className="mt-3 text-xs font-semibold text-green-500"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          ) : !currentSkuSheet?.rows?.length ? (
+            <div className="grid min-h-[300px] place-items-center">
+              <p className="text-sm text-[#78847E]">No SKU data found.</p>
+            </div>
+          ) : (
+            <div className="mt-5 min-w-0 w-full">
+              <DataTable
+                columns={SKU_VIEW_COLUMNS}
+                data={currentSkuSheet.rows as unknown as TableRow[]}
+                pageSize={10}
+                maxHeight="60vh"
+                stickyHeader
+                zebra
+                emptyMessage="No SKU data found."
+                className="my-4 w-full max-w-full min-w-0"
+                tableClassName="
+                  [&_th]:whitespace-nowrap
+                  [&_td]:whitespace-nowrap
+                  [&_th]:overflow-hidden
+                  [&_th]:text-ellipsis
+                  [&_td]:overflow-hidden
+                  [&_td]:text-ellipsis
+                "
+              />
+            </div>
+          )}
         </div>
       </Modal>
     </div>
