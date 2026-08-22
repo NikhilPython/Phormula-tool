@@ -3006,6 +3006,146 @@ def _safe_sql_identifier_table(name: str) -> str:
     return name
 
 
+def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[str, float]:
+    if df is None or df.empty:
+        return {
+            "misc_transaction": 0.0,
+            "lost_total": 0.0,
+            "platform_fee_inventory_storage": 0.0,
+            "platformfeenew": 0.0,
+        }
+
+    work = df.copy()
+    for col, default in [
+        ("description", ""),
+        ("total", 0.0),
+        ("sku", ""),
+        ("type", ""),
+        ("transaction_type", ""),
+    ]:
+        if col not in work.columns:
+            work[col] = default
+
+    work["description"] = work["description"].fillna("").astype(str).str.strip()
+    work["sku"] = work["sku"].fillna("").astype(str).str.strip()
+    work["total"] = pd.to_numeric(work["total"], errors="coerce").fillna(0.0)
+    desc_all = work["description"]
+
+    def sum_total_where_desc_contains(keywords: list[str]) -> float:
+        pattern = "|".join(re.escape(keyword) for keyword in keywords)
+        mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+        return float(work.loc[mask, "total"].sum())
+
+    platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
+    platform_fee_inventory_storage_total = sum_total_where_desc_contains([
+        "FBA Return Fee",
+        "FBA Long-Term Storage Fee",
+        "FBA storage fee",
+        "FBADisposal",
+        "FBAStorageBilling",
+        "FBALongTermStorageBilling",
+        "INCORRECT_FEES_NON_ITEMIZED",
+        "StorageReservationBilling",
+    ])
+
+    lost_descriptions = {
+        "REVERSAL_REIMBURSEMENT",
+        "WAREHOUSE_LOST",
+        "WAREHOUSE_DAMAGE",
+        "MISSING_FROM_INBOUND",
+        "MISSING_FROM_INBOUND_CLAWBACK",
+        "COMPENSATED_CLAWBACK",
+        "FREE_REPLACEMENT_REFUND_ITEMS",
+    }
+    lost_mask = work["description"].isin(lost_descriptions)
+    lost_rows = work.loc[
+        lost_mask
+        & (work["sku"] != "")
+        & (work["sku"] != "0")
+        & (work["sku"].str.lower() != "none"),
+        ["sku", "total"],
+    ].copy()
+    if lost_rows.empty:
+        lost_total = abs(float(work.loc[lost_mask, "total"].sum()))
+    else:
+        lost_total = float(
+            lost_rows.groupby("sku", as_index=False)["total"]
+            .sum()["total"]
+            .abs()
+            .sum()
+        )
+
+    def norm_key(value):
+        return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+    type_norm = work["type"].fillna("").astype(str).str.strip()
+    transaction_type = work["transaction_type"].fillna("").astype(str).str.strip()
+    type_norm = type_norm.where(type_norm != "", transaction_type)
+
+    desc_key = work["description"].map(norm_key)
+    type_key = type_norm.map(norm_key)
+
+    exclude_descriptions = {
+        "Cost of Advertising",
+        "Coupon Redemption Fee",
+        "Deals",
+        "Lightning Deal",
+        "ProductAdsPayment",
+        "CouponPerformanceEvent",
+        "CouponParticipationEvent",
+        "SellerDealComplete",
+        "VineCharge",
+        "SellerPoweredCoupon",
+        "DealParticipationEvent",
+        "DealPerformanceEvent",
+        "FBA Return Fee",
+        "FBA Long-Term Storage Fee",
+        "FBA storage fee",
+        "FBADisposal",
+        "FBAStorageBilling",
+        "FBALongTermStorageBilling",
+        "INCORRECT_FEES_NON_ITEMIZED",
+        "StorageReservationBilling",
+        "FBAStorageFeeAdjustment",
+        "Subscription",
+        "PaidServicesCharge",
+        "FBAInboundConvenience",
+        "AWDProcessingFee",
+        "AWDTransportationFee",
+        "AGSGlobalInboundTransportation",
+        "Order Payment",
+        "Refund",
+        "Disbursement",
+        "DebtPayment",
+        "REVERSAL_REIMBURSEMENT",
+        "WAREHOUSE_LOST",
+        "WAREHOUSE_DAMAGE",
+        "MISSING_FROM_INBOUND",
+        "MISSING_FROM_INBOUND_CLAWBACK",
+        "COMPENSATED_CLAWBACK",
+        "FREE_REPLACEMENT_REFUND_ITEMS",
+    }
+    exclude_types = {"Transfer", "Refund"}
+    exclude_desc_keys = {norm_key(item) for item in exclude_descriptions}
+    exclude_type_keys = {norm_key(item) for item in exclude_types}
+
+    misc_mask = (
+        ~desc_key.isin(exclude_desc_keys)
+        & ~type_key.isin(exclude_type_keys)
+        & (work["sku"] != "")
+        & (work["sku"] != "0")
+        & (work["sku"].str.lower() != "none")
+    )
+    misc_transaction_total = float(work.loc[misc_mask, "total"].sum())
+
+    return {
+        "misc_transaction": misc_transaction_total,
+        "lost_total": lost_total,
+        "platform_fee_inventory_storage": platform_fee_inventory_storage_total,
+        "platformfeenew": platformfeenew_total,
+    }
+
+
 def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date):
     """
     Return:
@@ -3194,21 +3334,36 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     advertising_fee_total = float(advertising_fee_total or 0.0)
 
     # Preserve the total-only components used to explain Other Transactions.
-    # These are intentionally aggregated from the raw previous-period table,
-    # rather than inferred from product rows.
+    # Older previous-period raw tables do not have these derived columns, so
+    # classify the raw transactions with the same buckets used by current MTD.
     def sum_first_available(*column_names):
         for column_name in column_names:
             if column_name in df.columns:
                 return float(safe_num(df[column_name]).sum())
         return 0.0
 
-    misc_transaction_total = sum_first_available("misc_transaction", "misc_transactions")
-    lost_total = sum_first_available("lost_total")
-    inventory_storage_fee_total = sum_first_available(
+    classified_other_components = _extract_other_component_totals_from_transactions(df)
+
+    def component_total(key, *column_names):
+        explicit_total = sum_first_available(*column_names)
+        return explicit_total if explicit_total != 0 else classified_other_components[key]
+
+    misc_transaction_total = component_total(
+        "misc_transaction",
+        "misc_transaction",
+        "misc_transactions",
+    )
+    lost_total = component_total("lost_total", "lost_total")
+    inventory_storage_fee_total = component_total(
+        "platform_fee_inventory_storage",
         "platform_fee_inventory_storage",
         "platform_storage_fee",
     )
-    subscription_fee_total = sum_first_available("platformfeenew", "platform_fee_new")
+    subscription_fee_total = component_total(
+        "platformfeenew",
+        "platformfeenew",
+        "platform_fee_new",
+    )
 
     cm2_profit = float(profit_total) - advertising_fee_total - platform_fee_total
     profit_percentage = (cm2_profit / net_sales_total * 100) if net_sales_total else 0.0
@@ -3229,6 +3384,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         "lost_total": round(lost_total, 2),
         "platform_fee_inventory_storage": round(inventory_storage_fee_total, 2),
         "platformfeenew": round(subscription_fee_total, 2),
+        "platform_fee_new": round(subscription_fee_total, 2),
         "advertising_fees": round(advertising_fee_total, 2),
         "cm2_profit": round(cm2_profit, 2),
         "profit_percentage": round(profit_percentage, 2),

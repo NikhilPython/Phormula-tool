@@ -827,7 +827,7 @@ function buildOtherExpenseInsight(
   const factors = [
     { label: "Misc. Transactions", key: "miscTransaction" },
     { label: "Lost Inventory", key: "lostTotal" },
-    { label: "Inventory Storage", key: "platformInventoryStorageFee" },
+    { label: "Inventory Charges", key: "platformInventoryStorageFee" },
     { label: "Subscription Fees", key: "subscriptionFees" },
   ].map((factor) => {
     const currentValue = current.values[factor.key] ?? 0;
