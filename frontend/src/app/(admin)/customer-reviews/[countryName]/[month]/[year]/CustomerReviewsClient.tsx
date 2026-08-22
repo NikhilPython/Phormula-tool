@@ -26,6 +26,7 @@ import {
   AccordionButton,
   AccordionPanel,
 } from "@/components/animate-ui/components/headless/accordion";
+import Loader from "@/components/loader/Loader";
 
 type ProductOption = {
   asin: string;
@@ -656,11 +657,11 @@ function TopicCard({
 function SentimentTrendOverview({
   positiveTopics,
   negativeTopics,
-  loading = false,
+  // loading = false,
 }: {
   positiveTopics: Topic[];
   negativeTopics: Topic[];
-  loading?: boolean;
+  // loading?: boolean;
 }) {
   const positiveTotal = positiveTopics.length;
   const negativeTotal = negativeTopics.length;
@@ -700,7 +701,7 @@ function SentimentTrendOverview({
             <p className="mt-0.5 text-[11px] font-medium text-gray-500">Period {period}</p>
           )} */}
         </div>
-        {!loading && combinedTotal > 0 && (
+        {combinedTotal > 0 && (
           <div className="flex items-center gap-2 text-xs font-semibold">
             <span className="rounded-full border border-green-500 bg-green-50 px-2.5 py-1 text-green-500">
               Positive {metricValue(positivePct, "%")}
@@ -712,84 +713,84 @@ function SentimentTrendOverview({
         )}
       </div>
 
-      {loading ? (
+      {/* {loading ? (
         <div className="flex min-h-[150px] items-center justify-center gap-2 px-4 py-6 text-sm text-gray-500">
           <RefreshCw className="h-4 w-4 animate-spin text-[#5EA68E]" />
           <span>Loading review sentiment...</span>
         </div>
-      ) : (
-        <>
-          <div className="grid gap-4 p-4 lg:grid-cols-2">
-            <div className="min-w-0 rounded-xl border border-t-4 border-green-500 bg-white p-3 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                  <h4 className="text-sm font-semibold text-gray-900">Positive</h4>
-                </div>
+      ) : ( */}
+      <>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <div className="min-w-0 rounded-xl border border-t-4 border-green-500 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                <h4 className="text-sm font-semibold text-gray-900">Positive</h4>
               </div>
-
-              {positiveTopics.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {positiveTopics.map((topic, index) => (
-                    <span
-                      key={`${topic.topic}-${index}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
-                      title={topic.topic || "Positive topic"}
-                    >
-                      <span className="max-w-[220px] truncate">
-                        {topic.topic || "Topic"}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  No positive topics returned for this ASIN.
-                </p>
-              )}
             </div>
 
-            <div className="min-w-0 rounded-xl border border-t-4 border-red-600 bg-white p-3 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                  <h4 className="text-sm font-semibold text-gray-900">Negative</h4>
-                </div>
-              </div>
-
-              {negativeTopics.length ? (
-                <div className="flex flex-wrap gap-2">
-                  {negativeTopics.map((topic, index) => (
-                    <span
-                      key={`${topic.topic}-${index}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
-                      title={topic.topic || "Negative topic"}
-                    >
-                      <span className="max-w-[220px] truncate">
-                        {topic.topic || "Topic"}
-                      </span>
+            {positiveTopics.length ? (
+              <div className="flex flex-wrap gap-2">
+                {positiveTopics.map((topic, index) => (
+                  <span
+                    key={`${topic.topic}-${index}`}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
+                    title={topic.topic || "Positive topic"}
+                  >
+                    <span className="max-w-[220px] truncate">
+                      {topic.topic || "Topic"}
                     </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  No negative topics returned for this ASIN.
-                </p>
-              )}
-            </div>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                No positive topics returned for this ASIN.
+              </p>
+            )}
           </div>
 
-          <div className="border-t border-gray-100 px-4 py-4">
-            <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold">
-              <span className="text-green-700">Positive {metricValue(positivePct, "%")}</span>
-              <span className="text-red-600">Negative {metricValue(negativePct, "%")}</span>
+          <div className="min-w-0 rounded-xl border border-t-4 border-red-600 bg-white p-3 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-red-600" />
+                <h4 className="text-sm font-semibold text-gray-900">Negative</h4>
+              </div>
             </div>
 
-            <div className="h-2 w-full overflow-hidden rounded-full">
-              <div
-                className="h-full w-full rounded-full"
-                style={{
-                  background: `linear-gradient(
+            {negativeTopics.length ? (
+              <div className="flex flex-wrap gap-2">
+                {negativeTopics.map((topic, index) => (
+                  <span
+                    key={`${topic.topic}-${index}`}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
+                    title={topic.topic || "Negative topic"}
+                  >
+                    <span className="max-w-[220px] truncate">
+                      {topic.topic || "Topic"}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                No negative topics returned for this ASIN.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 px-4 py-4">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold">
+            <span className="text-green-700">Positive {metricValue(positivePct, "%")}</span>
+            <span className="text-red-600">Negative {metricValue(negativePct, "%")}</span>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full">
+            <div
+              className="h-full w-full rounded-full"
+              style={{
+                background: `linear-gradient(
         90deg,
         #10b981 0%,
         #10b981 ${Math.max(0, positivePct - 6)}%,
@@ -797,12 +798,12 @@ function SentimentTrendOverview({
         #fb7185 ${Math.min(100, positivePct + 6)}%,
         #f43f5e 100%
       )`,
-                }}
-              />
-            </div>
+              }}
+            />
           </div>
-        </>
-      )}
+        </div>
+      </>
+      {/* )} */}
     </section>
   );
 }
@@ -964,6 +965,12 @@ export default function CustomerReviewsClient() {
 
   const reviewStartDate = feedback?.topics?.dateRange?.startDate;
   const reviewEndDate = feedback?.topics?.dateRange?.endDate;
+
+  const pageLoading =
+    productsLoading ||
+    !pnlOrderLoaded ||
+    loading ||
+    (!feedback && orderedProducts.length > 0 && !error);
 
   const fetchPnlProductOrder = useCallback(async () => {
     const token = getToken();
@@ -1195,14 +1202,24 @@ export default function CustomerReviewsClient() {
   ]);
 
   return (
-    <div className="mx-auto flex flex-col gap-4">
+    <div className=" mt-4 relative min-h-[calc(100vh-100px)] flex flex-col gap-4">
+      {pageLoading && (
+        <Loader
+          contained
+          fullscreen
+          backgroundClass="bg-white/80"
+          roundedClass="rounded-none"
+          label="Loading customer review insights..."
+          zIndex={50}
+        />
+      )}
 
-      <div>
+      {/* <div>
         <PageBreadcrumb pageTitle="Customer Reviews" align="left" />
         <p className="mt-1 text-sm text-gray-500">
           {marketplaceLabel} - Customer Feedback insights
         </p>
-      </div>
+      </div> */}
 
       {error && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -1222,9 +1239,9 @@ export default function CustomerReviewsClient() {
     shadow-sm
 
     lg:sticky
-    lg:top-[24px]
+    lg:top-[140px]
     lg:flex
-    lg:h-[calc(100vh-92px)]
+    lg:h-[calc(100dvh-250px)]
     lg:flex-col
     lg:overflow-hidden
   "
@@ -1269,11 +1286,7 @@ export default function CustomerReviewsClient() {
 
           {/* Only this section scrolls */}
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {productsLoading ? (
-              <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">
-                Loading products...
-              </div>
-            ) : orderedProducts.length ? (
+            {orderedProducts.length ? (
               orderedProducts.map((product) => (
                 <button
                   key={`${product.asin}-${product.sku || ""}`}
@@ -1327,12 +1340,7 @@ export default function CustomerReviewsClient() {
         {/* RIGHT: normal page scrolling */}
         <main className="flex min-w-0 flex-col gap-4">
           <section className="relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-            {loading && (
-              <div className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-md bg-[#5EA68E]/10 px-2.5 py-1.5 text-xs font-semibold text-[#3e806b]">
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                Loading insights
-              </div>
-            )}
+
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <ProductThumb
@@ -1411,7 +1419,7 @@ export default function CustomerReviewsClient() {
           <SentimentTrendOverview
             positiveTopics={orderedPositiveTopics}
             negativeTopics={orderedNegativeTopics}
-            loading={loading}
+          // loading={loading}
           />
 
           <section className="grid gap-4 xl:grid-cols-2">
@@ -1420,12 +1428,7 @@ export default function CustomerReviewsClient() {
                 <PageBreadcrumb pageTitle="Positive topics" align="left" textSize="lg" />
               </div>
 
-              {loading ? (
-                <div className="flex min-h-[72px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
-                  <RefreshCw className="h-4 w-4 animate-spin text-[#5EA68E]" />
-                  <span>Loading positive topics...</span>
-                </div>
-              ) : positiveTopics.length ? (
+              {orderedPositiveTopics.length ? (
                 orderedPositiveTopics.map((topic, index) => (
                   <TopicCard
                     key={`${topic.topic}-${index}`}
@@ -1437,7 +1440,7 @@ export default function CustomerReviewsClient() {
                 ))
               ) : (
                 <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
-                  Fetch a child ASIN to see positive topics.
+                  No positive review topics available.
                 </div>
               )}
             </div>
@@ -1447,12 +1450,7 @@ export default function CustomerReviewsClient() {
                 <PageBreadcrumb pageTitle="Negative topics" align="left" textSize="lg" />
               </div>
 
-              {loading ? (
-                <div className="flex min-h-[72px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
-                  <RefreshCw className="h-4 w-4 animate-spin text-[#5EA68E]" />
-                  <span>Loading negative topics...</span>
-                </div>
-              ) : negativeTopics.length ? (
+              {orderedNegativeTopics.length ? (
                 orderedNegativeTopics.map((topic, index) => (
                   <TopicCard
                     key={`${topic.topic}-${index}`}
@@ -1464,7 +1462,7 @@ export default function CustomerReviewsClient() {
                 ))
               ) : (
                 <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
-                  Fetch a child ASIN to see negative topics.
+                  No negative review topics available.
                 </div>
               )}
             </div>
