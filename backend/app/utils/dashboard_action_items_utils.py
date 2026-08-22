@@ -768,7 +768,7 @@ def build_action_items(
                         or worst_product.get("Product Name")
                         or "—"
                     ),
-                    "label": "Worst product",
+                    "label": "Lowest CM2 Product",
                 },
             ],
             "action": "Reprice / pause",
