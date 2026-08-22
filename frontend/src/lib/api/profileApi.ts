@@ -45,12 +45,32 @@ export type ForgotPasswordRequest = {
   email: string;
 };
 
+export type ForgotPasswordResponse = {
+  success?: boolean;
+  message?: string;
+  email?: string;
+  otp_expires_in_seconds?: number;
+  resend_available_in_seconds?: number;
+};
+
+export type ResetPasswordOtpRequest = {
+  email: string;
+  otp: string;
+  password: string;
+};
+
+export type ResetPasswordOtpResponse = {
+  success?: boolean;
+  message?: string;
+};
+
 export type UpdateProfileResponse = {
   message: string;
 };
 
 export const profileApi = baseApi.injectEndpoints({
   overrideExisting: true,
+
   endpoints: (build) => ({
     getUserData: build.query<UserData, void>({
       query: () => ({
@@ -60,7 +80,10 @@ export const profileApi = baseApi.injectEndpoints({
       providesTags: ["User"],
     }),
 
-    updateProfile: build.mutation<UpdateProfileResponse, Partial<UserData>>({
+    updateProfile: build.mutation<
+      UpdateProfileResponse,
+      Partial<UserData>
+    >({
       query: (body) => ({
         url: "/profileupdate",
         method: "POST",
@@ -77,9 +100,25 @@ export const profileApi = baseApi.injectEndpoints({
       providesTags: ["Profile"],
     }),
 
-    forgotPassword: build.mutation<{ message?: string }, ForgotPasswordRequest>({
+    // Send password reset OTP
+    forgotPassword: build.mutation<
+      ForgotPasswordResponse,
+      ForgotPasswordRequest
+    >({
       query: (body) => ({
         url: "/forgot_password",
+        method: "POST",
+        body,
+      }),
+    }),
+
+    // Verify OTP + update password
+    resetPasswordOtp: build.mutation<
+      ResetPasswordOtpResponse,
+      ResetPasswordOtpRequest
+    >({
+      query: (body) => ({
+        url: "/reset-password-otp",
         method: "POST",
         body,
       }),
@@ -93,4 +132,5 @@ export const {
   useUpdateProfileMutation,
   useGetCountriesQuery,
   useForgotPasswordMutation,
+  useResetPasswordOtpMutation,
 } = profileApi;

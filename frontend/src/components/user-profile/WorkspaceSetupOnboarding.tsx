@@ -25,7 +25,7 @@ import DataTable, { Row as TableRow, ColumnDef } from "@/components/ui/table/Dat
 import IntegrationToggleButton from "@/features/integration/IntegrationToggleButton";
 import { useModal } from "@/hooks/useModal";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
-import { useForgotPasswordMutation } from "@/lib/api/profileApi";
+import ForgotPasswordModal from "@/components/auth/ForgotPasswordModal";
 import {
   useLazyGetCurrentSkuSheetQuery,
   useDownloadCurrentSkuSheetMutation,
@@ -253,8 +253,7 @@ export default function WorkspaceSetupOnboarding({
   const [isCompanyEditing, setIsCompanyEditing] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const [forgotPassword, { isLoading: isSendingReset, isSuccess: resetEmailSent }] =
-    useForgotPasswordMutation();
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   const companySectionRef = useRef<HTMLDivElement | null>(null);
   const productSectionRef = useRef<HTMLDivElement | null>(null);
@@ -470,18 +469,13 @@ export default function WorkspaceSetupOnboarding({
     }));
   };
 
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = () => {
     if (!data?.email) {
       window.alert("Email address is not available for this account.");
       return;
     }
 
-    try {
-      await forgotPassword({ email: data.email }).unwrap();
-    } catch (error: any) {
-      console.error(error);
-      window.alert(error?.data?.message || "Failed to send reset email.");
-    }
+    setShowForgotPasswordModal(true);
   };
 
   const handleDownloadSkuTemplate = () => {
@@ -821,26 +815,15 @@ export default function WorkspaceSetupOnboarding({
                         </p>
                         <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">••••••••••</p>
                         <p className="mt-1 text-[11px] text-[#78847E]">
-                          We will send a secure password reset link to your registered email.
+                          We&apos;ll send a secure verification code to your registered email.
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={handleForgotPassword}
-                        disabled={isSendingReset || resetEmailSent}
-                        className={cx(
-                          "inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-semibold transition",
-                          resetEmailSent
-                            ? "border-[#B9D8C9] bg-[#EAF7F1] text-[#0E8558]"
-                            : "border-[#B9D8C9] bg-white text-[#0E8558] hover:bg-[#F2FAF6]",
-                          isSendingReset && "cursor-not-allowed opacity-60"
-                        )}
+                        className="inline-flex h-9 items-center justify-center rounded-lg border border-[#B9D8C9] bg-white px-3 text-xs font-semibold text-[#0E8558] transition hover:bg-[#F2FAF6]"
                       >
-                        {isSendingReset
-                          ? "Sending…"
-                          : resetEmailSent
-                            ? "Reset email sent"
-                            : "Reset password"}
+                        Reset password
                       </button>
                     </div>
                   </div>
@@ -1406,6 +1389,12 @@ export default function WorkspaceSetupOnboarding({
           )}
         </div>
       </Modal>
+
+      {showForgotPasswordModal && (
+        <ForgotPasswordModal
+          onClose={() => setShowForgotPasswordModal(false)}
+        />
+      )}
     </div>
   );
 }
