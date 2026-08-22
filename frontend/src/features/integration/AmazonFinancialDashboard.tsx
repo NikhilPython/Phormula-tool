@@ -428,13 +428,15 @@ async function syncAwdInboundShipments(params: { marketplaceId: string }) {
 
 async function syncFbaInboundPlans(params: { marketplaceId: string }) {
   const token = getAuthToken();
+
   const qs = new URLSearchParams({
     marketplace_id: params.marketplaceId,
-    statuses: "SHIPPED",
+    max_plans: "50",
     format: "excel",
   });
 
   const url = `${API_BASE}/amazon_api/fba/inbound-plans-all?${qs.toString()}`;
+
   const res = await fetch(url, {
     method: "GET",
     headers: {
@@ -448,6 +450,7 @@ async function syncFbaInboundPlans(params: { marketplaceId: string }) {
   }
 
   await res.arrayBuffer();
+
   return { ok: true, url };
 }
 

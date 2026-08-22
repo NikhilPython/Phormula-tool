@@ -6921,6 +6921,7 @@ def get_fba_inbound_dispatch_inputs():
         "CHECKED_IN",
         "VOIDED",
     }
+    excluded_dispatch_statuses = {"DELETED", "ERROR", "VOIDED"}
 
     invalid_statuses = [
         value
@@ -6936,11 +6937,44 @@ def get_fba_inbound_dispatch_inputs():
             "allowed_statuses": sorted(allowed_statuses),
         }), 400
 
+    status_values = [
+        value
+        for value in status_values
+        if value not in excluded_dispatch_statuses
+    ]
+
     if not status_values:
         return jsonify({
             "success": False,
             "error": "At least one shipment status is required"
         }), 400
+
+    closed_period_start = None
+    closed_period_end = None
+    closed_month_arg = request.args.get("closed_month") or request.args.get("month")
+    closed_year_arg = request.args.get("closed_year") or request.args.get("year")
+
+    if closed_month_arg or closed_year_arg:
+        closed_month = _parse_month_number(closed_month_arg)
+        try:
+            closed_year = int(str(closed_year_arg or "").strip())
+        except Exception:
+            closed_year = None
+
+        if not closed_month or not closed_year or closed_year < 2000 or closed_year > 2100:
+            return jsonify({
+                "success": False,
+                "error": "Invalid closed shipment month/year",
+                "closed_month": closed_month_arg,
+                "closed_year": closed_year_arg,
+            }), 400
+
+        closed_period_start = date(closed_year, closed_month, 1)
+        closed_period_end = (
+            date(closed_year + 1, 1, 1)
+            if closed_month == 12
+            else date(closed_year, closed_month + 1, 1)
+        )
 
     # Because values have already been validated against a fixed whitelist,
     # this is safe to insert into the SQL IN clause.
@@ -6996,7 +7030,7 @@ def get_fba_inbound_dispatch_inputs():
                             "createdAt" AS created_at,
 
                             COALESCE(
-                                "lastUpdatedAt",
+                                NULLIF(TRIM("lastUpdatedAt"), ''),
                                 updated_at::TEXT
                             ) AS updated_at,
 
@@ -7165,6 +7199,11 @@ def get_fba_inbound_dispatch_inputs():
             )
         else:
             item["expected_reach_date"] = None
+
+        if item.get("shipment_status") == "CLOSED" and closed_period_start and closed_period_end:
+            closed_date = _parse_date_like(item.get("updated_at"))
+            if not closed_date or not (closed_period_start <= closed_date < closed_period_end):
+                continue
 
         items.append(item)
 
@@ -7884,6 +7923,53 @@ def _parse_fba_inbound_date(value):
         return None
     try:
         return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _parse_month_number(value):
+    if value is None:
+        return None
+
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+
+    if raw_value.isdigit():
+        month_number = int(raw_value)
+        return month_number if 1 <= month_number <= 12 else None
+
+    normalized = raw_value.lower()
+    for month_number in range(1, 13):
+        if normalized in {
+            calendar.month_name[month_number].lower(),
+            calendar.month_abbr[month_number].lower(),
+        }:
+            return month_number
+
+    return None
+
+
+def _parse_date_like(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if not value:
+        return None
+
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+
+    iso_value = raw_value[:-1] + "+00:00" if raw_value.endswith("Z") else raw_value
+    try:
+        return datetime.fromisoformat(iso_value).date()
+    except Exception:
+        pass
+
+    try:
+        return datetime.strptime(raw_value[:10], "%Y-%m-%d").date()
     except Exception:
         return None
 
@@ -8941,20 +9027,23 @@ def get_fba_2024_inbound_plans_all():
     if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
         return jsonify({"success": False, "error": "Unsupported marketplace"}), 400
 
-    status_values = [
-        x.strip().upper()
-        for x in (request.args.get("statuses") or request.args.get("status") or "ACTIVE,SHIPPED").split(",")
-        if x.strip()
-    ]
-    allowed_statuses = {"ACTIVE", "VOIDED", "SHIPPED"}
-    invalid_statuses = [x for x in status_values if x not in allowed_statuses]
-    if invalid_statuses:
-        return jsonify({
-            "success": False,
-            "error": "Invalid inbound plan status",
-            "invalid_statuses": invalid_statuses,
-            "allowed_statuses": sorted(allowed_statuses),
-        }), 400
+    # status_values = [
+    #     x.strip().upper()
+    #     for x in (request.args.get("statuses") or request.args.get("status") or "ACTIVE,SHIPPED").split(",")
+    #     if x.strip()
+    # ]
+    # allowed_statuses = {"ACTIVE", "VOIDED", "SHIPPED"}
+    # invalid_statuses = [x for x in status_values if x not in allowed_statuses]
+    # if invalid_statuses:
+    #     return jsonify({
+    #         "success": False,
+    #         "error": "Invalid inbound plan status",
+    #         "invalid_statuses": invalid_statuses,
+    #         "allowed_statuses": sorted(allowed_statuses),
+    #     }), 400
+
+    # Always fetch both inbound plan statuses
+    status_values = ["ACTIVE", "SHIPPED"]
 
     try:
         plan_page_size = int(request.args.get("plan_page_size") or request.args.get("page_size") or 30)
@@ -9016,20 +9105,65 @@ def get_fba_2024_inbound_plans_all():
             logger.exception("Failed to list FBA 2024 inbound plans for status %s", status)
             list_errors.append({"status": status, "error": str(exc)})
 
+    # deduped_summaries: list[dict] = []
+    # seen_plan_ids: set[str] = set()
+    # for summary in all_plan_summaries:
+    #     plan_ids = _find_fba_2024_ids(summary, {"inboundPlanId"})
+    #     plan_id = plan_ids[0] if plan_ids else ""
+    #     if not plan_id or plan_id in seen_plan_ids:
+    #         continue
+    #     seen_plan_ids.add(plan_id)
+    #     deduped_summaries.append(summary)
+    #     if len(deduped_summaries) >= max_plans:
+    #         break
+
     deduped_summaries: list[dict] = []
     seen_plan_ids: set[str] = set()
+
     for summary in all_plan_summaries:
         plan_ids = _find_fba_2024_ids(summary, {"inboundPlanId"})
         plan_id = plan_ids[0] if plan_ids else ""
+
         if not plan_id or plan_id in seen_plan_ids:
             continue
+
         seen_plan_ids.add(plan_id)
         deduped_summaries.append(summary)
-        if len(deduped_summaries) >= max_plans:
-            break
+
+    # plans: list[dict] = []
+    # detail_errors: list[dict] = []
+    # totals = {
+    #     "plan_items": 0,
+    #     "plan_boxes": 0,
+    #     "shipments": 0,
+    #     "shipment_items": 0,
+    #     "shipment_boxes": 0,
+    # }
+
+    # for summary in deduped_summaries:
+    #     plan_id = (_find_fba_2024_ids(summary, {"inboundPlanId"}) or [""])[0]
+    #     plan_record = {
+    #         "inboundPlanId": plan_id,
+    #         "summary": summary,
+    #         "detail": None,
+    #         "plan_items": [],
+    #         "plan_boxes": [],
+    #         "shipments": [],
+    #         "errors": [],
+    #     }
+
+    #     try:
+    #         plan_record["detail"] = _fetch_fba_2024_object(
+    #             f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}"
+    #         )
+    #     except Exception as exc:
+    #         plan_record["errors"].append({"operation": "getInboundPlan", "error": str(exc)})
+
+    #     if include_plan_items:
 
     plans: list[dict] = []
     detail_errors: list[dict] = []
+
     totals = {
         "plan_items": 0,
         "plan_boxes": 0,
@@ -9038,8 +9172,27 @@ def get_fba_2024_inbound_plans_all():
         "shipment_boxes": 0,
     }
 
+    # max_plans is applied separately to ACTIVE and SHIPPED
+    processed_by_status = {
+        "ACTIVE": 0,
+        "SHIPPED": 0,
+    }
+
     for summary in deduped_summaries:
-        plan_id = (_find_fba_2024_ids(summary, {"inboundPlanId"}) or [""])[0]
+
+        requested_status = str(
+            summary.get("_requested_status") or summary.get("status") or ""
+        ).strip().upper()
+
+        # Example:
+        # max_plans=10 means up to 10 ACTIVE + 10 SHIPPED
+        if processed_by_status.get(requested_status, 0) >= max_plans:
+            continue
+
+        plan_id = (
+            _find_fba_2024_ids(summary, {"inboundPlanId"}) or [""]
+        )[0]
+
         plan_record = {
             "inboundPlanId": plan_id,
             "summary": summary,
@@ -9054,8 +9207,26 @@ def get_fba_2024_inbound_plans_all():
             plan_record["detail"] = _fetch_fba_2024_object(
                 f"/inbound/fba/2024-03-20/inboundPlans/{plan_id}"
             )
+
         except Exception as exc:
-            plan_record["errors"].append({"operation": "getInboundPlan", "error": str(exc)})
+            error_text = str(exc)
+
+            # Amazon sometimes returns a UK ACTIVE plan in listInboundPlans
+            # but rejects its FBA detail operation as unsupported.
+            # Skip that individual plan instead of calling /items and /boxes.
+            if "Amazon Warehousing and Distribution inbound plans" in error_text:
+                logger.warning(
+                    "Skipping unsupported inbound plan %s | status=%s | marketplace=%s",
+                    plan_id,
+                    requested_status,
+                    marketplace_id,
+                )
+                continue
+
+            plan_record["errors"].append({
+                "operation": "getInboundPlan",
+                "error": error_text,
+            })
 
         if include_plan_items:
             try:
@@ -9142,10 +9313,26 @@ def get_fba_2024_inbound_plans_all():
 
                 plan_record["shipments"].append(shipment_record)
 
+        # totals["shipments"] += len(plan_record["shipments"])
+        # if plan_record["errors"]:
+        #     detail_errors.append({"inboundPlanId": plan_id, "errors": plan_record["errors"]})
+        # plans.append(plan_record)
+        # time.sleep(delay_seconds)
+
         totals["shipments"] += len(plan_record["shipments"])
+
         if plan_record["errors"]:
-            detail_errors.append({"inboundPlanId": plan_id, "errors": plan_record["errors"]})
+            detail_errors.append({
+                "inboundPlanId": plan_id,
+                "errors": plan_record["errors"]
+            })
+
         plans.append(plan_record)
+
+        # Count successfully accepted plan against this status limit
+        if requested_status in processed_by_status:
+            processed_by_status[requested_status] += 1
+
         time.sleep(delay_seconds)
 
     db_result = {

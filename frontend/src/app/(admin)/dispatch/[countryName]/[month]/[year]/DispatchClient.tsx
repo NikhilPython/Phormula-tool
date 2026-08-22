@@ -153,10 +153,9 @@ const FBA_ALL_STATUSES = [
   'CLOSED',
   'DELIVERED',
   'CANCELLED',
-  'DELETED',
-  'ERROR',
-  'VOIDED',
 ] as const
+
+const FBA_EXCLUDED_STATUSES = new Set(['DELETED', 'ERROR', 'VOIDED'])
 
 const FBA_ACTIONABLE_STATUSES = new Set([
   'WORKING',
@@ -168,8 +167,11 @@ const FBA_ACTIONABLE_STATUSES = new Set([
   'CHECKED_IN',
 ])
 
+const normalizeShipmentStatus = (status: unknown) =>
+  String(status || '').trim().toUpperCase().replace(/-/g, '_')
+
 const isActionableFbaStatus = (status: unknown) =>
-  FBA_ACTIONABLE_STATUSES.has(String(status || '').trim().toUpperCase())
+  FBA_ACTIONABLE_STATUSES.has(normalizeShipmentStatus(status))
 const SHIPMENT_DETAILS_CANCELLED_MESSAGE = 'Shipment details editing was cancelled.'
 const SHIPMENT_DETAILS_REQUIRED_MESSAGE =
   'Please fill dispatch date, shipment type, and expected reach date for every shipment before opening Dispatch.'
@@ -403,6 +405,38 @@ function isReachDateActiveForSelectedMonth(
   const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return true
   return parsed >= bounds.start && parsed <= bounds.end
+}
+
+function isDateWithinSelectedMonth(
+  value: string | null | undefined,
+  monthValue: string,
+  yearValue: string
+) {
+  const bounds = getSelectedMonthBounds(monthValue, yearValue)
+  if (!bounds) return true
+
+  const parsed = new Date(`${String(value || '').slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return false
+
+  return parsed >= bounds.start && parsed <= bounds.end
+}
+
+function shouldShowFbaDispatchRowForSelectedMonth(
+  row: FbaDispatchInputRow,
+  monthValue: string,
+  yearValue: string
+) {
+  const shipmentStatus = normalizeShipmentStatus(row.shipment_status)
+
+  if (FBA_EXCLUDED_STATUSES.has(shipmentStatus)) {
+    return false
+  }
+
+  if (shipmentStatus !== 'CLOSED') {
+    return true
+  }
+
+  return isDateWithinSelectedMonth(row.updated_at, monthValue, yearValue)
 }
 
 function formatAwdDate(value?: string | null): string {
@@ -1337,7 +1371,11 @@ export default function DispatchPage({
     return Array.isArray(data?.items) ? data.items : []
   }
 
-  async function fetchFbaDispatchInputs(token: string): Promise<FbaDispatchInputRow[]> {
+  async function fetchFbaDispatchInputs(
+    token: string,
+    requestedMonth = monthdp,
+    requestedYear = yeardp
+  ): Promise<FbaDispatchInputRow[]> {
     const countryKey = countryName.trim().toLowerCase()
     const marketplaceId = COUNTRY_TO_MARKETPLACE[countryKey]
 
@@ -1346,11 +1384,21 @@ export default function DispatchPage({
     // Show every known FBA status in the shipment-details view for every marketplace.
     // Terminal statuses are display-only and are excluded from dispatch-date validation below.
     const shipmentStatuses = FBA_ALL_STATUSES.join(',')
+    const params = new URLSearchParams({
+      marketplace_id: marketplaceId,
+      shipment_statuses: shipmentStatuses,
+    })
+
+    if (requestedMonth) {
+      params.set('closed_month', requestedMonth)
+    }
+
+    if (requestedYear) {
+      params.set('closed_year', requestedYear)
+    }
 
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?marketplace_id=${encodeURIComponent(
-        marketplaceId
-      )}&shipment_statuses=${encodeURIComponent(shipmentStatuses)}`,
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments/dispatch-inputs?${params.toString()}`,
       {
         method: 'GET',
         headers: {
@@ -1376,7 +1424,9 @@ export default function DispatchPage({
     }
 
     return Array.isArray(data?.items)
-      ? data.items
+      ? data.items.filter((row: FbaDispatchInputRow) =>
+        shouldShowFbaDispatchRowForSelectedMonth(row, requestedMonth, requestedYear)
+      )
       : []
   }
 
@@ -1391,25 +1441,31 @@ export default function DispatchPage({
 
     const requests: Promise<Response>[] = []
 
-    if (['uk', 'gb'].includes(countryKey)) {
-      // Refresh all FBA shipment statuses instead of SHIPPED only.
+    // FBA - backend automatically fetches both ACTIVE and SHIPPED.
+    // Run this for both UK and US.
+    requests.push(
+      fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-plans-all?marketplace_id=${encodeURIComponent(
+          marketplaceId
+        )}&store_in_db=true&max_plans=50`,
+        {
+          method: 'GET',
+          headers,
+        }
+      )
+    )
+
+    // AWD only for supported countries, currently US.
+    if (isAwdSupportedCountry(countryKey)) {
       requests.push(
         fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-shipments?marketplace_id=${encodeURIComponent(marketplaceId)}&shipment_statuses=${encodeURIComponent(FBA_ALL_STATUSES.join(','))}&store_in_db=true`,
-          { method: 'GET', headers }
-        )
-      )
-    } else {
-      requests.unshift(
-        fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/awd/inbound-shipments-complete?marketplace_id=${encodeURIComponent(marketplaceId)}&sku_quantities=SHOW&max_results=100&store_in_db=true`,
-          { method: 'GET', headers }
-        )
-      )
-      requests.push(
-        fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/fba/inbound-plans-all?marketplace_id=${encodeURIComponent(marketplaceId)}&statuses=ACTIVE,SHIPPED&store_in_db=true&max_plans=50`,
-          { method: 'GET', headers }
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/awd/inbound-shipments-complete?marketplace_id=${encodeURIComponent(
+            marketplaceId
+          )}&sku_quantities=SHOW&max_results=100&store_in_db=true`,
+          {
+            method: 'GET',
+            headers,
+          }
         )
       )
     }

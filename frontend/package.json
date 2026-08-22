@@ -38,6 +38,7 @@
     "firebase": "^12.8.0",
     "flatpickr": "^4.6.13",
     "framer-motion": "^12.35.0",
+    "headlessui": "^0.0.0",
     "intro.js": "^8.3.2",
     "intro.js-react": "^1.0.0",
     "jszip": "^3.10.1",
