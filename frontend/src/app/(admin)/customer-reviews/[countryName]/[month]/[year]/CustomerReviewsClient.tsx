@@ -658,48 +658,54 @@ function SentimentTrendOverview({
   negativeTopics,
   loading = false,
 }: {
-  positiveTopics: TrendTopic[];
-  negativeTopics: TrendTopic[];
+  positiveTopics: Topic[];
+  negativeTopics: Topic[];
   loading?: boolean;
 }) {
-  const positiveTotal = positiveTopics.reduce(
-    (sum, topic) => sum + Math.max(0, latestTrendValue(topic)),
-    0
-  );
-  const negativeTotal = negativeTopics.reduce(
-    (sum, topic) => sum + Math.max(0, latestTrendValue(topic)),
-    0
-  );
+  const positiveTotal = positiveTopics.length;
+  const negativeTotal = negativeTopics.length;
+
   const combinedTotal = positiveTotal + negativeTotal;
-  const positivePct = combinedTotal > 0 ? (positiveTotal / combinedTotal) * 100 : 0;
-  const negativePct = combinedTotal > 0 ? (negativeTotal / combinedTotal) * 100 : 0;
 
-  const positivePeriod = getLatestTrendPeriod(positiveTopics);
-  const negativePeriod = getLatestTrendPeriod(negativeTopics);
-  const period = positivePeriod !== "NA" ? positivePeriod : negativePeriod;
+  const positivePct =
+    combinedTotal > 0
+      ? (positiveTotal / combinedTotal) * 100
+      : 0;
 
-  const sortedPositive = [...positiveTopics].sort(
-    (a, b) => latestTrendValue(b) - latestTrendValue(a)
-  );
-  const sortedNegative = [...negativeTopics].sort(
-    (a, b) => latestTrendValue(b) - latestTrendValue(a)
-  );
+  const negativePct =
+    combinedTotal > 0
+      ? (negativeTotal / combinedTotal) * 100
+      : 0;
+
+  // const positivePeriod = getLatestTrendPeriod(positiveTopics);
+  // const negativePeriod = getLatestTrendPeriod(negativeTopics);
+  // const period = positivePeriod !== "NA" ? positivePeriod : negativePeriod;
+
+  // const sortedPositive = [...positiveTopics].sort(
+  //   (a, b) => latestTrendValue(b) - latestTrendValue(a)
+  // );
+  // const sortedNegative = [...negativeTopics].sort(
+  //   (a, b) => latestTrendValue(b) - latestTrendValue(a)
+  // );
 
   return (
     <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-col gap-1 border-b border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Review sentiment trends</h3>
-          {period !== "NA" && (
+          <PageBreadcrumb pageTitle="Review sentiment trends" align="left" textSize="xl" />
+
+          {/* <h3 className="text-sm font-semibold text-gray-900">Review sentiment trends</h3> */}
+
+          {/* {period !== "NA" && (
             <p className="mt-0.5 text-[11px] font-medium text-gray-500">Period {period}</p>
-          )}
+          )} */}
         </div>
         {!loading && combinedTotal > 0 && (
-          <div className="flex items-center gap-2 text-[11px] font-semibold">
-            <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-1 text-green-500">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <span className="rounded-full border border-green-500 bg-green-50 px-2.5 py-1 text-green-500">
               Positive {metricValue(positivePct, "%")}
             </span>
-            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-red-600">
+            <span className="rounded-full border border-red-600 bg-red-50 px-2.5 py-1 text-red-600">
               Negative {metricValue(negativePct, "%")}
             </span>
           </div>
@@ -722,23 +728,24 @@ function SentimentTrendOverview({
                 </div>
               </div>
 
-              {sortedPositive.length ? (
+              {positiveTopics.length ? (
                 <div className="flex flex-wrap gap-2">
-                  {sortedPositive.map((topic, index) => {
-                    const value = latestTrendValue(topic);
-                    return (
-                      <span
-                        key={`${topic.topic}-${index}`}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
-                        title={topic.topic || "Positive topic"}
-                      >
-                        <span className="max-w-[220px] truncate">{topic.topic || "Topic"}</span>
+                  {positiveTopics.map((topic, index) => (
+                    <span
+                      key={`${topic.topic}-${index}`}
+                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
+                      title={topic.topic || "Positive topic"}
+                    >
+                      <span className="max-w-[220px] truncate">
+                        {topic.topic || "Topic"}
                       </span>
-                    );
-                  })}
+                    </span>
+                  ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No positive trend data returned for this ASIN.</p>
+                <p className="text-sm text-gray-500">
+                  No positive topics returned for this ASIN.
+                </p>
               )}
             </div>
 
@@ -750,23 +757,24 @@ function SentimentTrendOverview({
                 </div>
               </div>
 
-              {sortedNegative.length ? (
+              {negativeTopics.length ? (
                 <div className="flex flex-wrap gap-2">
-                  {sortedNegative.map((topic, index) => {
-                    const value = latestTrendValue(topic);
-                    return (
-                      <span
-                        key={`${topic.topic}-${index}`}
-                        className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
-                        title={topic.topic || "Negative topic"}
-                      >
-                        <span className="max-w-[220px] truncate">{topic.topic || "Topic"}</span>
+                  {negativeTopics.map((topic, index) => (
+                    <span
+                      key={`${topic.topic}-${index}`}
+                      className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-500 shadow-sm"
+                      title={topic.topic || "Negative topic"}
+                    >
+                      <span className="max-w-[220px] truncate">
+                        {topic.topic || "Topic"}
                       </span>
-                    );
-                  })}
+                    </span>
+                  ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No negative trend data returned for this ASIN.</p>
+                <p className="text-sm text-gray-500">
+                  No negative topics returned for this ASIN.
+                </p>
               )}
             </div>
           </div>
@@ -856,11 +864,18 @@ export default function CustomerReviewsClient() {
   const negativeImpactTopics =
     feedback?.rating_impact_topics?.topics?.negativeTopics ?? EMPTY_TOPICS;
   const positiveTopics = useMemo(
-    () => mergeTopicsByName(mentionPositiveTopics, positiveImpactTopics),
+    () =>
+      mergeTopicsByName(mentionPositiveTopics, positiveImpactTopics).filter(
+        (topic) => getTopicReviewSnippets(topic).length > 0
+      ),
     [mentionPositiveTopics, positiveImpactTopics]
   );
+
   const negativeTopics = useMemo(
-    () => mergeTopicsByName(mentionNegativeTopics, negativeImpactTopics),
+    () =>
+      mergeTopicsByName(mentionNegativeTopics, negativeImpactTopics).filter(
+        (topic) => getTopicReviewSnippets(topic).length > 0
+      ),
     [mentionNegativeTopics, negativeImpactTopics]
   );
   const positiveReviewSnippetCount = useMemo(
@@ -946,6 +961,9 @@ export default function CustomerReviewsClient() {
   const summaryGridClass = showRatingImpact
     ? "md:grid-cols-2 xl:grid-cols-4"
     : "md:grid-cols-3";
+
+  const reviewStartDate = feedback?.topics?.dateRange?.startDate;
+  const reviewEndDate = feedback?.topics?.dateRange?.endDate;
 
   const fetchPnlProductOrder = useCallback(async () => {
     const token = getToken();
@@ -1193,40 +1211,68 @@ export default function CustomerReviewsClient() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Product catalog</h2>
-              {/* <p className="text-xs text-gray-500">{orderedProducts.length} ASINs with product mapping</p> */}
+      <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        {/* LEFT: Sticky Product Catalog */}
+        <aside
+          className="
+    rounded-lg
+    border border-gray-200
+    bg-white
+    p-4
+    shadow-sm
+
+    lg:sticky
+    lg:top-[24px]
+    lg:flex
+    lg:h-[calc(100vh-92px)]
+    lg:flex-col
+    lg:overflow-hidden
+  "
+        >
+          {/* Fixed catalog header */}
+          <div className="shrink-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <PageBreadcrumb pageTitle="Product catalog" align="left" textSize="xl" />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchProducts(searchTerm)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50"
+                aria-label="Refresh products"
+                title="Refresh products"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${productsLoading ? "animate-spin" : ""
+                    }`}
+                />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => fetchProducts(searchTerm)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-50"
-              aria-label="Refresh products"
-              title="Refresh products"
-            >
-              <RefreshCw className={`h-4 w-4 ${productsLoading ? "animate-spin" : ""}`} />
-            </button>
+
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    fetchProducts(searchTerm);
+                  }
+                }}
+                placeholder="Search ASIN, SKU, title"
+                className="h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
+              />
+            </div>
           </div>
 
-          <div className="relative mb-3">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") fetchProducts(searchTerm);
-              }}
-              placeholder="Search ASIN, SKU, title"
-              className="h-9 w-full rounded-md border border-gray-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-[#5EA68E] focus:ring-2 focus:ring-[#5EA68E]/20"
-            />
-          </div>
-
-          <div className="max-h-[calc(100vh-310px)] space-y-2 overflow-y-auto pr-1">
+          {/* Only this section scrolls */}
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
             {productsLoading ? (
-              <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">Loading products...</div>
+              <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">
+                Loading products...
+              </div>
             ) : orderedProducts.length ? (
               orderedProducts.map((product) => (
                 <button
@@ -1241,22 +1287,25 @@ export default function CustomerReviewsClient() {
                     : "border-gray-200 bg-white hover:bg-gray-50"
                     }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="line-clamp-2 text-sm font-semibold text-gray-900">
+                      <div className="line-clamp-2 text-sm font-semibold text-charcoal-500">
                         {productName(product) || "Amazon product"}
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-700">
-                          {product.asin}
-                        </span>
-                        {skuLabel(product) && (
-                          <span className="rounded bg-[#5EA68E]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[#3e806b]">
-                            {skuLabel(product)}
-                          </span>
-                        )}
-                      </div>
+
+                      {/* <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-700">
+                    {product.asin}
+                  </span>
+
+                  {skuLabel(product) && (
+                    <span className="rounded bg-[#5EA68E]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[#3e806b]">
+                      {skuLabel(product)}
+                    </span>
+                  )}
+                </div> */}
                     </div>
+
                     <ProductThumb
                       imageUrl={product.main_image_url}
                       asin={product.asin}
@@ -1268,12 +1317,14 @@ export default function CustomerReviewsClient() {
               ))
             ) : (
               <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">
-                No synced ASINs found. Enter a child ASIN manually and fetch from Amazon.
+                No synced ASINs found. Enter a child ASIN manually and fetch from
+                Amazon.
               </div>
             )}
           </div>
         </aside>
 
+        {/* RIGHT: normal page scrolling */}
         <main className="flex min-w-0 flex-col gap-4">
           <section className="relative rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             {loading && (
@@ -1282,60 +1333,93 @@ export default function CustomerReviewsClient() {
                 Loading insights
               </div>
             )}
+
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <ProductThumb
                 imageUrl={selectedProduct?.main_image_url}
                 asin={selectedAsin}
                 alt={selectedProductName || selectedAsin || "Product image"}
               />
-              <div className="min-w-0 flex-1">
+
+              {/* <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
                     ASIN: {selectedAsin || "NA"}
                   </span>
+
                   <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-xs font-semibold text-[#3e806b]">
                     SKU: {selectedSku || "NA"}
                   </span>
+
                   {selectedBrowseNode && (
                     <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
                       {selectedBrowseNode}
                     </span>
                   )}
                 </div>
+
                 <h2 className="mt-2 line-clamp-2 text-lg font-semibold text-gray-900">
-                  {selectedProductName || "Fetch an ASIN to view Amazon review insights"}
+                  {selectedProductName ||
+                    "Fetch an ASIN to view Amazon review insights"}
                 </h2>
-                <div className="mt-2 grid gap-2 text-sm text-gray-500 sm:grid-cols-3">
-                  {/* <div>
-                    <span className="font-medium text-gray-700">Data range:</span>{" "}
-                    {formatDate(feedback?.topics?.dateRange?.startDate)} to{" "}
-                    {formatDate(feedback?.topics?.dateRange?.endDate)}
-                  </div> */}
-                  {/* <div>
-                    <span className="font-medium text-gray-700">Barcode:</span>{" "}
-                    {selectedProduct?.product_barcode || "NA"}
+              </div> */}
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <PageBreadcrumb
+                      pageTitle={
+                        selectedProductName ||
+                        "Fetch an ASIN to view Amazon review insights"
+                      }
+                      align="left"
+                      textSize="2xl"
+                    />
+
+                    <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                      {reviewStartDate && reviewEndDate && (
+                        <span>
+                          Reviews available:{" "}
+                          <span className="font-medium text-gray-700">
+                            {formatDate(reviewStartDate)} - {formatDate(reviewEndDate)}
+                          </span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Price:</span>{" "}
-                    {selectedProduct?.price ? `${selectedProduct.currency || ""} ${selectedProduct.price}`.trim() : "NA"}
-                  </div> */}
+
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                      ASIN: {selectedAsin || "NA"}
+                    </span>
+
+                    <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-xs font-semibold text-[#3e806b]">
+                      SKU: {selectedSku || "NA"}
+                    </span>
+
+                    {selectedBrowseNode && (
+                      <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                        {selectedBrowseNode}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </section>
 
           <SentimentTrendOverview
-            positiveTopics={positiveTrends}
-            negativeTopics={negativeTrends}
+            positiveTopics={orderedPositiveTopics}
+            negativeTopics={orderedNegativeTopics}
             loading={loading}
           />
 
           <section className="grid gap-4 xl:grid-cols-2">
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Positive topics</h2>
-               
+                <PageBreadcrumb pageTitle="Positive topics" align="left" textSize="lg" />
               </div>
+
               {loading ? (
                 <div className="flex min-h-[72px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
                   <RefreshCw className="h-4 w-4 animate-spin text-[#5EA68E]" />
@@ -1360,9 +1444,9 @@ export default function CustomerReviewsClient() {
 
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">Negative topics</h2>
-               
+                <PageBreadcrumb pageTitle="Negative topics" align="left" textSize="lg" />
               </div>
+
               {loading ? (
                 <div className="flex min-h-[72px] items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500 shadow-sm">
                   <RefreshCw className="h-4 w-4 animate-spin text-[#5EA68E]" />
@@ -1387,6 +1471,7 @@ export default function CustomerReviewsClient() {
           </section>
         </main>
       </div>
+
     </div>
   );
 }
