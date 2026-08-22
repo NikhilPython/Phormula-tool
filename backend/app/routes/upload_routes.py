@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 import jwt
 from io import BytesIO
 import calendar
@@ -1800,6 +1800,240 @@ def multiCountry():
         print(f"Error processing file: {str(e)}")
         return jsonify({'error': f'Error processing file: {str(e)}'}), 500
 
+
+
+@upload_bp.route('/multiCountry/current', methods=['GET'])
+def get_current_sku_sheet():
+    # ---------- Auth ----------
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    # ---------- DB ----------
+    engine = user_engine
+    inspector = inspect(engine)
+    table_name = f"sku_{user_id}_data_table"
+
+    if not inspector.has_table(table_name):
+        return jsonify({'success': True, 'rows': []}), 200
+
+    try:
+        query = text(f"""
+            SELECT
+                s_no,
+                product_name,
+                product_barcode,
+                asin,
+                sku_uk,
+                sku_us,
+                sku_canada,
+                price AS landing_cost,
+                currency,
+                month,
+                year,
+                local_stock,
+                in_transit_units
+            FROM {table_name}
+            WHERE user_id = :user_id
+            ORDER BY s_no NULLS LAST
+        """)
+
+        with engine.connect() as conn:
+            df = pd.read_sql(
+                query,
+                conn,
+                params={"user_id": user_id}
+            )
+
+        if df.empty:
+            return jsonify({'success': True, 'rows': []}), 200
+
+        df = df.astype(object).where(pd.notnull(df), None)
+
+        month_map = {
+            "january": "01",
+            "february": "02",
+            "march": "03",
+            "april": "04",
+            "may": "05",
+            "june": "06",
+            "july": "07",
+            "august": "08",
+            "september": "09",
+            "october": "10",
+            "november": "11",
+            "december": "12",
+        }
+
+        rows = []
+        for row in df.to_dict(orient="records"):
+            month = str(row.get("month") or "").strip().lower()
+            year = str(row.get("year") or "").strip()
+            month_number = month_map.get(month)
+
+            row["date"] = (
+                f"{month_number}/{year}"
+                if month_number and year
+                else ""
+            )
+
+            row.pop("month", None)
+            row.pop("year", None)
+            rows.append(row)
+
+        return jsonify({
+            'success': True,
+            'rows': rows
+        }), 200
+
+    except Exception as e:
+        print(f"Error fetching current SKU sheet: {str(e)}")
+        return jsonify({
+            'error': f'Failed to fetch SKU sheet: {str(e)}'
+        }), 500
+
+
+@upload_bp.route('/multiCountry/current/download', methods=['GET'])
+def download_current_sku_sheet():
+    # ---------- Auth ----------
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    # ---------- DB ----------
+    engine = user_engine
+    inspector = inspect(engine)
+    table_name = f"sku_{user_id}_data_table"
+
+    if not inspector.has_table(table_name):
+        return jsonify({'error': 'SKU sheet not found'}), 404
+
+    try:
+        query = text(f"""
+            SELECT
+                s_no,
+                product_name,
+                product_barcode,
+                asin,
+                sku_uk,
+                sku_us,
+                sku_canada,
+                price AS landing_cost,
+                currency,
+                month,
+                year,
+                local_stock,
+                in_transit_units
+            FROM {table_name}
+            WHERE user_id = :user_id
+            ORDER BY s_no NULLS LAST
+        """)
+
+        with engine.connect() as conn:
+            df = pd.read_sql(
+                query,
+                conn,
+                params={"user_id": user_id}
+            )
+
+        if df.empty:
+            return jsonify({'error': 'SKU sheet is empty'}), 404
+
+        month_map = {
+            "january": "01",
+            "february": "02",
+            "march": "03",
+            "april": "04",
+            "may": "05",
+            "june": "06",
+            "july": "07",
+            "august": "08",
+            "september": "09",
+            "october": "10",
+            "november": "11",
+            "december": "12",
+        }
+
+        df["date"] = df.apply(
+            lambda row: (
+                f"{month_map.get(str(row.get('month') or '').strip().lower(), '')}/"
+                f"{str(row.get('year') or '').strip()}"
+            ).strip("/")
+            if row.get("month") and row.get("year")
+            else "",
+            axis=1
+        )
+
+        df.drop(columns=["month", "year"], inplace=True, errors="ignore")
+
+        column_order = [
+            "s_no",
+            "product_name",
+            "product_barcode",
+            "asin",
+            "sku_uk",
+            "sku_us",
+            "sku_canada",
+            "landing_cost",
+            "currency",
+            "date",
+            "local_stock",
+            "in_transit_units",
+        ]
+        df = df[[column for column in column_order if column in df.columns]]
+
+        df.rename(columns={
+            "s_no": "S. No.",
+            "product_name": "Product Name",
+            "product_barcode": "Product Barcode",
+            "asin": "ASIN",
+            "sku_uk": "SKU_UK",
+            "sku_us": "SKU_US",
+            "sku_canada": "SKU_CANADA",
+            "landing_cost": "Landing Cost",
+            "currency": "Currency",
+            "date": "Date",
+            "local_stock": "Local Stock",
+            "in_transit_units": "In Transit Units",
+        }, inplace=True)
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="SKU Information", index=False)
+
+        output.seek(0)
+
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name="SKU Information.xlsx",
+            mimetype=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            )
+        )
+
+    except Exception as e:
+        print(f"Error downloading current SKU sheet: {str(e)}")
+        return jsonify({
+            'error': f'Failed to download SKU sheet: {str(e)}'
+        }), 500
 
 
 @upload_bp.route('/file-upload-status', methods=['GET'])
