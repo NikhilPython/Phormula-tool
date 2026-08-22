@@ -1118,6 +1118,7 @@ export default function DispatchPage({
   const inlineShipmentFooterRef = useRef<HTMLDivElement | null>(null)
   const awdInputResolverRef = useRef<((rows: AwdDispatchInputRow[] | null) => void) | null>(null)
   const lastShipmentDetailsRequestKeyRef = useRef(shipmentDetailsRequestKey ?? 0)
+  const shouldPromptForInitialShipmentDetailsRef = useRef(Boolean(embedded))
   const modalPopupContainer = popupContainer ?? dispatchPopupContainer
 
   const showAllDispatchRows =
@@ -1577,7 +1578,8 @@ export default function DispatchPage({
   async function requestAwdDispatchInputs(
     token: string,
     initialError = '',
-    displayMode: ShipmentDetailsDisplayMode = 'modal'
+    displayMode: ShipmentDetailsDisplayMode = 'modal',
+    onlyWhenDetailsMissing = false
   ): Promise<AwdDispatchInputRow[]> {
     const shouldFetchAwd = isAwdSupportedCountry(countryName)
     const [transitWeeks, productNameLookup] = await Promise.all([
@@ -1612,6 +1614,10 @@ export default function DispatchPage({
     }
 
     if (!rows.length && !fbaRows.length) {
+      if (onlyWhenDetailsMissing) {
+        return []
+      }
+
       throw new Error(
         shouldFetchAwd
           ? 'No AWD or FBA inbound shipments found for this marketplace after fetching Amazon inbound shipments.'
@@ -1631,14 +1637,25 @@ export default function DispatchPage({
       shipment_type: String(row.shipment_type || 'SEA').toUpperCase(),
       expected_reach_date: row.expected_reach_date || '',
     }))
+    const normalizedInboundRows = buildInboundDispatchRows(
+      normalizedAwdRows,
+      normalizedFbaRows
+    ).map((row) =>
+      withAutoExpectedReachDate(row, transitWeeks, { overwriteExisting: false })
+    )
+    const hasMissingRequiredDetails = normalizedInboundRows.some(
+      (row) =>
+        (row.source === 'AWD' || isActionableFbaStatus(row.shipment_status)) &&
+        (!row.dispatch_date || !row.shipment_type || !row.expected_reach_date)
+    )
+
+    if (onlyWhenDetailsMissing && !hasMissingRequiredDetails) {
+      return normalizedAwdRows
+    }
 
     setAwdInputRows(normalizedAwdRows)
     setFbaInputRows(normalizedFbaRows)
-    setInboundInputRows(
-      buildInboundDispatchRows(normalizedAwdRows, normalizedFbaRows).map((row) =>
-        withAutoExpectedReachDate(row, transitWeeks, { overwriteExisting: false })
-      )
-    )
+    setInboundInputRows(normalizedInboundRows)
     setAwdInputError(initialError)
     setAwdInputDisplayMode(displayMode)
     setAwdInputOpen(true)
@@ -1799,7 +1816,11 @@ export default function DispatchPage({
   async function fetchDispatchFile(
     monthdpValue: string,
     yeardpValue: string,
-    options: { promptForShipmentDetails?: boolean } = {}
+    options: {
+      promptForShipmentDetails?: boolean
+      shipmentDetailsDisplayMode?: ShipmentDetailsDisplayMode
+      promptOnlyWhenShipmentDetailsMissing?: boolean
+    } = {}
   ) {
     if (!monthdpValue || !yeardpValue) {
       setError('Please select both month and year.')
@@ -1820,7 +1841,12 @@ export default function DispatchPage({
 
     try {
       let awdRows = options.promptForShipmentDetails
-        ? await requestAwdDispatchInputs(token)
+        ? await requestAwdDispatchInputs(
+          token,
+          '',
+          options.shipmentDetailsDisplayMode ?? 'modal',
+          options.promptOnlyWhenShipmentDetailsMissing ?? false
+        )
         : []
 
       setLoading(true)
@@ -2066,7 +2092,14 @@ export default function DispatchPage({
 
   useEffect(() => {
     if (isInitialized && monthdp && yeardp) {
-      void fetchDispatchFile(monthdp, yeardp)
+      const shouldPromptForShipmentDetails = shouldPromptForInitialShipmentDetailsRef.current
+      shouldPromptForInitialShipmentDetailsRef.current = false
+
+      void fetchDispatchFile(monthdp, yeardp, {
+        promptForShipmentDetails: shouldPromptForShipmentDetails,
+        shipmentDetailsDisplayMode: 'inline',
+        promptOnlyWhenShipmentDetailsMissing: true,
+      })
     }
   }, [isInitialized, monthdp, yeardp])
 
