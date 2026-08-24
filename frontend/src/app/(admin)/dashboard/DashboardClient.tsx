@@ -1860,7 +1860,14 @@ export default function DashboardPage() {
 
     const isUsPnlSkuLayout = useMemo(() => {
         const normalizedCountry = String(countryName || "").trim().toLowerCase();
-        return normalizedCountry === "us" || normalizedCountry === "global" || platform === "global";
+        return (
+            ["uk", "united kingdom", "gb", "great britain", "us", "usa", "united states", "global"].includes(
+                normalizedCountry
+            ) ||
+            platform === "amazon-uk" ||
+            platform === "amazon-us" ||
+            platform === "global"
+        );
     }, [countryName, platform]);
 
     const [dismissedAlerts, setDismissedAlerts] = React.useState<string[]>([]);
