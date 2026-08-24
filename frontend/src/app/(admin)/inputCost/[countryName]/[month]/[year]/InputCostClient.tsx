@@ -7681,8 +7681,8 @@ export default function InputCostPage({ params }: Params) {
                   singleCols={singleCols}
                   layout={reconTableLayout}
                   initialCollapsed={{
-                    beginning: false,
-                    ending: false,
+                    beginning: true,
+                    ending: true,
                   }}
                   getValue={getReconValue}
                   getRowClassName={getReconRowClassName}
