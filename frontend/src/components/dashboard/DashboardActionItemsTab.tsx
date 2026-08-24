@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Loader from "@/components/loader/Loader";
 
 export type ActionItemPriority = "Critical" | "High" | "Medium" | "Opportunity";
 export type ActionItemCategory = "Inventory & Dispatch" | "Ads" | "Finance" | "Returns";
@@ -1345,7 +1346,13 @@ export function BusinessAnalysisView({
   const snapshots = useMemo(() => buildMonthlySnapshots(monthlyData), [monthlyData]);
 
   if (loading && !snapshots.length) {
-    return <div className="rounded-xl border border-[#DDE5E8] bg-white px-6 py-16 text-center"><div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#DDE5E8] border-t-[#2878B8]" /><h2 className="text-sm font-semibold text-[#17304F]">Loading Business Analysis...</h2></div>;
+    return (
+      <Loader
+        fullscreen
+        contained
+        backgroundClass="bg-white/40"
+      />
+    );
   }
 
   if (!snapshots.length) {
@@ -1359,7 +1366,6 @@ export function BusinessAnalysisView({
   return <div className="min-w-0 space-y-5 mt-4">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#DDE5E8] bg-white text-[#2878B8]"><Icon name="trend" className="h-6 w-6" /></span>
         <div>
           <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">Business Analysis</h2>
           <p className="min-[1700px]:text-sm text-xs text-[#50627A]">Key business metrics and month-over-month movement.</p>
@@ -1385,12 +1391,13 @@ export default function DashboardActionItemsTab({
   onRetry?: () => void;
 }) {
   if (loading) {
-    return <div className="flex min-h-[260px] w-full items-center justify-center py-12">
-      <div className="text-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#CFE0DC] border-t-[#07836C]" />
-        <p className="mt-3 text-sm font-medium text-[#65758B]">Building action items…</p>
-      </div>
-    </div>;
+    return (
+      <Loader
+        fullscreen
+        contained
+        backgroundClass="bg-white/40"
+      />
+    );
   }
 
   if (error) {
