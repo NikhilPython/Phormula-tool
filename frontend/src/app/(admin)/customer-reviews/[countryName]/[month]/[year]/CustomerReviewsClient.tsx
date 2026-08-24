@@ -380,8 +380,8 @@ function getTopicReviewSnippets(topic: Topic) {
   ]);
 }
 
-function countReviewSnippets(topics: Topic[]) {
-  return topics.reduce((total, topic) => total + getTopicReviewSnippets(topic).length, 0);
+function countUniqueReviewSnippets(topics: Topic[]) {
+  return uniqueStrings(topics.flatMap(getTopicReviewSnippets)).length;
 }
 
 function RatingStars({
@@ -657,14 +657,18 @@ function TopicCard({
 function SentimentTrendOverview({
   positiveTopics,
   negativeTopics,
+  positiveReviewCount,
+  negativeReviewCount,
   // loading = false,
 }: {
   positiveTopics: Topic[];
   negativeTopics: Topic[];
+  positiveReviewCount: number;
+  negativeReviewCount: number;
   // loading?: boolean;
 }) {
-  const positiveTotal = positiveTopics.length;
-  const negativeTotal = negativeTopics.length;
+  const positiveTotal = Math.max(0, positiveReviewCount);
+  const negativeTotal = Math.max(0, negativeReviewCount);
 
   const combinedTotal = positiveTotal + negativeTotal;
 
@@ -720,6 +724,29 @@ function SentimentTrendOverview({
         </div>
       ) : ( */}
       <>
+        <div className="border-b border-gray-100 px-4 py-4">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold">
+            <span className="text-green-700">Positive {metricValue(positivePct, "%")}</span>
+            <span className="text-red-600">Negative {metricValue(negativePct, "%")}</span>
+          </div>
+
+          <div className="h-2 w-full overflow-hidden rounded-full">
+            <div
+              className="h-full w-full rounded-full"
+              style={{
+                background: `linear-gradient(
+        90deg,
+        #10b981 0%,
+        #10b981 ${Math.max(0, positivePct - 6)}%,
+        #f59e8b ${positivePct}%,
+        #fb7185 ${Math.min(100, positivePct + 6)}%,
+        #f43f5e 100%
+      )`,
+              }}
+            />
+          </div>
+        </div>
+
         <div className="grid gap-4 p-4 lg:grid-cols-2">
           <div className="min-w-0 rounded-xl border border-t-4 border-green-500 bg-white p-3 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -745,7 +772,7 @@ function SentimentTrendOverview({
               </div>
             ) : (
               <p className="text-sm text-gray-500">
-                No positive topics returned for this ASIN.
+                No positive reviews returned for this ASIN.
               </p>
             )}
           </div>
@@ -774,32 +801,9 @@ function SentimentTrendOverview({
               </div>
             ) : (
               <p className="text-sm text-gray-500">
-                No negative topics returned for this ASIN.
+                No negative reviews returned for this ASIN.
               </p>
             )}
-          </div>
-        </div>
-
-        <div className="border-t border-gray-100 px-4 py-4">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold">
-            <span className="text-green-700">Positive {metricValue(positivePct, "%")}</span>
-            <span className="text-red-600">Negative {metricValue(negativePct, "%")}</span>
-          </div>
-
-          <div className="h-2 w-full overflow-hidden rounded-full">
-            <div
-              className="h-full w-full rounded-full"
-              style={{
-                background: `linear-gradient(
-        90deg,
-        #10b981 0%,
-        #10b981 ${Math.max(0, positivePct - 6)}%,
-        #f59e8b ${positivePct}%,
-        #fb7185 ${Math.min(100, positivePct + 6)}%,
-        #f43f5e 100%
-      )`,
-              }}
-            />
           </div>
         </div>
       </>
@@ -879,12 +883,12 @@ export default function CustomerReviewsClient() {
       ),
     [mentionNegativeTopics, negativeImpactTopics]
   );
-  const positiveReviewSnippetCount = useMemo(
-    () => countReviewSnippets(positiveTopics),
+  const positiveReviewCount = useMemo(
+    () => countUniqueReviewSnippets(positiveTopics),
     [positiveTopics]
   );
-  const negativeReviewSnippetCount = useMemo(
-    () => countReviewSnippets(negativeTopics),
+  const negativeReviewCount = useMemo(
+    () => countUniqueReviewSnippets(negativeTopics),
     [negativeTopics]
   );
   const allTopics = useMemo(
@@ -1419,13 +1423,15 @@ export default function CustomerReviewsClient() {
           <SentimentTrendOverview
             positiveTopics={orderedPositiveTopics}
             negativeTopics={orderedNegativeTopics}
+            positiveReviewCount={positiveReviewCount}
+            negativeReviewCount={negativeReviewCount}
           // loading={loading}
           />
 
           <section className="grid gap-4 xl:grid-cols-2">
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <PageBreadcrumb pageTitle="Positive topics" align="left" textSize="lg" />
+                <PageBreadcrumb pageTitle="Positive Reviews" align="left" textSize="lg" />
               </div>
 
               {orderedPositiveTopics.length ? (
@@ -1447,7 +1453,7 @@ export default function CustomerReviewsClient() {
 
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <PageBreadcrumb pageTitle="Negative topics" align="left" textSize="lg" />
+                <PageBreadcrumb pageTitle="Negative Reviews" align="left" textSize="lg" />
               </div>
 
               {orderedNegativeTopics.length ? (
