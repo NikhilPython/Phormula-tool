@@ -8745,7 +8745,6 @@ export default function DashboardPage() {
 
     type TopTab =
         | "action"
-        | "analysis"
         | "live"
         | "productwise"
         | "summary"
@@ -8753,8 +8752,7 @@ export default function DashboardPage() {
         | "reviews";
 
     const TOP_TABS: { id: TopTab; label: string }[] = [
-        { id: "action", label: "Action Items" },
-        { id: "analysis", label: "Business Analysis" },
+        { id: "action", label: "Business Scenario" },
         { id: "summary", label: "AI Insights & Recommendations" },
         { id: "live", label: "MTD Sales" },
         { id: "productwise", label: "P&L Breakdown" },
@@ -8766,8 +8764,12 @@ export default function DashboardPage() {
     ];
 
     const HASH_TO_TAB: Record<string, TopTab> = {
+        "business-scenario": "action",
+
+        // old links ko bhi break nahi hone denge
         "action-items": "action",
-        "business-analysis": "analysis",
+        "business-analysis": "action",
+
         "live-sales": "live",
         "ai-insights": "summary",
         "pnl-mtd": "productwise",
@@ -8776,8 +8778,7 @@ export default function DashboardPage() {
     };
 
     const TAB_TO_HASH: Record<TopTab, string> = {
-        action: "action-items",
-        analysis: "business-analysis",
+        action: "business-scenario",
         live: "live-sales",
         summary: "ai-insights",
         productwise: "pnl-mtd",
@@ -12624,39 +12625,42 @@ export default function DashboardPage() {
                 )}
 
                 {activeTab === "action" && (
-                    <DashboardActionItemsTab
-                        actionItems={dashboardActionItems}
-                        loading={dashboardActionItemsLoading}
-                        error={dashboardActionItemsError}
-                        onRetry={() => setDashboardActionItemsRefreshKey((value) => value + 1)}
-                    />
-                )}
+                    <div className="space-y-7">
+                        {/* ================= BUSINESS ANALYSIS ================= */}
+                        <BusinessAnalysisView
+                            monthlyData={businessAnalysisMonthlyData}
+                            unitContributorData={businessAnalysisUnitContributorData}
+                            currency={displayCurrency}
+                            loading={
+                                !shouldShowDummyUi &&
+                                (loading ||
+                                    (platform === "global" &&
+                                        previousSkuwiseGlobalLoading))
+                            }
+                        />
 
-                {activeTab === "analysis" && (
-                    <BusinessAnalysisView
-                        monthlyData={businessAnalysisMonthlyData}
-                        unitContributorData={businessAnalysisUnitContributorData}
-                        currency={displayCurrency}
-                        loading={
-                            !shouldShowDummyUi &&
-                            (loading || (platform === "global" && previousSkuwiseGlobalLoading))
-                        }
-                        skuAnalysisContent={
-                            showLiveBI && finalLiveBiPayload ? (
-                                <LiveBusinessClient
-                                    countryName={countryName}
-                                    sourceCountryName={countryName}
-                                    ranged="MTD"
-                                    month={(currMonthName || "").toLowerCase()}
-                                    year={String(currYear)}
-                                    initialData={finalLiveBiPayload}
-                                    disableAutoFetch
-                                    formattedMonthYear={formattedMonthYear}
-                                    skuAnalysisOnly
-                                />
-                            ) : null
-                        }
-                    />
+                        {/* ================= ACTION ITEMS ================= */}
+                        <div className="border-t border-[#E6ECEF] pt-5">
+                            <div className="mb-4">
+                                <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">
+                                    Action Items
+                                </h2>
+
+                                <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
+                                    Priority actions based on your current business performance.
+                                </p>
+                            </div>
+
+                            <DashboardActionItemsTab
+                                actionItems={dashboardActionItems}
+                                loading={dashboardActionItemsLoading}
+                                error={dashboardActionItemsError}
+                                onRetry={() =>
+                                    setDashboardActionItemsRefreshKey((value) => value + 1)
+                                }
+                            />
+                        </div>
+                    </div>
                 )}
 
                 {activeTab === "live" && (

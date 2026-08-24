@@ -1336,13 +1336,11 @@ export function BusinessAnalysisView({
   unitContributorData = [],
   currency,
   loading,
-  skuAnalysisContent,
 }: {
   monthlyData: MonthlyMetricRow[];
   unitContributorData?: MonthlyMetricRow[];
   currency?: string;
   loading: boolean;
-  skuAnalysisContent?: React.ReactNode;
 }) {
   const snapshots = useMemo(() => buildMonthlySnapshots(monthlyData), [monthlyData]);
 
@@ -1372,8 +1370,6 @@ export function BusinessAnalysisView({
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {metricDefinitions.map((definition) => <MetricFlipCard key={definition.key} definition={definition} snapshots={snapshots} currency={resolvedCurrency} unitContributorData={unitContributorData} />)}
     </div>
-
-    {skuAnalysisContent ? <div className="pt-1">{skuAnalysisContent}</div> : null}
   </div>;
 }
 
