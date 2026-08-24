@@ -5011,10 +5011,18 @@ body {
   animation: metric-sparkle 1.9s ease-in-out infinite;
 }
 
+.business-sparkline-svg {
+  overflow: visible;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-metric-arrow,
   .animate-metric-clock,
   .animate-metric-sparkle {
     animation: none;
+  }
+
+  .business-sparkline-animate {
+    display: none;
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
+import Loader from "@/components/loader/Loader";
 
 export type ActionItemPriority = "Critical" | "High" | "Medium" | "Opportunity";
 export type ActionItemCategory = "Inventory & Dispatch" | "Ads" | "Finance" | "Returns";
@@ -979,12 +980,14 @@ const metricDefinitions: MetricDefinition[] = [
   },
 ];
 
-function Sparkline({ values, status }: { values: number[]; status: MovementStatus }) {
+function Sparkline({ values }: { values: number[] }) {
+  const areaClipId = `business-sparkline-area-${useId().replace(/:/g, "")}`;
   const width = 180;
   const height = 44;
   const raw = values.filter((value) => Number.isFinite(value));
   const startValue = raw[0] ?? 0;
   const endValue = raw[raw.length - 1] ?? startValue;
+  const direction: MovementStatus = endValue > startValue ? "up" : endValue < startValue ? "down" : "stable";
 
   // With only current + previous month, a normal sparkline is just one straight segment.
   // Build a small deterministic mini-trend so it looks like the KPI-card sparklines while
@@ -998,14 +1001,15 @@ function Sparkline({ values, status }: { values: number[]; status: MovementStatu
     const wiggle = Math.max(Math.abs(realMove) * 0.28, scale * 0.018);
     const offsets = [0, 0.55, -0.28, 0.42, -0.18, 0.32, 0];
 
-    if (status === "stable") {
+    if (direction === "stable") {
       const center = (startValue + endValue) / 2;
       return offsets.map((offset) => center + offset * wiggle);
     }
 
+    const visualMove = Math.sign(realMove) * Math.max(Math.abs(realMove), scale * 0.045);
     return offsets.map((offset, index) => {
       const progress = index / (count - 1);
-      const base = startValue + realMove * progress;
+      const base = startValue + visualMove * progress;
       return base + offset * wiggle;
     });
   };
@@ -1024,14 +1028,45 @@ function Sparkline({ values, status }: { values: number[]; status: MovementStatu
     return { x, y };
   });
 
+  const toAreaPoints = (linePoints: string) => `0,${height} ${linePoints} ${width},${height}`;
+
   const points = pointList.map(({ x, y }) => `${x},${y}`).join(" ");
+  const introY = pointList[0]?.y ?? height / 2;
+  const introPoints = pointList.map(({ x }) => `${x},${introY}`).join(" ");
+  const shouldAnimateTrend = direction !== "stable" && pointList.length > 1;
+  const trendAnimationProps = {
+    dur: "2.4s",
+    repeatCount: "indefinite",
+    keyTimes: "0;0.58;1",
+    calcMode: "spline",
+    keySplines: "0.22 1 0.36 1; 0.4 0 1 1",
+  };
+  const revealAnimationProps = {
+    ...trendAnimationProps,
+    values: "1; 0; 0",
+  };
+  const areaRevealAnimationProps = {
+    ...trendAnimationProps,
+    values: `0; ${width}; ${width}`,
+  };
+  const first = pointList[0];
   const last = pointList[pointList.length - 1];
 
   const areaPoints = `0,${height} ${points} ${width},${height}`;
+  const introAreaPoints = toAreaPoints(introPoints);
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-10 w-full" preserveAspectRatio="none" aria-hidden="true">
-      <polygon points={areaPoints} fill="currentColor" opacity="0.055" />
+    <svg viewBox={`0 0 ${width} ${height}`} className="business-sparkline-svg h-10 w-full" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <clipPath id={areaClipId} clipPathUnits="userSpaceOnUse">
+          <rect x="0" y="0" width={width} height={height}>
+            {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="width" {...areaRevealAnimationProps} /> : null}
+          </rect>
+        </clipPath>
+      </defs>
+      <polygon points={areaPoints} fill="currentColor" opacity="0.055" clipPath={`url(#${areaClipId})`}>
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introAreaPoints}; ${areaPoints}; ${areaPoints}`} {...trendAnimationProps} /> : null}
+      </polygon>
       <polyline
         points={points}
         fill="none"
@@ -1040,7 +1075,13 @@ function Sparkline({ values, status }: { values: number[]; status: MovementStatu
         strokeLinecap="round"
         strokeLinejoin="round"
         opacity="0.07"
-      />
+        pathLength={1}
+        strokeDasharray="1"
+        strokeDashoffset="0"
+      >
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introPoints}; ${points}; ${points}`} {...trendAnimationProps} /> : null}
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="stroke-dashoffset" {...revealAnimationProps} /> : null}
+      </polyline>
       <polyline
         points={points}
         fill="none"
@@ -1048,8 +1089,17 @@ function Sparkline({ values, status }: { values: number[]; status: MovementStatu
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-      {last ? <circle cx={last.x} cy={last.y} r="2.5" fill="white" stroke="currentColor" strokeWidth="1.6" /> : null}
+        pathLength={1}
+        strokeDasharray="1"
+        strokeDashoffset="0"
+      >
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introPoints}; ${points}; ${points}`} {...trendAnimationProps} /> : null}
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="stroke-dashoffset" {...revealAnimationProps} /> : null}
+      </polyline>
+      {last ? <circle cx={last.x} cy={last.y} r="2.5" fill="white" stroke="currentColor" strokeWidth="1.6">
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="cx" values={`${first?.x ?? last.x}; ${last.x}; ${last.x}`} {...trendAnimationProps} /> : null}
+        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="cy" values={`${introY}; ${last.y}; ${last.y}`} {...trendAnimationProps} /> : null}
+      </circle> : null}
     </svg>
   );
 }
@@ -1185,7 +1235,7 @@ function MetricFlipCard({
           </div>
 
           <div className={`w-[42%] min-w-[105px] max-w-[145px]   ${theme.text}`}>
-            <Sparkline values={history} status={status} />
+            <Sparkline values={history} />
           </div>
         </div>
 
@@ -1345,7 +1395,13 @@ export function BusinessAnalysisView({
   const snapshots = useMemo(() => buildMonthlySnapshots(monthlyData), [monthlyData]);
 
   if (loading && !snapshots.length) {
-    return <div className="rounded-xl border border-[#DDE5E8] bg-white px-6 py-16 text-center"><div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#DDE5E8] border-t-[#2878B8]" /><h2 className="text-sm font-semibold text-[#17304F]">Loading Business Analysis...</h2></div>;
+    return (
+      <Loader
+        fullscreen
+        contained
+        backgroundClass="bg-white/40"
+      />
+    );
   }
 
   if (!snapshots.length) {
@@ -1359,7 +1415,6 @@ export function BusinessAnalysisView({
   return <div className="min-w-0 space-y-5 mt-4">
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#DDE5E8] bg-white text-[#2878B8]"><Icon name="trend" className="h-6 w-6" /></span>
         <div>
           <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">Business Analysis</h2>
           <p className="min-[1700px]:text-sm text-xs text-[#50627A]">Key business metrics and month-over-month movement.</p>
@@ -1385,12 +1440,13 @@ export default function DashboardActionItemsTab({
   onRetry?: () => void;
 }) {
   if (loading) {
-    return <div className="flex min-h-[260px] w-full items-center justify-center py-12">
-      <div className="text-center">
-        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-[#CFE0DC] border-t-[#07836C]" />
-        <p className="mt-3 text-sm font-medium text-[#65758B]">Building action items…</p>
-      </div>
-    </div>;
+    return (
+      <Loader
+        fullscreen
+        contained
+        backgroundClass="bg-white/40"
+      />
+    );
   }
 
   if (error) {
