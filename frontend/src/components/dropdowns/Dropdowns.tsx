@@ -5072,16 +5072,38 @@ const getSalesLast30DaysValue = (row: InventoryCurrentRow) => {
   );
 };
 
+const normalizeInventoryKey = (key: string) =>
+  String(key || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[%()]/g, "")
+    .replace(/[-\s]+/g, "_")
+    .replace(/__+/g, "_");
+
 const firstInventoryNumberValue = (
   row: InventoryCurrentRow,
   keys: string[]
 ) => {
+  if (!row) return 0;
+
   for (const key of keys) {
     const value = row?.[key];
 
     if (value !== null && value !== undefined && value !== "") {
-      return toNum(value);
+      const numericValue = toNum(value);
+      if (numericValue !== 0) return numericValue;
     }
+  }
+
+  const normalizedTargetKeys = keys.map(normalizeInventoryKey);
+
+  for (const [rowKey, rowValue] of Object.entries(row)) {
+    if (!normalizedTargetKeys.includes(normalizeInventoryKey(rowKey))) {
+      continue;
+    }
+
+    const numericValue = toNum(rowValue);
+    if (numericValue !== 0) return numericValue;
   }
 
   return 0;
@@ -5171,6 +5193,50 @@ const getInventoryCoverageCurrentAndTransitValue = (
     "coverage_ratio_current_intransit",
     "coverage_ratio_current_plus_in_transit",
   ]);
+
+const mergeInventoryRowsBySku = (
+  rows: InventoryCurrentRow[]
+): InventoryCurrentRow[] => {
+  const unique = new Map<string, InventoryCurrentRow>();
+
+  rows.forEach((row) => {
+    const sku = getInventoryRowSku(row);
+    const productName = getInventoryRowProductName(row);
+    const key = `${sku || productName}`.trim().toLowerCase();
+
+    if (
+      !key ||
+      key === "total" ||
+      key === "grand total" ||
+      key === "percentage" ||
+      key === "% of total" ||
+      isInventoryTotalRow(row) ||
+      isInventoryPercentageRow(row)
+    ) {
+      return;
+    }
+
+    const next: InventoryCurrentRow = { ...(unique.get(key) || {}) };
+
+    Object.entries(row).forEach(([fieldKey, fieldValue]) => {
+      const isEmpty =
+        fieldValue === null ||
+        fieldValue === undefined ||
+        fieldValue === "" ||
+        String(fieldValue).trim().toLowerCase() === "nan" ||
+        String(fieldValue).trim().toLowerCase() === "none" ||
+        String(fieldValue).trim().toLowerCase() === "null";
+
+      if (!isEmpty) {
+        next[fieldKey] = fieldValue;
+      }
+    });
+
+    unique.set(key, next);
+  });
+
+  return Array.from(unique.values());
+};
 
 const SPLIT_FIRST_180_INVENTORY_BUCKETS: AgeingBucket[] = [
   { key: "zeroToNinety", label: "0–90 Days", color: "#7B9A6D" },
@@ -5373,6 +5439,12 @@ const buildInventoryInsightsFromResponses = (
   );
 
   const rawRows = latestResponse?.rows ?? [];
+  const categoryRows = latestResponse?.categories
+    ? Object.values(latestResponse.categories).flatMap((category: any) =>
+      Array.isArray(category?.items) ? category.items : []
+    )
+    : [];
+  const mergedRows = mergeInventoryRowsBySku([...rawRows, ...categoryRows]);
 
   const backendPercentageRawRow = rawRows.find((row) =>
     isInventoryPercentageRow(row)
@@ -5382,7 +5454,7 @@ const buildInventoryInsightsFromResponses = (
     isInventoryTotalRow(row)
   );
 
-  const latestRows = rawRows.filter(
+  const latestRows = mergedRows.filter(
     (row) =>
       !isInventoryTotalRow(row) &&
       !isInventoryPercentageRow(row) &&
@@ -5722,7 +5794,7 @@ const buildInventoryInsightsFromResponses = (
   const backendSummaryDonutData = buildDonutDataFromInventoryAgeSummary(
     latestResponse?.inventory_age_summary
   );
-  const fallbackUnfulfillableRows = rawRows.filter(
+  const fallbackUnfulfillableRows = mergedRows.filter(
     (row) => !isInventoryTotalRow(row) && !isInventoryPercentageRow(row)
   );
   const fallbackUnfulfillableUnits = fallbackUnfulfillableRows.reduce(
@@ -9960,9 +10032,9 @@ lines.push(
   };
 
   const inventoryInsightsReportCountry = getInventoryInsightsReportCountry();
-  const showUsCurrentInventoryTable =
+  const showCurrentInventoryTableLayout =
     !isDemoMode &&
-    ["us", "usa", "united states"].includes(
+    ["uk", "united kingdom", "gb", "great britain", "us", "usa", "united states"].includes(
       String(inventoryInsightsReportCountry || "").trim().toLowerCase()
     );
 
@@ -11399,7 +11471,7 @@ lines.push(
                     heatmapExcelPeriodLabel={getInventoryInsightsPeriodLabel()}
                     salesLast30DaysLabel={salesLast30DaysLabel}
                     unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
-                    useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
+                    useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
                     storageCostCurrencySymbol={currencySymbol}
                   />
                 </>

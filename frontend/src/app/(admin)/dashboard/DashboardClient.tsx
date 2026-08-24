@@ -3101,8 +3101,8 @@ export default function DashboardPage() {
     const inventoryInsightsReportCountry =
         platform === "global" ? selectedGlobalInventoryCountry : countryName;
 
-    const showUsCurrentInventoryTable = useMemo(() => {
-        return ["us", "usa", "united states"].includes(
+    const showCurrentInventoryTableLayout = useMemo(() => {
+        return ["uk", "united kingdom", "gb", "great britain", "us", "usa", "united states"].includes(
             String(inventoryInsightsReportCountry || "").trim().toLowerCase()
         );
     }, [inventoryInsightsReportCountry]);
@@ -11431,7 +11431,7 @@ export default function DashboardPage() {
 
             // ✅ ADD same label as UI
             salesLast30DaysLabel: inventoryInsightsSalesLabel,
-            useCurrentInventoryTableLayout: showUsCurrentInventoryTable,
+            useCurrentInventoryTableLayout: showCurrentInventoryTableLayout,
             unitSalesDataKey: inventoryHeatmapUnitSalesDataKey,
             storageCostCurrencySymbol: currencySymbol,
         });
@@ -11448,7 +11448,7 @@ export default function DashboardPage() {
         inventoryAgeSummaryResponses,
         selectedAgeingTrendBucket,
         inventoryInsightsSalesLabel,
-        showUsCurrentInventoryTable,
+        showCurrentInventoryTableLayout,
         inventoryHeatmapUnitSalesDataKey,
         currencySymbol,
     ]);
@@ -13003,7 +13003,7 @@ export default function DashboardPage() {
                         countryName={countryName}
                         salesLast30DaysLabel={inventoryInsightsSalesLabel}
                         unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
-                        useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
+                        useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
                         storageCostCurrencySymbol={currencySymbol}
                     />
                 )}

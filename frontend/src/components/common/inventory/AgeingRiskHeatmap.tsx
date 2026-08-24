@@ -264,6 +264,40 @@ const isTotalHeatmapRow = (row: AgeingRiskHeatmapRow) => {
     );
 };
 
+const hasDisplayableNumber = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return false;
+
+    const n = Number(value);
+
+    return Number.isFinite(n) && n > 0;
+};
+
+const getWeightedCoverageRatio = (
+    rows: AgeingRiskHeatmapRow[],
+    unitSalesDataKey: AgeingRiskUnitSalesDataKey
+) => {
+    const rowsWithCoverage = rows.filter((row) =>
+        hasDisplayableNumber(row.coverageRatio)
+    );
+
+    if (!rowsWithCoverage.length) return undefined;
+
+    const weightedTotal = rowsWithCoverage.reduce((sum, row) => {
+        const unitSales = getUnitSalesValue(row, unitSalesDataKey);
+        const weight = unitSales > 0 ? unitSales : 1;
+
+        return sum + Number(row.coverageRatio) * weight;
+    }, 0);
+
+    const weightTotal = rowsWithCoverage.reduce((sum, row) => {
+        const unitSales = getUnitSalesValue(row, unitSalesDataKey);
+
+        return sum + (unitSales > 0 ? unitSales : 1);
+    }, 0);
+
+    return weightTotal > 0 ? weightedTotal / weightTotal : undefined;
+};
+
 const buildAggregateRow = (
     label: string,
     rows: AgeingRiskHeatmapRow[],
@@ -389,15 +423,15 @@ const buildAggregateRow = (
     aggregate.inventoryAlert = "";
 
     // ✅ For Others only:
-    // Coverage Ratio = aggregated available / selected unit-sales value
+    // Current coverage should summarize only real current coverage values.
+    // If the hidden rows show "-" in that column, keep Others blank too.
     if (flags?.isOthersRow) {
-        const totalAvailable = Number(aggregate.available || 0);
         const totalUnitSales = getUnitSalesValue(aggregate, unitSalesDataKey);
 
-        aggregate.coverageRatio =
-            totalUnitSales > 0
-                ? Number(aggregate.totalInStock || totalAvailable) / totalUnitSales
-                : 0;
+        aggregate.coverageRatio = getWeightedCoverageRatio(
+            rows,
+            unitSalesDataKey
+        );
 
         aggregate.coverageCurrentAndTransit =
             totalUnitSales > 0

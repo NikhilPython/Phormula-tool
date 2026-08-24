@@ -4165,8 +4165,8 @@ export default function InputCostPage({ params }: Params) {
     useState<"uk" | "us">("uk");
   const inventoryInsightsReportCountry =
     countryName === "global" ? selectedGlobalInventoryCountry : countryName;
-  const showUsCurrentInventoryTable =
-    ["us", "usa", "united states"].includes(
+  const showCurrentInventoryTableLayout =
+    ["uk", "united kingdom", "gb", "great britain", "us", "usa", "united states"].includes(
       String(inventoryInsightsReportCountry || "").trim().toLowerCase()
     );
 
@@ -6839,7 +6839,7 @@ export default function InputCostPage({ params }: Params) {
       dataRows: excelRows,
       showInventoryAlerts: false,
       salesLast30DaysLabel,
-      useCurrentInventoryTableLayout: showUsCurrentInventoryTable,
+      useCurrentInventoryTableLayout: showCurrentInventoryTableLayout,
       unitSalesDataKey: inventoryHeatmapUnitSalesDataKey,
       storageCostCurrencySymbol: getCurrencySymbol(
         getCurrencyForCountry(inventoryInsightsReportCountry)
@@ -7578,7 +7578,7 @@ export default function InputCostPage({ params }: Params) {
                     heatmapExcelBrandName={userData?.brand_name || ""}
                     salesLast30DaysLabel={salesLast30DaysLabel}
                     unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
-                    useCurrentInventoryTableLayout={showUsCurrentInventoryTable}
+                    useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
                     storageCostCurrencySymbol={getCurrencySymbol(
                       getCurrencyForCountry(inventoryInsightsReportCountry)
                     )}

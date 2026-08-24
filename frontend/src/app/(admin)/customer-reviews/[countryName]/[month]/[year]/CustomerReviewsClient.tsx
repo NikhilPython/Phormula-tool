@@ -199,6 +199,13 @@ function metricValue(value?: number, suffix = "") {
   return `${Math.round(value * 10) / 10}${suffix}`;
 }
 
+function ratingImpactValue(value: number | null) {
+  if (typeof value !== "number" || Number.isNaN(value)) return "NA";
+  const rounded = Math.round(value * 100) / 100;
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toFixed(2)}`;
+}
+
 function productName(product?: ProductOption | null, fallback?: string | null) {
   return product?.product_name || product?.title || fallback || "";
 }
@@ -208,7 +215,9 @@ function skuLabel(product?: ProductOption | null) {
 }
 
 function getTopicImpact(topic: Topic) {
-  const value = topic.asinMetrics?.starRatingImpact;
+  const value =
+    topic.asinMetrics?.starRatingImpact ??
+    topic.parentAsinMetrics?.starRatingImpact;
   return typeof value === "number" && !Number.isNaN(value) ? value : null;
 }
 
@@ -219,9 +228,7 @@ function getRatingImpactSummary(topics: Topic[]) {
 
   if (!impacts.length) return null;
 
-  return impacts.reduce((best, current) =>
-    Math.abs(current) > Math.abs(best) ? current : best
-  );
+  return impacts.reduce((total, current) => total + current, 0);
 }
 
 function findImpactForTopic(topic: Topic, impactTopics: Topic[]) {
@@ -659,12 +666,14 @@ function SentimentTrendOverview({
   negativeTopics,
   positiveReviewCount,
   negativeReviewCount,
+  ratingImpact,
   // loading = false,
 }: {
   positiveTopics: Topic[];
   negativeTopics: Topic[];
   positiveReviewCount: number;
   negativeReviewCount: number;
+  ratingImpact: number | null;
   // loading?: boolean;
 }) {
   const positiveTotal = Math.max(0, positiveReviewCount);
@@ -697,7 +706,7 @@ function SentimentTrendOverview({
     <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-col gap-1 border-b border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <PageBreadcrumb pageTitle="Review sentiment trends" align="left" textSize="xl" />
+          <PageBreadcrumb pageTitle="Review Analysis" align="left" textSize="xl" />
 
           {/* <h3 className="text-sm font-semibold text-gray-900">Review sentiment trends</h3> */}
 
@@ -705,14 +714,10 @@ function SentimentTrendOverview({
             <p className="mt-0.5 text-[11px] font-medium text-gray-500">Period {period}</p>
           )} */}
         </div>
-        {combinedTotal > 0 && (
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="rounded-full border border-green-500 bg-green-50 px-2.5 py-1 text-green-500">
-              Positive {metricValue(positivePct, "%")}
-            </span>
-            <span className="rounded-full border border-red-600 bg-red-50 px-2.5 py-1 text-red-600">
-              Negative {metricValue(negativePct, "%")}
-            </span>
+        {ratingImpact !== null && (
+          <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700">
+            <RatingStars value={ratingImpact} size="xs" />
+            <span>Product impact {ratingImpactValue(ratingImpact)}</span>
           </div>
         )}
       </div>
@@ -962,10 +967,6 @@ export default function CustomerReviewsClient() {
     () => getRatingImpactSummary(allTopics),
     [allTopics]
   );
-  const showRatingImpact = ratingImpact !== null;
-  const summaryGridClass = showRatingImpact
-    ? "md:grid-cols-2 xl:grid-cols-4"
-    : "md:grid-cols-3";
 
   const reviewStartDate = feedback?.topics?.dateRange?.startDate;
   const reviewEndDate = feedback?.topics?.dateRange?.endDate;
@@ -1425,6 +1426,7 @@ export default function CustomerReviewsClient() {
             negativeTopics={orderedNegativeTopics}
             positiveReviewCount={positiveReviewCount}
             negativeReviewCount={negativeReviewCount}
+            ratingImpact={ratingImpact}
           // loading={loading}
           />
 
