@@ -4859,6 +4859,8 @@ export default function DashboardPage() {
         setInvRows(parsed?.invRows ?? []);
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
         setInventoryInsightsData(parsed?.inventoryInsightsData ?? null);
+        setInventoryInsightResponses(parsed?.inventoryInsightResponses ?? []);
+        setInventoryAgeSummaryResponses(parsed?.inventoryAgeSummaryResponses ?? []);
         setInventoryInsightsError(parsed?.inventoryInsightsError ?? null);
         setInventoryUnavailableNotice(parsed?.inventoryUnavailableNotice ?? null);
         setSelectedAgeingTrendBucket(parsed?.selectedAgeingTrendBucket ?? "365+ days");
@@ -4872,6 +4874,9 @@ export default function DashboardPage() {
         setShopifyPrevRows(parsed?.shopifyPrevRows ?? []);
         setPreviousSkuwiseGlobalData(parsed?.previousSkuwiseGlobalData ?? null);
         setGlobalCountryPayloads(parsed?.globalCountryPayloads ?? {});
+        setDashboardActionItems(parsed?.dashboardActionItems ?? []);
+        setDashboardActionItemsError(parsed?.dashboardActionItemsError ?? null);
+        setDashboardActionItemsLoading(false);
 
         setLiveBiReady(!!parsed?.liveBiReady);
         setBiStatus(parsed?.biStatus ?? (parsed?.biDailySeries ? "ready" : "idle"));
@@ -8203,7 +8208,7 @@ export default function DashboardPage() {
         const finalLastRefreshAt = lastRefreshAt ?? Date.now();
 
         return {
-            schemaVersion: 2,
+            schemaVersion: 3,
             complete: true,
             source: "dashboard_client",
             data,
@@ -8222,6 +8227,8 @@ export default function DashboardPage() {
             inventoryAlerts,
 
             inventoryInsightsData,
+            inventoryInsightResponses,
+            inventoryAgeSummaryResponses,
             inventoryInsightsError,
             inventoryUnavailableNotice,
             selectedAgeingTrendBucket,
@@ -8235,6 +8242,8 @@ export default function DashboardPage() {
             shopifyPrevRows,
             previousSkuwiseGlobalData,
             globalCountryPayloads,
+            dashboardActionItems,
+            dashboardActionItemsError,
 
             liveBiReady,
             biStatus,
@@ -8256,6 +8265,8 @@ export default function DashboardPage() {
         invRows,
         inventoryAlerts,
         inventoryInsightsData,
+        inventoryInsightResponses,
+        inventoryAgeSummaryResponses,
         inventoryInsightsError,
         inventoryUnavailableNotice,
         selectedAgeingTrendBucket,
@@ -8267,6 +8278,8 @@ export default function DashboardPage() {
         shopifyPrevRows,
         previousSkuwiseGlobalData,
         globalCountryPayloads,
+        dashboardActionItems,
+        dashboardActionItemsError,
         liveBiReady,
         biStatus,
         lastRefreshAt,
@@ -8363,7 +8376,8 @@ export default function DashboardPage() {
             !biLoading &&
             !invLoading &&
             !monthlySpLoading &&
-            !shopifyLoading;
+            !shopifyLoading &&
+            !dashboardActionItemsLoading;
 
         if (!shouldPersist) return;
 
@@ -8392,6 +8406,9 @@ export default function DashboardPage() {
         invRows,
         monthlySpRows,
         monthlySpTotalSpend,
+        dashboardActionItems,
+        dashboardActionItemsError,
+        dashboardActionItemsLoading,
         cacheSaveTick,
     ]);
 
@@ -12257,13 +12274,11 @@ export default function DashboardPage() {
             });
         });
 
-        const ageingForPeriod = (period: { monthName: string; year: number }) => {
-            const monthNumber = inventoryMonthIndexMap[period.monthName.toLowerCase()] + 1;
-            const ageing = ageingByPeriod.get(`${period.year}-${monthNumber}`) ?? {
-                age181To270: 0,
-                age271To365: 0,
-                age365Plus: 0,
-            };
+        const buildAgeingFields = (ageing: {
+            age181To270: number;
+            age271To365: number;
+            age365Plus: number;
+        }) => {
             return {
                 aged_inventory_181_270: ageing.age181To270,
                 aged_inventory_271_365: ageing.age271To365,
@@ -12271,6 +12286,81 @@ export default function DashboardPage() {
                 aged_inventory_180_plus:
                     ageing.age181To270 + ageing.age271To365 + ageing.age365Plus,
             };
+        };
+
+        const getCachedTrendBucketValue = (
+            bucketValue: string,
+            period: { monthName: string; year: number }
+        ) => {
+            const monthShort = period.monthName.slice(0, 3).toLowerCase();
+            const bucketSeries = inventoryInsightsData?.trendAllSeriesData?.find(
+                (series) => series.bucketValue === bucketValue
+            );
+            const point = bucketSeries?.data?.find((item) => {
+                const labelMonth = String(item?.label ?? "")
+                    .trim()
+                    .slice(0, 3)
+                    .toLowerCase();
+                return labelMonth === monthShort;
+            });
+
+            return point ? toNumber(point.value) : null;
+        };
+
+        const getCachedAgeingForPeriod = (
+            period: { monthName: string; year: number }
+        ) => {
+            const trendValues = {
+                age181To270: getCachedTrendBucketValue("181-270 days", period),
+                age271To365: getCachedTrendBucketValue("271-365 days", period),
+                age365Plus: getCachedTrendBucketValue("365+ days", period),
+            };
+
+            const hasTrendValue = Object.values(trendValues).some(
+                (value) => value !== null
+            );
+
+            if (hasTrendValue) {
+                return {
+                    age181To270: trendValues.age181To270 ?? 0,
+                    age271To365: trendValues.age271To365 ?? 0,
+                    age365Plus: trendValues.age365Plus ?? 0,
+                };
+            }
+
+            const isCurrentPeriod =
+                period.monthName.toLowerCase() === currentDisplayMonth.monthName.toLowerCase() &&
+                period.year === currentDisplayMonth.year;
+            const summaryColumns = inventoryInsightsData?.inventoryAgeSummary?.columns;
+
+            if (isCurrentPeriod && summaryColumns) {
+                return {
+                    age181To270: toNumber(
+                        summaryColumns["inv-age-181-to-270-days"]?.total
+                    ),
+                    age271To365: toNumber(
+                        summaryColumns["inv-age-271-to-365-days"]?.total
+                    ),
+                    age365Plus: toNumber(
+                        summaryColumns["inv-age-365-plus-days"]?.total
+                    ),
+                };
+            }
+
+            return {
+                age181To270: 0,
+                age271To365: 0,
+                age365Plus: 0,
+            };
+        };
+
+        const ageingForPeriod = (period: { monthName: string; year: number }) => {
+            const monthNumber = inventoryMonthIndexMap[period.monthName.toLowerCase()] + 1;
+            const ageing =
+                ageingByPeriod.get(`${period.year}-${monthNumber}`) ??
+                getCachedAgeingForPeriod(period);
+
+            return buildAgeingFields(ageing);
         };
 
         const currentAgeing = ageingForPeriod(currentDisplayMonth);
@@ -12436,6 +12526,7 @@ export default function DashboardPage() {
         grandTotalRowDisplay,
         previousSkuwiseGlobalData,
         inventoryAgeSummaryResponses,
+        inventoryInsightsData,
         data,
         platform,
         amazonDataCurrency,
