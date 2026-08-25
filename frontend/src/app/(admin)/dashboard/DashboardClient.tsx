@@ -128,6 +128,7 @@ import type {
     ActionCardItem,
     ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 
 
@@ -12740,9 +12741,12 @@ export default function DashboardPage() {
                         {/* ================= ACTION ITEMS ================= */}
                         <div className="border-t border-[#E6ECEF] pt-5">
                             <div className="mb-4">
-                                <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">
-                                    Action Items
-                                </h2>
+                               <PageBreadcrumb
+                                                                       pageTitle="Action Items"
+                                                                       variant="page"
+                                                                       align="left"
+                                                                       textSize="2xl"
+                                                                   />
 
                                 <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
                                     Priority actions based on your current business performance.
