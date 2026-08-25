@@ -646,10 +646,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const normalizedCountryName = (countryName || "").trim().toLowerCase();
   const isGlobalPage = normalizedCountryName === "global";
-  const isUsCountry =
-    normalizedCountryName === "us" ||
-    normalizedCountryName === "usa" ||
-    isGlobalPage;
+  const isUsCountry = [
+    "uk",
+    "united kingdom",
+    "gb",
+    "great britain",
+    "us",
+    "usa",
+    "united states",
+    "global",
+  ].includes(normalizedCountryName);
 
   const tableData = useMemo(() => {
     return normalizeRows(rows || []);
@@ -2545,11 +2551,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //     ? 9
   //     : 8;
 
-  const COLLAPSED_SUMMARY_ROW_COUNT =
-    (countryName || "").toLowerCase() === "us" ||
-      (countryName || "").toLowerCase() === "global"
-      ? 12
-      : 11;
+  const COLLAPSED_SUMMARY_ROW_COUNT = isUsCountry ? 12 : 11;
 
   const shouldScrollTable =
     productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
