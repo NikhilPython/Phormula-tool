@@ -2,6 +2,7 @@
 
 import React, { useId, useMemo, useState } from "react";
 import Loader from "@/components/loader/Loader";
+import PageBreadcrumb from "../common/PageBreadCrumb";
 
 export type ActionItemPriority = "Critical" | "High" | "Medium" | "Opportunity";
 export type ActionItemCategory = "Inventory & Dispatch" | "Ads" | "Finance" | "Returns";
@@ -1416,7 +1417,12 @@ export function BusinessAnalysisView({
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-3">
         <div>
-          <h2 className="min-[1700px]:text-2xl text-lg font-semibold text-[#17304F]">Business Analysis</h2>
+          <PageBreadcrumb
+            pageTitle="Business Analysis"
+            variant="page"
+            align="left"
+            textSize="2xl"
+          />
           <p className="min-[1700px]:text-sm text-xs text-[#50627A]">Key business metrics and month-over-month movement.</p>
         </div>
       </div>
