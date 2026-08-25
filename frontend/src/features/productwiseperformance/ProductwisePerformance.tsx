@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import NextImage from "next/image";
 import "@/lib/chartSetup";
 import {
   Chart as ChartJS,
@@ -31,8 +32,11 @@ import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { PlatformId, platformToCountryName } from "@/lib/utils/platforms";
 import ProductJourneyInlineGraph from "@/components/businessInsight/ProductJourneyInlineGraph";
-import ProductSearchDropdown from "@/components/products/ProductSearchDropdown";
+import ProductSearchDropdown, {
+  ProductSearchProduct,
+} from "@/components/products/ProductSearchDropdown";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 ChartJS.register(
   CategoryScale,
@@ -55,6 +59,7 @@ interface ProductwisePerformanceProps {
   initialProductName?: string;
   sharedInsightData?: SharedInsightData;
   sharedInsightLoading?: boolean;
+  periodSkuRows?: any[];
 }
 
 const toSlug = (name: string) => encodeURIComponent(name.trim());
@@ -202,6 +207,100 @@ type SharedInsightData = {
   drawerPeriodText?: string;
 };
 
+type SkuJourneySectionTab =
+  | "overall"
+  | "performanceJourney"
+  | "productJourney";
+
+const SKU_JOURNEY_SECTION_OPTIONS: {
+  value: SkuJourneySectionTab;
+  label: string;
+}[] = [
+    { value: "overall", label: "Performance Summary" },
+    { value: "performanceJourney", label: "Performance Journey" },
+    { value: "productJourney", label: "Product Journey" },
+  ];
+
+type ProductImageMeta = Pick<
+  ProductSearchProduct,
+  | "product_name"
+  | "sku"
+  | "sku_us"
+  | "sku_uk"
+  | "sku_canada"
+  | "asin"
+  | "title"
+  | "main_image_url"
+  | "marketplace_id"
+>;
+
+const isAggregateProductName = (value?: string | null) => {
+  const key = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+  return ["total", "other", "others", "other sku", "other skus"].includes(key);
+};
+
+const isMissingProductLabel = (value: unknown) => {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "number" && Number.isNaN(value)) return true;
+
+  const key = String(value).trim().toLowerCase();
+  return (
+    key === "" ||
+    key === "0" ||
+    key === "-" ||
+    key === "nan" ||
+    key === "none" ||
+    key === "null" ||
+    key === "undefined"
+  );
+};
+
+const cleanProductLabel = (value: unknown) =>
+  isMissingProductLabel(value) ? "" : String(value).trim();
+
+function ProductImageThumb({
+  productName,
+  imageUrl,
+  size = "small",
+}: {
+  productName: string;
+  imageUrl?: string | null;
+  size?: "small" | "large";
+}) {
+  const [failed, setFailed] = useState(false);
+  const cleanImageUrl = String(imageUrl || "").trim();
+  const initial = productName.trim().slice(0, 1).toUpperCase() || "P";
+  const sizeClass = size === "large" ? "h-24 w-24" : "h-12 w-12";
+  const imageSize = size === "large" ? 96 : 48;
+  const textClass = size === "large" ? "text-lg" : "text-sm";
+
+  if (cleanImageUrl && !failed) {
+    return (
+      <NextImage
+        unoptimized
+        src={cleanImageUrl}
+        alt={productName || "Product image"}
+        width={imageSize}
+        height={imageSize}
+        onError={() => setFailed(true)}
+        className={`${sizeClass} shrink-0 rounded-md border border-gray-200 bg-white object-contain`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClass} flex shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50 font-bold text-[#5EA68E] ${textClass}`}
+    >
+      {initial}
+    </div>
+  );
+}
+
 const currencySymbolFromCode = (code: string) => {
   const c = (code || "").toUpperCase();
   if (c === "USD") return "$";
@@ -261,6 +360,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   initialProductName = "",
   sharedInsightData,
   sharedInsightLoading = false,
+  periodSkuRows,
 }) => {
   const { homeCurrency, setHomeCurrency, formatHomeAmount } = useFx();
   const { data: userData } = useGetUserDataQuery();
@@ -302,6 +402,12 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   const [selectedProductName, setSelectedProductName] =
     useState(initialProductName);
+  const [activeJourneyTab, setActiveJourneyTab] =
+    useState<SkuJourneySectionTab>("overall");
+  const [productCatalog, setProductCatalog] = useState<ProductImageMeta[]>([]);
+  const [selectedProductMeta, setSelectedProductMeta] =
+    useState<ProductImageMeta | null>(null);
+  const autoSelectedProductRef = useRef("");
 
   const routeCountryName = (params?.countryName as string) || undefined;
   const monthParam = (params?.month as string) || undefined;
@@ -355,6 +461,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   }, []);
 
   const platformCountryName = platformToCountryName(activePlatform);
+  const productCatalogCountry = String(
+    countryName || platformCountryName || countryNameProp || "us"
+  )
+    .trim()
+    .toLowerCase();
 
 
 
@@ -434,6 +545,97 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
   const selectedYear = embedded
     ? selectedYearProp ?? ""
     : internalSelectedYear;
+
+  const productCatalogHomeCurrency = productCatalogCountry.startsWith("global")
+    ? profileHomeCurrency
+    : viewCurrency;
+
+  useEffect(() => {
+    if (!authToken) return;
+
+    const ac = new AbortController();
+
+    const loadProductCatalog = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (productCatalogCountry) {
+          params.set("country", productCatalogCountry);
+        }
+        if (productCatalogHomeCurrency) {
+          params.set("homeCurrency", productCatalogHomeCurrency);
+        }
+        if (range && selectedYear) {
+          params.set("range", range);
+          params.set("year", String(selectedYear));
+
+          if (range === "monthly" && selectedMonth) {
+            params.set("month", selectedMonth);
+          }
+
+          if (range === "quarterly" && selectedQuarter) {
+            params.set("quarter", selectedQuarter);
+          }
+        }
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_names?${params.toString()}`,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+            },
+            signal: ac.signal,
+          }
+        );
+
+        const json = await response.json().catch(() => null);
+        if (!response.ok) return;
+
+        const rawProducts = Array.isArray(json?.products)
+          ? json.products
+          : Array.isArray(json?.product_names)
+            ? json.product_names
+            : [];
+
+        const nextCatalog: ProductImageMeta[] = rawProducts
+          .map((item: any) => {
+            if (typeof item === "string") {
+              return { product_name: item };
+            }
+
+            return {
+              product_name: String(item?.product_name || item?.title || "").trim(),
+              sku: item?.sku ?? null,
+              sku_us: item?.sku_us ?? null,
+              sku_uk: item?.sku_uk ?? null,
+              sku_canada: item?.sku_canada ?? null,
+              asin: item?.asin ?? null,
+              title: item?.title ?? null,
+              main_image_url: item?.main_image_url ?? null,
+              marketplace_id: item?.marketplace_id ?? null,
+            };
+          })
+          .filter((item: ProductImageMeta) => item.product_name.trim().length > 0);
+
+        setProductCatalog(nextCatalog);
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        setProductCatalog([]);
+      }
+    };
+
+    void loadProductCatalog();
+
+    return () => ac.abort();
+  }, [
+    authToken,
+    productCatalogCountry,
+    productCatalogHomeCurrency,
+    range,
+    selectedMonth,
+    selectedQuarter,
+    selectedYear,
+  ]);
 
   useEffect(() => {
     if (embedded) return;
@@ -608,6 +810,59 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       .replace(/\s+/g, " ")
       .replace(/[^\w\s-]/g, "");
 
+  const productCatalogMetaMap = useMemo(() => {
+    const map = new Map<string, ProductImageMeta>();
+
+    const addKey = (value: unknown, product: ProductImageMeta) => {
+      const key = normalizeTextKey(String(value || ""));
+      if (key && !map.has(key)) {
+        map.set(key, product);
+      }
+    };
+
+    productCatalog.forEach((product) => {
+      addKey(product.product_name, product);
+      addKey(product.title, product);
+      addKey(product.sku, product);
+      addKey(product.sku_us, product);
+      addKey(product.sku_uk, product);
+      addKey(product.sku_canada, product);
+      addKey(product.asin, product);
+    });
+
+    return map;
+  }, [productCatalog]);
+
+  const findProductImageMeta = (
+    ...values: (string | null | undefined)[]
+  ): ProductImageMeta | null => {
+    for (const value of values) {
+      const key = normalizeTextKey(String(value || ""));
+      const match = key ? productCatalogMetaMap.get(key) : null;
+      if (match) return match;
+    }
+
+    return null;
+  };
+
+  const toProductImageMeta = (
+    product?: ProductSearchProduct | ProductImageMeta | null
+  ): ProductImageMeta | null => {
+    if (!product?.product_name) return null;
+
+    return {
+      product_name: product.product_name,
+      sku: product.sku ?? null,
+      sku_us: product.sku_us ?? null,
+      sku_uk: product.sku_uk ?? null,
+      sku_canada: product.sku_canada ?? null,
+      asin: product.asin ?? null,
+      title: product.title ?? null,
+      main_image_url: product.main_image_url ?? null,
+      marketplace_id: product.marketplace_id ?? null,
+    };
+  };
+
   const blockToSkuInsight = (
     block: ProductInsightBlockForDrawer,
     recObj: any,
@@ -660,6 +915,50 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     );
   };
 
+  const periodSkuCatalogItems = useMemo<
+    Array<ProductInsightBlockForDrawer & { imageMeta: ProductImageMeta | null }>
+  >(() => {
+    if (!Array.isArray(periodSkuRows)) return [];
+
+    const items = new Map<
+      string,
+      ProductInsightBlockForDrawer & { imageMeta: ProductImageMeta | null }
+    >();
+
+    periodSkuRows.forEach((row) => {
+      const productName = cleanProductLabel(
+        row?.product_name ?? row?.productName ?? row?.["Product Name"]
+      );
+      const sku = cleanProductLabel(row?.sku ?? row?.SKU ?? row?.msku);
+      const asin = cleanProductLabel(row?.asin ?? row?.ASIN);
+      const name = productName || sku;
+
+      if (!name) return;
+      if (isAggregateProductName(name) || isAggregateProductName(sku)) return;
+
+      const identity = sku && sku !== "-" ? sku : name;
+      const key = normalizeTextKey(identity);
+      if (!key || items.has(key)) return;
+
+      const sharedBlock =
+        findSharedInsightBlock(productName, sharedInsightData) ||
+        findSharedInsightBlock(sku, sharedInsightData);
+
+      items.set(key, {
+        name,
+        skuKey: sku,
+        metrics: sharedBlock?.metrics || [],
+        journeyBullets: sharedBlock?.journeyBullets || [],
+        recommendationBullets: sharedBlock?.recommendationBullets || [],
+        inventoryBullets: sharedBlock?.inventoryBullets || [],
+        includedSkus: sharedBlock?.includedSkus || [],
+        imageMeta: findProductImageMeta(sku, productName, asin),
+      });
+    });
+
+    return Array.from(items.values());
+  }, [periodSkuRows, productCatalogMetaMap, sharedInsightData]);
+
 
 
   const getSharedRecObj = (
@@ -684,11 +983,20 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     );
   };
 
-  const handleInlineProductSelect = async (nextProductName: string) => {
+  const handleInlineProductSelect = async (
+    nextProductName: string,
+    product?: ProductSearchProduct | ProductImageMeta | null
+  ) => {
     const cleanProductName = String(nextProductName || "").trim();
     if (!cleanProductName) return;
+    if (isAggregateProductName(cleanProductName)) return;
+
+    const selectedMeta =
+      toProductImageMeta(product) ||
+      findProductImageMeta(cleanProductName, product?.sku, product?.asin);
 
     setSelectedProductName(cleanProductName);
+    setSelectedProductMeta(selectedMeta);
     setInsightsError(null);
     setIsDrawerOpen(true);
 
@@ -780,15 +1088,52 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
   useEffect(() => {
     if (!embedded) return;
+    if (!periodSkuCatalogItems.length) return;
+
+    const initialKey = normalizeTextKey(initialProductName || "");
+    const target =
+      (initialKey
+        ? periodSkuCatalogItems.find((item) => {
+          const itemKeys = [item.name, item.skuKey]
+            .map((value) => normalizeTextKey(String(value || "")))
+            .filter(Boolean);
+
+          return itemKeys.includes(initialKey);
+        })
+        : null) || periodSkuCatalogItems[0];
+
+    if (!target?.name) return;
+
+    const targetSignature = `${normalizeTextKey(target.skuKey || "")}:${normalizeTextKey(target.name)}`;
+    if (autoSelectedProductRef.current === targetSignature) return;
+
+    autoSelectedProductRef.current = targetSignature;
+
+    void handleInlineProductSelect(
+      target.name,
+      target.imageMeta || {
+        product_name: target.name,
+        sku: target.skuKey || null,
+      }
+    );
+  }, [embedded, initialProductName, periodSkuCatalogItems]);
+
+  useEffect(() => {
+    if (!embedded) return;
+    if (periodSkuCatalogItems.length > 0) return;
     if (!sharedInsightData?.blocks?.length) return;
 
     const selectedBlock =
       sharedInsightData.blocks.find(
         (b) =>
+          !b.isOtherSkus &&
+          !isAggregateProductName(b.name) &&
           normalizeTextKey(b.name) === normalizeTextKey(initialProductName || "")
       ) ||
-      sharedInsightData.blocks.find((b) => !b.isOtherSkus) ||
-      sharedInsightData.blocks[0];
+      sharedInsightData.blocks.find(
+        (b) => !b.isOtherSkus && !isAggregateProductName(b.name)
+      ) ||
+      sharedInsightData.blocks.find((b) => !isAggregateProductName(b.name));
 
     if (!selectedBlock) return;
 
@@ -799,7 +1144,11 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       "selected-product";
 
     // ✅ same product hai to state dobara set nahi hogi
-    if (selectedSku && skuInsights[selectedSku]) return;
+    if (
+      selectedSku &&
+      skuInsights[selectedSku] &&
+      !isAggregateProductName(skuInsights[selectedSku]?.product_name || selectedSku)
+    ) return;
 
     const recObj = getSharedRecObj(selectedBlock, sharedInsightData);
 
@@ -832,6 +1181,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     initialProductName,
     selectedSku,
   ]);
+
+  useEffect(() => {
+    setActiveJourneyTab("overall");
+  }, [selectedSku]);
 
   const mapApiBestPerformanceToDrawerShape = (
     apiBestPerformance: any
@@ -1259,8 +1612,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
     const filteredJourneyBullets = journeyBullets;
 
-    const displaySku = insightData.sku || selectedSku || "-";
-
     const graphProductName = insightData.isOtherSkus
       ? insightData.includedSkus?.[0]?.product_name ||
       insightData.product_name ||
@@ -1276,15 +1627,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       .trim()
       .toLowerCase();
 
-    const graphYear =
-      selectedYear !== "" && selectedYear !== undefined
-        ? Number(selectedYear)
-        : new Date().getFullYear();
-
     const renderPerformanceSummaryCard = () => {
       if (summaryLoading) {
         return (
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-3">
               <div className="h-9 w-9 animate-pulse rounded-full bg-slate-200" />
               <div className="space-y-2">
@@ -1304,7 +1650,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
       if (summaryError) {
         return (
-          <div className="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-xs text-red-700 sm:text-sm">
+          <div className="rounded-lg border border-red-100 bg-red-50 p-4 text-xs text-red-700 sm:text-sm">
             {summaryError}
           </div>
         );
@@ -1319,7 +1665,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       if (!overviewText && !parsedSummary.sections.length) return null;
 
       return (
-        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-3">
 
@@ -1341,7 +1687,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
           <div className="p-4">
             <div className="space-y-4 text-xs leading-6 text-charcoal-500 2xl:text-sm">
               {overviewText ? (
-                <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-4 py-3">
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-4 py-3">
                   <p className="leading-6">
                     {overviewText}
                   </p>
@@ -1419,196 +1765,415 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       return `${isNegative ? "▼" : "▲"} ${valueWithoutSign}`;
     };
 
+    const selectedPeriodLabel =
+      sharedInsightData?.drawerPeriodText || getHeadingPeriod();
+
+    const sharedCatalogItems = (sharedInsightData?.blocks || []).reduce<
+      Array<ProductInsightBlockForDrawer & { imageMeta: ProductImageMeta | null }>
+    >((items, block) => {
+      const name = String(block?.name || "").trim();
+      if (!name) return items;
+      if (block.isOtherSkus || isAggregateProductName(name)) return items;
+
+      const key = normalizeTextKey(name);
+      const exists = items.some(
+        (item) => normalizeTextKey(item.name) === key
+      );
+
+      if (!exists) {
+        items.push({
+          ...block,
+          imageMeta: findProductImageMeta(block.skuKey, block.name),
+        });
+      }
+      return items;
+    }, []);
+
+    const catalogItems = Array.isArray(periodSkuRows)
+      ? periodSkuCatalogItems
+      : sharedCatalogItems;
+
+    const selectedCatalogItem = catalogItems.find((item) =>
+      [item.name, item.skuKey]
+        .map((value) => normalizeTextKey(String(value || "")))
+        .filter(Boolean)
+        .some((key) =>
+          [
+            selectedProductName,
+            insightData.product_name,
+            selectedSku,
+          ]
+            .map((value) => normalizeTextKey(String(value || "")))
+            .filter(Boolean)
+            .includes(key)
+        )
+    );
+
+    const displaySku =
+      cleanProductLabel(insightData.sku) ||
+      cleanProductLabel(selectedProductMeta?.sku) ||
+      cleanProductLabel(selectedProductMeta?.sku_us) ||
+      cleanProductLabel(selectedProductMeta?.sku_uk) ||
+      cleanProductLabel(selectedProductMeta?.sku_canada) ||
+      cleanProductLabel(selectedCatalogItem?.skuKey) ||
+      cleanProductLabel(selectedCatalogItem?.imageMeta?.sku) ||
+      "-";
+
+    const activeCatalogKeys = [
+      displaySku,
+      insightData.product_name,
+      selectedSku,
+    ]
+      .map((value) => normalizeTextKey(String(value || "")))
+      .filter(Boolean);
+
+    const isCatalogItemActive = (block: ProductInsightBlockForDrawer) => {
+      const blockKeys = [block.skuKey, block.name]
+        .map((value) => normalizeTextKey(String(value || "")))
+        .filter(Boolean);
+
+      return blockKeys.some((key) => activeCatalogKeys.includes(key));
+    };
+
+    const hasBestPerformance = bestPerformanceCards.some((card) => card.data);
+    const catalogSelectedImageMeta = findProductImageMeta(
+      selectedProductMeta?.sku,
+      selectedProductMeta?.sku_us,
+      selectedProductMeta?.sku_uk,
+      selectedProductMeta?.sku_canada,
+      selectedProductMeta?.asin,
+      selectedProductMeta?.product_name,
+      selectedProductName,
+      displaySku,
+      insightData.sku,
+      insightData.product_name,
+      selectedSku
+    );
+    const selectedImageMeta =
+      selectedProductMeta?.main_image_url
+        ? selectedProductMeta
+        : catalogSelectedImageMeta ||
+        selectedProductMeta ||
+        findProductImageMeta(
+          displaySku,
+          insightData.sku,
+          insightData.product_name,
+          selectedSku
+        );
+
     return (
-      <div className="">
-        <div className="mb-2 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            {/* <div className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
-            Product Name
-          </div> */}
+      <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-[140px] lg:flex lg:h-[calc(100dvh-250px)] lg:flex-col">
+          <div className="shrink-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <PageBreadcrumb
+                pageTitle="Product Search"
+                variant="page"
+                align="left"
+                textSize="xl"
+              />
 
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-base font-bold text-[#414042] sm:text-xl lg:text-lg 2xl:text-2xl">
-                {insightData.product_name || selectedSku}
-              </span>
-
-              {sharedInsightData?.drawerPeriodText || getHeadingPeriod() ? (
-                <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                  {sharedInsightData?.drawerPeriodText || getHeadingPeriod()}
+              {catalogItems.length > 0 ? (
+                <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-[11px] font-semibold text-[#3e806b]">
+                  {catalogItems.length} products
                 </span>
               ) : null}
-
-
             </div>
-          </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="w-full sm:w-72">
-              <ProductSearchDropdown
-                authToken={authToken}
-                onProductSelect={handleInlineProductSelect}
-              />
-            </div>
-          </div>
-        </div>
-
-        {sortedMetrics.length > 0 && (
-          <div>
-            <PageBreadcrumb
-              pageTitle="Metrics"
-              variant="page"
-              align="left"
-              textSize="xl"
-              className="mb-2"
+            <ProductSearchDropdown
+              authToken={authToken}
+              countryName={productCatalogCountry}
+              range={range}
+              selectedMonth={selectedMonth}
+              selectedQuarter={selectedQuarter}
+              selectedYear={selectedYear}
+              homeCurrency={productCatalogHomeCurrency}
+              dedupeBy="sku"
+              onProductSelect={handleInlineProductSelect}
             />
+          </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              {sortedMetrics.map((m, i) => {
-                const { main, delta } = splitMetricValue(m.value);
-
-                // ✅ Dummy mode:
-                // every metric shows plain 0
-                // no currency formatting
-                // no percentage
-                // no delta 
-                const displayMain = isPreviewMode
-                  ? "0"
-                  : formatRecommendationCardMainValue(
-                    m.label,
-                    main
-                  );
-
-                const formattedTitle = m.label
-                  .replace(/\b\w/g, (char) => char.toUpperCase())
-                  .replace("Cm1", "CM1");
-
-                const isNegativeDelta = delta?.includes("-");
+          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+            {catalogItems.length > 0 ? (
+              catalogItems.map((block) => {
+                const active = isCatalogItemActive(block);
+                const skuText = String(block.skuKey || block.imageMeta?.sku || "").trim();
 
                 return (
-                  <div
-                    key={`${m.label}-${i}`}
+                  <button
+                    key={`${block.name}-${skuText || "product"}`}
+                    type="button"
+                    onClick={() => void handleInlineProductSelect(block.name, block.imageMeta)}
                     className={[
-                      "w-full rounded-xl bg-white shadow-sm p-3",
-                      "h-[82px] flex flex-col justify-between",
-                      getMetricCardAccentClass(m.label, i),
+                      "w-full rounded-md border p-3 text-left transition",
+                      active
+                        ? "border-[#5EA68E] bg-[#5EA68E]/10"
+                        : "border-gray-200 bg-white hover:bg-gray-50",
                     ].join(" ")}
                   >
-                    <div>
-                      <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-                        {formattedTitle}
-                      </span>
+                    {/* <div className="flex items-center gap-3">
+                      <ProductImageThumb
+                        productName={block.name}
+                        imageUrl={block.imageMeta?.main_image_url}
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-sm font-semibold text-charcoal-500">
+                          {block.name}
+                        </div>
+
+                        {skuText ? (
+                          <div className="mt-1 truncate text-[11px] font-medium text-gray-500">
+                            SKU: {skuText}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div> */}
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 text-sm font-semibold text-charcoal-500">
+                          {block.name}
+                        </div>
+                      </div>
+
+                      <ProductImageThumb
+                        productName={block.name}
+                        imageUrl={block.imageMeta?.main_image_url}
+                      />
                     </div>
 
-                    <div className="flex items-end leading-tight tabular-nums">
-                      <span className="text-sm 2xl:text-lg font-semibold text-charcoal-500">
-                        {displayMain}
-                      </span>
-
-                      {/* ✅ Deltas only for real data */}
-                      {!isPreviewMode && delta && (
-                        <span
-                          className={[
-                            "ml-auto text-[10px] 2xl:text-xs font-semibold whitespace-nowrap",
-                            isNegativeDelta
-                              ? "text-red-600"
-                              : "text-emerald-600",
-                          ].join(" ")}
-                        >
-                          {formatMetricDelta(delta)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  </button>
                 );
-              })}
-            </div>
+              })
+            ) : (
+              <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">
+                Search for a product to load SKU journey insights.
+              </div>
+            )}
           </div>
-        )}
+        </aside>
 
-        {insightData.best_performance && (
-          <div className="mt-5">
-            <PageBreadcrumb
-              pageTitle="Overall Best Performance"
-              variant="page"
-              align="left"
-              textSize="xl"
-            />
+        <main className="flex min-w-0 flex-col gap-4">
+          <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <ProductImageThumb
+                productName={insightData.product_name || selectedSku || "Product"}
+                imageUrl={selectedImageMeta?.main_image_url}
+                size="large"
+              />
 
-            <p className="mb-2 text-xs 2xl:text-sm text-charcoal-500 mt-1">
-              Best performance is calculated from overall historical data.
-            </p>
+              <div className="flex min-w-0 flex-1 flex-col justify-center">
+                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <PageBreadcrumb
+                      pageTitle={insightData.product_name || selectedSku || "Product"}
+                      variant="page"
+                      align="left"
+                      textSize="2xl"
+                    />
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-              {bestPerformanceCards.map((card, index) => (
-                <div
-                  key={card.label}
-                  className={[
-                    "w-full rounded-xl bg-white shadow-sm p-3 2xl:p-3",
-                    "flex flex-col justify-between min-h-[78px]",
-                    getMetricCardAccentClass(card.label, index),
-                  ].join(" ")}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] 2xl:text-xs font-medium text-charcoal-500">
-                      {card.label}
-                    </span>
+                    {selectedPeriodLabel ? (
+                      <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-xs font-semibold text-[#3e806b]">
+                        {selectedPeriodLabel}
+                      </span>
+                    ) : null}
                   </div>
 
-                  <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
-                    <div className="min-w-0">
-                      <div className="text-[10px] 2xl:text-xs font-medium text-charcoal-500 whitespace-nowrap">
-                        {formatPerfMonth(card.data?.month, card.data?.year)}
-                      </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                    {displaySku && displaySku !== "-" ? (
+                      <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700">
+                        SKU: {displaySku}
+                      </span>
+                    ) : null}
 
-                      <div className="mt-1 text-sm 2xl:text-lg font-semibold text-charcoal-500 whitespace-nowrap">
-                        {formatPerfValue(card.label, card.data?.value)}
-                      </div>
-                    </div>
+                    {insightData.isOtherSkus ? (
+                      <span className="rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">
+                        Other SKUs
+                      </span>
+                    ) : null}
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
+
+            {sortedMetrics.length > 0 ? (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <PageBreadcrumb
+                  pageTitle="Metrics"
+                  variant="page"
+                  align="left"
+                  textSize="xl"
+                  className="mb-2"
+                />
+
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                  {sortedMetrics.map((m, i) => {
+                    const { main, delta } = splitMetricValue(m.value);
+                    const displayMain = isPreviewMode
+                      ? "0"
+                      : formatRecommendationCardMainValue(
+                        m.label,
+                        main
+                      );
+
+                    const formattedTitle = m.label
+                      .replace(/\b\w/g, (char) => char.toUpperCase())
+                      .replace("Cm1", "CM1");
+
+                    const isNegativeDelta = delta?.includes("-");
+
+                    return (
+                      <div
+                        key={`${m.label}-${i}`}
+                        className={[
+                          "w-full rounded-lg bg-white p-3 shadow-sm",
+                          "h-[82px] flex flex-col justify-between",
+                          getMetricCardAccentClass(m.label, i),
+                        ].join(" ")}
+                      >
+                        <div>
+                          <span className="text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                            {formattedTitle}
+                          </span>
+                        </div>
+
+                        <div className="flex items-end leading-tight tabular-nums">
+                          <span className="text-sm font-semibold text-charcoal-500 2xl:text-lg">
+                            {displayMain}
+                          </span>
+
+                          {!isPreviewMode && delta && (
+                            <span
+                              className={[
+                                "ml-auto whitespace-nowrap text-[10px] font-semibold 2xl:text-xs",
+                                isNegativeDelta
+                                  ? "text-red-600"
+                                  : "text-emerald-600",
+                              ].join(" ")}
+                            >
+                              {formatMetricDelta(delta)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                Metrics are unavailable for this product.
+              </div>
+            )}
+          </section>
+
+          <div className="overflow-x-auto pb-1">
+            <SegmentedToggle<SkuJourneySectionTab>
+              value={activeJourneyTab}
+              options={SKU_JOURNEY_SECTION_OPTIONS}
+              onChange={setActiveJourneyTab}
+              className="max-w-full"
+              textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+              compact
+            />
           </div>
-        )}
 
-        {renderPerformanceSummaryCard()}
+          {activeJourneyTab === "overall" && (
+            <div className="space-y-4">
+              <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <PageBreadcrumb
+                  pageTitle="Overall Best Performance"
+                  variant="page"
+                  align="left"
+                  textSize="xl"
+                />
 
-        <div className="mt-5">
-          <ProductJourneyInlineGraph
-            productname={graphProductName || ""}
-            countryName={graphCountryName}
-            displayCurrency={homeCurrency as any}
-            isOtherSkus={!!insightData.isOtherSkus}
-            otherSkuProductNames={
-              insightData.isOtherSkus
-                ? (insightData.includedSkus || []).map(
-                  (item) => item.product_name
-                )
-                : []
-            }
-            isPreviewMode={isPreviewMode}
-          />
-        </div>
+                <p className="mb-3 mt-1 text-xs text-charcoal-500 2xl:text-sm">
+                  Best performance is calculated from overall historical data.
+                </p>
 
-        <div className="mt-5 pb-2 w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <PageBreadcrumb
-            pageTitle="Product Summary"
-            variant="page"
-            align="left"
-            textSize="xl"
-            className="mb-2"
-          />
+                {hasBestPerformance ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                    {bestPerformanceCards.map((card, index) => (
+                      <div
+                        key={card.label}
+                        className={[
+                          "w-full rounded-lg bg-white p-3 shadow-sm 2xl:p-3",
+                          "flex min-h-[78px] flex-col justify-between",
+                          getMetricCardAccentClass(card.label, index),
+                        ].join(" ")}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                            {card.label}
+                          </span>
+                        </div>
 
-          {filteredJourneyBullets.length > 0 ? (
-            <ol className="list-decimal space-y-1 pl-4 text-xs leading-6 text-charcoal-500 2xl:text-sm marker:font-semibold marker:text-charcoal-400">
-              {filteredJourneyBullets.map((item, index) => (
-                <li key={index}>{item}</li>
-              ))}
-            </ol>
-          ) : (
-            <div className="text-xs 2xl:text-sm text-charcoal-500">—</div>
+                        <div className="mt-1 flex items-end justify-between gap-3 leading-tight tabular-nums">
+                          <div className="min-w-0">
+                            <div className="whitespace-nowrap text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                              {formatPerfMonth(card.data?.month, card.data?.year)}
+                            </div>
+
+                            <div className="mt-1 whitespace-nowrap text-sm font-semibold text-charcoal-500 2xl:text-lg">
+                              {formatPerfValue(card.label, card.data?.value)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    Overall best performance data is unavailable for this product.
+                  </div>
+                )}
+              </section>
+
+              {renderPerformanceSummaryCard()}
+            </div>
           )}
-        </div>
+
+          {activeJourneyTab === "performanceJourney" && (
+            <ProductJourneyInlineGraph
+              productname={graphProductName || ""}
+              countryName={graphCountryName}
+              displayCurrency={homeCurrency as any}
+              isOtherSkus={!!insightData.isOtherSkus}
+              otherSkuProductNames={
+                insightData.isOtherSkus
+                  ? (insightData.includedSkus || []).map(
+                    (item) => item.product_name
+                  )
+                  : []
+              }
+              isPreviewMode={isPreviewMode}
+            />
+          )}
+
+          {activeJourneyTab === "productJourney" && (
+            <section className="w-full rounded-lg border border-slate-200 bg-white p-4 pb-2 shadow-sm">
+              <PageBreadcrumb
+                pageTitle="Product Journey"
+                variant="page"
+                align="left"
+                textSize="xl"
+                className="mb-2"
+              />
+
+              {filteredJourneyBullets.length > 0 ? (
+                <ol className="list-decimal space-y-1 pl-4 text-xs leading-6 text-charcoal-500 marker:font-semibold marker:text-charcoal-400 2xl:text-sm">
+                  {filteredJourneyBullets.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ol>
+              ) : (
+                <div className="text-xs text-charcoal-500 2xl:text-sm">-</div>
+              )}
+            </section>
+          )}
+        </main>
       </div>
     );
   };

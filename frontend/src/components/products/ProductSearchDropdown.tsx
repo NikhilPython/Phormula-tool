@@ -1,44 +1,233 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import NextImage from "next/image";
 
-interface Product {
+export interface ProductSearchProduct {
   product_name: string;
+  sku?: string | null;
+  sku_us?: string | null;
+  sku_uk?: string | null;
+  sku_canada?: string | null;
+  asin?: string | null;
+  title?: string | null;
+  brand?: string | null;
+  marketplace_id?: string | null;
+  main_image_url?: string | null;
 }
 
 interface ProductSearchDropdownProps {
   authToken?: string | null;
-  onProductSelect: (productName: string) => void;
+  countryName?: string;
+  range?: string;
+  selectedMonth?: string;
+  selectedQuarter?: string;
+  selectedYear?: string | number | "";
+  homeCurrency?: string;
+  dedupeBy?: "product" | "sku";
+  onProductSelect: (
+    productName: string,
+    product?: ProductSearchProduct
+  ) => void;
 }
 
+const normalizeProductNameKey = (value?: string | null) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const isAggregateProductName = (value?: string | null) => {
+  const key = normalizeProductNameKey(value);
+  return ["total", "other", "others", "other sku", "other skus"].includes(key);
+};
+
+const productOptionScore = (product: ProductSearchProduct) => {
+  let score = 0;
+  if (product.main_image_url) score += 8;
+  if (product.asin) score += 4;
+  if (product.sku) score += 2;
+  if (product.title) score += 1;
+  return score;
+};
+
+const dedupeProductsByName = (
+  products: ProductSearchProduct[]
+): ProductSearchProduct[] => {
+  const byName = new Map<string, ProductSearchProduct>();
+
+  products.forEach((product) => {
+    const productName = product.product_name.trim();
+    if (!productName || isAggregateProductName(productName)) return;
+
+    const key = normalizeProductNameKey(productName);
+    const current = byName.get(key);
+
+    if (!current) {
+      byName.set(key, { ...product, product_name: productName });
+      return;
+    }
+
+    const merged: ProductSearchProduct = {
+      ...current,
+      asin: current.asin || product.asin,
+      sku: current.sku || product.sku,
+      sku_us: current.sku_us || product.sku_us,
+      sku_uk: current.sku_uk || product.sku_uk,
+      sku_canada: current.sku_canada || product.sku_canada,
+      title: current.title || product.title,
+      brand: current.brand || product.brand,
+      marketplace_id: current.marketplace_id || product.marketplace_id,
+      main_image_url: current.main_image_url || product.main_image_url,
+    };
+
+    byName.set(
+      key,
+      productOptionScore(product) > productOptionScore(merged)
+        ? { ...merged, ...product, product_name: productName }
+        : merged
+    );
+  });
+
+  return Array.from(byName.values());
+};
+
+const normalizeSkuKey = (product: ProductSearchProduct) =>
+  normalizeProductNameKey(
+    product.sku || product.sku_us || product.sku_uk || product.sku_canada
+  );
+
+const dedupeProductsBySku = (
+  products: ProductSearchProduct[]
+): ProductSearchProduct[] => {
+  const bySku = new Map<string, ProductSearchProduct>();
+
+  products.forEach((product) => {
+    const productName = product.product_name.trim();
+    if (!productName || isAggregateProductName(productName)) return;
+
+    const skuKey = normalizeSkuKey(product);
+    const key = skuKey
+      ? `sku:${skuKey}`
+      : `name:${normalizeProductNameKey(productName)}`;
+
+    const current = bySku.get(key);
+
+    if (!current) {
+      bySku.set(key, { ...product, product_name: productName });
+      return;
+    }
+
+    const merged: ProductSearchProduct = {
+      ...current,
+      asin: current.asin || product.asin,
+      sku: current.sku || product.sku,
+      sku_us: current.sku_us || product.sku_us,
+      sku_uk: current.sku_uk || product.sku_uk,
+      sku_canada: current.sku_canada || product.sku_canada,
+      title: current.title || product.title,
+      brand: current.brand || product.brand,
+      marketplace_id: current.marketplace_id || product.marketplace_id,
+      main_image_url: current.main_image_url || product.main_image_url,
+    };
+
+    bySku.set(
+      key,
+      productOptionScore(product) > productOptionScore(merged)
+        ? { ...merged, ...product, product_name: productName }
+        : merged
+    );
+  });
+
+  return Array.from(bySku.values());
+};
+
 // helper: accept array of strings OR array of objects
-const normalizeProducts = (raw: any): Product[] => {
+const normalizeProducts = (
+  raw: any,
+  dedupeBy: "product" | "sku" = "product"
+): ProductSearchProduct[] => {
   if (!Array.isArray(raw)) return [];
 
   if (raw.length === 0) return [];
 
+  const dedupe = dedupeBy === "sku" ? dedupeProductsBySku : dedupeProductsByName;
+
   // case 1: ["A", "B", ...]
   if (typeof raw[0] === "string") {
-    return raw.map((name) => ({ product_name: name as string }));
+    return dedupe(
+      raw.map((name) => ({ product_name: name as string }))
+    );
   }
 
   // case 2: [{product_name: "A"}, ...]
   if (typeof raw[0] === "object" && raw[0] !== null) {
-    return raw
-      .filter((item) => typeof item.product_name === "string")
-      .map((item) => ({ product_name: item.product_name }));
+    const products = raw
+      .map((item) => ({
+        product_name:
+          typeof item.product_name === "string"
+            ? item.product_name
+            : typeof item.title === "string"
+              ? item.title
+              : "",
+        sku: item.sku ?? null,
+        sku_us: item.sku_us ?? null,
+        sku_uk: item.sku_uk ?? null,
+        sku_canada: item.sku_canada ?? null,
+        asin: item.asin ?? null,
+        title: item.title ?? null,
+        brand: item.brand ?? null,
+        marketplace_id: item.marketplace_id ?? null,
+        main_image_url: item.main_image_url ?? null,
+      }))
+      .filter((item) => item.product_name.trim().length > 0);
+
+    return dedupe(products);
   }
 
   return [];
 };
 
+function ProductSearchThumb({ product }: { product: ProductSearchProduct }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = String(product.main_image_url || "").trim();
+  const label = product.product_name.trim().slice(0, 1).toUpperCase() || "P";
+
+  if (imageUrl && !failed) {
+    return (
+      <NextImage
+        unoptimized
+        src={imageUrl}
+        alt={product.product_name}
+        width={40}
+        height={40}
+        onError={() => setFailed(true)}
+        className="h-10 w-10 shrink-0 rounded-md border border-gray-200 bg-white object-contain"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50 text-xs font-bold text-[#5EA68E]">
+      {label}
+    </div>
+  );
+}
+
 const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
   authToken,
+  countryName,
+  range,
+  selectedMonth,
+  selectedQuarter,
+  selectedYear,
+  homeCurrency,
+  dedupeBy = "product",
   onProductSelect,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<Product[]>([]);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [searchResults, setSearchResults] = useState<ProductSearchProduct[]>([]);
+  const [allProducts, setAllProducts] = useState<ProductSearchProduct[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [allLoading, setAllLoading] = useState(false);
@@ -48,6 +237,31 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
   const hasSearch = searchQuery.trim().length > 0;
   const displayedProducts = hasSearch ? searchResults : allProducts;
 
+  useEffect(() => {
+    setAllProducts([]);
+    setSearchResults([]);
+    setHasLoadedAll(false);
+  }, [countryName, range, selectedMonth, selectedQuarter, selectedYear, homeCurrency, dedupeBy]);
+
+  const appendPeriodParams = (params: URLSearchParams) => {
+    if (countryName) params.set("country", countryName);
+    if (homeCurrency) params.set("homeCurrency", homeCurrency);
+
+    if (!range || !selectedYear) return;
+    if (!["monthly", "quarterly", "yearly"].includes(range)) return;
+
+    params.set("range", range);
+    params.set("year", String(selectedYear));
+
+    if (range === "monthly" && selectedMonth) {
+      params.set("month", selectedMonth);
+    }
+
+    if (range === "quarterly" && selectedQuarter) {
+      params.set("quarter", selectedQuarter);
+    }
+  };
+
   // -------- Fetch ALL products (for dropdown) --------
   const fetchAllProducts = async () => {
     if (hasLoadedAll) return;
@@ -55,7 +269,11 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       setAllLoading(true);
       setLoadError(null);
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_names`, {
+      const params = new URLSearchParams();
+      appendPeriodParams(params);
+
+      const query = params.toString();
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_names${query ? `?${query}` : ""}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${authToken ?? ""}`,
@@ -69,7 +287,8 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
 
       // tries multiple keys in case backend uses a different name
       const list = normalizeProducts(
-        json.product_names ?? json.products ?? json.product_list
+        json.product_names ?? json.products ?? json.product_list,
+        dedupeBy
       );
 
       setAllProducts(list);
@@ -92,10 +311,12 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
       }
       setSearchLoading(true);
       try {
+        const params = new URLSearchParams();
+        params.set("query", searchQuery);
+        appendPeriodParams(params);
+
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_search?query=${encodeURIComponent(
-            searchQuery
-          )}`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/Product_search?${params.toString()}`,
           {
             method: "GET",
             headers: {
@@ -110,7 +331,8 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
         const json = await res.json();
 
         const list = normalizeProducts(
-          json.product_names ?? json.products ?? json.product_list
+          json.product_names ?? json.products ?? json.product_list,
+          dedupeBy
         );
         setSearchResults(list);
       } catch (e: any) {
@@ -122,7 +344,7 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, authToken]);
+  }, [searchQuery, authToken, countryName, range, selectedMonth, selectedQuarter, selectedYear, homeCurrency, dedupeBy]);
 
   const handleToggleDropdown = async () => {
     const next = !showDropdown;
@@ -133,8 +355,8 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
   };
 
 
-  const handleSelect = (p: Product) => {
-    onProductSelect(p.product_name);
+  const handleSelect = (p: ProductSearchProduct) => {
+    onProductSelect(p.product_name, p);
     setShowDropdown(false);
     setSearchQuery("");
   };
@@ -225,7 +447,19 @@ const ProductSearchDropdown: React.FC<ProductSearchDropdownProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(p)}
               >
-                <div className="text-gray-800 text-xs sm:text-sm">{p.product_name}</div>
+                <div className="flex items-center gap-3">
+                  <ProductSearchThumb product={p} />
+                  <div className="min-w-0">
+                    <div className="truncate text-xs text-gray-800 sm:text-sm">
+                      {p.product_name}
+                    </div>
+                    {p.sku ? (
+                      <div className="mt-0.5 truncate text-[11px] font-medium text-gray-500">
+                        SKU: {p.sku}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </button>
             ))
           ) : (

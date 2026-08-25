@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 import jwt
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, text, inspect, or_, func
 from sqlalchemy.exc import OperationalError, TimeoutError as SQLAlchemyTimeoutError
 import os
 import base64
@@ -22,7 +22,7 @@ from app.utils.monthwise_ai_summary_utils import (
     get_or_create_global_summary,
     build_remaining_skus_time_series, 
 )
-from app.models.user_models import UserObjective
+from app.models.user_models import UserObjective, Product
 
 load_dotenv()
 
@@ -144,6 +144,515 @@ def log_route_exception(route_name, exc):
 def encode_file_to_base64(file_path):
     with open(file_path, 'rb') as file:
         return base64.b64encode(file.read()).decode('utf-8')
+
+
+SKU_IMAGE_MARKETPLACE_BY_COUNTRY = {
+    "us": "ATVPDKIKX0DER",
+    "usa": "ATVPDKIKX0DER",
+    "united states": "ATVPDKIKX0DER",
+    "uk": "A1F83G8C2ARO7P",
+    "gb": "A1F83G8C2ARO7P",
+    "united kingdom": "A1F83G8C2ARO7P",
+    "ca": "A2EUQ1WTGCTBG2",
+    "canada": "A2EUQ1WTGCTBG2",
+}
+
+
+def clean_product_text(value):
+    if value is None:
+        return ""
+
+    cleaned = str(value).strip()
+    if not cleaned or cleaned.lower() in {"nan", "none", "null"}:
+        return ""
+
+    return cleaned
+
+
+def product_name_key(value):
+    return " ".join(clean_product_text(value).lower().split())
+
+
+def is_aggregate_product_name(value):
+    key = product_name_key(value)
+    return key in {"total", "other", "others", "other sku", "other skus"}
+
+
+def quote_ident(identifier):
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def sku_image_country_key(raw_country):
+    country = clean_product_text(raw_country).lower()
+    if country.startswith("amazon-"):
+        country = country.replace("amazon-", "", 1)
+    if country.startswith("global"):
+        return "global"
+    if country.startswith("uk"):
+        return "uk"
+    if country.startswith("us"):
+        return "us"
+    if country.startswith("ca"):
+        return "ca"
+    return country or "us"
+
+
+def marketplace_id_for_sku_images(country):
+    return SKU_IMAGE_MARKETPLACE_BY_COUNTRY.get(sku_image_country_key(country))
+
+
+def sku_columns_for_image_country(country):
+    country_key = sku_image_country_key(country)
+    if country_key == "uk":
+        return ["sku_uk", "sku_us", "sku_canada"]
+    if country_key == "ca":
+        return ["sku_canada", "sku_us", "sku_uk"]
+    return ["sku_us", "sku_uk", "sku_canada"]
+
+
+def first_saved_product_image(product):
+    image_url = clean_product_text(getattr(product, "main_image_url", None))
+    if image_url:
+        return image_url
+
+    image_urls = getattr(product, "image_urls", None)
+    if isinstance(image_urls, list):
+        for item in image_urls:
+            if isinstance(item, str):
+                image_url = clean_product_text(item)
+            elif isinstance(item, dict):
+                image_url = clean_product_text(
+                    item.get("link") or item.get("url") or item.get("image_url")
+                )
+            else:
+                image_url = ""
+
+            if image_url:
+                return image_url
+
+    if isinstance(image_urls, dict):
+        for key in ("main", "MAIN", "link", "url", "image_url"):
+            image_url = clean_product_text(image_urls.get(key))
+            if image_url:
+                return image_url
+
+    return ""
+
+
+def first_existing_sku_image_column(columns, candidates):
+    for column in candidates:
+        if column in columns:
+            return column
+    return None
+
+
+def product_catalog_select_expr(column_name, alias, default="NULL"):
+    if not column_name:
+        return f"{default} AS {alias}"
+    return f"{quote_ident(column_name)} AS {alias}"
+
+
+def build_sku_catalog_products(conn, table_name, country, search_query="", limit=None):
+    inspector = inspect(conn)
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+
+    product_col = first_existing_sku_image_column(
+        columns,
+        ["product_name", "productName", "Product Name", "product-name"],
+    )
+    if not product_col:
+        return []
+
+    asin_col = first_existing_sku_image_column(columns, ["asin", "ASIN"])
+    sku_col_candidates = ["sku", *sku_columns_for_image_country(country)]
+    sku_cols = []
+    for column in sku_col_candidates:
+        if column in columns and column not in sku_cols:
+            sku_cols.append(column)
+    preferred_sku_col = sku_cols[0] if sku_cols else None
+    order_metric_col = first_existing_sku_image_column(
+        columns,
+        ["net_sales", "Net Sales", "total_sales", "sales"],
+    )
+
+    where_clauses = [
+        f"NULLIF(TRIM(CAST({quote_ident(product_col)} AS TEXT)), '') IS NOT NULL",
+        f"LOWER(TRIM(CAST({quote_ident(product_col)} AS TEXT))) != 'total'",
+    ]
+    params = {}
+
+    if search_query:
+        searchable_columns = [product_col, asin_col, *sku_cols]
+        searchable_columns = [
+            column
+            for index, column in enumerate(searchable_columns)
+            if column and column not in searchable_columns[:index]
+        ]
+        search_parts = [
+            f"LOWER(CAST({quote_ident(column)} AS TEXT)) LIKE LOWER(:search_query)"
+            for column in searchable_columns
+        ]
+        where_clauses.append("(" + " OR ".join(search_parts) + ")")
+        params["search_query"] = f"%{search_query}%"
+
+    limit_clause = ""
+    if limit:
+        limit_clause = "LIMIT :limit"
+        params["limit"] = int(limit)
+
+    if order_metric_col:
+        order_clause = (
+            "ORDER BY "
+            f"COALESCE(NULLIF(regexp_replace(CAST({quote_ident(order_metric_col)} AS TEXT), '[^0-9.-]', '', 'g'), '')::numeric, 0) "
+            f"DESC, {quote_ident(product_col)} ASC"
+        )
+    else:
+        order_clause = f"ORDER BY {quote_ident(product_col)} ASC"
+
+    query = text(f"""
+        SELECT
+            {product_catalog_select_expr(product_col, "product_name")},
+            {product_catalog_select_expr(asin_col, "asin")},
+            {product_catalog_select_expr(preferred_sku_col, "sku")},
+            {product_catalog_select_expr("sku_us" if "sku_us" in columns else None, "sku_us")},
+            {product_catalog_select_expr("sku_uk" if "sku_uk" in columns else None, "sku_uk")},
+            {product_catalog_select_expr("sku_canada" if "sku_canada" in columns else None, "sku_canada")}
+        FROM {quote_ident(table_name)}
+        WHERE {" AND ".join(where_clauses)}
+        {order_clause}
+        {limit_clause}
+    """)
+
+    rows = conn.execute(query, params).mappings().all()
+
+    items = []
+    seen = set()
+    for row in rows:
+        product_name = clean_product_text(row.get("product_name"))
+        if not product_name or is_aggregate_product_name(product_name):
+            continue
+
+        item = {
+            "product_name": product_name,
+            "asin": clean_product_text(row.get("asin")).upper(),
+            "sku": clean_product_text(row.get("sku")),
+            "sku_us": clean_product_text(row.get("sku_us")),
+            "sku_uk": clean_product_text(row.get("sku_uk")),
+            "sku_canada": clean_product_text(row.get("sku_canada")),
+        }
+
+        identity = (
+            product_name.lower(),
+            item["sku"].lower(),
+            item["asin"],
+        )
+        if identity in seen:
+            continue
+
+        seen.add(identity)
+        items.append(item)
+
+    return items
+
+
+def normalize_product_catalog_country(country, home_currency=None):
+    country = clean_product_text(country).lower()
+    home_currency = clean_product_text(home_currency).lower()
+
+    if country.startswith("amazon-"):
+        country = country.replace("amazon-", "", 1)
+
+    if country in {"usa", "united states"}:
+        return "us"
+    if country in {"gb", "united kingdom"}:
+        return "uk"
+    if country in {"ca", "canada"}:
+        return "ca"
+
+    if country.startswith("global"):
+        if country in {"global_inr", "global_gbp", "global_cad"}:
+            return country
+        if home_currency == "inr":
+            return "global_inr"
+        if home_currency == "gbp":
+            return "global_gbp"
+        if home_currency == "cad":
+            return "global_cad"
+        return "global"
+
+    if country.startswith("uk_usd"):
+        return "uk_usd"
+    if country.startswith("uk"):
+        return "uk"
+    if country.startswith("us"):
+        return "us"
+
+    return country or "us"
+
+
+def normalize_product_catalog_range(value):
+    value = clean_product_text(value).lower()
+
+    if value in {"month", "monthly"}:
+        return "monthly"
+    if value in {"quarter", "quarterly", "qtd"}:
+        return "quarterly"
+    if value in {"year", "yearly", "ytd"}:
+        return "yearly"
+
+    return ""
+
+
+def normalize_product_catalog_month(value):
+    value = clean_product_text(value).lower()
+    valid_months = {
+        "january", "february", "march", "april", "may", "june",
+        "july", "august", "september", "october", "november", "december",
+    }
+
+    if value in valid_months:
+        return value
+
+    return ""
+
+
+def normalize_product_catalog_quarter(value):
+    value = clean_product_text(value).lower()
+
+    if value in {"q1", "quarter1", "1"}:
+        return "1"
+    if value in {"q2", "quarter2", "2"}:
+        return "2"
+    if value in {"q3", "quarter3", "3"}:
+        return "3"
+    if value in {"q4", "quarter4", "4"}:
+        return "4"
+
+    return ""
+
+
+def product_catalog_period_table_candidates(user_id, country, range_type, month, quarter, year):
+    user_id = str(user_id).strip()
+    country = clean_product_text(country).lower()
+    year = clean_product_text(year)
+
+    if not user_id or not country or not year:
+        return []
+
+    if range_type == "monthly":
+        month = normalize_product_catalog_month(month)
+        if not month:
+            return []
+
+        base = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+        if country.startswith("global"):
+            return [f"{base}_table", base]
+        return [base, f"{base}_table"]
+
+    if range_type == "quarterly":
+        quarter_num = normalize_product_catalog_quarter(quarter)
+        if not quarter_num:
+            return []
+
+        q_label = f"Q{quarter_num}"
+        return [
+            f"quarter{quarter_num}_{user_id}_{country}_{year}_table".lower(),
+            f"skuwisequarter_{user_id}_{country}_{q_label}{year}".lower(),
+        ]
+
+    if range_type == "yearly":
+        return [
+            f"skuwiseyearly_{user_id}_{country}_{year}_table".lower(),
+            f"skuwiseyear_{user_id}_{country}_{year}".lower(),
+        ]
+
+    return []
+
+
+def resolve_product_catalog_table(inspector, user_id, country, range_type, month, quarter, year):
+    period_requested = bool(range_type or clean_product_text(month) or clean_product_text(quarter) or clean_product_text(year))
+
+    if range_type:
+        normalized_range = normalize_product_catalog_range(range_type)
+    elif clean_product_text(year):
+        normalized_range = "yearly"
+    else:
+        normalized_range = ""
+
+    if period_requested:
+        candidates = product_catalog_period_table_candidates(
+            user_id=user_id,
+            country=country,
+            range_type=normalized_range,
+            month=month,
+            quarter=quarter,
+            year=year,
+        )
+
+        for table_name in candidates:
+            if inspector.has_table(table_name):
+                return table_name, True
+
+        return None, True
+
+    table_name = f"sku_{user_id}_data_table"
+    if inspector.has_table(table_name):
+        return table_name, False
+
+    return None, False
+
+
+def product_catalog_item_score(item):
+    score = 0
+    if clean_product_text(item.get("main_image_url")):
+        score += 8
+    if clean_product_text(item.get("asin")):
+        score += 4
+    if clean_product_text(item.get("sku")):
+        score += 2
+    if clean_product_text(item.get("title")):
+        score += 1
+    return score
+
+
+def product_catalog_item_identity(item, key_mode="name"):
+    if key_mode == "sku":
+        for field in ("sku", "sku_us", "sku_uk", "sku_canada"):
+            key = product_name_key(item.get(field))
+            if key and key != "-":
+                return f"sku:{key}"
+
+    return f"name:{product_name_key(item.get('product_name'))}"
+
+
+def dedupe_product_catalog_items(items, limit=None, key_mode="name"):
+    by_name = {}
+
+    for item in items or []:
+        product_name = clean_product_text(item.get("product_name"))
+        if not product_name or is_aggregate_product_name(product_name):
+            continue
+
+        key = product_catalog_item_identity(item, key_mode=key_mode)
+        if not key or key == "name:":
+            continue
+
+        current = by_name.get(key)
+        if current is None:
+            by_name[key] = item
+            continue
+
+        merged = {**current}
+        for field in (
+            "asin",
+            "sku",
+            "sku_us",
+            "sku_uk",
+            "sku_canada",
+            "title",
+            "brand",
+            "marketplace_id",
+            "main_image_url",
+        ):
+            if not clean_product_text(merged.get(field)) and clean_product_text(item.get(field)):
+                merged[field] = item.get(field)
+
+        if product_catalog_item_score(item) > product_catalog_item_score(merged):
+            merged = {**item, **merged}
+
+        by_name[key] = merged
+
+    result = list(by_name.values())
+    if limit:
+        return result[:int(limit)]
+    return result
+
+
+def enrich_products_with_saved_images(user_id, items, country):
+    if not items:
+        return items
+
+    asins = sorted({
+        clean_product_text(item.get("asin")).upper()
+        for item in items
+        if clean_product_text(item.get("asin"))
+    })
+
+    sku_values = sorted({
+        clean_product_text(value).lower()
+        for item in items
+        for value in [
+            item.get("sku"),
+            item.get("sku_us"),
+            item.get("sku_uk"),
+            item.get("sku_canada"),
+        ]
+        if clean_product_text(value)
+    })
+
+    if not asins and not sku_values:
+        return items
+
+    product_filters = [Product.user_id == int(user_id)]
+    marketplace_id = marketplace_id_for_sku_images(country)
+    if marketplace_id:
+        product_filters.append(Product.marketplace_id == marketplace_id)
+
+    identity_filters = []
+    if asins:
+        identity_filters.append(func.upper(Product.asin).in_(asins))
+    if sku_values:
+        identity_filters.append(func.lower(Product.sku).in_(sku_values))
+
+    if not identity_filters:
+        return items
+
+    saved_products = (
+        Product.query.filter(*product_filters)
+        .filter(or_(*identity_filters))
+        .order_by(Product.updated_at.desc().nullslast(), Product.id.desc())
+        .all()
+    )
+
+    product_by_asin = {}
+    product_by_sku = {}
+    for product in saved_products:
+        asin_key = clean_product_text(product.asin).upper()
+        sku_key = clean_product_text(product.sku).lower()
+
+        if asin_key and asin_key not in product_by_asin:
+            product_by_asin[asin_key] = product
+        if sku_key and sku_key not in product_by_sku:
+            product_by_sku[sku_key] = product
+
+    enriched = []
+    for item in items:
+        sku_keys = [
+            clean_product_text(item.get("sku")).lower(),
+            clean_product_text(item.get("sku_us")).lower(),
+            clean_product_text(item.get("sku_uk")).lower(),
+            clean_product_text(item.get("sku_canada")).lower(),
+        ]
+
+        product = (
+            product_by_asin.get(clean_product_text(item.get("asin")).upper())
+            or next((product_by_sku[key] for key in sku_keys if key in product_by_sku), None)
+        )
+
+        if product:
+            item = {
+                **item,
+                "asin": clean_product_text(item.get("asin")) or clean_product_text(product.asin),
+                "sku": clean_product_text(item.get("sku")) or clean_product_text(product.sku),
+                "title": clean_product_text(product.title),
+                "brand": clean_product_text(product.brand),
+                "marketplace_id": clean_product_text(product.marketplace_id),
+                "main_image_url": first_saved_product_image(product),
+            }
+
+        enriched.append(item)
+
+    return enriched
 
 
 def get_countries_for_currency(currency):
@@ -1255,32 +1764,62 @@ def product_search():
         return jsonify({'error': 'Invalid token'}), 401
 
     search_query = request.args.get('query', '').strip()
+    country = normalize_product_catalog_country(
+        request.args.get('country', 'us'),
+        request.args.get('homeCurrency') or request.args.get('home_currency'),
+    )
+    range_type = normalize_product_catalog_range(
+        request.args.get('range') or request.args.get('period') or request.args.get('time_range')
+    )
+    month = request.args.get('month', '').strip().lower()
+    quarter = request.args.get('quarter', '').strip()
+    year = request.args.get('year', '').strip()
+
     if not search_query:
         return jsonify({'error': 'Search query is required'}), 400
 
     try:
-        table_name = f"sku_{user_id}_data_table"
-
         with db_connect(user_engine) as conn:
             inspector = inspect(conn)
+            table_name, period_requested = resolve_product_catalog_table(
+                inspector=inspector,
+                user_id=user_id,
+                country=country,
+                range_type=range_type,
+                month=month,
+                quarter=quarter,
+                year=year,
+            )
 
-            if not inspector.has_table(table_name):
-                return jsonify({'error': 'No data found for this user.'}), 404
+            if not table_name:
+                return jsonify({
+                    'products': [],
+                    'product_names': [],
+                    'source_table': None,
+                    'period_filtered': period_requested,
+                }), 200
 
-            query = text(f"""
-                SELECT DISTINCT product_name
-                FROM "{table_name}"
-                WHERE LOWER(product_name) LIKE LOWER(:search_query)
-                ORDER BY product_name
-                LIMIT 10
-            """)
+            products = build_sku_catalog_products(
+                conn=conn,
+                table_name=table_name,
+                country=country,
+                search_query=search_query,
+                limit=10,
+            )
 
-            results = conn.execute(
-                query, {'search_query': f'%{search_query}%'}
-            ).fetchall()
+        products = enrich_products_with_saved_images(user_id, products, country)
+        products = dedupe_product_catalog_items(
+            products,
+            limit=10,
+            key_mode="sku" if period_requested else "name",
+        )
 
-        products = [{'product_name': row[0]} for row in results]
-        return jsonify({'products': products}), 200
+        return jsonify({
+            'products': products,
+            'product_names': products,
+            'source_table': table_name,
+            'period_filtered': period_requested,
+        }), 200
 
     except Exception as e:
         return jsonify({'error': f'Error searching products: {str(e)}'}), 500
@@ -1300,25 +1839,56 @@ def product_names():
     except jwt.InvalidTokenError:
         return jsonify({'error': 'Invalid token'}), 401
 
-    try:
-        table_name = f"sku_{user_id}_data_table"
+    country = normalize_product_catalog_country(
+        request.args.get('country', 'us'),
+        request.args.get('homeCurrency') or request.args.get('home_currency'),
+    )
+    range_type = normalize_product_catalog_range(
+        request.args.get('range') or request.args.get('period') or request.args.get('time_range')
+    )
+    month = request.args.get('month', '').strip().lower()
+    quarter = request.args.get('quarter', '').strip()
+    year = request.args.get('year', '').strip()
 
+    try:
         with db_connect(user_engine) as conn:
             inspector = inspect(conn)
+            table_name, period_requested = resolve_product_catalog_table(
+                inspector=inspector,
+                user_id=user_id,
+                country=country,
+                range_type=range_type,
+                month=month,
+                quarter=quarter,
+                year=year,
+            )
 
-            if not inspector.has_table(table_name):
-                return jsonify({'error': 'No data table found for this user.'}), 404
+            if not table_name:
+                return jsonify({
+                    'product_names': [],
+                    'products': [],
+                    'source_table': None,
+                    'period_filtered': period_requested,
+                }), 200
 
-            query = text(f"""
-                SELECT DISTINCT product_name
-                FROM "{table_name}"
-                ORDER BY product_name ASC
-            """)
+            products = build_sku_catalog_products(
+                conn=conn,
+                table_name=table_name,
+                country=country,
+            )
 
-            rows = conn.execute(query).fetchall()
+        products = enrich_products_with_saved_images(user_id, products, country)
+        products = dedupe_product_catalog_items(
+            products,
+            key_mode="sku" if period_requested else "name",
+        )
 
-        product_list = [row[0] for row in rows]
-        return jsonify({'product_names': product_list}), 200
+        return jsonify({
+            'product_names': products,
+            'products': products,
+            'source_table': table_name,
+            'period_filtered': period_requested,
+        }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

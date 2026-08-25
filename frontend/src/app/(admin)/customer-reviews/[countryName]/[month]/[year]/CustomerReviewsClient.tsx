@@ -1310,18 +1310,6 @@ export default function CustomerReviewsClient() {
                       <div className="line-clamp-2 text-sm font-semibold text-charcoal-500">
                         {productName(product) || "Amazon product"}
                       </div>
-
-                      {/* <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-semibold text-gray-700">
-                    {product.asin}
-                  </span>
-
-                  {skuLabel(product) && (
-                    <span className="rounded bg-[#5EA68E]/10 px-1.5 py-0.5 text-[11px] font-semibold text-[#3e806b]">
-                      {skuLabel(product)}
-                    </span>
-                  )}
-                </div> */}
                     </div>
 
                     <ProductThumb

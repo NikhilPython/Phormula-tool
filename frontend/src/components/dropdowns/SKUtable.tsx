@@ -80,6 +80,7 @@ type SKUtableProps = {
   } | null;
 
   onExportPayloadChange?: (payload: SkuExportPayload) => void;
+  onOrderedRowsChange?: (rows: TableRow[]) => void;
   hideDownloadButton?: boolean;
   onDownload?: () => void;
   disableInternalFade?: boolean;
@@ -620,6 +621,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   userMeta = null,
 
   onExportPayloadChange,
+  onOrderedRowsChange,
   hideDownloadButton = false,
   onDownload,
   disableInternalFade = false,
@@ -1003,6 +1005,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     return totalRow ? [...sorted, totalRow] : sorted;
   }, [tableData, tableSort, getSortableValue, resolveAspForRow]);
+
+  useEffect(() => {
+    onOrderedRowsChange?.(excelRows);
+  }, [excelRows, onOrderedRowsChange]);
 
   const LEFT_COLS: LeafCol<TableRow>[] = useMemo(
     () => [

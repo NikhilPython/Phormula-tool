@@ -6673,6 +6673,72 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const displaySkuLoading = shouldShowPreviewData ? false : skuRowsLoading;
   const displaySkuError = shouldShowPreviewData ? null : skuRowsError;
   const displaySkuNoDataFound = shouldShowPreviewData ? false : skuNoDataFound;
+  const [skuRowsInTableOrder, setSkuRowsInTableOrder] = useState<TableRow[]>([]);
+  const skuRowsInTableOrderSignatureRef = useRef("");
+
+  const isSkuJourneyProductRow = useCallback((row: TableRow | any) => {
+    const name = String(row?.product_name || "").trim().toLowerCase();
+    const sku = String(row?.sku || "").trim().toLowerCase();
+
+    return (
+      name !== "total" &&
+      sku !== "total" &&
+      name !== "others" &&
+      sku !== "others"
+    );
+  }, []);
+
+  const getSkuJourneyProductLabel = useCallback((row: TableRow | any) => {
+    const cleanLabel = (value: unknown) => {
+      if (value === undefined || value === null) return "";
+      if (typeof value === "number" && Number.isNaN(value)) return "";
+
+      const label = String(value).trim();
+      const key = label.toLowerCase();
+
+      return ["", "0", "-", "nan", "none", "null", "undefined"].includes(key)
+        ? ""
+        : label;
+    };
+
+    return cleanLabel(row?.product_name) || cleanLabel(row?.sku);
+  }, []);
+
+  const skuTableDefaultOrderedRows = useMemo(() => {
+    return [...(displaySkuRows || [])]
+      .filter(isSkuJourneyProductRow)
+      .sort((a, b) => toNum((b as any)?.net_sales) - toNum((a as any)?.net_sales));
+  }, [displaySkuRows, isSkuJourneyProductRow]);
+
+  const handleSkuOrderedRowsChange = useCallback(
+    (rows: TableRow[]) => {
+      const productRows = (rows || []).filter(isSkuJourneyProductRow);
+      const signature = productRows
+        .map((row) => `${String(row?.sku || "").trim()}::${String(row?.product_name || "").trim()}`)
+        .join("|");
+
+      if (signature === skuRowsInTableOrderSignatureRef.current) return;
+
+      skuRowsInTableOrderSignatureRef.current = signature;
+      setSkuRowsInTableOrder(productRows);
+    },
+    [isSkuJourneyProductRow]
+  );
+
+  useEffect(() => {
+    skuRowsInTableOrderSignatureRef.current = "";
+    setSkuRowsInTableOrder([]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+
+  const skuJourneyPeriodRows =
+    skuRowsInTableOrder.length > 0
+      ? skuRowsInTableOrder
+      : skuTableDefaultOrderedRows;
+
+  const topSalesSkuJourneyProductName = useMemo(
+    () => getSkuJourneyProductLabel(skuJourneyPeriodRows[0]),
+    [getSkuJourneyProductLabel, skuJourneyPeriodRows]
+  );
 
   const [showAmazonFetchSuccess, setShowAmazonFetchSuccess] = useState(false);
   const [showAmazonAdsConnect, setShowAmazonAdsConnect] = useState(false);
@@ -11292,6 +11358,7 @@ lines.push(
                   company_name: userData?.company_name,
                 }}
                 onExportPayloadChange={handleSkuExportPayloadChange}
+                onOrderedRowsChange={handleSkuOrderedRowsChange}
                 onProductDetailClick={openAiProductDrawerByName}
               />
 
@@ -11341,10 +11408,10 @@ lines.push(
                   )?.[0]?.name || "";
 
                 const productWiseInitialProductName = isDemoMode
-                  ? defaultTopProductName || firstInsightProductName || "Demo Product A"
+                  ? topSalesSkuJourneyProductName || defaultTopProductName || firstInsightProductName || "Demo Product A"
                   : hasRealSkuRowsForProductWise
-                    ? defaultTopProductName || firstInsightProductName
-                    : firstInsightProductName;
+                    ? topSalesSkuJourneyProductName || defaultTopProductName || firstInsightProductName
+                    : topSalesSkuJourneyProductName || firstInsightProductName;
 
                 return (
                   <ProductwisePerformance
@@ -11371,6 +11438,7 @@ lines.push(
                       isDemoMode ? ("NA" as any) : selectedYear ? Number(selectedYear) : ""
                     }
                     initialProductName={productWiseInitialProductName}
+                    periodSkuRows={skuJourneyPeriodRows}
                     sharedInsightLoading={
                       !isDemoMode &&
                       (aiPanelLoading || (!aiPanel && !aiPanelError))
