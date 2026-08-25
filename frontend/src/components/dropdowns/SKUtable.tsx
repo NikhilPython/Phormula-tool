@@ -648,6 +648,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const normalizedCountryName = (countryName || "").trim().toLowerCase();
   const isGlobalPage = normalizedCountryName === "global";
+  const isUkCountry = [
+    "uk",
+    "united kingdom",
+    "gb",
+    "great britain",
+  ].includes(normalizedCountryName);
   const isUsCountry = [
     "uk",
     "united kingdom",
@@ -2515,6 +2521,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const rawPct = toNumber(row.net_sales_delta_percentage);
     const isPositive = rawPct >= 0;
+    const deltaText = `${isPositive ? "▲" : "▼"} ${Math.abs(rawPct).toFixed(2)}%`;
 
     return (
       <span
@@ -2525,7 +2532,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           "net_sales"
         )}`}
       >
-        ({isPositive ? "▲" : "▼"} {Math.abs(rawPct).toFixed(2)}%)
+        {isUkCountry ? deltaText : `(${deltaText})`}
       </span>
     );
   };
