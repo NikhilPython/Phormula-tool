@@ -981,93 +981,284 @@ const metricDefinitions: MetricDefinition[] = [
   },
 ];
 
-function Sparkline({ values }: { values: number[] }) {
+function Sparkline({
+  values,
+  status,
+}: {
+  values: number[];
+  status: MovementStatus;
+}) {
   const areaClipId = `business-sparkline-area-${useId().replace(/:/g, "")}`;
+
   const width = 180;
   const height = 44;
+
   const raw = values.filter((value) => Number.isFinite(value));
+
   const startValue = raw[0] ?? 0;
   const endValue = raw[raw.length - 1] ?? startValue;
-  const direction: MovementStatus = endValue > startValue ? "up" : endValue < startValue ? "down" : "stable";
 
-  // With only current + previous month, a normal sparkline is just one straight segment.
-  // Build a small deterministic mini-trend so it looks like the KPI-card sparklines while
-  // still preserving the real overall direction. Stable stays visually sideways.
+  /*
+   * IMPORTANT:
+   *
+   * Up / Down graph actual metric movement follow karega.
+   *
+   * Lekin agar CARD status Stable hai (for example +1.85%),
+   * to graph ko actual slight increase/decrease follow nahi karna hai.
+   * Stable graph always horizontal zig-zag dikhega.
+   */
+  const actualDirection: MovementStatus =
+    endValue > startValue
+      ? "up"
+      : endValue < startValue
+        ? "down"
+        : "stable";
+
+  const direction: MovementStatus =
+    status === "stable"
+      ? "stable"
+      : actualDirection;
+
   const makeMiniTrend = () => {
-    if (raw.length > 2) return raw;
-
     const count = 7;
-    const scale = Math.max(Math.abs(startValue), Math.abs(endValue), 1);
-    const realMove = endValue - startValue;
-    const wiggle = Math.max(Math.abs(realMove) * 0.28, scale * 0.018);
-    const offsets = [0, 0.55, -0.28, 0.42, -0.18, 0.32, 0];
 
+    const scale = Math.max(
+      Math.abs(startValue),
+      Math.abs(endValue),
+      1
+    );
+
+    const realMove = endValue - startValue;
+
+    /*
+     * STABLE
+     *
+     * Always create the same sideways zig-zag pattern.
+     * We intentionally don't return raw history here,
+     * because raw values may have a slight upward/downward slope
+     * even though the card is classified as Stable.
+     */
     if (direction === "stable") {
-      const center = (startValue + endValue) / 2;
-      return offsets.map((offset) => center + offset * wiggle);
+      const center =
+        raw.length > 0
+          ? raw.reduce((sum, value) => sum + value, 0) / raw.length
+          : (startValue + endValue) / 2;
+
+      const stableWiggle = Math.max(
+        Math.abs(center) * 0.012,
+        0.35
+      );
+
+      /*
+       * Starts and ends at same level.
+       * Balanced zig-zag = visually stable.
+       */
+      const stableOffsets = [
+        0,
+        0.24,
+        -0.22,
+        0.2,
+        -0.18,
+        0.14,
+        0,
+      ];
+
+      return stableOffsets.map(
+        (offset) => center + offset * stableWiggle
+      );
     }
 
-    const visualMove = Math.sign(realMove) * Math.max(Math.abs(realMove), scale * 0.045);
+    /*
+     * UP / DOWN
+     *
+     * If enough real historical points exist,
+     * continue using actual data.
+     */
+    if (raw.length > 2) {
+      return raw;
+    }
+
+    /*
+     * If only previous + current month exist,
+     * create a visually useful mini trend while
+     * maintaining the real overall direction.
+     */
+    const wiggle = Math.max(
+      Math.abs(realMove) * 0.28,
+      scale * 0.018
+    );
+
+    const offsets = [
+      0,
+      0.55,
+      -0.28,
+      0.42,
+      -0.18,
+      0.32,
+      0,
+    ];
+
+    /*
+     * Keep enough visual movement so a very small
+     * change still looks directional.
+     */
+    const visualMove =
+      Math.sign(realMove || (direction === "up" ? 1 : -1)) *
+      Math.max(
+        Math.abs(realMove),
+        scale * 0.045
+      );
+
     return offsets.map((offset, index) => {
       const progress = index / (count - 1);
-      const base = startValue + visualMove * progress;
+
+      const base =
+        startValue +
+        visualMove * progress;
+
       return base + offset * wiggle;
     });
   };
 
   const usable = makeMiniTrend();
+
   const min = Math.min(...usable);
   const max = Math.max(...usable);
-  const visualPadding = Math.max((max - min) * 0.18, Math.max(Math.abs(max), 1) * 0.01);
+
+  const visualPadding = Math.max(
+    (max - min) * 0.18,
+    Math.max(Math.abs(max), 1) * 0.01
+  );
+
   const low = min - visualPadding;
   const high = max + visualPadding;
   const range = high - low || 1;
 
   const pointList = usable.map((value, index) => {
-    const x = (index / Math.max(usable.length - 1, 1)) * width;
-    const y = height - 4 - ((value - low) / range) * (height - 8);
-    return { x, y };
+    const x =
+      (index / Math.max(usable.length - 1, 1)) *
+      width;
+
+    const y =
+      height -
+      4 -
+      ((value - low) / range) *
+        (height - 8);
+
+    return {
+      x,
+      y,
+    };
   });
 
-  const toAreaPoints = (linePoints: string) => `0,${height} ${linePoints} ${width},${height}`;
+  const toAreaPoints = (linePoints: string) =>
+    `0,${height} ${linePoints} ${width},${height}`;
 
-  const points = pointList.map(({ x, y }) => `${x},${y}`).join(" ");
-  const introY = pointList[0]?.y ?? height / 2;
-  const introPoints = pointList.map(({ x }) => `${x},${introY}`).join(" ");
-  const shouldAnimateTrend = direction !== "stable" && pointList.length > 1;
+  const points = pointList
+    .map(({ x, y }) => `${x},${y}`)
+    .join(" ");
+
+  /*
+   * Animation starts from a straight horizontal line.
+   * Then graph reveals into its final shape.
+   *
+   * This now also applies to Stable cards.
+   */
+  const introY =
+    direction === "stable"
+      ? height / 2
+      : pointList[0]?.y ?? height / 2;
+
+  const introPoints = pointList
+    .map(({ x }) => `${x},${introY}`)
+    .join(" ");
+
+  /*
+   * BEFORE:
+   * direction !== "stable" && pointList.length > 1
+   *
+   * NOW:
+   * Stable also gets animation.
+   */
+  const shouldAnimateTrend =
+    pointList.length > 1;
+
   const trendAnimationProps = {
     dur: "2.4s",
     repeatCount: "indefinite",
     keyTimes: "0;0.58;1",
     calcMode: "spline",
-    keySplines: "0.22 1 0.36 1; 0.4 0 1 1",
+    keySplines:
+      "0.22 1 0.36 1; 0.4 0 1 1",
   };
+
   const revealAnimationProps = {
     ...trendAnimationProps,
     values: "1; 0; 0",
   };
+
   const areaRevealAnimationProps = {
     ...trendAnimationProps,
     values: `0; ${width}; ${width}`,
   };
-  const first = pointList[0];
-  const last = pointList[pointList.length - 1];
 
-  const areaPoints = `0,${height} ${points} ${width},${height}`;
-  const introAreaPoints = toAreaPoints(introPoints);
+  const first = pointList[0];
+  const last =
+    pointList[pointList.length - 1];
+
+  const areaPoints =
+    `0,${height} ${points} ${width},${height}`;
+
+  const introAreaPoints =
+    toAreaPoints(introPoints);
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="business-sparkline-svg h-10 w-full" preserveAspectRatio="none" aria-hidden="true">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="business-sparkline-svg h-10 w-full"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
       <defs>
-        <clipPath id={areaClipId} clipPathUnits="userSpaceOnUse">
-          <rect x="0" y="0" width={width} height={height}>
-            {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="width" {...areaRevealAnimationProps} /> : null}
+        <clipPath
+          id={areaClipId}
+          clipPathUnits="userSpaceOnUse"
+        >
+          <rect
+            x="0"
+            y="0"
+            width={width}
+            height={height}
+          >
+            {shouldAnimateTrend ? (
+              <animate
+                className="business-sparkline-animate"
+                attributeName="width"
+                {...areaRevealAnimationProps}
+              />
+            ) : null}
           </rect>
         </clipPath>
       </defs>
-      <polygon points={areaPoints} fill="currentColor" opacity="0.055" clipPath={`url(#${areaClipId})`}>
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introAreaPoints}; ${areaPoints}; ${areaPoints}`} {...trendAnimationProps} /> : null}
+
+      {/* Soft area below graph */}
+      <polygon
+        points={areaPoints}
+        fill="currentColor"
+        opacity="0.055"
+        clipPath={`url(#${areaClipId})`}
+      >
+        {shouldAnimateTrend ? (
+          <animate
+            className="business-sparkline-animate"
+            attributeName="points"
+            values={`${introAreaPoints}; ${areaPoints}; ${areaPoints}`}
+            {...trendAnimationProps}
+          />
+        ) : null}
       </polygon>
+
+      {/* Background / glow line */}
       <polyline
         points={points}
         fill="none"
@@ -1080,9 +1271,25 @@ function Sparkline({ values }: { values: number[] }) {
         strokeDasharray="1"
         strokeDashoffset="0"
       >
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introPoints}; ${points}; ${points}`} {...trendAnimationProps} /> : null}
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="stroke-dashoffset" {...revealAnimationProps} /> : null}
+        {shouldAnimateTrend ? (
+          <animate
+            className="business-sparkline-animate"
+            attributeName="points"
+            values={`${introPoints}; ${points}; ${points}`}
+            {...trendAnimationProps}
+          />
+        ) : null}
+
+        {shouldAnimateTrend ? (
+          <animate
+            className="business-sparkline-animate"
+            attributeName="stroke-dashoffset"
+            {...revealAnimationProps}
+          />
+        ) : null}
       </polyline>
+
+      {/* Main graph line */}
       <polyline
         points={points}
         fill="none"
@@ -1094,13 +1301,53 @@ function Sparkline({ values }: { values: number[] }) {
         strokeDasharray="1"
         strokeDashoffset="0"
       >
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="points" values={`${introPoints}; ${points}; ${points}`} {...trendAnimationProps} /> : null}
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="stroke-dashoffset" {...revealAnimationProps} /> : null}
+        {shouldAnimateTrend ? (
+          <animate
+            className="business-sparkline-animate"
+            attributeName="points"
+            values={`${introPoints}; ${points}; ${points}`}
+            {...trendAnimationProps}
+          />
+        ) : null}
+
+        {shouldAnimateTrend ? (
+          <animate
+            className="business-sparkline-animate"
+            attributeName="stroke-dashoffset"
+            {...revealAnimationProps}
+          />
+        ) : null}
       </polyline>
-      {last ? <circle cx={last.x} cy={last.y} r="2.5" fill="white" stroke="currentColor" strokeWidth="1.6">
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="cx" values={`${first?.x ?? last.x}; ${last.x}; ${last.x}`} {...trendAnimationProps} /> : null}
-        {shouldAnimateTrend ? <animate className="business-sparkline-animate" attributeName="cy" values={`${introY}; ${last.y}; ${last.y}`} {...trendAnimationProps} /> : null}
-      </circle> : null}
+
+      {/* End point */}
+      {last ? (
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r="2.5"
+          fill="white"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        >
+          {shouldAnimateTrend ? (
+            <animate
+              className="business-sparkline-animate"
+              attributeName="cx"
+              values={`${first?.x ?? last.x}; ${last.x}; ${last.x}`}
+              {...trendAnimationProps}
+            />
+          ) : null}
+
+          {shouldAnimateTrend ? (
+            <animate
+              className="business-sparkline-animate"
+              attributeName="cy"
+              values={`${introY}; ${last.y}; ${last.y}`}
+              {...trendAnimationProps}
+            />
+          ) : null}
+        </circle>
+      ) : null}
     </svg>
   );
 }
@@ -1236,7 +1483,10 @@ function MetricFlipCard({
           </div>
 
           <div className={`w-[42%] min-w-[105px] max-w-[145px]   ${theme.text}`}>
-            <Sparkline values={history} />
+            <Sparkline
+  values={history}
+  status={status}
+/>
           </div>
         </div>
 
