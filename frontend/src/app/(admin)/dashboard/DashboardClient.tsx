@@ -2718,6 +2718,25 @@ export default function DashboardPage() {
         fxLoading ||
         previousSkuwiseGlobalLoading;
 
+    const businessAnalysisLoading =
+        !shouldShowDummyUi &&
+        (
+            loading ||
+            (
+                platform === "global" &&
+                previousSkuwiseGlobalLoading
+            )
+        );
+
+    const actionTabLoading =
+        activeTab === "action" &&
+        !shouldShowDummyUi &&
+        !showDashboardStepLoader &&
+        (
+            businessAnalysisLoading ||
+            dashboardActionItemsLoading
+        );
+
     type CurrencyRateRow = {
         conversion_rate: number;
         country: string;
@@ -12680,13 +12699,16 @@ export default function DashboardPage() {
                 />
             )}
 
-            {!shouldShowDummyUi && pageLoading && !showDashboardStepLoader && (
-                <Loader
-                    fullscreen
-                    contained
-                    backgroundClass="bg-white/40"
-                />
-            )}
+            {!shouldShowDummyUi &&
+                pageLoading &&
+                !showDashboardStepLoader &&
+                activeTab !== "action" && (
+                    <Loader
+                        fullscreen
+                        contained
+                        backgroundClass="bg-white/40"
+                    />
+                )}
 
             <DashboardGettingReadyPopup
                 show={shouldShowSalesDelayNotice}
@@ -12724,46 +12746,58 @@ export default function DashboardPage() {
                 )}
 
                 {activeTab === "action" && (
-                    <div className="space-y-7">
-                        {/* ================= BUSINESS ANALYSIS ================= */}
-                        <BusinessAnalysisView
-                            monthlyData={businessAnalysisMonthlyData}
-                            unitContributorData={businessAnalysisUnitContributorData}
-                            currency={displayCurrency}
-                            loading={
-                                !shouldShowDummyUi &&
-                                (loading ||
-                                    (platform === "global" &&
-                                        previousSkuwiseGlobalLoading))
-                            }
+    <>
+        {actionTabLoading ? (
+            <Loader
+                fullscreen
+                contained
+                backgroundClass="bg-white/40"
+            />
+        ) : (
+            <div className="space-y-7">
+                {/* ================= BUSINESS ANALYSIS ================= */}
+                <BusinessAnalysisView
+                    monthlyData={businessAnalysisMonthlyData}
+                    unitContributorData={businessAnalysisUnitContributorData}
+                    currency={displayCurrency}
+
+                    // Loader is handled once at Action Tab level
+                    loading={false}
+                />
+
+                {/* ================= ACTION ITEMS ================= */}
+                <div className="border-t border-[#E6ECEF] pt-5">
+                    <div className="mb-4">
+                        <PageBreadcrumb
+                            pageTitle="Action Items"
+                            variant="page"
+                            align="left"
+                            textSize="2xl"
                         />
 
-                        {/* ================= ACTION ITEMS ================= */}
-                        <div className="border-t border-[#E6ECEF] pt-5">
-                            <div className="mb-4">
-                               <PageBreadcrumb
-                                                                       pageTitle="Action Items"
-                                                                       variant="page"
-                                                                       align="left"
-                                                                       textSize="2xl"
-                                                                   />
-
-                                <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
-                                    Priority actions based on your current business performance.
-                                </p>
-                            </div>
-
-                            <DashboardActionItemsTab
-                                actionItems={dashboardActionItems}
-                                loading={dashboardActionItemsLoading}
-                                error={dashboardActionItemsError}
-                                onRetry={() =>
-                                    setDashboardActionItemsRefreshKey((value) => value + 1)
-                                }
-                            />
-                        </div>
+                        <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
+                            Priority actions based on your current business performance.
+                        </p>
                     </div>
-                )}
+
+                    <DashboardActionItemsTab
+                        actionItems={dashboardActionItems}
+
+                        // Loader is handled once at Action Tab level
+                        loading={false}
+
+                        error={dashboardActionItemsError}
+                        onRetry={() =>
+                            setDashboardActionItemsRefreshKey(
+                                (value) => value + 1
+                            )
+                        }
+                    />
+                </div>
+            </div>
+        )}
+    </>
+)}
 
                 {activeTab === "live" && (
                     <DashboardLiveSalesTab
