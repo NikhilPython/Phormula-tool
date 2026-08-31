@@ -12194,9 +12194,60 @@ export default function DashboardPage() {
     // Business Analysis uses the SAME resolved current/previous values as the dashboard KPI cards.
     // This keeps the Business Analysis numbers and MoM comparison in sync with what the user sees above.
     const businessAnalysisMonthlyData = useMemo<MonthlyMetricRow[]>(() => {
-        if (shouldShowDummyUi) return [];
+    if (shouldShowDummyUi) {
+        const previousDummyRow: MonthlyMetricRow = {
+            sku: "TOTAL",
+            product_name: "TOTAL",
+            month: previousDisplayMonth.monthName.toLowerCase(),
+            year: previousDisplayMonth.year,
+            country: countryName,
 
-        const kpiPair = (label: string) => {
+            total_quantity: 0,
+            quantity: 0,
+            return_quantity: 0,
+
+            gross_sales: 0,
+            refund_sales: 0,
+            net_sales: 0,
+            asp: 0,
+
+            profit: 0,
+
+            total_cm2_profit: 0,
+            total_cm2_margins: 0,
+
+            total_ads: 0,
+            tacos_total_advertising_cost_of_sale: 0,
+
+            promotional_rebates: 0,
+            promotional_rebates_percentage: 0,
+
+            aged_inventory_181_270: 0,
+            aged_inventory_271_365: 0,
+            aged_inventory_365_plus: 0,
+            aged_inventory_180_plus: 0,
+
+            shipping_charges: 0,
+            storage_fee: 0,
+            misc_transaction: 0,
+            lost_total: 0,
+
+            platform_fee_inventory_storage: 0,
+            platformfeenew: 0,
+            platform_fee: 0,
+            other_transactions: 0,
+        };
+
+        const currentDummyRow: MonthlyMetricRow = {
+            ...previousDummyRow,
+            month: currentDisplayMonth.monthName.toLowerCase(),
+            year: currentDisplayMonth.year,
+        };
+
+        return [previousDummyRow, currentDummyRow];
+    }
+
+    const kpiPair = (label: string) => {
             const item = stickyKpiItems.find((entry) => entry.label === label);
             return {
                 current: toNumber(item?.current ?? 0),
@@ -12748,11 +12799,9 @@ export default function DashboardPage() {
                 {activeTab === "action" && (
     <>
         {actionTabLoading ? (
-            <Loader
-                fullscreen
-                contained
-                backgroundClass="bg-white/40"
-            />
+            <div className="flex min-h-[calc(100vh-300px)] w-full items-center justify-center">
+                <Loader />
+            </div>
         ) : (
             <div className="space-y-7">
                 {/* ================= BUSINESS ANALYSIS ================= */}
