@@ -75,7 +75,12 @@ export type MonthlyMetricRow = Record<string, string | number | null | undefined
 };
 
 type MovementStatus = "up" | "down" | "stable";
-type MetricFormat = "currency" | "percent" | "number" | "decimal";
+type MetricFormat =
+  | "currency"
+  | "currencyWhole"
+  | "percent"
+  | "number"
+  | "decimal";
 type MetricCategory = "Revenue & Demand" | "Profitability" | "Advertising & Promotion" | "Fees & Other Costs" | "Inventory & Dispatch";
 
 type MonthSnapshot = {
@@ -894,14 +899,36 @@ function currencyFromCountry(country: string) {
 function makeFormatter(currency: string) {
   return (value: number, type: MetricFormat) => {
     if (!Number.isFinite(value)) return "—";
+
+    // Whole currency value - no decimals
+    if (type === "currencyWhole") {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(value);
+    }
+
+    // Existing currency behaviour
     if (type === "currency") {
       const abs = Math.abs(value);
       const maximumFractionDigits = abs >= 1000 ? 0 : 2;
-      return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits }).format(value);
+
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        maximumFractionDigits,
+      }).format(value);
     }
+
     if (type === "percent") return `${value.toFixed(2)}%`;
+
     if (type === "decimal") return value.toFixed(2);
-    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
+
+    return new Intl.NumberFormat("en-US", {
+      maximumFractionDigits: 0,
+    }).format(value);
   };
 }
 
@@ -924,7 +951,7 @@ const metricDefinitions: MetricDefinition[] = [
     title: "Net Sales",
     category: "Revenue & Demand",
     icon: "trend",
-    format: "currency",
+    format: "currencyWhole",
     detail: (s, f) => `Net sales after refunds, credits and promotions are ${f(s.values.netSales, "currency")}.`,
   },
   {
@@ -940,7 +967,7 @@ const metricDefinitions: MetricDefinition[] = [
     title: "CM2 Profit",
     category: "Profitability",
     icon: "coin",
-    format: "currency",
+    format: "currencyWhole",
     detail: (s, f) => `CM2 margin is ${f(s.values.cm2Margin, "percent")} on current net sales.`,
   },
   {
@@ -975,7 +1002,7 @@ const metricDefinitions: MetricDefinition[] = [
     title: "Promotional Rebate",
     category: "Advertising & Promotion",
     icon: "spark",
-    format: "currency",
+    format: "currencyWhole",
     inverseTrend: true,
     detail: (s, f) => `Promotional rebate is ${f(Math.abs(s.values.rebatePercent), "percent")} of net sales.`,
   },
