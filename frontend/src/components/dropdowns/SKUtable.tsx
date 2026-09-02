@@ -1190,11 +1190,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
             },
             {
               key: "promotional_rebates_percentage",
-              label: "Promotions %",
+              label: (
+                <>
+                  Promotions
+                  <br />
+                  %
+                </>
+              ),
               align: "center" as const,
-              noWrap: true,
               width: "9%",
-              thClassName: "whitespace-nowrap",
             },
           ],
         } as ColGroup<TableRow>,
@@ -1497,11 +1501,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ? [
           {
             key: "promotional_rebates_percentage",
-            label: "Promotions %",
+            label: (
+              <>
+                Promotions
+                <br />
+                %
+              </>
+            ),
             align: "center" as const,
-            noWrap: true,
             width: "9%",
-            thClassName: "whitespace-nowrap",
           },
         ]
         : []),

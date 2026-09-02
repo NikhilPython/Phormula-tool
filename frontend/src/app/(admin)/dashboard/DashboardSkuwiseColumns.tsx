@@ -438,16 +438,20 @@ export function buildSkuwiseTableColumns(
         { key: "cogs", label: "COGS", align: "center" as const, },
         {
             key: "promotional_rebates_percentage",
-            label: "Promotions %",
+            label: (
+                <>
+                    Promotions
+                    <br />
+                    %
+                </>
+            ),
             align: "center" as const,
-            width: "10%",
-            noWrap: true,
-            thClassName: "whitespace-nowrap",
+            width: "9%",
             info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
         },
         { key: "profit", label: "CM1 Profit", align: "center" as const },
         { key: "ads_spend", label: "Ads Spend", align: "center" as const, },
-        { key: "acos", label: "ACoS %", align: "center" as const, },
+        { key: "acos", label: "ACoS %", align: "center" as const, width: "8%" },
         { key: "cm2_profit", label: "CM2 Profit", align: "center" as const },
         { key: "cm1_profit_per", label: "CM1 Profit Per Unit", align: "center" as const },
         { key: "cm1_profit_per_unit", label: "CM1 Profit %", align: "center" as const },
