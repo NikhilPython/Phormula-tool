@@ -124,6 +124,9 @@ def _load_inventory_facts(
     high_alert_thresholds: list[float] = []
     liquidate_items: list[dict[str, Any]] = []
     age_totals: dict[str, float] = {}
+    # Total inventory represented by the ageing summary. This includes both
+    # sellable and unsellable inventory so "% of Total" matches the ageing table.
+    age_inventory_total = 0.0
     loaded_countries: list[str] = []
     age_loaded_countries: list[str] = []
     errors: list[str] = []
@@ -143,6 +146,49 @@ def _load_inventory_facts(
                 continue
 
             rows = source.get("rows") or []
+
+            # Match the donut chart EXACTLY. The donut does NOT use
+            # `Sellable Units` as its first-choice denominator. It sums the
+            # displayed ageing buckets plus Unsellable.
+            #
+            # Split source: 0-90 + 91-180 + 181-270 + 271-365 + 365+ + Unsellable
+            # Combined source: 0-180 + 181-270 + 271-365 + 365+ + Unsellable
+            data_rows = [row for row in rows if not _is_total_row(row)]
+
+            split_first_180 = sum(
+                _number(row.get("inv-age-0-to-90-days"))
+                + _number(row.get("inv-age-91-to-180-days"))
+                for row in data_rows
+            )
+            combined_first_180 = sum(
+                _number(row.get("inv-age-0-to-180-days"))
+                for row in data_rows
+            )
+
+            first_180_units = (
+                split_first_180
+                if split_first_180 > 0
+                else combined_first_180
+            )
+
+            older_units = sum(
+                _number(row.get("inv-age-181-to-270-days"))
+                + _number(row.get("inv-age-271-to-365-days"))
+                + _number(row.get("inv-age-365-plus-days"))
+                for row in data_rows
+            )
+
+            unfulfillable_units = sum(
+                _number(row.get("unfulfillable-quantity"))
+                for row in data_rows
+            )
+
+            country_age_inventory_total = (
+                first_180_units + older_units + unfulfillable_units
+            )
+
+            age_inventory_total += country_age_inventory_total
+
             # Reuse the inventory API's coverage-summary logic with the Action
             # Items policy threshold supplied explicitly.
             high_alert = build_high_alert_coverage_summary(
@@ -228,6 +274,7 @@ def _load_inventory_facts(
                 )
                 for key, value in (age_summary.get("selected_month_totals") or {}).items():
                     age_totals[key] = age_totals.get(key, 0.0) + _number(value)
+
                 age_loaded_countries.append(child_country)
             except Exception as exc:
                 errors.append(f"{child_country} age summary: {exc}")
@@ -249,6 +296,7 @@ def _load_inventory_facts(
         "high_alert_threshold": max(high_alert_thresholds, default=0.0),
         "liquidate_items": liquidate_items,
         "age_totals": age_totals,
+        "age_inventory_total": age_inventory_total,
     }
 
 
@@ -560,20 +608,20 @@ def build_action_items(
 
     total_aged_units = units_181_270 + units_271_365 + units_365_plus
 
-    # Average coverage ratio for products in the aged/liquidate bucket.
-    # Total sales only for products that are in the aged/liquidate bucket.
-    aged_products_30_day_sales = sum(
-        _number(item.get("current_month_units_sold"))
-        for item in liquidate_items
-    )
-
-    # Coverage ratio =
-    # total aged units / combined sales of those aged products
-    aged_coverage_ratio = (
-        total_aged_units / aged_products_30_day_sales
-        if aged_products_30_day_sales > 0
-        else 0.0
-    )
+    # Match the ageing table's "% of Total" calculation:
+    # inventory aged 181+ days / complete inventory (sellable + unsellable) * 100.
+    total_inventory_units = _number(inventory.get("age_inventory_total"))
+    # Match the percentages displayed in the ageing table exactly:
+    # calculate each 181+ bucket percentage, round each to 2 decimals,
+    # then add them together. This avoids a 0.01 difference caused by
+    # rounding only after aggregating all aged units.
+    if total_inventory_units > 0:
+        pct_181_270 = round((units_181_270 / total_inventory_units) * 100.0, 2)
+        pct_271_365 = round((units_271_365 / total_inventory_units) * 100.0, 2)
+        pct_365_plus = round((units_365_plus / total_inventory_units) * 100.0, 2)
+        aged_percent_of_total = pct_181_270 + pct_271_365 + pct_365_plus
+    else:
+        aged_percent_of_total = 0.0
 
     if liquidate_items and total_aged_units > 0:
         items.append({
@@ -588,8 +636,8 @@ def build_action_items(
             ),
             "metrics": [
                 {
-                    "value": f"{aged_coverage_ratio:.2f} mo",
-                    "label": "Coverage ratio",
+                    "value": f"{aged_percent_of_total:.2f}%",
+                    "label": "% of Total",
                 },
                 {
                     "value": f"{total_aged_units:,.0f}",
