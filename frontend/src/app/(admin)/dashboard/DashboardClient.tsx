@@ -1859,6 +1859,14 @@ export default function DashboardPage() {
         return globalMtdView === "us" ? "us" : "uk";
     }, [globalMtdView]);
 
+    const isUkPnlSkuLayout = useMemo(() => {
+        const normalizedCountry = String(countryName || "").trim().toLowerCase();
+        return (
+            ["uk", "united kingdom", "gb", "great britain"].includes(normalizedCountry) ||
+            platform === "amazon-uk"
+        );
+    }, [countryName, platform]);
+
     const isUsPnlSkuLayout = useMemo(() => {
         const normalizedCountry = String(countryName || "").trim().toLowerCase();
         return (
@@ -9991,11 +9999,15 @@ export default function DashboardPage() {
                 { label: "Visibility - Deals, Vouchers and Reviews (-)", value: dealsVouchers, indent: 1 },
                 spacerSummaryRow(),
 
-                { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingChargesTotal) },
-                { label: "Placement Fees (-)", value: positiveSummaryExportValue(exportPlacementFees), indent: 1 },
-                { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingCharges), indent: 1 },
-                { label: "Customs Fees (-)", value: positiveSummaryExportValue(exportCustomsFees), indent: 1 },
-                spacerSummaryRow(),
+                ...(!isUkPnlSkuLayout
+                    ? [
+                        { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingChargesTotal) },
+                        { label: "Placement Fees (-)", value: positiveSummaryExportValue(exportPlacementFees), indent: 1 },
+                        { label: "Shipping Charges (-)", value: summaryExportValue(exportShippingCharges), indent: 1 },
+                        { label: "Customs Fees (-)", value: positiveSummaryExportValue(exportCustomsFees), indent: 1 },
+                        spacerSummaryRow(),
+                    ]
+                    : []),
 
                 { label: "Storage Fees (-)", value: summaryExportValue(exportStorageFees) },
                 { label: "Short Term Storage (-)", value: summaryExportValue(exportShortTermStorage), indent: 1 },
@@ -10059,6 +10071,7 @@ export default function DashboardPage() {
         countryName,
         platform,
         isUsPnlSkuLayout,
+        isUkPnlSkuLayout,
         getProductwiseOtherTransactionsTotal,
         plSummaryTotals,
         cm2MarginPctForSummary,
@@ -12189,7 +12202,7 @@ export default function DashboardPage() {
     const MTD_PRODUCTWISE_TOTAL_ROW_HEIGHT = 52;
     const MTD_PRODUCTWISE_SUMMARY_ROW_HEIGHT = 48;
 
-    const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT = 12;
+    const MTD_PRODUCTWISE_SUMMARY_ROW_COUNT = isUkPnlSkuLayout ? 11 : 12;
 
     // Business Analysis uses the SAME resolved current/previous values as the dashboard KPI cards.
     // This keeps the Business Analysis numbers and MoM comparison in sync with what the user sees above.
@@ -13048,6 +13061,7 @@ export default function DashboardPage() {
                             otherPlatformFee={otherPlatformFee}
                             countryName={countryName}
                             isUsPnlSkuLayout={isUsPnlSkuLayout}
+                            isUkPnlSkuLayout={isUkPnlSkuLayout}
                             getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
                             totalRowCm2Profit={totalRowCm2Profit}
                             totalRowCm2Margins={totalRowCm2Margins}

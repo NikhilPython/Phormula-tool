@@ -107,6 +107,7 @@ export default function DashboardProductwisePnlSection({
     otherPlatformFee,
     countryName,
     isUsPnlSkuLayout,
+    isUkPnlSkuLayout,
     getProductwiseOtherTransactionsTotal,
     totalRowCm2Profit,
     totalRowCm2Margins,
@@ -212,30 +213,35 @@ export default function DashboardProductwisePnlSection({
                     },
                 ],
             },
-            {
-                type: "section" as const,
-                id: "shipping_charges",
-                label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                endValue: formatSummaryValueOrDash(shippingChargesTotal, "shipping_charges"),
-                defaultCollapsed: true,
-                children: [
+            // Shipping Charges summary is intentionally hidden for Amazon UK.
+            ...(!isUkPnlSkuLayout
+                ? [
                     {
-                        id: "placement_fees",
-                        label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(placementFees, "placement_fee"),
-                    },
-                    {
-                        id: "shipping_charges_child",
+                        type: "section" as const,
+                        id: "shipping_charges",
                         label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(shippingCharges, "shipment_fees"),
+                        endValue: formatSummaryValueOrDash(shippingChargesTotal, "shipping_charges"),
+                        defaultCollapsed: true,
+                        children: [
+                            {
+                                id: "placement_fees",
+                                label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                midValue: formatSummaryValueOrDash(placementFees, "placement_fee"),
+                            },
+                            {
+                                id: "shipping_charges_child",
+                                label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                midValue: formatSummaryValueOrDash(shippingCharges, "shipment_fees"),
+                            },
+                            {
+                                id: "customs_fees",
+                                label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                                midValue: formatSummaryValueOrDash(customsFees, "customs_fee"),
+                            },
+                        ],
                     },
-                    {
-                        id: "customs_fees",
-                        label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-                        midValue: formatSummaryValueOrDash(customsFees, "customs_fee"),
-                    },
-                ],
-            },
+                ]
+                : []),
             {
                 type: "section" as const,
                 id: "storage_fee",

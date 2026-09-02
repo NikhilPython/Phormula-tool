@@ -2087,23 +2087,27 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           spacerSummaryRow(),
 
-          {
-            product_name: "Shipping Charges (-)",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingChargesTotal),
-          },
-          {
-            product_name: "Placement Fees (-)",
-            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.placementFees),
-          },
-          {
-            product_name: "Shipping Charges (-)",
-            [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingCharges),
-          },
-          {
-            product_name: "Customs Fees (-)",
-            [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.customsFees),
-          },
-          spacerSummaryRow(),
+          ...(!isUkCountry
+            ? [
+              {
+                product_name: "Shipping Charges (-)",
+                [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingChargesTotal),
+              },
+              {
+                product_name: "Placement Fees (-)",
+                [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.placementFees),
+              },
+              {
+                product_name: "Shipping Charges (-)",
+                [summaryValueColumnKey]: summaryExportValue(usSummaryValues.shippingCharges),
+              },
+              {
+                product_name: "Customs Fees (-)",
+                [summaryValueColumnKey]: positiveSummaryExportValue(usSummaryValues.customsFees),
+              },
+              spacerSummaryRow(),
+            ]
+            : []),
 
           {
             product_name: "Storage Fees (-)",
@@ -2309,6 +2313,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       countryName,
       hasCm2Data,
       isUsCountry,
+      isUkCountry,
       usSummaryValues,
       visibilityAdsValue,
       getExtraRows,
@@ -2569,7 +2574,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   //     ? 9
   //     : 8;
 
-  const COLLAPSED_SUMMARY_ROW_COUNT = isUsCountry ? 12 : 11;
+  const COLLAPSED_SUMMARY_ROW_COUNT = isUsCountry && !isUkCountry ? 12 : 11;
 
   const shouldScrollTable =
     productRowCount > COLLAPSED_VISIBLE_PRODUCT_ROWS;
@@ -2606,30 +2611,35 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
         ],
       },
-      {
-        type: "section" as const,
-        id: "shipping_charges",
-        label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-        endValue: formatSummaryValueOrDash(usSummaryValues.shippingChargesTotal, "shipping_charges"),
-        defaultCollapsed: true,
-        children: [
+      // Shipping Charges summary is intentionally hidden for Amazon UK.
+      ...(!isUkCountry
+        ? [
           {
-            id: "placement_fees",
-            label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.placementFees, "placement_fee"),
-          },
-          {
-            id: "shipping_charges_child",
+            type: "section" as const,
+            id: "shipping_charges",
             label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.shippingCharges, "shipment_fees"),
+            endValue: formatSummaryValueOrDash(usSummaryValues.shippingChargesTotal, "shipping_charges"),
+            defaultCollapsed: true,
+            children: [
+              {
+                id: "placement_fees",
+                label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                midValue: formatSummaryValueOrDash(usSummaryValues.placementFees, "placement_fee"),
+              },
+              {
+                id: "shipping_charges_child",
+                label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+                midValue: formatSummaryValueOrDash(usSummaryValues.shippingCharges, "shipment_fees"),
+              },
+              {
+                id: "customs_fees",
+                label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                midValue: formatSummaryValueOrDash(usSummaryValues.customsFees, "customs_fee"),
+              },
+            ],
           },
-          {
-            id: "customs_fees",
-            label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
-            midValue: formatSummaryValueOrDash(usSummaryValues.customsFees, "customs_fee"),
-          },
-        ],
-      },
+        ]
+        : []),
       {
         type: "section" as const,
         id: "storage_fee",
