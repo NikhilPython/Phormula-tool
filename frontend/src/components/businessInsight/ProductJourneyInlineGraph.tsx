@@ -995,7 +995,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
   );
 
   return (
-    <div className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
 
       {error && !isJourneyLoading && (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
@@ -1010,7 +1010,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
         <div className="flex flex-col gap-8">
           <div>
             <div className="mb-4 w-full">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-col items-start">
                     <PageBreadcrumb
@@ -1023,13 +1023,14 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-auto pb-1 xl:w-auto xl:overflow-visible">
-                  <div className="min-w-max 2xl:min-w-0 2xl:w-fit">
+                <div className="w-full min-w-0 overflow-x-auto pb-1 2xl:w-auto 2xl:overflow-visible">
+                  <div className="min-w-[760px] lg:max-2xl:min-w-0 lg:max-2xl:w-full 2xl:min-w-0 2xl:w-fit">
                     <SegmentedToggle<TrendTab>
                       value={activeTab}
                       onChange={setActiveTab}
                       textSizeClass="text-[10px] sm:text-xs"
-                      className="w-full 2xl:w-auto"
+                      className="w-full min-w-0 2xl:w-auto"
+                      laptopFit
                       options={[
                         { value: "sales_cm1", label: "Sales, CM1 & CM2 Profit" },
                         { value: "units_asp", label: "Units, ASP, CM1 & CM2 Profit/Unit" },

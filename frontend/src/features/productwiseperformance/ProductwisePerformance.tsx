@@ -1862,7 +1862,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         );
 
     return (
-      <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid w-full min-w-0 max-w-full items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-[140px] lg:flex lg:h-[calc(100dvh-250px)] lg:flex-col">
           <div className="shrink-0">
             <div className="mb-3 flex items-center justify-between gap-3">

@@ -81,11 +81,16 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
                 onClick={() => onChange(opt.value)}
                 className={[
                   "flex-none",
-                  laptopFit ? "lg:max-2xl:px-1.5" : "",
+                  laptopFit
+                    ? "lg:max-2xl:min-w-0 lg:max-2xl:flex-1 lg:max-2xl:px-1.5"
+                    : "",
                   btnRadius,
                   btnPad,
                   "text-center font-medium transition-colors duration-150",
                   "whitespace-nowrap leading-none",
+                  laptopFit
+                    ? "lg:max-2xl:whitespace-normal lg:max-2xl:leading-tight"
+                    : "",
                   active
                     ? "bg-[#5EA68E] text-yellow-200 shadow-sm"
                     : "text-charcoal-500 hover:bg-[#5EA68E40]",
