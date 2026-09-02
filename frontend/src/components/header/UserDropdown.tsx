@@ -126,12 +126,27 @@ export default function UserDropdown() {
       <div className="flex items-center text-gray-700 dark:text-gray-400">
         <span className="mr-1 font-normal text-xs md:text-sm 2xl:text-base inline-flex items-center gap-2">
           Welcome,
-          <span className="font-bold inline-flex items-center gap-2">
+          <span className="font-bold inline-flex items-center gap-2 shrink-0">
             <i>{userFromStore?.name}!</i>
 
 
 
-            {showIntegrationButton && <IntegrationToggleButton />}
+            {showIntegrationButton && (
+  <div
+    className="
+      flex shrink-0 items-center justify-center
+      w-7 h-7
+      sm:w-8 sm:h-8
+      [&>*]:!w-full
+      [&>*]:!h-full
+      [&>*]:!min-w-0
+      [&_svg]:!w-4
+      [&_svg]:!h-4
+    "
+  >
+    <IntegrationToggleButton />
+  </div>
+)}
 
             <NotificationDropdown
               items={items}

@@ -1412,7 +1412,7 @@ function MetricFlipCard({
     : rawStatus;
   const theme = movementTheme[status];
   const history = snapshots.map((snapshot) => snapshot.values[definition.key] ?? 0);
-  const deltaText = delta === null ? "No previous-month baseline" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
+  const deltaText = delta === null ? "No prev data" : `${delta >= 0 ? "+" : ""}${delta.toFixed(2)}%`;
   const movementPoint = delta === null
     ? "Add at least one previous month to activate MoM comparison."
     : `${definition.title} ${Math.abs(delta) < 0.005 ? "was flat" : delta > 0 ? "increased" : "decreased"} by ${Math.abs(delta).toFixed(2)}% month over month.${definition.inverseTrend && Math.abs(delta) >= 0.005 ? (delta > 0 ? " Higher is unfavorable." : " Lower is favorable.") : ""}`;
@@ -1494,7 +1494,7 @@ function MetricFlipCard({
         <div className="relative z-10 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <div>
-              <h3 className="text-sm font-semibold leading-4 text-[#17304F]">{definition.title}</h3>
+              <h3 className="xl:text-sm text-xs font-semibold leading-4 text-[#17304F]">{definition.title}</h3>
               <p className="mt-0.5 text-[9px] text-[#738299]">{definition.category}</p>
             </div>
           </div>
@@ -1503,9 +1503,9 @@ function MetricFlipCard({
 
         <div className=" z-10 mt-8 flex min-h-0  items-start justify-between gap-4">
           <div className="min-w-0 shrink-0">
-            <div className="min-[1700px]:text-[24px] text-base font-semibold tracking-[-0.025em] text-charcoal-500">{format(currentValue, definition.format)}</div>
+            <div className="min-[1700px]:text-[24px] xl:text-base text-sm font-semibold tracking-[-0.025em] text-charcoal-500">{format(currentValue, definition.format)}</div>
             <div className=" flex items-center gap-1.5">
-              <span className={`text-[12px] font-semibold ${theme.text}`}>{deltaText}</span>
+              <span className={`xl:text-[12px] text-[10px] font-semibold ${theme.text}`}>{deltaText}</span>
             </div>
           </div>
 
@@ -1529,13 +1529,13 @@ function MetricFlipCard({
         <div className="relative z-10 flex items-center gap-2">
           <span className={`flex h-7 w-7 items-center justify-center rounded-full ${theme.softBg} ${theme.text}`}><Icon name="spark" className="h-3.5 w-3.5" /></span>
           <div>
-            <h3 className="text-sm font-semibold text-[#17304F]">{definition.title} Analysis</h3>
-            <p className="min-[1700px]:text-[10px] text-[9px] text-[#75849A]">
+            <h3 className="xl:text-sm text-xs font-semibold text-[#17304F]">{definition.title} Analysis</h3>
+            <p className="min-[1700px]:text-[10px] xl:text-[9px] text-[8px] text-[#75849A]">
               {current.label} business context
             </p>
           </div>
         </div>
-        <ul className="relative z-10 min-[1700px]:mt-3 mt-2.5 min-[1700px]:space-y-1.5 space-y-1 min-[1700px]:text-[12px] text-[10px] min-[1700px]:leading-[13px] leading-[11px] text-[#40536C]">
+        <ul className="relative z-10 min-[1700px]:mt-3 mt-2.5 min-[1700px]:space-y-1.5 space-y-1 min-[1700px]:text-[12px] xl:text-[10px] text-[8px] min-[1700px]:leading-[13px] leading-[11px] text-[#40536C]">
           {hasCustomMovementAnalysis ? <>
             <li className="flex gap-2">
               <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />
@@ -1705,7 +1705,7 @@ export function BusinessAnalysisView({
       </div>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {metricDefinitions.map((definition) => <MetricFlipCard key={definition.key} definition={definition} snapshots={snapshots} currency={resolvedCurrency} unitContributorData={unitContributorData} />)}
     </div>
   </div>;

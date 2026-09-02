@@ -48,61 +48,68 @@ export default function DashboardPageHeader<TTab extends string = string>({
     return (
         <div className="sticky top-0 z-40 bg-[#F7F7F7]">
             <div className="bg-[#F7F7F7]">
-                <div className="flex flex-col items-start gap-2 min-[1200px]:flex-row min-[1200px]:items-center min-[1200px]:justify-between">
+               <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center lg:justify-between">
 
-                    {/* LEFT SIDE */}
-                    <div className="flex w-full min-w-0 flex-col leading-tight min-[1200px]:w-auto">
-                        <p className="text-xs sm:text-sm 2xl:text-lg text-charcoal-500 mb-1 truncate">
-                            Let&apos;s get started,{" "}
-                            <span className="text-green-500">{brandName}!</span>
-                        </p>
+    {/* LEFT SIDE */}
+    <div className="flex w-full min-w-0 flex-col leading-tight lg:w-auto">
+        <p className="mb-1 truncate text-xs text-charcoal-500 sm:text-sm 2xl:text-lg">
+            Let&apos;s get started,{" "}
+            <span className="text-green-500">{brandName}!</span>
+        </p>
 
-                        <div className="flex w-full items-center gap-1 flex-wrap min-[1200px]:w-auto">
-                            <PageBreadcrumb
-                                pageTitle="Sales Dashboard - Amazon"
-                                variant="page"
-                                textSize="2xl"
-                            />
+        <div className="flex w-full flex-wrap items-center gap-1 lg:w-auto">
+            <PageBreadcrumb
+                pageTitle="Sales Dashboard - Amazon"
+                variant="page"
+                textSize="2xl"
+            />
 
-                            <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                                {countryName === "global" ? "Global" : countryName.toUpperCase()}
-                            </span>
+            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                {countryName === "global"
+                    ? "Global"
+                    : countryName.toUpperCase()}
+            </span>
 
-                            <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold text-green-500">
-                                - {formattedMonthYear}
-                            </span>
-                        </div>
-                    </div>
+            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                - {formattedMonthYear}
+            </span>
+        </div>
+    </div>
 
-                    <div className="flex w-full flex-wrap items-center justify-between gap-2 min-[1200px]:w-auto min-[1200px]:flex-col min-[1200px]:items-end min-[1200px]:justify-start min-[1200px]:gap-1">
-                        <AiButton
-                            onClick={handleHardRefresh}
-                            disabled={pageLoading}
-                            className={`shrink-0 rounded-md border shadow-sm
-px-2 py-1 text-[10px]
-sm:px-3 sm:py-1.5 sm:text-xs
-2xl:text-sm
-${pageLoading
-                                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                                    : "border-gray-300 bg-white hover:bg-gray-50"
-                                }`}
-                        >
-                            {pageLoading ? "Refreshing…" : "Refresh"}
-                        </AiButton>
+    {/* RIGHT SIDE */}
+    <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:w-auto lg:flex-col lg:items-end lg:justify-start lg:gap-1">
+        <AiButton
+            onClick={handleHardRefresh}
+            disabled={pageLoading}
+            className={`shrink-0 rounded-md border shadow-sm
+                px-2 py-1 text-[10px]
+                sm:px-3 sm:py-1.5 sm:text-xs
+                2xl:text-sm
+                ${
+                    pageLoading
+                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                        : "border-gray-300 bg-white hover:bg-gray-50"
+                }`}
+        >
+            {pageLoading ? "Refreshing…" : "Refresh"}
+        </AiButton>
 
-                        {lastRefreshAt != null && (
-                            <span className="text-xs 2xl:text-sm text-gray-500 whitespace-nowrap">
-                                Last Updated at{" "}
-                                {lastUpdatedTimeText ||
-                                    (activeDateRegion === "US"
-                                        ? formatUSTime12hr(lastRefreshAt)
-                                        : activeDateRegion === "CA"
-                                            ? formatLastUpdatedDateTime(lastRefreshAt, "America/Toronto")
-                                            : formatUKTime12hr(lastRefreshAt))}
-                            </span>
-                        )}
-                    </div>
-                </div>
+        {lastRefreshAt != null && (
+            <span className="whitespace-nowrap text-xs text-gray-500 2xl:text-sm">
+                Last Updated at{" "}
+                {lastUpdatedTimeText ||
+                    (activeDateRegion === "US"
+                        ? formatUSTime12hr(lastRefreshAt)
+                        : activeDateRegion === "CA"
+                            ? formatLastUpdatedDateTime(
+                                  lastRefreshAt,
+                                  "America/Toronto"
+                              )
+                            : formatUKTime12hr(lastRefreshAt))}
+            </span>
+        )}
+    </div>
+</div>
             </div>
 
             <div className="bg-[#F7F7F7] border-b border-gray-200 
