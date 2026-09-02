@@ -38,6 +38,36 @@ import ProductSearchDropdown, {
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
+type PeriodSkuMetricKey =
+  | "units"
+  | "net_sales"
+  | "asp"
+  | "cm1_profit"
+  | "cm1_profit_per_unit";
+
+type PeriodSkuRow = {
+  product_name?: unknown;
+  productName?: unknown;
+  "Product Name"?: unknown;
+  sku?: unknown;
+  SKU?: unknown;
+  msku?: unknown;
+  asin?: unknown;
+  ASIN?: unknown;
+  total_quantity?: unknown;
+  net_units_sold?: unknown;
+  quantity?: unknown;
+  net_sales?: unknown;
+  net_sales_delta_percentage?: unknown;
+  asp?: unknown;
+  ASP?: unknown;
+  profit?: unknown;
+  unit_wise_profitability?: unknown;
+  sku_journey_metrics?: Partial<
+    Record<PeriodSkuMetricKey, { delta_pct?: number }>
+  >;
+};
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -59,7 +89,7 @@ interface ProductwisePerformanceProps {
   initialProductName?: string;
   sharedInsightData?: SharedInsightData;
   sharedInsightLoading?: boolean;
-  periodSkuRows?: any[];
+  periodSkuRows?: PeriodSkuRow[];
 }
 
 const toSlug = (name: string) => encodeURIComponent(name.trim());
@@ -925,6 +955,84 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       ProductInsightBlockForDrawer & { imageMeta: ProductImageMeta | null }
     >();
 
+    const currencySymbol = currencySymbolFromCode(homeCurrency);
+
+    const formatMetric = (
+      current: number,
+      deltaPct: number | undefined,
+      type: "units" | "money" | "money-per-unit"
+    ) => {
+      const main =
+        type === "units"
+          ? Math.round(current).toLocaleString()
+          : `${currencySymbol}${current.toLocaleString(undefined, {
+            minimumFractionDigits: type === "money-per-unit" ? 2 : 0,
+            maximumFractionDigits: type === "money-per-unit" ? 2 : 0,
+          })}`;
+
+      const delta = Number.isFinite(deltaPct)
+        ? ` (${Number(deltaPct) >= 0 ? "+" : ""}${Number(deltaPct).toFixed(2)}%)`
+        : "";
+
+      return `${main}${delta}`;
+    };
+
+    const buildPeriodMetrics = (row: PeriodSkuRow): ProductInsightMetric[] => {
+      const comparisons = row?.sku_journey_metrics;
+      const netUnits = Number(
+        row?.total_quantity ?? row?.net_units_sold ?? row?.quantity ?? 0
+      );
+      const netSales = Number(row?.net_sales ?? 0);
+      const cm1Profit = Number(row?.profit ?? 0);
+      const asp = netUnits > 0
+        ? netSales / netUnits
+        : Number(row?.asp ?? row?.ASP ?? 0);
+      const cm1ProfitPerUnit = netUnits > 0
+        ? cm1Profit / netUnits
+        : Number(row?.unit_wise_profitability ?? 0);
+      const rowNetSalesDelta = Number(row?.net_sales_delta_percentage);
+
+      return [
+        {
+          label: "Units",
+          value: formatMetric(
+            netUnits,
+            comparisons?.units?.delta_pct,
+            "units"
+          ),
+        },
+        {
+          label: "Net sales",
+          value: formatMetric(
+            netSales,
+            comparisons?.net_sales?.delta_pct ??
+            (Number.isFinite(rowNetSalesDelta) ? rowNetSalesDelta : undefined),
+            "money"
+          ),
+        },
+        {
+          label: "ASP",
+          value: formatMetric(asp, comparisons?.asp?.delta_pct, "money-per-unit"),
+        },
+        {
+          label: "CM1 profit",
+          value: formatMetric(
+            cm1Profit,
+            comparisons?.cm1_profit?.delta_pct,
+            "money"
+          ),
+        },
+        {
+          label: "CM1 profit per unit",
+          value: formatMetric(
+            cm1ProfitPerUnit,
+            comparisons?.cm1_profit_per_unit?.delta_pct,
+            "money-per-unit"
+          ),
+        },
+      ];
+    };
+
     periodSkuRows.forEach((row) => {
       const productName = cleanProductLabel(
         row?.product_name ?? row?.productName ?? row?.["Product Name"]
@@ -947,7 +1055,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       items.set(key, {
         name,
         skuKey: sku,
-        metrics: sharedBlock?.metrics || [],
+        // Keep metric cards aligned with the exact rows rendered by the P&L tab.
+        metrics: buildPeriodMetrics(row),
         journeyBullets: sharedBlock?.journeyBullets || [],
         recommendationBullets: sharedBlock?.recommendationBullets || [],
         inventoryBullets: sharedBlock?.inventoryBullets || [],
@@ -957,7 +1066,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     });
 
     return Array.from(items.values());
-  }, [periodSkuRows, productCatalogMetaMap, sharedInsightData]);
+  }, [periodSkuRows, productCatalogMetaMap, sharedInsightData, homeCurrency]);
 
 
 
@@ -1001,21 +1110,39 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     setIsDrawerOpen(true);
 
     const sharedBlock = findSharedInsightBlock(cleanProductName, sharedInsightData);
+    const periodBlock = periodSkuCatalogItems.find((item) => {
+      const requestedKeys = [cleanProductName, selectedMeta?.sku]
+        .map((value) => normalizeTextKey(String(value || "")))
+        .filter(Boolean);
+      const itemKeys = [item.name, item.skuKey]
+        .map((value) => normalizeTextKey(String(value || "")))
+        .filter(Boolean);
 
-    if (sharedBlock) {
+      return itemKeys.some((key) => requestedKeys.includes(key));
+    });
+    const resolvedBlock = sharedBlock
+      ? {
+        ...sharedBlock,
+        metrics: periodBlock?.metrics?.length
+          ? periodBlock.metrics
+          : sharedBlock.metrics,
+      }
+      : periodBlock;
+
+    if (resolvedBlock) {
       const key =
-        sharedBlock.skuKey ||
-        sharedBlock.name ||
+        resolvedBlock.skuKey ||
+        resolvedBlock.name ||
         cleanProductName;
 
-      const recObj = getSharedRecObj(sharedBlock, sharedInsightData);
+      const recObj = getSharedRecObj(resolvedBlock, sharedInsightData);
 
       setSelectedSku(key);
 
       setSkuInsights((prev) => ({
         ...prev,
         [key]: blockToSkuInsight(
-          sharedBlock,
+          resolvedBlock,
           recObj,
           sharedInsightData?.objective,
           prev[key]?.best_performance
@@ -1104,7 +1231,10 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
     if (!target?.name) return;
 
-    const targetSignature = `${normalizeTextKey(target.skuKey || "")}:${normalizeTextKey(target.name)}`;
+    const metricSignature = (target.metrics || [])
+      .map((metric) => `${metric.label}:${metric.value}`)
+      .join("|");
+    const targetSignature = `${normalizeTextKey(target.skuKey || "")}:${normalizeTextKey(target.name)}:${metricSignature}`;
     if (autoSelectedProductRef.current === targetSignature) return;
 
     autoSelectedProductRef.current = targetSignature;

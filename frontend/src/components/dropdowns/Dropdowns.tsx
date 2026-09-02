@@ -9693,6 +9693,43 @@ lines.push(
       const currentNetSales = toNum(row.net_sales);
       const previousNetSales = toNum(previousRow?.net_sales);
 
+      const getNetUnits = (source?: TableRow) =>
+        toNum(source?.total_quantity ?? source?.net_units_sold ?? source?.quantity);
+
+      const getAsp = (source?: TableRow) => {
+        const units = getNetUnits(source);
+        const sales = toNum(source?.net_sales);
+
+        return units > 0 ? sales / units : toNum(source?.asp ?? source?.ASP);
+      };
+
+      const getCm1ProfitPerUnit = (source?: TableRow) => {
+        const units = getNetUnits(source);
+        const profit = toNum(source?.profit);
+
+        return units > 0 ? profit / units : toNum(source?.unit_wise_profitability);
+      };
+
+      const buildMetricComparison = (
+        current: number,
+        previous: number
+      ) => ({
+        current,
+        ...(previousRow ? { previous } : {}),
+        ...(previousRow && previous !== 0
+          ? { delta_pct: ((current - previous) / previous) * 100 }
+          : {}),
+      });
+
+      const currentUnits = getNetUnits(row);
+      const previousUnits = getNetUnits(previousRow);
+      const currentAsp = getAsp(row);
+      const previousAsp = getAsp(previousRow);
+      const currentCm1Profit = toNum(row.profit);
+      const previousCm1Profit = toNum(previousRow?.profit);
+      const currentCm1ProfitPerUnit = getCm1ProfitPerUnit(row);
+      const previousCm1ProfitPerUnit = getCm1ProfitPerUnit(previousRow);
+
       const delta = currentNetSales - previousNetSales;
 
       const deltaPct =
@@ -9705,6 +9742,16 @@ lines.push(
         previous_net_sales: previousNetSales,
         net_sales_delta: delta,
         net_sales_delta_percentage: deltaPct,
+        sku_journey_metrics: {
+          units: buildMetricComparison(currentUnits, previousUnits),
+          net_sales: buildMetricComparison(currentNetSales, previousNetSales),
+          asp: buildMetricComparison(currentAsp, previousAsp),
+          cm1_profit: buildMetricComparison(currentCm1Profit, previousCm1Profit),
+          cm1_profit_per_unit: buildMetricComparison(
+            currentCm1ProfitPerUnit,
+            previousCm1ProfitPerUnit
+          ),
+        },
       };
     });
   };

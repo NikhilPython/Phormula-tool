@@ -104,6 +104,14 @@ export type TableRow = {
   previous_net_sales?: number;
   net_sales_delta?: number;
   net_sales_delta_percentage?: number;
+  sku_journey_metrics?: Record<
+    "units" | "net_sales" | "asp" | "cm1_profit" | "cm1_profit_per_unit",
+    {
+      current: number;
+      previous?: number;
+      delta_pct?: number;
+    }
+  >;
 
   quantity?: number;
   total_quantity?: number;
