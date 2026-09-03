@@ -662,11 +662,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "gb",
     "great britain",
   ].includes(normalizedCountryName);
-  const isUnitedStatesCountry = [
-    "us",
-    "usa",
-    "united states",
-  ].includes(normalizedCountryName);
   const isUsCountry = [
     "uk",
     "united kingdom",
@@ -2558,7 +2553,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           "net_sales"
         )}`}
       >
-        {isUkCountry || isUnitedStatesCountry ? deltaText : `(${deltaText})`}
+        {deltaText}
       </span>
     );
   };
