@@ -118,6 +118,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     ]
 
     frames = []
+    platform_management_fee_totals = []
 
     for table_name in source_tables:
         if not _table_exists(conn, table_name):
@@ -207,10 +208,30 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 else:
                     rate = _get_gbp_to_usd_rate(table_month, table_year)
 
-                
-
                 for col in money_cols:
                     df[col] = df[col] * rate
+
+            # Global storage fee must always be the sum of its two storage components.
+            # Do this after UK currency conversion so both UK and US values are in the
+            # same currency before aggregation. This also fixes legacy source TOTAL rows
+            # where storage_fee may contain a stale/incorrect independently-calculated value.
+            df["storage_fee"] = (
+                pd.to_numeric(df["short_term_storage_fee"], errors="coerce").fillna(0)
+                + pd.to_numeric(df["long_term_storage_fee"], errors="coerce").fillna(0)
+            )
+
+            # Capture each country's platform management fee AFTER UK GBP->USD conversion.
+            # Some source tables keep this fee only on the TOTAL row, while older tables
+            # may keep it on a non-TOTAL row. Prefer a non-zero TOTAL value; otherwise
+            # fall back to summing the product/non-total rows for that country.
+            _pmf = pd.to_numeric(df["platform_management_fees"], errors="coerce").fillna(0)
+            _product_names = df["product_name"].replace([None, np.nan], "").astype(str).str.strip().str.lower()
+            _pmf_total_rows = _pmf[_product_names == "total"]
+            _pmf_total_value = float(_pmf_total_rows.sum()) if not _pmf_total_rows.empty else 0.0
+            if abs(_pmf_total_value) > 0:
+                platform_management_fee_totals.append(_pmf_total_value)
+            else:
+                platform_management_fee_totals.append(float(_pmf[_product_names != "total"].sum()))
 
             for col in marketplace_fee_component_cols:
                 df[col] = df[col].abs()
@@ -322,6 +343,19 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     for col in quantity_cols + money_cols + non_convert_money_cols:
         total_row[col] = pd.to_numeric(total_base_df[col], errors="coerce").fillna(0).sum()
+
+    # IMPORTANT: add US platform_management_fees + UK platform_management_fees
+    # after UK has been converted from GBP to USD. This avoids losing the UK value
+    # when it is not stored on the source TOTAL row.
+    if platform_management_fee_totals:
+        total_row["platform_management_fees"] = float(sum(platform_management_fee_totals))
+
+    # Never trust an independently stored source storage_fee for GLOBAL totals.
+    # Rebuild it from short-term + long-term storage fee components.
+    total_row["storage_fee"] = (
+        float(total_row.get("short_term_storage_fee", 0) or 0)
+        + float(total_row.get("long_term_storage_fee", 0) or 0)
+    )
 
     # FIX: global TOTAL net reimbursement should be net,
     # not sum of monthly absolute reimbursement values.
@@ -517,7 +551,12 @@ def process_global_monthly_skuwise_data(user_id, country, year, month):
 
         output_table = f"skuwisemonthly_{user_id}_global_{month}{year}_table"
 
+        # Prefer the current monthly table naming convention with `_table`.
+        # `_build_global_skuwise_table` will also accept legacy names when passed,
+        # so include both forms and let `_table_exists` skip whichever is absent.
         source_tables = [
+            f"skuwisemonthly_{user_id}_uk_{month}{year}_table",
+            f"skuwisemonthly_{user_id}_us_{month}{year}_table",
             f"skuwisemonthly_{user_id}_uk_{month}{year}",
             f"skuwisemonthly_{user_id}_us_{month}{year}",
         ]
@@ -576,9 +615,10 @@ def process_global_quarterly_skuwise_data(user_id, country, month, year, q, db_u
 
         for c in ["uk", "us"]:
             for m in months_for_quarter:
-                source_tables.append(
-                    f"skuwisemonthly_{user_id}_{c}_{m}{year}"
-                )
+                source_tables.extend([
+                    f"skuwisemonthly_{user_id}_{c}_{m}{year}_table",
+                    f"skuwisemonthly_{user_id}_{c}_{m}{year}",
+                ])
 
         _build_global_skuwise_table(
             user_id=user_id,
@@ -625,9 +665,10 @@ def process_global_yearly_skuwise_data(user_id, country, year):
 
         for c in ["uk", "us"]:
             for m in all_months:
-                source_tables.append(
-                    f"skuwisemonthly_{user_id}_{c}_{m}{year}"
-                )
+                source_tables.extend([
+                    f"skuwisemonthly_{user_id}_{c}_{m}{year}_table",
+                    f"skuwisemonthly_{user_id}_{c}_{m}{year}",
+                ])
 
         _build_global_skuwise_table(
             user_id=user_id,
