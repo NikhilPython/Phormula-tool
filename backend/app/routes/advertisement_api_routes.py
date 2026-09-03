@@ -1,6 +1,7 @@
 import io
 from datetime import datetime , date
 import calendar, json, hashlib
+import os
 import re
 from sqlalchemy import func, text
 from sqlalchemy.dialects.postgresql import insert
@@ -29,6 +30,11 @@ from openpyxl.utils import get_column_letter
 from app.ads_report_services import (
     run_sp_advertised_product_report_service
 )
+from app.utils.currency_utils import (
+    process_global_monthly_skuwise_data,
+    process_global_quarterly_skuwise_data,
+    process_global_yearly_skuwise_data,
+)
 
 from app.utils.ads_helpers import (
     _get_user_row,
@@ -52,6 +58,82 @@ def _require_jwt_user_id() -> int:
     token = auth_header.split(" ")[1]
     payload, user_id, member_id = get_effective_user_id_from_token(token)
     return int(payload["user_id"])
+
+
+def _public_table_exists(table_name: str) -> bool:
+    return bool(db.session.execute(text("""
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = :table_name
+        )
+    """), {"table_name": table_name}).scalar())
+
+
+def _rebuild_global_skuwise_after_monthly_ads(
+    *,
+    user_id: int,
+    month: int,
+    year: int,
+    require_source: bool = False,
+) -> dict:
+    month_name = calendar.month_name[int(month)].lower()
+    source_tables = [
+        f"skuwisemonthly_{int(user_id)}_uk_{month_name}{int(year)}",
+        f"skuwisemonthly_{int(user_id)}_us_{month_name}{int(year)}",
+    ]
+    existing_sources = [
+        table_name
+        for table_name in source_tables
+        if _public_table_exists(table_name)
+    ]
+
+    if require_source and not existing_sources:
+        raise RuntimeError(
+            "No UK/US SKU-wise monthly source table found for global ads rebuild"
+        )
+
+    output_table = (
+        f"skuwisemonthly_{int(user_id)}_global_{month_name}{int(year)}_table"
+    )
+
+    db.session.execute(text(f'DROP TABLE IF EXISTS "{output_table}"'))
+    db.session.commit()
+
+    process_global_monthly_skuwise_data(
+        user_id=int(user_id),
+        country="global",
+        year=int(year),
+        month=month_name,
+    )
+    process_global_quarterly_skuwise_data(
+        user_id=int(user_id),
+        country="global",
+        month=month_name,
+        year=int(year),
+        q=None,
+        db_url=os.getenv("DATABASE_URL"),
+    )
+    process_global_yearly_skuwise_data(
+        user_id=int(user_id),
+        country="global",
+        year=int(year),
+    )
+
+    return {
+        "monthly_table": f"public.{output_table}",
+        "monthly_table_exists": _public_table_exists(output_table),
+        "source_tables": [f"public.{table_name}" for table_name in source_tables],
+        "existing_source_tables": [
+            f"public.{table_name}" for table_name in existing_sources
+        ],
+        "missing_source_tables": [
+            f"public.{table_name}"
+            for table_name in source_tables
+            if table_name not in existing_sources
+        ],
+    }
 
 
 
@@ -768,6 +850,35 @@ def monthly_sp_sd_to_db():
             return jsonify({"error": "country is required (e.g. UK/US/CA)"}), 400
         if not include.intersection({"SP", "SD", "SB"}):
             return jsonify({"error": "include must contain SP and/or SD and/or SB"}), 400
+
+        if country == "GLOBAL":
+            try:
+                rebuild_result = _rebuild_global_skuwise_after_monthly_ads(
+                    user_id=user_id,
+                    month=month,
+                    year=year,
+                    require_source=True,
+                )
+            except RuntimeError as e:
+                return jsonify({"error": str(e)}), 404
+
+            if not rebuild_result["monthly_table_exists"]:
+                return jsonify({
+                    "error": "Global SKU-wise monthly table was not created",
+                    **rebuild_result,
+                }), 404
+
+            return jsonify({
+                "message": (
+                    "Global monthly SKU-wise table rebuilt successfully "
+                    "from country-wise UK/US ads data"
+                ),
+                "country": country,
+                "month": month,
+                "year": year,
+                "include": sorted(list(include)),
+                **rebuild_result,
+            }), 200
 
         # Create or refresh the requested monthly ads table.
         table_name = _safe_ident(f"adsmonthly_{user_id}_{country}_{month}_{year}")
@@ -1810,6 +1921,18 @@ def monthly_sp_sd_to_db():
 
             db.session.commit()
 
+            global_rebuild_result = None
+
+            if country in ("UK", "GB", "US"):
+                try:
+                    global_rebuild_result = _rebuild_global_skuwise_after_monthly_ads(
+                        user_id=user_id,
+                        month=month,
+                        year=year,
+                    )
+                except Exception as e:
+                    print("[WARN] Global SKU-wise ads rebuild failed:", e)
+
         except Exception:
             db.session.rollback()
             raise
@@ -1822,6 +1945,7 @@ def monthly_sp_sd_to_db():
             "year": year,
             "include": sorted(list(include)),
             "count": len(items),
+            "global_rebuild": global_rebuild_result,
             "items": items
         }), 200
 

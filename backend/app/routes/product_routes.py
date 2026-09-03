@@ -1549,7 +1549,13 @@ def skutableprofit():
         table_name = build_skuwise_table_name(user_id, country, month, year)
 
         # Ads table:
-        requested_ads_table_name = f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+        # Global monthly SKU-wise tables already contain the merged UK/US ads
+        # fields, so use the generated global table itself as the ads source.
+        requested_ads_table_name = (
+            table_name
+            if country == "global"
+            else f"skuwisemonthly_{user_id}_{country}_{month}{year}".lower()
+        )
 
         inspector = inspect(engine)
         existing_tables = set(inspector.get_table_names(schema="public"))
