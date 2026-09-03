@@ -159,7 +159,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getSignForCol,
   toggleGroupByColKey,
   onVisibleColCountChange,
-  tableClassName = "w-full table-fixed border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
+  tableClassName = "w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
   headerRow1ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   headerRow2ClassName = "bg-[#5EA68E] text-[#f8edcf]",
   summary,
@@ -172,8 +172,8 @@ export default function GroupedCollapsibleTable<RowT>({
   stickyLeftCols = true,
   hideStickyLeftColsWhileScrolling = true,
   stickyLeftBorderMode = "shadow-only",
-  stickyLeftDividerMode = "trailing",
-  stickyLeftHorizontalBorderMode = "shadow",
+  stickyLeftDividerMode: _stickyLeftDividerMode = "trailing",
+  stickyLeftHorizontalBorderMode: _stickyLeftHorizontalBorderMode = "border",
   stickyLeftWidthMode = "fallback",
   showStickyLeftOuterBorder = false,
   getGroupToggleCollapsedState,
@@ -737,7 +737,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const cellPadding = "px-2 sm:px-3 py-3";
   const thBase =
-    `whitespace-normal break-words leading-tight border border-gray-300 ${cellPadding}`;
+    `whitespace-normal break-words leading-tight border-0 border-r border-b border-gray-300 ${cellPadding}`;
 
   const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
   const stickyLeftDrawerWidth = visibleLeafCols
@@ -766,32 +766,16 @@ export default function GroupedCollapsibleTable<RowT>({
       showStickyLeftOuterBorder && colIndex === 0
         ? `inset 1px 0 0 ${verticalDividerColor}`
         : "";
-    const horizontalDivider =
-      stickyLeftHorizontalBorderMode === "shadow"
-        ? `inset 0 -1px 0 ${dividerColor}`
-        : "";
-    const stickyDividers =
-      stickyLeftDividerMode === "leading"
-        ? [
-          outerLeftDivider,
-          colIndex > 0 ? `inset 1px 0 0 ${verticalDividerColor}` : "",
-          colIndex === stickyLeftCount - 1
-            ? `inset -1px 0 0 ${verticalDividerColor}`
-            : "",
-          horizontalDivider,
-        ].filter(Boolean)
-        : [
-          outerLeftDivider,
-          `inset -1px 0 0 ${verticalDividerColor}`,
-          horizontalDivider,
-        ].filter(Boolean);
-
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
-      boxShadow: stickyDividers.join(", "),
-      ...(stickyLeftBorderMode === "shadow-only"
-        ? { borderWidth: 0 }
-        : { borderColor: "transparent" }),
+      // IMPORTANT: keep the actual cell borders intact.
+      // Sticky table cells + border-collapse can hide collapsed borders at
+      // fractional browser zoom levels (75%, 80%, 90%). The table now uses
+      // border-separate + one-sided cell borders, so no fake horizontal
+      // shadow/border is needed here.
+      boxShadow: outerLeftDivider ? outerLeftDivider : undefined,
+      borderColor: dividerColor,
+
       transform: shouldHideStickyLeftDrawer
         ? `translateX(-${stickyLeftDrawerWidth}px)`
         : "translateX(0)",
@@ -831,35 +815,9 @@ export default function GroupedCollapsibleTable<RowT>({
   };
 
   const renderStickyLeftHorizontalDivider = (
-    colIndex: number,
-    surface: "header" | "body" | "sign" = "body"
-  ) => {
-    if (
-      colIndex >= stickyLeftCount ||
-      stickyLeftHorizontalBorderMode !== "border"
-    ) {
-      return null;
-    }
-
-    const dividerColor =
-      surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
-
-    return (
-      <span
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 1,
-          backgroundColor: dividerColor,
-          pointerEvents: "none",
-          zIndex: 1,
-        }}
-      />
-    );
-  };
+    _colIndex: number,
+    _surface: "header" | "body" | "sign" = "body"
+  ) => null;
 
   const getStickyBodyBackgroundClassName = (rowClassName?: string) => {
     if (rowClassName?.includes("bg-[#EFEFEF]")) return "bg-[#EFEFEF]";
@@ -1129,7 +1087,7 @@ export default function GroupedCollapsibleTable<RowT>({
             <td
               key={c.key}
               style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
-              className={`border ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
+              className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
               {renderStickyLeftHorizontalDivider(colIndex, "sign")}
@@ -1157,7 +1115,7 @@ export default function GroupedCollapsibleTable<RowT>({
               key={c.key}
               style={getStickyLeftStyle(colIndex, "body") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={[
-                "border",
+                "border-0 border-r border-b border-gray-200",
                 cellPadding,
                 getStickyLeftClassName(colIndex, "body"),
                 colIndex < stickyLeftCount ? stickyBodyBackgroundClassName : "",
@@ -1232,7 +1190,7 @@ export default function GroupedCollapsibleTable<RowT>({
                   <td
                     colSpan={summaryLabelColSpan}
                     style={summaryBeforeValueCellStyle}
-                    className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
+                    className="border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-left"
                   >
                     <span
                       style={getSummaryLabelContentStyle()}
@@ -1249,7 +1207,7 @@ export default function GroupedCollapsibleTable<RowT>({
                     data-summary-main-value-cell="true"
                     colSpan={endColSpan}
                     style={getSummaryValueStyle("#ffffff")}
-                    className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+                    className="whitespace-nowrap border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-center"
                   >
                     {sec.endValue}
                   </td>
@@ -1261,7 +1219,7 @@ export default function GroupedCollapsibleTable<RowT>({
                       <td
                         colSpan={labelColSpan}
                         style={summaryBeforeValueCellStyle}
-                        className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
+                        className="border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-left"
                       >
                         <span
                           style={summaryChildLabelContentStyle}
@@ -1274,7 +1232,7 @@ export default function GroupedCollapsibleTable<RowT>({
                       <td
                         colSpan={midColSpan}
                         style={getSummaryValueStyle("#ffffff", summaryChildValueRightOffset, true)}
-                        className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+                        className="whitespace-nowrap border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-center"
                       >
                         {ch.midValue ?? ""}
                       </td>
@@ -1282,7 +1240,7 @@ export default function GroupedCollapsibleTable<RowT>({
                       <td
                         colSpan={endColSpan}
                         style={summaryAfterChildValueCellStyle}
-                        className="border border-gray-300 px-2 sm:px-3 py-3"
+                        className="border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3"
                       />
                     </tr>
                   ))}
@@ -1298,7 +1256,7 @@ export default function GroupedCollapsibleTable<RowT>({
               <td
                 colSpan={summaryLabelColSpan}
                 style={summaryBeforeValueCellStyle}
-                className="border border-gray-300 px-2 sm:px-3 py-3 text-left"
+                className="border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-left"
               >
                 <span
                   style={getSummaryLabelContentStyle()}
@@ -1312,7 +1270,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 data-summary-main-value-cell="true"
                 colSpan={endColSpan}
                 style={getSummaryValueStyle("#ffffff")}
-                className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center"
+                className="whitespace-nowrap border-0 border-r border-b border-gray-300 px-2 sm:px-3 py-3 text-center"
               >
                 {r.endValue ?? ""}
               </td>
