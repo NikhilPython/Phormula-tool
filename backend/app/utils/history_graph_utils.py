@@ -401,7 +401,11 @@ def fetch_month_totals(conn, user_id, country, month, year):
     if not table_exists(conn, table):
         return None
 
-    units_col = "quantity" if country == "global" else "total_quantity"
+    # Keep the Performance Trend aligned with the SKU table for every country.
+    # `quantity` is gross units sold, while `total_quantity` is net units after
+    # returns.  Global used to special-case the gross column here, which made
+    # both Units and the derived ASP disagree with the Global SKU table.
+    units_col = "total_quantity"
 
     if country == "global":
         total_where = "LOWER(COALESCE(product_name, '')) = 'total'"
