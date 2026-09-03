@@ -107,6 +107,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         "selling_fees",
         "fba_fees",
         "promotional_rebates",
+        "platform_management_fees",
     ]
 
     percentage_cols = [
@@ -183,6 +184,12 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 if isinstance(column_data, pd.DataFrame):
                     column_data = column_data.bfill(axis=1).iloc[:, 0]
                 df[col] = pd.to_numeric(column_data, errors="coerce").fillna(0)
+
+            df["platform_management_fees"] = np.where(
+                df["platform_management_fees"] != 0,
+                df["platform_management_fees"],
+                df["platformfeenew"],
+            )
 
             df["ads_spend"] = np.where(
                 df["ads_spend"] != 0,
