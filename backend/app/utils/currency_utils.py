@@ -618,14 +618,22 @@ def process_global_quarterly_skuwise_data(user_id, country, month, year, q, db_u
 
         output_table = f"{quarter_key}_{user_id}_global_{year}_table"
 
-        source_tables = []
+        quarter_source_tables = [
+            f"{quarter_key}_{user_id}_uk_usd_{year}_table",
+            f"{quarter_key}_{user_id}_us_{year}_table",
+        ]
 
-        for c in ["uk", "us"]:
-            for m in months_for_quarter:
-                source_tables.extend([
-                    f"skuwisemonthly_{user_id}_{c}_{m}{year}_table",
-                    f"skuwisemonthly_{user_id}_{c}_{m}{year}",
-                ])
+        if all(_table_exists(conn, table_name) for table_name in quarter_source_tables):
+            source_tables = quarter_source_tables
+        else:
+            source_tables = []
+
+            for c in ["uk", "us"]:
+                for m in months_for_quarter:
+                    source_tables.extend([
+                        f"skuwisemonthly_{user_id}_{c}_{m}{year}_table",
+                        f"skuwisemonthly_{user_id}_{c}_{m}{year}",
+                    ])
 
         _build_global_skuwise_table(
             user_id=user_id,
