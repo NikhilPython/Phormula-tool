@@ -768,19 +768,22 @@ export default function GroupedCollapsibleTable<RowT>({
         : "";
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
-      // IMPORTANT: keep the actual cell borders intact.
-      // Sticky table cells + border-collapse can hide collapsed borders at
-      // fractional browser zoom levels (75%, 80%, 90%). The table now uses
-      // border-separate + one-sided cell borders, so no fake horizontal
-      // shadow/border is needed here.
+
+      // Sticky cells do NOT use their own table borders for the visible
+      // separators. Those borders can be clipped/covered at fractional zoom.
+      // The visible 1px dividers are rendered as absolute overlays below.
       boxShadow: outerLeftDivider ? outerLeftDivider : undefined,
       borderColor: dividerColor,
+      borderRightWidth: 0,
+      borderBottomWidth: 0,
+      backgroundImage: "none",
 
+      // Avoid putting every sticky cell on a compositor layer while idle.
       transform: shouldHideStickyLeftDrawer
         ? `translateX(-${stickyLeftDrawerWidth}px)`
-        : "translateX(0)",
+        : undefined,
       transition: "transform 180ms ease",
-      willChange: "transform",
+      willChange: shouldHideStickyLeftDrawer ? "transform" : undefined,
     };
   };
 
@@ -795,9 +798,10 @@ export default function GroupedCollapsibleTable<RowT>({
       return undefined;
     }
 
-    return stickyLeftBorderMode === "shadow-only"
-      ? { borderLeftWidth: 0 }
-      : { borderLeftColor: "transparent" };
+    // The boundary line is painted by the last sticky cell's 1px overlay.
+    // Do not remove/add another border on the first non-sticky cell, otherwise
+    // the divider can look doubled at some zoom levels.
+    return undefined;
   };
 
   const getStickyLeftClassName = (
@@ -815,9 +819,49 @@ export default function GroupedCollapsibleTable<RowT>({
   };
 
   const renderStickyLeftHorizontalDivider = (
-    _colIndex: number,
-    _surface: "header" | "body" | "sign" = "body"
-  ) => null;
+    colIndex: number,
+    surface: "header" | "body" | "sign" = "body"
+  ) => {
+    if (colIndex >= stickyLeftCount) return null;
+
+    const dividerColor =
+      surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
+
+    return (
+      <>
+        {/* Horizontal separator: exactly 1 CSS px, same thickness as other cells. */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: "1px",
+            backgroundColor: dividerColor,
+            pointerEvents: "none",
+            zIndex: 2,
+          }}
+        />
+
+        {/* Vertical separator: exactly 1 CSS px.
+            This keeps Product Name -> Units visible even when Product Name is sticky. */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            right: 0,
+            width: "1px",
+            backgroundColor: dividerColor,
+            pointerEvents: "none",
+            zIndex: 2,
+          }}
+        />
+      </>
+    );
+  };
 
   const getStickyBodyBackgroundClassName = (rowClassName?: string) => {
     if (rowClassName?.includes("bg-[#EFEFEF]")) return "bg-[#EFEFEF]";
