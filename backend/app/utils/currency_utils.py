@@ -103,6 +103,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     # US-only column, do NOT currency convert
     non_convert_money_cols = ["shipment_fees"]
+    marketplace_fee_component_cols = ["selling_fees", "fba_fees"]
 
     percentage_cols = [
         "promotional_rebates_percentage", "unit_wise_profitability",
@@ -206,6 +207,9 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
                 for col in money_cols:
                     df[col] = df[col] * rate
+
+            for col in marketplace_fee_component_cols:
+                df[col] = df[col].abs()
 
             frames.append(df)
 

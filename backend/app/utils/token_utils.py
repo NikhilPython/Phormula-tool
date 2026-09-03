@@ -81,7 +81,7 @@ def generate_token(user_id, is_member=False, member_id=None):
     payload = {
         "user_id": int(user_id),  # ✅ always owner id for both owner + member
         "is_member": bool(is_member),
-        "exp": datetime.utcnow() + timedelta(days=1),
+        "exp": datetime.utcnow() + timedelta(days=4),
         "iat": datetime.utcnow(),
     }
     if is_member and member_id:
@@ -102,7 +102,7 @@ def generate_verification_token(email):
     """Generate a token for email verification"""
     payload = {
         'email': email,
-        'exp': datetime.utcnow() + timedelta(hours=12)
+        'exp': datetime.utcnow() + timedelta(hours=1)
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
 
@@ -122,7 +122,7 @@ def generate_reset_token(user_id):
     """Generate a token for password reset"""
     payload = {
         'user_id': user_id,
-        'exp': datetime.utcnow() + timedelta(hours=12)
+        'exp': datetime.utcnow() + timedelta(hours=1)
     }
     return jwt.encode(payload, Config.SECRET_KEY, algorithm='HS256')
 
