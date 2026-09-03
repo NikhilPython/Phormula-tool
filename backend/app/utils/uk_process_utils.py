@@ -662,7 +662,6 @@ def process_skuwise_data(user_id, country, month, year):
             "FBA Return Fee",
             "FBA Long-Term Storage Fee",
             "FBA storage fee",
-            "FBADisposal",
             "FBAStorageBilling",
             "FBALongTermStorageBilling",
             "INCORRECT_FEES_NON_ITEMIZED",
@@ -1437,11 +1436,13 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped["visible_ads"] = 0.0
         sku_grouped["dealsvouchar_ads"] = 0.0
         sku_grouped["platformfeenew"] = 0.0
-        sku_grouped["platform_fee_inventory_storage"] = 0.0
         for col in ["short_term_storage_fee", "long_term_storage_fee", "fba_disposal"]:
             if col not in sku_grouped.columns:
                 sku_grouped[col] = 0.0
             sku_grouped[col] = pd.to_numeric(sku_grouped[col], errors="coerce").fillna(0.0).abs()
+        sku_grouped["platform_fee_inventory_storage"] = (
+            sku_grouped["short_term_storage_fee"] + sku_grouped["long_term_storage_fee"]
+        )
 
         # Ensure the two columns exist even if missing in source
         for _col in ("shipping_credits", "shipment_charges"):
@@ -3175,6 +3176,5 @@ def process_yearly_skuwise_data(user_id, country, year):
             conn.close()
         finally:
             engine.dispose()
-
 
 
