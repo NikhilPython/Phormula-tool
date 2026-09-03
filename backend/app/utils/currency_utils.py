@@ -103,7 +103,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     # US-only column, do NOT currency convert
     non_convert_money_cols = ["shipment_fees"]
-    marketplace_fee_component_cols = ["selling_fees", "fba_fees"]
+    marketplace_fee_component_cols = [
+        "selling_fees",
+        "fba_fees",
+        "promotional_rebates",
+    ]
 
     percentage_cols = [
         "promotional_rebates_percentage", "unit_wise_profitability",
