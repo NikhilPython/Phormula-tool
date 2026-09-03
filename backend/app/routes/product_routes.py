@@ -348,6 +348,89 @@ def aggregate_monthly_sku_rows(rows):
 
     return list(grouped.values())
 
+
+def get_year_monthly_aggregated_data(
+    conn,
+    engine,
+    metadata,
+    user_id,
+    country,
+    year,
+    month_limit=None
+):
+    month_token_to_num = {
+        "jan": 1,
+        "january": 1,
+        "feb": 2,
+        "february": 2,
+        "mar": 3,
+        "march": 3,
+        "apr": 4,
+        "april": 4,
+        "may": 5,
+        "jun": 6,
+        "june": 6,
+        "jul": 7,
+        "july": 7,
+        "aug": 8,
+        "august": 8,
+        "sep": 9,
+        "sept": 9,
+        "september": 9,
+        "oct": 10,
+        "october": 10,
+        "nov": 11,
+        "november": 11,
+        "dec": 12,
+        "december": 12,
+    }
+
+    if month_limit is not None:
+        month_limit = max(0, min(int(month_limit), 12))
+
+    monthly_rows = []
+    used_tables = []
+
+    for month_token in get_month_tokens_present_for_year(
+        conn=conn,
+        user_id=user_id,
+        country=country,
+        year=year
+    ):
+        month_num = month_token_to_num.get(str(month_token).lower())
+
+        if month_limit is not None and month_num and month_num > month_limit:
+            continue
+
+        if country == "global":
+            monthly_table_name = (
+                f"skuwisemonthly_{user_id}_{country}_{month_token}{year}_table"
+            )
+        else:
+            monthly_table_name = (
+                f"skuwisemonthly_{user_id}_{country}_{month_token}{year}"
+            )
+
+        try:
+            monthly_table = Table(
+                monthly_table_name,
+                metadata,
+                autoload_with=engine
+            )
+
+            results = conn.execute(
+                select(*monthly_table.columns)
+            ).mappings().all()
+
+            monthly_rows.extend(results)
+            used_tables.append(monthly_table_name)
+
+        except Exception:
+            continue
+
+    return aggregate_monthly_sku_rows(monthly_rows), used_tables
+
+
 def get_previous_year_monthly_aggregated_data(
     conn,
     engine,
@@ -482,6 +565,36 @@ def YearlySKU():
 
         # 🔒 Normalize all rows so the UI gets true numbers, not strings
         current_data = [_normalize_sku_row(dict(row)) for row in results]
+        used_current_tables = [table_name]
+
+        try:
+            selected_year = int(year)
+            today_year = date.today().year
+            current_year_month_limit = max(date.today().month - 1, 0)
+
+            if selected_year == today_year and current_year_month_limit == 0:
+                current_data = []
+                used_current_tables = []
+            elif selected_year == today_year:
+                with engine.connect() as conn:
+                    monthly_current_data, used_current_tables_from_months = (
+                        get_year_monthly_aggregated_data(
+                            conn=conn,
+                            engine=engine,
+                            metadata=metadata,
+                            user_id=user_id,
+                            country=country,
+                            year=year,
+                            month_limit=current_year_month_limit,
+                        )
+                    )
+
+                if monthly_current_data:
+                    current_data = monthly_current_data
+                    used_current_tables = used_current_tables_from_months
+
+        except Exception:
+            used_current_tables = [table_name]
 
         previous_year = get_previous_year(year)
         previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
@@ -508,6 +621,7 @@ def YearlySKU():
 
         return jsonify({
             "current_table_name": table_name,
+            "used_current_tables": used_current_tables,
             "current_data": current_data,
             "previous_table_name": previous_table_name,
             "previous_data": previous_data

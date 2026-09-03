@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import numpy as np
 import re
+from datetime import date
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -603,6 +604,12 @@ def process_global_yearly_skuwise_data(user_id, country, year):
             "january", "february", "march", "april", "may", "june",
             "july", "august", "september", "october", "november", "december"
         ]
+
+        selected_year = int(year)
+        today = date.today()
+
+        if selected_year == today.year:
+            all_months = all_months[:max(today.month - 1, 0)]
 
         output_table = f"skuwiseyearly_{user_id}_global_{year}_table"
 
