@@ -622,6 +622,36 @@ export default function GroupedCollapsibleTable<RowT>({
     return () => mediaQuery.removeEventListener("change", updateViewportMatch);
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Zoom-safe sticky grid measurements
+  // ---------------------------------------------------------------------------
+  // Chrome can render a 1 CSS px line as less than one physical pixel when the
+  // browser is zoomed below 100% (for example DPR 0.5 at 50% zoom on a DPR-1
+  // display). That is why sticky borders can randomly look white/missing.
+  //
+  // We keep normal 1 CSS px borders at 100%+, but below 1 DPR we enlarge only
+  // the sticky overlay in CSS pixels so it is still at least one physical pixel.
+  const [devicePixelRatio, setDevicePixelRatio] = useState(1);
+  const [measuredStickyWidths, setMeasuredStickyWidths] = useState<number[]>([]);
+
+  const getSafeDevicePixelRatio = () =>
+    typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
+      ? Math.max(window.devicePixelRatio, 0.01)
+      : 1;
+
+  const snapToDevicePixel = (value: number, dpr = devicePixelRatio) => {
+    const safeDpr = Math.max(dpr, 0.01);
+    return Math.round(value * safeDpr) / safeDpr;
+  };
+
+  // Never thinner than the normal 1 CSS px line.
+  // At 50% zoom on a DPR-1 display this becomes 2 CSS px, which is still
+  // exactly 1 physical pixel on screen.
+  const stickySeparatorCssPx = Math.max(
+    1,
+    1 / Math.max(devicePixelRatio, 0.01)
+  );
+
   const shouldPreserveColumnWidths =
     anyGroupExpanded ||
     preserveColumnWidths === true ||
@@ -647,6 +677,11 @@ export default function GroupedCollapsibleTable<RowT>({
   }, [visibleLeafCols.length, onVisibleColCountChange]);
 
 
+  // Must be declared before any effect/callback that reads it.
+  // Otherwise JavaScript hits the temporal dead zone and throws:
+  // "Cannot access 'stickyLeftCount' before initialization".
+  const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
+
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const summaryScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
@@ -654,6 +689,85 @@ export default function GroupedCollapsibleTable<RowT>({
   const lastScrollLeftRef = useRef(0);
   const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
   const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
+
+  useEffect(() => {
+    const updateZoomAndStickyMeasurements = () => {
+      const dpr = getSafeDevicePixelRatio();
+      setDevicePixelRatio((current) =>
+        Math.abs(current - dpr) < 0.0001 ? current : dpr
+      );
+
+      const table = tableRef.current;
+      if (!table || stickyLeftCount === 0) {
+        setMeasuredStickyWidths((current) =>
+          current.length === 0 ? current : []
+        );
+        return;
+      }
+
+      const headerCells = Array.from(
+        table.querySelectorAll<HTMLElement>(
+          "thead [data-sticky-col-index]"
+        )
+      )
+        .sort(
+          (a, b) =>
+            Number(a.dataset.stickyColIndex || 0) -
+            Number(b.dataset.stickyColIndex || 0)
+        )
+        .slice(0, stickyLeftCount);
+
+      if (headerCells.length !== stickyLeftCount) return;
+
+      const nextWidths = headerCells.map((cell) => {
+        const width = cell.getBoundingClientRect().width;
+        return snapToDevicePixel(width, dpr);
+      });
+
+      setMeasuredStickyWidths((current) => {
+        const unchanged =
+          current.length === nextWidths.length &&
+          current.every(
+            (width, index) => Math.abs(width - nextWidths[index]) < 0.01
+          );
+
+        return unchanged ? current : nextWidths;
+      });
+    };
+
+    updateZoomAndStickyMeasurements();
+
+    const table = tableRef.current;
+    const resizeObserver =
+      table && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(updateZoomAndStickyMeasurements)
+        : null;
+
+    if (table) {
+      resizeObserver?.observe(table);
+    }
+
+    window.addEventListener("resize", updateZoomAndStickyMeasurements);
+    window.visualViewport?.addEventListener(
+      "resize",
+      updateZoomAndStickyMeasurements
+    );
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateZoomAndStickyMeasurements);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        updateZoomAndStickyMeasurements
+      );
+    };
+  }, [
+    stickyLeftCount,
+    visibleLeafCols.length,
+    shouldPreserveColumnWidths,
+    requiredTableWidth,
+    anyGroupExpanded,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -739,19 +853,36 @@ export default function GroupedCollapsibleTable<RowT>({
   const thBase =
     `whitespace-normal break-words leading-tight border-0 border-r border-b border-gray-300 ${cellPadding}`;
 
-  const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
-  const stickyLeftDrawerWidth = visibleLeafCols
-    .slice(0, stickyLeftCount)
-    .reduce((sum, col) => sum + getStickyLeftWidthForCol(col), 0);
+  const getResolvedStickyWidth = (colIndex: number) => {
+    const measured = measuredStickyWidths[colIndex];
+
+    if (Number.isFinite(measured) && measured > 0) {
+      return measured;
+    }
+
+    const col = visibleLeafCols[colIndex];
+    return col ? getStickyLeftWidthForCol(col) : 0;
+  };
+
+  const stickyLeftDrawerWidth = snapToDevicePixel(
+    Array.from({ length: stickyLeftCount }).reduce(
+      (sum, _, colIndex) => sum + getResolvedStickyWidth(colIndex),
+      0
+    )
+  );
+
   const shouldHideStickyLeftDrawer =
     hideStickyLeftColsWhileScrolling &&
     isStickyLeftDrawerHidden &&
     stickyLeftDrawerWidth > 0;
 
   const getStickyLeftOffset = (colIndex: number) =>
-    visibleLeafCols
-      .slice(0, colIndex)
-      .reduce((sum, col) => sum + getStickyLeftWidthForCol(col), 0);
+    snapToDevicePixel(
+      Array.from({ length: Math.min(colIndex, stickyLeftCount) }).reduce(
+        (sum, _, index) => sum + getResolvedStickyWidth(index),
+        0
+      )
+    );
 
   const getStickyLeftStyle = (
     colIndex: number,
@@ -769,16 +900,16 @@ export default function GroupedCollapsibleTable<RowT>({
     return {
       left: `${getStickyLeftOffset(colIndex)}px`,
 
-      // Sticky cells do NOT use their own table borders for the visible
-      // separators. Those borders can be clipped/covered at fractional zoom.
-      // The visible 1px dividers are rendered as absolute overlays below.
+      // The visible sticky separators are painted by absolute overlays.
+      // Keeping the sticky cell's own right/bottom border as well can create
+      // doubled lines, so those two sides are disabled only for sticky cells.
       boxShadow: outerLeftDivider ? outerLeftDivider : undefined,
       borderColor: dividerColor,
       borderRightWidth: 0,
       borderBottomWidth: 0,
       backgroundImage: "none",
 
-      // Avoid putting every sticky cell on a compositor layer while idle.
+      // Do not force a compositor layer while the sticky drawer is idle.
       transform: shouldHideStickyLeftDrawer
         ? `translateX(-${stickyLeftDrawerWidth}px)`
         : undefined,
@@ -798,9 +929,8 @@ export default function GroupedCollapsibleTable<RowT>({
       return undefined;
     }
 
-    // The boundary line is painted by the last sticky cell's 1px overlay.
-    // Do not remove/add another border on the first non-sticky cell, otherwise
-    // the divider can look doubled at some zoom levels.
+    // The last sticky cell paints this boundary itself.
+    // Do not suppress the first non-sticky column border here.
     return undefined;
   };
 
@@ -827,9 +957,11 @@ export default function GroupedCollapsibleTable<RowT>({
     const dividerColor =
       surface === "header" ? "rgb(209 213 219)" : "rgb(229 231 235)";
 
+    const separatorSize = `${stickySeparatorCssPx}px`;
+
     return (
       <>
-        {/* Horizontal separator: exactly 1 CSS px, same thickness as other cells. */}
+        {/* Zoom-safe horizontal row separator */}
         <span
           aria-hidden="true"
           style={{
@@ -837,15 +969,14 @@ export default function GroupedCollapsibleTable<RowT>({
             left: 0,
             right: 0,
             bottom: 0,
-            height: "1px",
+            height: separatorSize,
             backgroundColor: dividerColor,
             pointerEvents: "none",
             zIndex: 2,
           }}
         />
 
-        {/* Vertical separator: exactly 1 CSS px.
-            This keeps Product Name -> Units visible even when Product Name is sticky. */}
+        {/* Zoom-safe vertical column separator */}
         <span
           aria-hidden="true"
           style={{
@@ -853,7 +984,7 @@ export default function GroupedCollapsibleTable<RowT>({
             top: 0,
             bottom: 0,
             right: 0,
-            width: "1px",
+            width: separatorSize,
             backgroundColor: dividerColor,
             pointerEvents: "none",
             zIndex: 2,
@@ -980,6 +1111,7 @@ export default function GroupedCollapsibleTable<RowT>({
         {leftCols.map((c, colIndex) => (
           <th
             key={c.key}
+            data-sticky-col-index={colIndex}
             rowSpan={anyGroupExpanded ? 2 : 1}
             style={getStickyLeftStyle(colIndex, "header")}
             className={`${thBase} ${getStickyLeftClassName(colIndex, "header")} ${colIndex < stickyLeftCount ? "bg-[#5EA68E]" : ""} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
@@ -1130,6 +1262,7 @@ export default function GroupedCollapsibleTable<RowT>({
           return (
             <td
               key={c.key}
+              data-sticky-col-index={colIndex < stickyLeftCount ? colIndex : undefined}
               style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
@@ -1157,6 +1290,7 @@ export default function GroupedCollapsibleTable<RowT>({
           {visibleLeafCols.map((c, colIndex) => (
             <td
               key={c.key}
+              data-sticky-col-index={colIndex < stickyLeftCount ? colIndex : undefined}
               style={getStickyLeftStyle(colIndex, "body") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={[
                 "border-0 border-r border-b border-gray-200",
