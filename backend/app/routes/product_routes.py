@@ -352,6 +352,19 @@ def aggregate_monthly_sku_rows(rows):
         row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
         row["_is_total_row"] = row_name == "total"
 
+        if row["_is_total_row"]:
+            visible_ads_total = abs(safe_number(row.get("visible_ads")))
+            deals_ads_total = abs(safe_number(row.get("dealsvouchar_ads")))
+
+            if visible_ads_total or deals_ads_total:
+                rollup_ad_total = visible_ads_total + deals_ads_total
+                row["ads_spend"] = visible_ads_total
+                row["ads_spend_raw"] = visible_ads_total
+                row["advertising_total"] = visible_ads_total
+                row["advertising_total_final"] = rollup_ad_total
+                row["advertising_fees"] = rollup_ad_total
+                row["total_ads"] = rollup_ad_total
+
         if "average_selling_price" in row:
             row["average_selling_price"] = asp
 
