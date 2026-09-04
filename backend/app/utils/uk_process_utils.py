@@ -69,7 +69,8 @@ REPORT_COMPAT_COLUMNS = [
     "advertising_fees", "current_net_reimbursement", "total_ads",
     "total_cm2_profit", "total_cm2_margins",
     "tacos_total_advertising_cost_of_sale", "reimbursement_vs_cm2_margins",
-    "ads_conversion_rate", "ads_roas", "ads_acos"
+    "ads_conversion_rate", "ads_roas", "ads_acos",
+    "inventory_charges_and_reimbursement",
 ]
 
 def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -114,6 +115,12 @@ def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
     clicks = numeric_series("ads_clicks")
     ad_units = numeric_series("ads_sale_units")
     ad_sales = numeric_series("ads_sale_amount")
+    fba_disposal = numeric_series("fba_disposal")
+    lost_total = numeric_series("lost_total")
+
+    df["inventory_charges_and_reimbursement"] = (
+        fba_disposal.abs() - lost_total.abs()
+    )
 
     df["cm1_profit_per_unit"] = np.where(qty != 0, profit / qty, 0.0)
     df["cm1_profit_per"] = np.where(net_sales != 0, (profit / net_sales) * 100, 0.0)

@@ -438,6 +438,16 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     );
 
     const inventoryStorageFees = toNumber(source?.platform_fee_inventory_storage);
+    const inventoryCharges = toNumber(source?.fba_disposal);
+    const lostInventory = toNumber(source?.lost_total);
+    const inventoryChargesAndReimbursement =
+        inventoryCharges || lostInventory
+            ? Math.abs(inventoryCharges) - Math.abs(lostInventory)
+            : toNumber(
+                source?.inventory_charges_and_reimbursement ??
+                source?.inventory_charges_reimbursement ??
+                source?.inventory_charges_reimbursement_total
+            );
 
     const netReimbursement = toNumber(
         source?.rembursement_fee ??
@@ -483,6 +493,7 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
         short_term_storage_fee: toNumber(source?.short_term_storage_fee),
         long_term_storage_fee: toNumber(source?.long_term_storage_fee),
         fba_disposal: toNumber(source?.fba_disposal),
+        inventory_charges_and_reimbursement: inventoryChargesAndReimbursement,
 
         misc_transaction: toNumber(source?.misc_transaction ?? source?.misc_transactions),
         reimbursement_lost_inventory_amount: toNumber(
@@ -9938,14 +9949,13 @@ export default function DashboardPage() {
                     "lost_total",
                 ]) ?? exportNonZeroOrNull(lostInventory);
             const exportInventoryChargesAndReimbursement =
-                getOptionalExportNumber([
-                    "inventory_charges_and_reimbursement",
-                    "inventory_charges_reimbursement",
-                    "inventory_charges_reimbursement_total",
-                ]) ??
-                (exportInventoryCharges !== null && exportReimbursementForLostInventory !== null
+                exportInventoryCharges !== null && exportReimbursementForLostInventory !== null
                     ? exportInventoryCharges - exportReimbursementForLostInventory
-                    : null);
+                    : getOptionalExportNumber([
+                        "inventory_charges_and_reimbursement",
+                        "inventory_charges_reimbursement",
+                        "inventory_charges_reimbursement_total",
+                    ]);
 
             const exportPlatformManagementFees = getOptionalExportNumber(["platform_management_fees"]);
             const exportOthers = getOptionalExportNumber(["other_adjustment"]);

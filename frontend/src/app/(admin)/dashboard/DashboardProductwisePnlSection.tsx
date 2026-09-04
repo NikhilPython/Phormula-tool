@@ -172,14 +172,13 @@ export default function DashboardProductwisePnlSection({
             "lost_total",
         ]) ?? nonZeroOrNull(lost_inventory_total);
     const inventoryChargesAndReimbursement =
-        getSummaryNumber([
-            "inventory_charges_and_reimbursement",
-            "inventory_charges_reimbursement",
-            "inventory_charges_reimbursement_total",
-        ]) ??
-        (inventoryCharges !== null && reimbursementForLostInventory !== null
+        inventoryCharges !== null && reimbursementForLostInventory !== null
             ? inventoryCharges - reimbursementForLostInventory
-            : null);
+            : getSummaryNumber([
+                "inventory_charges_and_reimbursement",
+                "inventory_charges_reimbursement",
+                "inventory_charges_reimbursement_total",
+            ]);
 
     const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
     const others = getSummaryNumber(["other_adjustment"]);

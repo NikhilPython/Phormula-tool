@@ -1823,16 +1823,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ]) ?? nonZeroOrNull(totals.reimbursement_lost_inventory_amount || totals.lost_total);
 
     const inventoryChargesAndReimbursement =
-      getOptionalNumber(rawTotalRow, [
-        "inventory_charges_and_reimbursement",
-        "inventory_charges_reimbursement",
-        "inventory_charges_reimbursement_total",
-      ]) ??
-      (
-        inventoryCharges !== null && reimbursementForLostInventory !== null
-          ? inventoryCharges - reimbursementForLostInventory
-          : null
-      );
+      inventoryCharges !== null && reimbursementForLostInventory !== null
+        ? inventoryCharges - reimbursementForLostInventory
+        : getOptionalNumber(rawTotalRow, [
+          "inventory_charges_and_reimbursement",
+          "inventory_charges_reimbursement",
+          "inventory_charges_reimbursement_total",
+        ]);
 
     const platformManagementFees = getOptionalNumber(rawTotalRow, [
       "platform_management_fees",

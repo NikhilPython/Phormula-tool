@@ -334,6 +334,8 @@ def aggregate_monthly_sku_rows(rows):
         cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
         promotional_rebates = safe_number(row.get("promotional_rebates"))
         rembursement_fee = safe_number(row.get("rembursement_fee"))
+        fba_disposal = safe_number(row.get("fba_disposal"))
+        lost_total = safe_number(row.get("lost_total"))
 
         asp = net_sales / total_quantity if total_quantity else 0
         profit_percentage = (profit / net_sales) * 100 if net_sales else 0
@@ -348,6 +350,11 @@ def aggregate_monthly_sku_rows(rows):
         promotional_rebates_percentage = (
             (promotional_rebates / net_sales) * 100 if net_sales else 0
         )
+        inventory_charges_and_reimbursement = (
+            abs(fba_disposal) - abs(lost_total)
+            if fba_disposal or lost_total
+            else safe_number(row.get("inventory_charges_and_reimbursement"))
+        )
 
         row["asp"] = asp
         row["profit_percentage"] = profit_percentage
@@ -358,6 +365,9 @@ def aggregate_monthly_sku_rows(rows):
         row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
         row["reimbursement_vs_sales"] = reimbursement_vs_sales
         row["rembursment_vs_cm2_margins"] = rembursment_vs_cm2_margins
+        row["inventory_charges_and_reimbursement"] = (
+            inventory_charges_and_reimbursement
+        )
         row["promotional_rebates_percentage"] = promotional_rebates_percentage
 
         row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
