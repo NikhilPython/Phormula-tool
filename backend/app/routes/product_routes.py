@@ -274,6 +274,8 @@ def aggregate_monthly_sku_rows(rows):
         "unit_wise_profitability",
         "sales_mix",
         "profit_mix",
+        "reimbursement_vs_sales",
+        "rembursment_vs_cm2_margins",
         "promotional_rebates_percentage",
     }
 
@@ -331,11 +333,18 @@ def aggregate_monthly_sku_rows(rows):
         profit = safe_number(row.get("profit"))
         cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
         promotional_rebates = safe_number(row.get("promotional_rebates"))
+        rembursement_fee = safe_number(row.get("rembursement_fee"))
 
         asp = net_sales / total_quantity if total_quantity else 0
         profit_percentage = (profit / net_sales) * 100 if net_sales else 0
         unit_wise_profitability = profit / total_quantity if total_quantity else 0
         cm2_margin = (cm2_profit / net_sales) * 100 if net_sales else 0
+        reimbursement_vs_sales = (
+            abs(rembursement_fee / net_sales) * 100 if net_sales else 0
+        )
+        rembursment_vs_cm2_margins = (
+            abs(rembursement_fee / cm2_profit) * 100 if cm2_profit else 0
+        )
         promotional_rebates_percentage = (
             (promotional_rebates / net_sales) * 100 if net_sales else 0
         )
@@ -347,6 +356,8 @@ def aggregate_monthly_sku_rows(rows):
         row["cm2_profit_percentage"] = cm2_margin
         row["cm2_profit_per"] = cm2_margin
         row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
+        row["reimbursement_vs_sales"] = reimbursement_vs_sales
+        row["rembursment_vs_cm2_margins"] = rembursment_vs_cm2_margins
         row["promotional_rebates_percentage"] = promotional_rebates_percentage
 
         row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
@@ -1849,10 +1860,24 @@ def skutableprofit():
                         row_dict["cm2_profit_percentage"] = round(cm2_margins_value, 2)
 
                         rembursement_fee = safe_float(row_dict.get("rembursement_fee"))
-                        row_dict["rembursment_vs_cm2_margins"] = round(
-                            safe_divide(rembursement_fee, cm2_profit_total) * 100,
-                            2
+                        existing_reimbursement_vs_sales = safe_float(
+                            row_dict.get("reimbursement_vs_sales")
                         )
+                        existing_reimbursement_vs_cm2 = safe_float(
+                            row_dict.get("rembursment_vs_cm2_margins")
+                        )
+
+                        if existing_reimbursement_vs_sales == 0:
+                            row_dict["reimbursement_vs_sales"] = round(
+                                safe_divide(rembursement_fee, net_sales) * 100,
+                                2
+                            )
+
+                        if existing_reimbursement_vs_cm2 == 0:
+                            row_dict["rembursment_vs_cm2_margins"] = round(
+                                safe_divide(rembursement_fee, cm2_profit_total) * 100,
+                                2
+                            )
 
                     row_dict["brand_spend"] = round(brand_spend_total, 2)
                     row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
