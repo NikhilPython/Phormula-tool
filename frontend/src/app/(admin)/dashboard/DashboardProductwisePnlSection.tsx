@@ -829,7 +829,7 @@ export default function DashboardProductwisePnlSection({
                                                         : Math.round(absValue).toLocaleString();
                                                 }
 
-                                                if (colKey === "tax" || colKey === "credits" || colKey === "tax_and_credits") {
+                                                if (colKey === "tax" || colKey === "net_taxes" || colKey === "credits" || colKey === "tax_and_credits") {
                                                     const v = Number((row as any)[colKey] ?? 0);
                                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
                                                 }

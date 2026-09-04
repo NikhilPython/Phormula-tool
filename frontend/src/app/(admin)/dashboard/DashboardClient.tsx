@@ -6253,7 +6253,8 @@ export default function DashboardPage() {
         });
 
         const mapRow = (r: any, idx?: number, isTotal = false): MonthlySkuwiseRow => {
-            const tax = Number(r.net_taxes ?? r.tax ?? 0);
+            const rawTax = Number(r.net_taxes ?? r.tax ?? 0);
+            const tax = countryName === "uk" ? Math.abs(rawTax) : rawTax;
             const credits = Number(r.credits ?? r.net_credits ?? 0);
             const miscTransaction = Number(r.misc_transaction ?? r.misc_transactions ?? 0);
 
@@ -6353,7 +6354,7 @@ export default function DashboardPage() {
         const mapped = body.map((r: any, idx: number) => mapRow(r, idx, false));
         if (total) mapped.push(mapRow(total, undefined, true));
         return mapped;
-    }, [data, platform]);
+    }, [countryName, data, platform]);
 
 
     const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
@@ -6390,7 +6391,8 @@ export default function DashboardPage() {
     ];
 
     const normalizeProductwiseRow = (raw: any): MonthlySkuwiseRow => {
-        const tax = toNumberSafe(raw?.tax ?? raw?.net_taxes);
+        const rawTax = toNumberSafe(raw?.tax ?? raw?.net_taxes);
+        const tax = countryName === "uk" ? Math.abs(rawTax) : rawTax;
         const credits = toNumberSafe(raw?.credits ?? raw?.net_credits);
         const miscTransaction = toNumberSafe(raw?.misc_transaction ?? raw?.misc_transactions);
 

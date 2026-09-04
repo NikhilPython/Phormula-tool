@@ -279,8 +279,19 @@ def aggregate_monthly_sku_rows(rows):
         "promotional_rebates_percentage",
     }
 
+    def safe_number(value):
+        try:
+            if value is None or value == "":
+                return 0.0
+            return float(value)
+        except Exception:
+            return 0.0
+
     for row in rows:
         normalized_row = _normalize_sku_row(dict(row))
+        if str(country or "").lower() == "uk":
+            normalized_row["net_taxes"] = abs(safe_number(normalized_row.get("net_taxes")))
+            normalized_row["tax"] = normalized_row["net_taxes"]
 
         available_key_columns = [
             col for col in preferred_key_columns
@@ -318,16 +329,12 @@ def aggregate_monthly_sku_rows(rows):
                 if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
                     grouped[key][col] = (grouped[key].get(col) or 0) + (value or 0)
 
-    def safe_number(value):
-        try:
-            if value is None or value == "":
-                return 0.0
-            return float(value)
-        except Exception:
-            return 0.0
-
     # Recalculate derived values from final aggregated totals.
     for row in grouped.values():
+        if str(country or "").lower() == "uk":
+            row["net_taxes"] = abs(safe_number(row.get("net_taxes")))
+            row["tax"] = row["net_taxes"]
+
         net_sales = safe_number(row.get("net_sales"))
         total_quantity = safe_number(row.get("total_quantity"))
         profit = safe_number(row.get("profit"))
@@ -1716,6 +1723,9 @@ def skutableprofit():
 
             for row in main_rows:
                 row_dict = _normalize_sku_row(dict(row))
+                if country == "uk":
+                    row_dict["net_taxes"] = abs(safe_float(row_dict.get("net_taxes")))
+                    row_dict["tax"] = row_dict["net_taxes"]
 
                 sku = str(row_dict.get("sku") or "").strip().lower()
                 product_name = str(row_dict.get("product_name") or "").strip().lower()

@@ -107,6 +107,9 @@ def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
         if target not in df.columns:
             df[target] = numeric_series(source)
 
+    df["net_taxes"] = numeric_series("net_taxes").abs()
+    df["tax"] = df["net_taxes"]
+
     qty = numeric_series("total_quantity", "quantity")
     net_sales = numeric_series("net_sales")
     profit = numeric_series("profit")
@@ -1267,7 +1270,10 @@ def process_skuwise_data(user_id, country, month, year):
         else:
             sku_grouped["net_taxes"] = 0.0
 
-
+        sku_grouped["net_taxes"] = pd.to_numeric(
+            sku_grouped.get("net_taxes", 0.0),
+            errors="coerce"
+        ).fillna(0.0).abs()
 
         sku_grouped["sales_tax_refund"] = 0.0
 
@@ -1571,7 +1577,7 @@ def process_skuwise_data(user_id, country, month, year):
 
         # === EXPENSE BREAKDOWN ===
         total_net_credits = abs(sku_grouped["net_credits"].sum())
-        total_net_taxes = abs(sku_grouped["net_taxes"].sum())
+        total_net_taxes = sku_grouped["net_taxes"].abs().sum()
         total_fba_fees = abs(sku_grouped["fba_fees"].sum())
         total_selling_fees = abs(sku_grouped["selling_fees"].sum())
         total_cost = abs(sku_grouped["cost_of_unit_sold"].sum())
