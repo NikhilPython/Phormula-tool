@@ -333,7 +333,25 @@ def aggregate_monthly_sku_rows(rows):
         profit = safe_number(row.get("profit"))
         cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
         promotional_rebates = safe_number(row.get("promotional_rebates"))
-        rembursement_fee = safe_number(row.get("rembursement_fee"))
+
+        # Yearly TOTAL reimbursement must be derived from the final yearly
+        # disbursement/debt totals, not by adding monthly reimbursement values.
+        # Example (UK 2026): abs(15400.64 - 1906.23) = 13494.41.
+        row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
+        is_total_row = row_name == "total"
+
+        if is_total_row:
+            disbursement = safe_number(row.get("disbursement"))
+            debt_payment = safe_number(row.get("debt_payment"))
+            rembursement_fee = abs(disbursement - debt_payment)
+            row["rembursement_fee"] = rembursement_fee
+
+            # Keep frontend aliases in sync when these columns are present.
+            if "current_net_reimbursement" in row:
+                row["current_net_reimbursement"] = rembursement_fee
+        else:
+            rembursement_fee = safe_number(row.get("rembursement_fee"))
+
         fba_disposal = safe_number(row.get("fba_disposal"))
         lost_total = safe_number(row.get("lost_total"))
 
@@ -370,8 +388,7 @@ def aggregate_monthly_sku_rows(rows):
         )
         row["promotional_rebates_percentage"] = promotional_rebates_percentage
 
-        row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
-        row["_is_total_row"] = row_name == "total"
+        row["_is_total_row"] = is_total_row
 
         if row["_is_total_row"]:
             visible_ads_total = abs(safe_number(row.get("visible_ads")))
