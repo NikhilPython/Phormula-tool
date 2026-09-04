@@ -376,10 +376,16 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_quantity = float(total_row["total_quantity"] or 0)
     total_profit_value = float(total_row["profit"] or 0)
 
+    is_rollup_output_table = str(output_table).lower().startswith(
+        ("quarter", "skuwiseyearly")
+    )
+
     product_ads_total = (
         abs(float(total_row.get("product_spend", 0) or 0))
         + abs(float(total_row.get("display_spend", 0) or 0))
     )
+    visible_ads_total = abs(float(total_row.get("visible_ads", 0) or 0))
+    deals_ads_total = abs(float(total_row.get("dealsvouchar_ads", 0) or 0))
     fallback_ads_total = abs(
         float(total_row.get("ads_spend", 0) or 0)
         or float(total_row.get("advertising_total", 0) or 0)
@@ -387,18 +393,27 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     if not product_ads_total:
         product_ads_total = fallback_ads_total
 
-    cost_ads_total = (
-        abs(float(total_row.get("brand_spend", 0) or 0))
-        + abs(float(total_row.get("dealsvouchar_ads", 0) or 0))
-    )
-    total_ads = product_ads_total + cost_ads_total
+    if is_rollup_output_table:
+        product_ads_total = visible_ads_total or product_ads_total
+        cost_ads_total = deals_ads_total
+        total_ads = product_ads_total + cost_ads_total
+    else:
+        cost_ads_total = (
+            abs(float(total_row.get("brand_spend", 0) or 0))
+            + deals_ads_total
+        )
+        total_ads = product_ads_total + cost_ads_total
 
     total_row["ads_spend"] = product_ads_total
     total_row["ads_spend_raw"] = product_ads_total
     total_row["advertising_total"] = product_ads_total
     total_row["advertising_total_final"] = (
-        float(total_row.get("advertising_total_final", 0) or 0)
-        or product_ads_total
+        total_ads
+        if is_rollup_output_table
+        else (
+            float(total_row.get("advertising_total_final", 0) or 0)
+            or product_ads_total
+        )
     )
     total_row["advertising_fees"] = total_ads
     total_row["total_ads"] = total_ads
