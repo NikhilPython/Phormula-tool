@@ -118,6 +118,7 @@ def add_report_compat_columns(df: pd.DataFrame) -> pd.DataFrame:
     fba_disposal = numeric_series("fba_disposal")
     lost_total = numeric_series("lost_total")
 
+    df["lost_total"] = lost_total.abs()
     df["inventory_charges_and_reimbursement"] = (
         fba_disposal.abs() - lost_total.abs()
     )

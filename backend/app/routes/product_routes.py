@@ -383,6 +383,7 @@ def aggregate_monthly_sku_rows(rows):
         row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
         row["reimbursement_vs_sales"] = reimbursement_vs_sales
         row["rembursment_vs_cm2_margins"] = rembursment_vs_cm2_margins
+        row["lost_total"] = abs(lost_total)
         row["inventory_charges_and_reimbursement"] = (
             inventory_charges_and_reimbursement
         )
