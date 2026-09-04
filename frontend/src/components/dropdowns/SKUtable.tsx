@@ -343,10 +343,30 @@ const formatRoundedPlain = (value: unknown) => {
 
 const isNumericKey = (k: string, v: any) => typeof v === "number" || (!isNaN(Number(v)) && v !== null && v !== "");
 
+const getNetUnitsForCm1 = (row: Partial<TableRow>) => {
+  const netUnits = toNumber(row.net_units_sold);
+  if (netUnits > 0) return netUnits;
+
+  const totalQuantity = toNumber(row.total_quantity);
+  if (totalQuantity > 0) return totalQuantity;
+
+  const unitsSold = toNumber(row.units_sold ?? row.quantity);
+  const returnUnits = toNumber(row.return_units ?? row.return_quantity);
+  const derivedNetUnits = unitsSold - returnUnits;
+
+  return derivedNetUnits > 0 ? derivedNetUnits : unitsSold;
+};
+
 function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
   const out: any = { ...base };
   const averageKeys = new Set(["promotional_rebates_percentage"]);
   const averageCounts: Record<string, number> = {};
+  const derivedKeys = new Set([
+    "asp",
+    "ASP",
+    "unit_wise_profitability",
+    "profit_percentage",
+  ]);
 
   for (const r of rows) {
     Object.keys(r || {}).forEach((k) => {
@@ -357,8 +377,7 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
       // ignore name-ish keys
       if (k === "product_name" || k === "sku") return;
 
-      // ✅ do NOT sum ASP fields (we’ll compute later as net_sales / net_units_sold)
-      if (k === "asp" || k === "ASP") return;
+      if (derivedKeys.has(k)) return;
 
       out[k] = toNumber(out[k]) + toNumber(v);
       if (averageKeys.has(k)) {
@@ -372,6 +391,13 @@ function sumRows(rows: TableRow[], base: Partial<TableRow>): TableRow {
       out[key] = toNumber(out[key]) / averageCounts[key];
     }
   });
+
+  const profit = toNumber(out.profit);
+  const netUnits = getNetUnitsForCm1(out);
+  const netSales = toNumber(out.net_sales);
+
+  out.unit_wise_profitability = netUnits > 0 ? profit / netUnits : 0;
+  out.profit_percentage = netSales !== 0 ? (profit / netSales) * 100 : 0;
 
   return out as TableRow;
 }
