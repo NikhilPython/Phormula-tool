@@ -270,6 +270,10 @@ def aggregate_monthly_sku_rows(rows):
         "cm2_profit_percentage",
         "cm2_profit_per",
         "cm2_profit_per_unit",
+        "profit_percentage",
+        "unit_wise_profitability",
+        "sales_mix",
+        "profit_mix",
         "promotional_rebates_percentage",
     }
 
@@ -324,21 +328,29 @@ def aggregate_monthly_sku_rows(rows):
     for row in grouped.values():
         net_sales = safe_number(row.get("net_sales"))
         total_quantity = safe_number(row.get("total_quantity"))
+        profit = safe_number(row.get("profit"))
         cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
         promotional_rebates = safe_number(row.get("promotional_rebates"))
 
         asp = net_sales / total_quantity if total_quantity else 0
+        profit_percentage = (profit / net_sales) * 100 if net_sales else 0
+        unit_wise_profitability = profit / total_quantity if total_quantity else 0
         cm2_margin = (cm2_profit / net_sales) * 100 if net_sales else 0
         promotional_rebates_percentage = (
             (promotional_rebates / net_sales) * 100 if net_sales else 0
         )
 
         row["asp"] = asp
+        row["profit_percentage"] = profit_percentage
+        row["unit_wise_profitability"] = unit_wise_profitability
         row["cm2_margins"] = cm2_margin
         row["cm2_profit_percentage"] = cm2_margin
         row["cm2_profit_per"] = cm2_margin
         row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
         row["promotional_rebates_percentage"] = promotional_rebates_percentage
+
+        row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
+        row["_is_total_row"] = row_name == "total"
 
         if "average_selling_price" in row:
             row["average_selling_price"] = asp
@@ -346,7 +358,27 @@ def aggregate_monthly_sku_rows(rows):
         if "avg_selling_price" in row:
             row["avg_selling_price"] = asp
 
-    return list(grouped.values())
+    aggregated_rows = list(grouped.values())
+    product_rows = [
+        row for row in aggregated_rows
+        if not row.pop("_is_total_row", False)
+    ]
+    total_sales = sum(abs(safe_number(row.get("net_sales"))) for row in product_rows)
+    total_profit = sum(abs(safe_number(row.get("profit"))) for row in product_rows)
+
+    for row in aggregated_rows:
+        row_name = str(row.get("product_name") or row.get("sku") or "").strip().lower()
+        if row_name == "total":
+            row["sales_mix"] = 100
+            row["profit_mix"] = 100
+            continue
+
+        net_sales = safe_number(row.get("net_sales"))
+        profit = safe_number(row.get("profit"))
+        row["sales_mix"] = (net_sales / total_sales) * 100 if total_sales else 0
+        row["profit_mix"] = (profit / total_profit) * 100 if total_profit else 0
+
+    return aggregated_rows
 
 
 def get_year_monthly_aggregated_data(
