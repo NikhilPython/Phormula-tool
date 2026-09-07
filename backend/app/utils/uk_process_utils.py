@@ -1691,6 +1691,12 @@ def process_skuwise_data(user_id, country, month, year):
         )
         sum_row["profit%"] = (sum_row.get("profit", 0) / sum_row.get("Net Sales", 0)) * 100 if sum_row.get("Net Sales", 0) != 0 else 0
 
+        if "net_taxes" in sku_grouped.columns:
+            sum_row["net_taxes"] = pd.to_numeric(
+                sku_grouped["net_taxes"],
+                errors="coerce",
+            ).fillna(0).abs().sum()
+
         # ---------- FIX TOTAL promotional_rebates_percentage ----------
         total_ns = float(sum_row.get("Net Sales", 0) or 0)
         total_pr = float(sum_row.get("promotional_rebates", 0) or 0)

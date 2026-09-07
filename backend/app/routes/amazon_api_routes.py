@@ -3949,14 +3949,20 @@ def finances_mtd_transactions():
             2,
         )
 
-        total_row["tax"] = round(
+        signed_tax_total = (
             float(pd.to_numeric(df_sku["tax"], errors="coerce").fillna(0.0).sum())
+            if "tax" in df_sku.columns else 0.0
+        )
+        total_row["tax"] = round(
+            float(pd.to_numeric(df_sku["tax"], errors="coerce").fillna(0.0).abs().sum())
             if "tax" in df_sku.columns else 0.0,
             2,
         )
 
         total_row["tax_and_credits"] = round(
-            float(total_row["credits"]) - abs(float(total_row["tax"])),
+            float(pd.to_numeric(df_sku["tax_and_credits"], errors="coerce").fillna(0.0).sum())
+            if "tax_and_credits" in df_sku.columns
+            else float(total_row["credits"]) + signed_tax_total,
             2,
         )
 
