@@ -1748,6 +1748,11 @@ def get_current_global_data_for_live_bi(user_id: int):
         + gt_money_total(us_gt, "shipping_charges", 1)
     )
 
+    global_shipment_fees = (
+        gt_money_total(uk_gt, "shipment_fees", uk_to_usd_rate)
+        + gt_money_total(us_gt, "shipment_fees", 1)
+    )
+
     global_fba_disposal = (
         gt_money_total(uk_gt, "fba_disposal", uk_to_usd_rate)
         + gt_money_total(us_gt, "fba_disposal", 1)
@@ -1783,7 +1788,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     money_cols = [
-        "product_sales", "product_sales_tax", "postage_credits",
+        "product_sales", "product_sales_tax", "refund_sales", "postage_credits",
         "gift_wrap_credits", "shipping_credits_tax", "giftwrap_credits_tax",
         "promotional_rebates", "promotional_rebates_tax",
         "marketplace_facilitator_tax", "selling_fees", "fba_fees",
@@ -2053,6 +2058,12 @@ def get_current_global_data_for_live_bi(user_id: int):
     if "sku" not in combined_df.columns:
         combined_df["sku"] = ""
 
+    if "tax" in combined_df.columns:
+        combined_df["tax"] = pd.to_numeric(
+            combined_df["tax"],
+            errors="coerce",
+        ).fillna(0.0).abs()
+
     sum_cols = combined_df.select_dtypes(include=["number"]).columns.tolist()
 
     for remove_col in ["user_id", "year"]:
@@ -2292,6 +2303,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["placement_fee"] = round(global_placement_fee, 2)
     total_row["customs_fee"] = round(global_customs_fee, 2)
     total_row["shipping_charges"] = round(global_shipping_charges, 2)
+    total_row["shipment_fees"] = round(global_shipment_fees, 2)
     total_row["fba_disposal"] = round(global_fba_disposal, 2)
     total_row["platformfeenew"] = round(global_platformfeenew, 2)
     total_row["dealsvouchar_ads"] = round(global_dealsvouchar_ads, 2)
