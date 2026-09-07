@@ -134,6 +134,13 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 "debtpayment": "debt_payment",
                 "debt_payment_total": "debt_payment",
                 "disbursement_total": "disbursement",
+                "cogs": "cost_of_unit_sold",
+                "marketplace_fees": "amazon_fee",
+                "amazon_fees": "amazon_fee",
+                "tax": "net_taxes",
+                "credits": "net_credits",
+                "tax_and_credits": "tex_and_credits",
+                "other": "other_transaction_fees",
                 "visible_ads_cost": "visible_ads",
                 "visible_ads_amount": "visible_ads",
                 "ads_total": "advertising_total",
@@ -184,6 +191,31 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 if isinstance(column_data, pd.DataFrame):
                     column_data = column_data.bfill(axis=1).iloc[:, 0]
                 df[col] = pd.to_numeric(column_data, errors="coerce").fillna(0)
+
+            df["net_taxes"] = pd.to_numeric(df["net_taxes"], errors="coerce").fillna(0).abs()
+
+            fallback_amazon_fee = (
+                pd.to_numeric(df["selling_fees"], errors="coerce").fillna(0).abs()
+                + pd.to_numeric(df["fba_fees"], errors="coerce").fillna(0).abs()
+            )
+            df["amazon_fee"] = np.where(
+                pd.to_numeric(df["amazon_fee"], errors="coerce").fillna(0) != 0,
+                pd.to_numeric(df["amazon_fee"], errors="coerce").fillna(0).abs(),
+                fallback_amazon_fee,
+            )
+
+            df["tex_and_credits"] = np.where(
+                pd.to_numeric(df["tex_and_credits"], errors="coerce").fillna(0) != 0,
+                pd.to_numeric(df["tex_and_credits"], errors="coerce").fillna(0),
+                pd.to_numeric(df["net_credits"], errors="coerce").fillna(0)
+                - pd.to_numeric(df["net_taxes"], errors="coerce").fillna(0).abs(),
+            )
+
+            df["other_transaction_fees"] = np.where(
+                pd.to_numeric(df["other_transaction_fees"], errors="coerce").fillna(0) != 0,
+                pd.to_numeric(df["other_transaction_fees"], errors="coerce").fillna(0),
+                pd.to_numeric(df["tex_and_credits"], errors="coerce").fillna(0),
+            )
 
             df["platform_management_fees"] = np.where(
                 df["platform_management_fees"] != 0,
@@ -350,6 +382,12 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
 
     for col in quantity_cols + money_cols + non_convert_money_cols:
         total_row[col] = pd.to_numeric(total_base_df[col], errors="coerce").fillna(0).sum()
+
+    if "net_taxes" in df.columns:
+        total_row["net_taxes"] = pd.to_numeric(
+            df["net_taxes"],
+            errors="coerce",
+        ).fillna(0).abs().sum()
 
     # IMPORTANT: add US platform_management_fees + UK platform_management_fees
     # after UK has been converted from GBP to USD. This avoids losing the UK value
