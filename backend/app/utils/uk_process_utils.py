@@ -2813,6 +2813,19 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
             ).abs()
 
+            sku_grouped["short_term_storage_fee"] = pd.to_numeric(
+                sku_grouped["short_term_storage_fee"],
+                errors="coerce",
+            ).fillna(0).abs()
+            sku_grouped["long_term_storage_fee"] = pd.to_numeric(
+                sku_grouped["long_term_storage_fee"],
+                errors="coerce",
+            ).fillna(0).abs()
+            sku_grouped["platform_fee_inventory_storage"] = (
+                sku_grouped["short_term_storage_fee"]
+                + sku_grouped["long_term_storage_fee"]
+            )
+
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
             sku_grouped["cm2_margins"] = sku_grouped.apply(
@@ -3097,6 +3110,19 @@ def process_yearly_skuwise_data(user_id, country, year):
                 pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
                 - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
             ).abs()
+
+            sku_grouped["short_term_storage_fee"] = pd.to_numeric(
+                sku_grouped["short_term_storage_fee"],
+                errors="coerce",
+            ).fillna(0).abs()
+            sku_grouped["long_term_storage_fee"] = pd.to_numeric(
+                sku_grouped["long_term_storage_fee"],
+                errors="coerce",
+            ).fillna(0).abs()
+            sku_grouped["platform_fee_inventory_storage"] = (
+                sku_grouped["short_term_storage_fee"]
+                + sku_grouped["long_term_storage_fee"]
+            )
 
             sku_grouped["product_name"] = sku_grouped["product_name"].astype(str).str.strip()
 
