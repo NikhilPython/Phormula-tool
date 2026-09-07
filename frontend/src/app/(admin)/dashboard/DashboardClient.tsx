@@ -462,6 +462,7 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     );
 
     const cm2MarginsValue = toNumber(
+        source?.total_cm2_margins ??
         source?.cm2_margins ??
         source?.cm2_profit_percentage ??
         source?.cm2_profit_percent ??

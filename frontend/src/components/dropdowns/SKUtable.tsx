@@ -182,6 +182,7 @@ export type TableRow = {
   reimbursement_vs_sales?: number;
 
   cm2_profit?: number;
+  total_cm2_margins?: number;
   cm2_margins?: number;
   cm2_profit_percentage?: number;
   cm2_profit_percent?: number;
@@ -526,6 +527,7 @@ function normalizeRows(data: any[]): TableRow[] {
 
       cm2_margins: toNumber(
         row.cm2_margins ??
+        row.total_cm2_margins ??
         row.cm2_profit_percentage ??
         row.cm2_profit_percent ??
         row.cm2_profit_percentage_value
@@ -573,6 +575,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
     toNumber(totalRow.reimbursement_lost_inventory_units) || 0;
 
   const cm2MarginsValue = toNumber(
+    totalRow.total_cm2_margins ??
     totalRow.cm2_margins ??
     totalRow.cm2_profit_percentage ??
     totalRow.cm2_profit_percent ??
@@ -764,6 +767,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       isTotal
         ? (
           (row as any).cm2_profit_per ??
+          (row as any).total_cm2_margins ??
           (row as any).cm2_profit_percentage ??
           (row as any).cm2_profit_percent ??
           (row as any).cm2_profit_percentage_value
@@ -778,7 +782,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     if (backendValue) return backendValue;
 
-    const cm2 = toNumber((row as any).cm2_profit);
+    const cm2 = toNumber(
+      isTotal
+        ? ((row as any).total_cm2_profit ?? (row as any).cm2_profit)
+        : (row as any).cm2_profit
+    );
     const sales = toNumber((row as any).net_sales);
 
     return sales !== 0 ? (cm2 / sales) * 100 : 0;
