@@ -265,11 +265,37 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
     if ads_df.empty or "products" not in ads_df.columns:
         return sku_grouped, False
 
+    total_product_names = {"grand total", "grand_total", "total"}
     ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
-    ads_df = ads_df.loc[
-        ads_df["products"].ne("")
-        & ~ads_df["products"].str.casefold().eq("grand total")
+
+    for col in ["brand_spend", "sb_ads_sales"]:
+        if col not in ads_df.columns:
+            ads_df[col] = 0.0
+        ads_df[col] = pd.to_numeric(ads_df[col], errors="coerce").fillna(0.0)
+
+    total_rows = ads_df.loc[
+        ads_df["products"].str.casefold().isin(total_product_names)
     ].copy()
+    detail_rows = ads_df.loc[
+        ads_df["products"].ne("")
+        & ~ads_df["products"].str.casefold().isin(total_product_names)
+    ].copy()
+    account_brand_spend = float(
+        pd.to_numeric(detail_rows["brand_spend"], errors="coerce").fillna(0.0).sum()
+    ) if not detail_rows.empty else 0.0
+    account_sb_ads_sales = float(
+        pd.to_numeric(detail_rows["sb_ads_sales"], errors="coerce").fillna(0.0).sum()
+    ) if not detail_rows.empty else 0.0
+    if account_brand_spend == 0 and not total_rows.empty:
+        account_brand_spend = float(
+            pd.to_numeric(total_rows["brand_spend"], errors="coerce").fillna(0.0).sum()
+        )
+    if account_sb_ads_sales == 0 and not total_rows.empty:
+        account_sb_ads_sales = float(
+            pd.to_numeric(total_rows["sb_ads_sales"], errors="coerce").fillna(0.0).sum()
+        )
+
+    ads_df = detail_rows
     if ads_df.empty:
         return sku_grouped, False
 
@@ -378,6 +404,8 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
         out[col] = pd.to_numeric(out[col], errors="coerce").replace([np.inf, -np.inf], 0).fillna(0.0)
 
     print(f"[ADS] Applied SKU advertising data from {ads_table}")
+    out.attrs["account_brand_spend"] = account_brand_spend
+    out.attrs["account_sb_ads_sales"] = account_sb_ads_sales
     return out, True
 
 def ensure_payment_columns(conn, table_name: str):
@@ -1559,6 +1587,8 @@ def process_skuwise_data(user_id, country, month, year):
         sku_grouped, ads_table_applied = merge_monthly_ads_into_sku_grouped(
             conn, sku_grouped, user_id, country, month, year
         )
+        ads_account_brand_spend = float(sku_grouped.attrs.get("account_brand_spend", 0.0) or 0.0)
+        ads_account_sb_ads_sales = float(sku_grouped.attrs.get("account_sb_ads_sales", 0.0) or 0.0)
         total_profit = abs(sku_grouped["profit"].sum())
         total_Previous_profit = abs(sku_grouped["previous_profit"].sum())
         total_Previous_sales = abs(sku_grouped["previous_net_sales"].sum())
@@ -1827,6 +1857,10 @@ def process_skuwise_data(user_id, country, month, year):
 
         # ---------------- NEW: set TOTAL-only columns ----------------
         sum_row["visible_ads"] = abs(float(visible_ads_total))
+        if "brand_spend" in sum_row.index and abs(float(sum_row.get("brand_spend", 0) or 0)) == 0:
+            sum_row["brand_spend"] = abs(ads_account_brand_spend)
+        if "sb_ads_sales" in sum_row.index and abs(float(sum_row.get("sb_ads_sales", 0) or 0)) == 0:
+            sum_row["sb_ads_sales"] = abs(ads_account_sb_ads_sales)
         sum_row["dealsvouchar_ads"] = abs(float(dealsvouchar_ads_total))
         sum_row["platformfeenew"] = abs(float(platformfeenew_total))
         sum_row["platform_fee_inventory_storage"] = abs(float(platform_fee_inventory_storage_total))

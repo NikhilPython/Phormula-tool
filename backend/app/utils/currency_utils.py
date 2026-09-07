@@ -204,11 +204,12 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
                 fallback_amazon_fee,
             )
 
+            net_credits = pd.to_numeric(df["net_credits"], errors="coerce").fillna(0)
+            net_taxes = pd.to_numeric(df["net_taxes"], errors="coerce").fillna(0).abs()
             df["tex_and_credits"] = np.where(
-                pd.to_numeric(df["tex_and_credits"], errors="coerce").fillna(0) != 0,
+                (net_credits != 0) | (net_taxes != 0),
+                net_credits - net_taxes,
                 pd.to_numeric(df["tex_and_credits"], errors="coerce").fillna(0),
-                pd.to_numeric(df["net_credits"], errors="coerce").fillna(0)
-                - pd.to_numeric(df["net_taxes"], errors="coerce").fillna(0).abs(),
             )
 
             df["other_transaction_fees"] = np.where(
@@ -316,6 +317,28 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         .reset_index()
     )
 
+    for col in ["net_sales", "cost_of_unit_sold", "amazon_fee", "net_taxes", "net_credits", "tex_and_credits"]:
+        if col not in global_df.columns:
+            global_df[col] = 0.0
+        global_df[col] = pd.to_numeric(global_df[col], errors="coerce").fillna(0.0)
+
+    global_df["net_taxes"] = global_df["net_taxes"].abs()
+    has_tax_credit_components = (
+        (global_df["net_credits"] != 0)
+        | (global_df["net_taxes"] != 0)
+    )
+    global_df["tex_and_credits"] = np.where(
+        has_tax_credit_components,
+        global_df["net_credits"] - global_df["net_taxes"],
+        global_df["tex_and_credits"],
+    )
+    global_df["profit"] = (
+        global_df["net_sales"]
+        - global_df["cost_of_unit_sold"].abs()
+        - global_df["amazon_fee"].abs()
+        + global_df["tex_and_credits"]
+    ).round(2)
+
     for col in ["product_spend", "display_spend", "ads_spend", "advertising_total"]:
         global_df[col] = pd.to_numeric(global_df[col], errors="coerce").fillna(0)
 
@@ -388,6 +411,19 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
             df["net_taxes"],
             errors="coerce",
         ).fillna(0).abs().sum()
+
+    if float(total_row.get("net_credits", 0) or 0) or float(total_row.get("net_taxes", 0) or 0):
+        total_row["tex_and_credits"] = (
+            float(total_row.get("net_credits", 0) or 0)
+            - abs(float(total_row.get("net_taxes", 0) or 0))
+        )
+    total_row["profit"] = round(
+        float(total_row.get("net_sales", 0) or 0)
+        - abs(float(total_row.get("cost_of_unit_sold", 0) or 0))
+        - abs(float(total_row.get("amazon_fee", 0) or 0))
+        + float(total_row.get("tex_and_credits", 0) or 0),
+        2,
+    )
 
     # IMPORTANT: add US platform_management_fees + UK platform_management_fees
     # after UK has been converted from GBP to USD. This avoids losing the UK value
@@ -496,7 +532,7 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_row["rembursment_vs_cm2_margins"] = (total_reimbursement / total_cm2) * 100 if total_cm2 else 0
     total_row["reimbursement_vs_sales"] = (total_reimbursement / total_net_sales) * 100 if total_net_sales else 0
     total_row["promotional_rebates_percentage"] = (
-        abs(total_row["promotional_rebates"]) / total_net_sales
+        float(total_row["promotional_rebates"] or 0) / total_net_sales
     ) * 100 if total_net_sales else 0
     total_row["sales_mix"] = 100
     total_row["profit_mix"] = 100

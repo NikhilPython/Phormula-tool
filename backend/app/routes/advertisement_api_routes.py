@@ -1624,7 +1624,7 @@ def monthly_sp_sd_to_db():
                             FROM public.{skuwise_table_name}
                             WHERE NOT ({total_where_sql})
                         ),
-                        ads_total AS (
+                        ads_detail_total AS (
                             SELECT
                                 COALESCE(SUM(product_spend), 0) AS product_spend,
                                 COALESCE(SUM(display_spend), 0) AS display_spend,
@@ -1633,6 +1633,29 @@ def monthly_sp_sd_to_db():
                             FROM public.{table_name}
                             WHERE UPPER(TRIM(COALESCE(products::text, ''))) NOT IN
                                   ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                        ),
+                        ads_grand_total AS (
+                            SELECT
+                                COALESCE(SUM(brand_spend), 0) AS brand_spend,
+                                COALESCE(SUM(sb_ads_sales), 0) AS sb_ads_sales
+                            FROM public.{table_name}
+                            WHERE UPPER(TRIM(COALESCE(products::text, ''))) IN
+                                  ('TOTAL', 'GRAND TOTAL', 'GRAND_TOTAL')
+                        ),
+                        ads_total AS (
+                            SELECT
+                                d.product_spend,
+                                d.display_spend,
+                                CASE
+                                    WHEN ABS(d.brand_spend) <> 0 THEN d.brand_spend
+                                    ELSE g.brand_spend
+                                END AS brand_spend,
+                                CASE
+                                    WHEN ABS(d.sb_ads_sales) <> 0 THEN d.sb_ads_sales
+                                    ELSE g.sb_ads_sales
+                                END AS sb_ads_sales
+                            FROM ads_detail_total AS d
+                            CROSS JOIN ads_grand_total AS g
                         ),
                         unsku_ads AS (
                             SELECT

@@ -2095,6 +2095,8 @@ def get_current_global_data_for_live_bi(user_id: int):
         "net_sales",
         "cogs",
         "marketplace_fees",
+        "tax",
+        "credits",
         "tax_and_credits",
         "ads_spend",
         "product_spend",
@@ -2109,6 +2111,18 @@ def get_current_global_data_for_live_bi(user_id: int):
     global_df["ads_spend"] = (
         pd.to_numeric(global_df["product_spend"], errors="coerce").fillna(0.0)
         + pd.to_numeric(global_df["display_spend"], errors="coerce").fillna(0.0)
+    )
+
+    credit_values = pd.to_numeric(global_df["credits"], errors="coerce").fillna(0.0)
+    tax_values = pd.to_numeric(global_df["tax"], errors="coerce").fillna(0.0).abs()
+    existing_tax_and_credits = pd.to_numeric(
+        global_df["tax_and_credits"],
+        errors="coerce",
+    ).fillna(0.0)
+    global_df["tax_and_credits"] = np.where(
+        (credit_values != 0) | (tax_values != 0),
+        credit_values - tax_values,
+        existing_tax_and_credits,
     )
 
     # Other Transactions = US other + UK other converted to USD
@@ -2265,6 +2279,14 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
     total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
     total_row["sales_mix"] = 100.0 if total_net_sales else 0.0
+    total_row["promotional_rebates_percentage"] = round(
+        (
+            float(total_row.get("promotional_rebates", 0.0) or 0.0)
+            / total_net_sales
+            * 100.0
+        ) if total_net_sales else 0.0,
+        6,
+    )
 
     # total_row["acos"] = round(
     #     (float(total_row.get("ads_spend", 0.0) or 0.0) / total_net_sales * 100)
@@ -3647,41 +3669,35 @@ def finances_mtd_transactions():
                 ads_df["products"] = ""
             ads_df["products"] = ads_df["products"].fillna("").astype(str).str.strip()
 
-            gt_mask = ads_df["products"].str.lower().eq("grand total")
-            if gt_mask.any():
-                ads_total_product_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "product_spend"], errors="coerce").fillna(0.0).sum()) if "product_spend" in ads_df.columns else 0.0
-                ads_total_display_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "display_spend"], errors="coerce").fillna(0.0).sum()) if "display_spend" in ads_df.columns else 0.0
-                ads_total_brand_spend = float(pd.to_numeric(ads_df.loc[gt_mask, "brand_spend"], errors="coerce").fillna(0.0).sum()) if "brand_spend" in ads_df.columns else 0.0
-                ads_total_sp_ads_sales = float(
-                    pd.to_numeric(ads_df.loc[gt_mask, "sp_ads_sales"], errors="coerce")
-                    .fillna(0.0)
-                    .sum()
-                ) if "sp_ads_sales" in ads_df.columns else 0.0
+            total_product_names = {"grand total", "grand_total", "total"}
+            gt_mask = ads_df["products"].str.lower().isin(total_product_names)
 
-                ads_total_sd_ads_sales = float(
-                    pd.to_numeric(ads_df.loc[gt_mask, "sd_ads_sales"], errors="coerce")
-                    .fillna(0.0)
-                    .sum()
-                ) if "sd_ads_sales" in ads_df.columns else 0.0
+            for c in [
+                "product_spend", "display_spend", "brand_spend",
+                "sp_ads_sales", "sd_ads_sales", "sb_ads_sales",
+            ]:
+                if c not in ads_df.columns:
+                    ads_df[c] = 0.0
 
-                ads_total_sb_ads_sales = float(
-                    pd.to_numeric(ads_df.loc[gt_mask, "sb_ads_sales"], errors="coerce")
-                    .fillna(0.0)
-                    .sum()
-                ) if "sb_ads_sales" in ads_df.columns else 0.0
-            else:
-                # safe sums even if columns missing
-                for c in ["product_spend", "display_spend", "brand_spend"]:
-                    if c not in ads_df.columns:
-                        ads_df[c] = 0.0
-                ads_total_product_spend = float(pd.to_numeric(ads_df["product_spend"], errors="coerce").fillna(0.0).sum())
-                ads_total_display_spend = float(pd.to_numeric(ads_df["display_spend"], errors="coerce").fillna(0.0).sum())
-                ads_total_brand_spend = float(pd.to_numeric(ads_df["brand_spend"], errors="coerce").fillna(0.0).sum())
-                ads_total_sp_ads_sales = float(pd.to_numeric(ads_df["sp_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sp_ads_sales" in ads_df.columns else 0.0
-                ads_total_sd_ads_sales = float(pd.to_numeric(ads_df["sd_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sd_ads_sales" in ads_df.columns else 0.0
-                ads_total_sb_ads_sales = float(pd.to_numeric(ads_df["sb_ads_sales"], errors="coerce").fillna(0.0).sum()) if "sb_ads_sales" in ads_df.columns else 0.0
+            ads_total_rows = ads_df.loc[gt_mask].copy()
+            ads_rows_for_totals = ads_df.loc[
+                ads_df["products"].ne("") & ~gt_mask
+            ].copy()
+            if ads_rows_for_totals.empty and gt_mask.any():
+                ads_rows_for_totals = ads_total_rows.copy()
 
-            ads_df = ads_df[ads_df["products"] != ""].copy()
+            ads_total_product_spend = float(pd.to_numeric(ads_rows_for_totals["product_spend"], errors="coerce").fillna(0.0).sum())
+            ads_total_display_spend = float(pd.to_numeric(ads_rows_for_totals["display_spend"], errors="coerce").fillna(0.0).sum())
+            ads_total_brand_spend = float(pd.to_numeric(ads_rows_for_totals["brand_spend"], errors="coerce").fillna(0.0).sum())
+            ads_total_sp_ads_sales = float(pd.to_numeric(ads_rows_for_totals["sp_ads_sales"], errors="coerce").fillna(0.0).sum())
+            ads_total_sd_ads_sales = float(pd.to_numeric(ads_rows_for_totals["sd_ads_sales"], errors="coerce").fillna(0.0).sum())
+            ads_total_sb_ads_sales = float(pd.to_numeric(ads_rows_for_totals["sb_ads_sales"], errors="coerce").fillna(0.0).sum())
+            if ads_total_brand_spend == 0 and not ads_total_rows.empty:
+                ads_total_brand_spend = float(pd.to_numeric(ads_total_rows["brand_spend"], errors="coerce").fillna(0.0).sum())
+            if ads_total_sb_ads_sales == 0 and not ads_total_rows.empty:
+                ads_total_sb_ads_sales = float(pd.to_numeric(ads_total_rows["sb_ads_sales"], errors="coerce").fillna(0.0).sum())
+
+            ads_df = ads_df.loc[ads_df["products"].ne("") & ~gt_mask].copy()
 
             # safe ad_type
             if "ad_type" not in ads_df.columns:
