@@ -1698,7 +1698,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       seen.add(c.key);
       return true;
     });
-}, [hasCm2Data, isUsCountry, isGlobalPage]);
+  }, [hasCm2Data, isUsCountry, isGlobalPage]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -2707,7 +2707,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
       {
         type: "section" as const,
         id: "inventory_charges_reimbursement",
-        label: "Inventory Charges and Reimbursement",
+        label: (
+          <>
+            Inventory Charges and Reimbursement{" "}
+            {Math.abs(Number(usSummaryValues.reimbursementForLostInventory ?? 0)) >
+              Math.abs(Number(usSummaryValues.inventoryCharges ?? 0)) ? (
+              <strong className="text-green-500">(+)</strong>
+            ) : Math.abs(Number(usSummaryValues.inventoryCharges ?? 0)) >
+              Math.abs(Number(usSummaryValues.reimbursementForLostInventory ?? 0)) ? (
+              <strong className="text-[#ff5c5c]">(-)</strong>
+            ) : null}
+          </>
+        ),
         endValue: formatSummaryValueOrDash(
           usSummaryValues.inventoryChargesAndReimbursement,
           "inventory_charges_and_reimbursement"
