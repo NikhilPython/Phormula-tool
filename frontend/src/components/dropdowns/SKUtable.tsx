@@ -560,6 +560,27 @@ const isTotalLikeRow = (row: TableRow | any) => {
   return productName === "total" || sku === "total";
 };
 
+const getTotalCm2MarginPct = (row: Partial<TableRow> | any) => {
+  const netSales = toNumber(row?.net_sales ?? row?.Net_Sales);
+  const totalCm2Profit = getOptionalNumber(row, [
+    "total_cm2_profit",
+    "cm2_profit_total",
+    "cm2_profit",
+  ]);
+
+  if (netSales !== 0 && totalCm2Profit !== null) {
+    return (totalCm2Profit / netSales) * 100;
+  }
+
+  return toNumber(
+    row?.total_cm2_margins ??
+    row?.cm2_margins ??
+    row?.cm2_profit_percentage ??
+    row?.cm2_profit_percent ??
+    row?.cm2_profit_percentage_value
+  );
+};
+
 function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
   const totalRow: any =
     rows.find(isTotalLikeRow) ||
@@ -574,13 +595,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
   const reimbursementUnits =
     toNumber(totalRow.reimbursement_lost_inventory_units) || 0;
 
-  const cm2MarginsValue = toNumber(
-    totalRow.total_cm2_margins ??
-    totalRow.cm2_margins ??
-    totalRow.cm2_profit_percentage ??
-    totalRow.cm2_profit_percent ??
-    totalRow.cm2_profit_percentage_value
-  );
+  const cm2MarginsValue = getTotalCm2MarginPct(totalRow);
 
   const cm2ProfitPerValue = toNumber(
     totalRow.cm2_profit_per ??
@@ -763,30 +778,18 @@ const SKUtable: React.FC<SKUtableProps> = ({
       String((row as any)?.product_name ?? "").trim().toLowerCase() === "total" ||
       String((row as any)?.sku ?? "").trim().toLowerCase() === "total";
 
+    if (isTotal) return getTotalCm2MarginPct(row);
+
     const backendValue = toNumber(
-      isTotal
-        ? (
-          (row as any).cm2_profit_per ??
-          (row as any).total_cm2_margins ??
-          (row as any).cm2_profit_percentage ??
-          (row as any).cm2_profit_percent ??
-          (row as any).cm2_profit_percentage_value
-        )
-        : (
-          (row as any).cm2_margins ??
-          (row as any).cm2_profit_percentage ??
-          (row as any).cm2_profit_percent ??
-          (row as any).cm2_profit_percentage_value
-        )
+      (row as any).cm2_margins ??
+      (row as any).cm2_profit_percentage ??
+      (row as any).cm2_profit_percent ??
+      (row as any).cm2_profit_percentage_value
     );
 
     if (backendValue) return backendValue;
 
-    const cm2 = toNumber(
-      isTotal
-        ? ((row as any).total_cm2_profit ?? (row as any).cm2_profit)
-        : (row as any).cm2_profit
-    );
+    const cm2 = toNumber((row as any).cm2_profit);
     const sales = toNumber((row as any).net_sales);
 
     return sales !== 0 ? (cm2 / sales) * 100 : 0;

@@ -6831,20 +6831,30 @@ export default function DashboardPage() {
     ]);
 
     const totalRowCm2Margins = useMemo(() => {
+        const totalNetSales = toNumber(
+            grandTotalRowRaw?.net_sales ??
+            grandTotalRowDisplay?.net_sales ??
+            plSummaryTotals.net_sales
+        );
+
+        if (totalNetSales !== 0) {
+            return (totalRowCm2Profit / totalNetSales) * 100;
+        }
+
         return toNumber(
             grandTotalRowRaw?.total_cm2_margins ??
             grandTotalRowDisplay?.total_cm2_margins ??
             plSummaryTotals.cm2_margins ??
-            grandTotalRowRaw?.cm2_profit_per ??
-            grandTotalRowDisplay?.cm2_profit_per ??
             0
         );
     }, [
+        totalRowCm2Profit,
+        grandTotalRowRaw?.net_sales,
+        grandTotalRowDisplay?.net_sales,
+        plSummaryTotals.net_sales,
         grandTotalRowRaw?.total_cm2_margins,
         grandTotalRowDisplay?.total_cm2_margins,
         plSummaryTotals.cm2_margins,
-        grandTotalRowRaw?.cm2_profit_per,
-        grandTotalRowDisplay?.cm2_profit_per,
     ]);
 
     // ===================== SKUWISE API FIELD MAPPING =====================
