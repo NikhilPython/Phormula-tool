@@ -263,7 +263,18 @@ export default function DashboardProductwisePnlSection({
             {
                 type: "section" as const,
                 id: "inventory_charges_reimbursement",
-                label: "Inventory Charges and Reimbursement",
+                label: (
+                    <>
+                        Inventory Charges and Reimbursement{" "}
+                        {Math.abs(Number(reimbursementForLostInventory ?? 0)) >
+                            Math.abs(Number(inventoryCharges ?? 0)) ? (
+                            <strong className="text-green-500">(+)</strong>
+                        ) : Math.abs(Number(inventoryCharges ?? 0)) >
+                            Math.abs(Number(reimbursementForLostInventory ?? 0)) ? (
+                            <strong className="text-[#ff5c5c]">(-)</strong>
+                        ) : null}
+                    </>
+                ),
                 endValue: formatSummaryValueOrDash(
                     inventoryChargesAndReimbursement,
                     "inventory_charges_and_reimbursement"
@@ -568,387 +579,387 @@ export default function DashboardProductwisePnlSection({
         ];
 
     return (
-                        <div id="pnl-mtd" className="scroll-mt-[10px] mt-2 md:mt-4 w-full rounded-xl  bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
-                            <div className="mb-3 relative flex items-center justify-between gap-3">
-                                {/* LEFT: Title */}
-                                <div className="flex items-center gap-2">
-                                    <PageBreadcrumb
-                                        pageTitle="P&L Productwise Breakdown"
-                                        variant="page"
-                                        align="left"
-                                        textSize="2xl"
-                                    />
-                                    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
-                                        ({currencySymbol})
-                                    </span>
-                                </div>
-                                {/* CENTER: Ads loading message */}
-                                {adsLoading && (
-                                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
-                                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
-                                        Ads data is being fetched, please wait…
-                                    </div>
-                                )}
+        <div id="pnl-mtd" className="scroll-mt-[10px] mt-2 md:mt-4 w-full rounded-xl  bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+            <div className="mb-3 relative flex items-center justify-between gap-3">
+                {/* LEFT: Title */}
+                <div className="flex items-center gap-2">
+                    <PageBreadcrumb
+                        pageTitle="P&L Productwise Breakdown"
+                        variant="page"
+                        align="left"
+                        textSize="2xl"
+                    />
+                    <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
+                        ({currencySymbol})
+                    </span>
+                </div>
+                {/* CENTER: Ads loading message */}
+                {adsLoading && (
+                    <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
+                        Ads data is being fetched, please wait…
+                    </div>
+                )}
 
-                                <div className="flex items-center gap-2">
-                                    {/* Expand / collapse rows */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAllMtdProductwiseRows((prev: boolean) => !prev)}
-                                        title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-                                        aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                                    >
-                                        {showAllMtdProductwiseRows ? (
-                                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                                        ) : (
-                                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                                        )}
-                                    </button>
+                <div className="flex items-center gap-2">
+                    {/* Expand / collapse rows */}
+                    <button
+                        type="button"
+                        onClick={() => setShowAllMtdProductwiseRows((prev: boolean) => !prev)}
+                        title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+                        aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                    >
+                        {showAllMtdProductwiseRows ? (
+                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                        ) : (
+                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                        )}
+                    </button>
 
-                                    {/* Expand / collapse all columns */}
-                                    <button
-                                        type="button"
-                                        onClick={handleToggleProductwiseAllColumns}
-                                        title={
-                                            productwiseAllColumnsExpanded
-                                                ? "Collapse all columns"
-                                                : "Expand all columns"
-                                        }
-                                        aria-label={
-                                            productwiseAllColumnsExpanded
-                                                ? "Collapse all columns"
-                                                : "Expand all columns"
-                                        }
-                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                                    >
-                                        {productwiseAllColumnsExpanded ? (
-                                            <RiLayoutColumnLine size={18} className="font-extrabold" />
-                                        ) : (
-                                            <RiLayoutColumnFill size={18} className="font-extrabold" />
-                                        )}
-                                    </button>
+                    {/* Expand / collapse all columns */}
+                    <button
+                        type="button"
+                        onClick={handleToggleProductwiseAllColumns}
+                        title={
+                            productwiseAllColumnsExpanded
+                                ? "Collapse all columns"
+                                : "Expand all columns"
+                        }
+                        aria-label={
+                            productwiseAllColumnsExpanded
+                                ? "Collapse all columns"
+                                : "Expand all columns"
+                        }
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                    >
+                        {productwiseAllColumnsExpanded ? (
+                            <RiLayoutColumnLine size={18} className="font-extrabold" />
+                        ) : (
+                            <RiLayoutColumnFill size={18} className="font-extrabold" />
+                        )}
+                    </button>
 
-                                    <DownloadIconButton
-                                        onClick={handleDownloadPlProductwiseMtd}
-                                        aria-label="Download P&L Productwise Breakdown MTD"
-                                        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                                    />
-                                </div>
-                            </div>
+                    <DownloadIconButton
+                        onClick={handleDownloadPlProductwiseMtd}
+                        aria-label="Download P&L Productwise Breakdown MTD"
+                        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                    />
+                </div>
+            </div>
 
-                            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
-                                <div className="text-sm text-gray-500">Loading…</div>
-                            ) : finalMonthlySkuwiseRowsForTable.length === 0 ? (
-                                <div className="text-sm text-red-600">
-                                    No P&L productwise rows available for this period.
-                                </div>
-                            ) : (
-                                <div
-                                    className={[
-                                        "w-full max-w-full rounded-xl border border-gray-300",
-                                        shouldScrollMtdProductwiseTable
-                                            ? "overflow-hidden"
-                                            : "overflow-x-auto overflow-y-hidden",
-                                    ].join(" ")}
-                                >
-                                    <div className="w-full max-w-full">
-                                        <GroupedCollapsibleTable<any>
-                                            rows={finalMonthlySkuwiseRowsForTable}
-                                            onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
-                                            tableClassName={[
-                                                "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
-                                                productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
-                                            ].join(" ")}
-                                            getRowKey={(row, idx) =>
-                                                row.isTotal
-                                                    ? "TOTAL"
-                                                    : row.isOthers
-                                                        ? "OTHERS"
-                                                        : row.sku || String(idx)
+            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
+                <div className="text-sm text-gray-500">Loading…</div>
+            ) : finalMonthlySkuwiseRowsForTable.length === 0 ? (
+                <div className="text-sm text-red-600">
+                    No P&L productwise rows available for this period.
+                </div>
+            ) : (
+                <div
+                    className={[
+                        "w-full max-w-full rounded-xl border border-gray-300",
+                        shouldScrollMtdProductwiseTable
+                            ? "overflow-hidden"
+                            : "overflow-x-auto overflow-y-hidden",
+                    ].join(" ")}
+                >
+                    <div className="w-full max-w-full">
+                        <GroupedCollapsibleTable<any>
+                            rows={finalMonthlySkuwiseRowsForTable}
+                            onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
+                            tableClassName={[
+                                "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
+                            ].join(" ")}
+                            getRowKey={(row, idx) =>
+                                row.isTotal
+                                    ? "TOTAL"
+                                    : row.isOthers
+                                        ? "OTHERS"
+                                        : row.sku || String(idx)
+                            }
+                            leftCols={SKUWISE_LEFT_COLS}
+                            groups={SKUWISE_GROUPS}
+                            singleCols={SKUWISE_SINGLE_COLS}
+                            initialCollapsed={productwiseInitialCollapsed}
+                            collapsedState={productwiseCollapsed}
+                            onCollapsedChange={(next) => {
+                                setProductwiseCollapsed(next);
+
+                                setProductwiseAllColumnsExpanded(
+                                    PRODUCTWISE_GROUP_IDS.length > 0 &&
+                                    PRODUCTWISE_GROUP_IDS.every((groupId: string) => next[groupId] === false)
+                                );
+                            }}
+                            defaultSort={plSortConfig}
+                            onSortChange={setPlSortConfig}
+                            showSignRowInBody
+                            getSignForCol={getAdsSignForCol}
+                            bodyMaxHeight={
+                                shouldScrollMtdProductwiseTable
+                                    ? mtdProductwiseTableScrollHeight
+                                    : undefined
+                            }
+                            preserveColumnWidths="responsive"
+                            stickyLeftBorderMode="shadow-only"
+                            stickyLeftDividerMode="leading"
+                            stickyLeftHorizontalBorderMode="border"
+                            isTotalRow={(row) => {
+                                const name = String(row?.product_name || "").trim().toLowerCase();
+                                const sku = String(row?.sku || "").trim().toUpperCase();
+
+                                return (
+                                    !!row.isTotal ||
+                                    sku === "GRAND_TOTAL" ||
+                                    sku === "TOTAL" ||
+                                    name === "grand total" ||
+                                    name === "total"
+                                );
+                            }}
+
+                            layout={[
+                                { type: "group", id: "quantity" },
+                                { type: "single", key: "asp" },
+                                { type: "group", id: "net_sales" },
+                                ...(isUsPnlSkuLayout
+                                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                                    : [{ type: "group" as const, id: "promotions" }]),
+                                { type: "single", key: "cogs" },
+                                { type: "group", id: "marketplace_fees" },
+                                { type: "group", id: "other_transactions" },
+                                { type: "group", id: "profit" },
+                                { type: "group", id: "ads_spend" },
+                                { type: "single", key: "acos" },
+                                { type: "group", id: "cm2_profit" },
+                            ]}
+
+                            // initialCollapsed={{ marketplace_fees: false }}
+                            getRowClassName={(row, index) => {
+                                if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+                                if (row.isOthers) {
+                                    return showAllMtdProductwiseRows
+                                        ? "bg-white"
+                                        : "bg-white cursor-pointer";
+                                }
+                                return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                            }}
+                            onRowClick={(row) => {
+                                if (!showAllMtdProductwiseRows && row.isOthers) {
+                                    setShowAllMtdProductwiseRows(true);
+                                }
+                            }}
+                            getValue={(row, colKey) => {
+                                if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
+                                if (colKey === "sku") {
+                                    if (row.isOthers || row.isTotal) return "-";
+                                    return row.sku || "-";
+                                }
+                                if (colKey === "quantity") {
+                                    return fmtInt(toNumber((row as any).quantity));
+                                }
+
+                                if (colKey === "return_quantity") {
+                                    return fmtInt(toNumber((row as any).return_quantity));
+                                }
+
+                                if (colKey === "total_quantity") {
+                                    return fmtInt(
+                                        toNumber(
+                                            (row as any).total_quantity ??
+                                            (toNumber((row as any).quantity) - toNumber((row as any).return_quantity))
+                                        )
+                                    );
+                                }
+                                if (colKey === "product_name") {
+                                    if (row.isTotal) {
+                                        return (
+                                            <span className="inline-block w-full truncate font-semibold">
+                                                Total
+                                            </span>
+                                        );
+                                    }
+
+                                    if (row.isOthers) {
+                                        return (
+                                            <span
+                                                className="inline-block w-full truncate text-green-500"
+                                                title="Aggregated remaining products"
+                                            >
+                                                Others
+                                            </span>
+                                        );
+                                    }
+
+
+                                    const displayName = getSkuwiseDisplayProductName(row);
+
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openPnlSkuDrawer({
+                                                    ...row,
+                                                    product_name: displayName,
+                                                })
                                             }
-                                            leftCols={SKUWISE_LEFT_COLS}
-                                            groups={SKUWISE_GROUPS}
-                                            singleCols={SKUWISE_SINGLE_COLS}
-                                            initialCollapsed={productwiseInitialCollapsed}
-                                            collapsedState={productwiseCollapsed}
-                                            onCollapsedChange={(next) => {
-                                                setProductwiseCollapsed(next);
+                                            className="flex w-full items-end justify-between gap-2 text-left text-green-500"
+                                            title={String(displayName || "")}
+                                        >
+                                            <span className="min-w-0 flex-1 whitespace-normal break-words">
+                                                {displayName}
+                                            </span>
+                                            {renderLiveNetSalesDelta({
+                                                ...row,
+                                                product_name: displayName,
+                                            })}
+                                        </button>
+                                    );
+                                }
 
-                                                setProductwiseAllColumnsExpanded(
-                                                    PRODUCTWISE_GROUP_IDS.length > 0 &&
-                                                    PRODUCTWISE_GROUP_IDS.every((groupId: string) => next[groupId] === false)
-                                                );
-                                            }}
-                                            defaultSort={plSortConfig}
-                                            onSortChange={setPlSortConfig}
-                                            showSignRowInBody
-                                            getSignForCol={getAdsSignForCol}
-                                            bodyMaxHeight={
-                                                shouldScrollMtdProductwiseTable
-                                                    ? mtdProductwiseTableScrollHeight
-                                                    : undefined
-                                            }
-                                            preserveColumnWidths="responsive"
-                                            stickyLeftBorderMode="shadow-only"
-                                            stickyLeftDividerMode="leading"
-                                            stickyLeftHorizontalBorderMode="border"
-                                            isTotalRow={(row) => {
-                                                const name = String(row?.product_name || "").trim().toLowerCase();
-                                                const sku = String(row?.sku || "").trim().toUpperCase();
+                                if (colKey === "quantity")
+                                    return Math.round(Number(row.quantity || 0)).toLocaleString();
 
-                                                return (
-                                                    !!row.isTotal ||
-                                                    sku === "GRAND_TOTAL" ||
-                                                    sku === "TOTAL" ||
-                                                    name === "grand total" ||
-                                                    name === "total"
-                                                );
-                                            }}
+                                if (colKey === "asp") return formatAdsNumber(row.asp);
+                                if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
 
-                                            layout={[
-                                                { type: "group", id: "quantity" },
-                                                { type: "single", key: "asp" },
-                                                { type: "group", id: "net_sales" },
-                                                ...(isUsPnlSkuLayout
-                                                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
-                                                    : [{ type: "group" as const, id: "promotions" }]),
-                                                { type: "single", key: "cogs" },
-                                                { type: "group", id: "marketplace_fees" },
-                                                { type: "group", id: "other_transactions" },
-                                                { type: "group", id: "profit" },
-                                                { type: "group", id: "ads_spend" },
-                                                { type: "single", key: "acos" },
-                                                { type: "group", id: "cm2_profit" },
-                                            ]}
+                                if (colKey === "other_transactions") {
+                                    const v = Number(
+                                        typeof getProductwiseOtherTransactionsTotal === "function"
+                                            ? getProductwiseOtherTransactionsTotal(row)
+                                            : row.other_transactions ?? row.tax_and_credits ?? 0
+                                    );
 
-                                            // initialCollapsed={{ marketplace_fees: false }}
-                                            getRowClassName={(row, index) => {
-                                                if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
-                                                if (row.isOthers) {
-                                                    return showAllMtdProductwiseRows
-                                                        ? "bg-white"
-                                                        : "bg-white cursor-pointer";
-                                                }
-                                                return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-                                            }}
-                                            onRowClick={(row) => {
-                                                if (!showAllMtdProductwiseRows && row.isOthers) {
-                                                    setShowAllMtdProductwiseRows(true);
-                                                }
-                                            }}
-                                            getValue={(row, colKey) => {
-                                                if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
-                                                if (colKey === "sku") {
-                                                    if (row.isOthers || row.isTotal) return "-";
-                                                    return row.sku || "-";
-                                                }
-                                                if (colKey === "quantity") {
-                                                    return fmtInt(toNumber((row as any).quantity));
-                                                }
+                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString();
+                                }
 
-                                                if (colKey === "return_quantity") {
-                                                    return fmtInt(toNumber((row as any).return_quantity));
-                                                }
+                                if (colKey === "misc_transaction") {
+                                    const v = Number((row as any)[colKey] ?? 0);
+                                    const absValue = Math.abs(Number.isFinite(v) ? v : 0);
+                                    return absValue > 0 && absValue < 1
+                                        ? formatAdsNumber(absValue)
+                                        : Math.round(absValue).toLocaleString();
+                                }
 
-                                                if (colKey === "total_quantity") {
-                                                    return fmtInt(
-                                                        toNumber(
-                                                            (row as any).total_quantity ??
-                                                            (toNumber((row as any).quantity) - toNumber((row as any).return_quantity))
-                                                        )
-                                                    );
-                                                }
-                                                if (colKey === "product_name") {
-                                                    if (row.isTotal) {
-                                                        return (
-                                                            <span className="inline-block w-full truncate font-semibold">
-                                                                Total
-                                                            </span>
-                                                        );
-                                                    }
+                                if (colKey === "tax" || colKey === "net_taxes" || colKey === "credits" || colKey === "tax_and_credits") {
+                                    const v = Number((row as any)[colKey] ?? 0);
+                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
+                                }
+                                if (colKey === "cm1_profit_per") {
+                                    const v = Number(row.cm1_profit_per ?? 0);
+                                    return `${formatAdsNumber(Math.abs(v))}%`;
+                                }
 
-                                                    if (row.isOthers) {
-                                                        return (
-                                                            <span
-                                                                className="inline-block w-full truncate text-green-500"
-                                                                title="Aggregated remaining products"
-                                                            >
-                                                                Others
-                                                            </span>
-                                                        );
-                                                    }
+                                if (colKey === "cm1_profit_per_unit") {
+                                    const v = Number(row.cm1_profit_per_unit ?? 0);
+                                    return formatAdsNumber(Math.abs(v));
+                                }
 
+                                if (colKey === "cm2_profit_per") {
+                                    const v = Number(row.cm2_profit_per ?? 0);
+                                    return `${formatAdsNumber(v)}%`;
+                                }
 
-                                                    const displayName = getSkuwiseDisplayProductName(row);
+                                // CM2 per unit (no %)
+                                if (colKey === "cm2_profit_per_unit") {
+                                    const v = Number(row.cm2_profit_per_unit ?? 0);
+                                    return formatAdsNumber(v);
+                                }
+                                if (colKey === "ad_type") {
+                                    if (row.isOthers || row.isTotal) return "-";
+                                    return formatAdType((row as any).ad_type);
+                                }
+                                if (
+                                    colKey === "product_spend" ||
+                                    colKey === "display_spend" ||
+                                    colKey === "brand_spend"
+                                ) {
+                                    const v = Number((row as any)[colKey] ?? 0);
 
-                                                    return (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                openPnlSkuDrawer({
-                                                                    ...row,
-                                                                    product_name: displayName,
-                                                                })
-                                                            }
-                                                            className="flex w-full items-end justify-between gap-2 text-left text-green-500"
-                                                            title={String(displayName || "")}
-                                                        >
-                                                            <span className="min-w-0 flex-1 whitespace-normal break-words">
-                                                                {displayName}
-                                                            </span>
-                                                            {renderLiveNetSalesDelta({
-                                                                ...row,
-                                                                product_name: displayName,
-                                                            })}
-                                                        </button>
-                                                    );
-                                                }
+                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0,
+                                    });
+                                }
 
-                                                if (colKey === "quantity")
-                                                    return Math.round(Number(row.quantity || 0)).toLocaleString();
+                                if (colKey === "ads_spend") {
+                                    const v = Number(row.ads_spend ?? 0);
 
-                                                if (colKey === "asp") return formatAdsNumber(row.asp);
-                                                if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
+                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0,
+                                    });
+                                }
 
-                                                if (colKey === "other_transactions") {
-                                                    const v = Number(
-                                                        typeof getProductwiseOtherTransactionsTotal === "function"
-                                                            ? getProductwiseOtherTransactionsTotal(row)
-                                                            : row.other_transactions ?? row.tax_and_credits ?? 0
-                                                    );
+                                if (colKey === "ads_spend")
+                                    return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
+                                if (colKey === "acos") {
+                                    const v = Number(row.acos ?? 0);
+                                    return `${formatAdsNumber(v)}%`;
+                                }
+                                if (colKey === "cogs")
+                                    return Math.round(Math.abs(Number(row.cogs || 0))).toLocaleString();
 
-                                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString();
-                                                }
+                                if (colKey === "fba_fees")
+                                    return Math.round(Math.abs(Number(row.fba_fees || 0))).toLocaleString();
 
-                                                if (colKey === "misc_transaction") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-                                                    const absValue = Math.abs(Number.isFinite(v) ? v : 0);
-                                                    return absValue > 0 && absValue < 1
-                                                        ? formatAdsNumber(absValue)
-                                                        : Math.round(absValue).toLocaleString();
-                                                }
+                                if (colKey === "selling_fees")
+                                    return Math.round(Math.abs(Number(row.selling_fees || 0))).toLocaleString();
 
-                                                if (colKey === "tax" || colKey === "net_taxes" || colKey === "credits" || colKey === "tax_and_credits") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
-                                                }
-                                                if (colKey === "cm1_profit_per") {
-                                                    const v = Number(row.cm1_profit_per ?? 0);
-                                                    return `${formatAdsNumber(Math.abs(v))}%`;
-                                                }
+                                if (colKey === "marketplace_total")
+                                    return Math.round(
+                                        Math.abs(Number(row.fba_fees || 0)) + Math.abs(Number(row.selling_fees || 0))
+                                    ).toLocaleString();
+                                if (colKey === "cm2_profit")
+                                    return Math.round(Number(row.cm2_profit || 0)).toLocaleString();
+                                if (colKey === "profit")
+                                    return Math.round(Number(row.profit || 0)).toLocaleString();
+                                if (colKey === "promotional_rebates") {
+                                    const v = Number((row as any)[colKey] ?? 0);
 
-                                                if (colKey === "cm1_profit_per_unit") {
-                                                    const v = Number(row.cm1_profit_per_unit ?? 0);
-                                                    return formatAdsNumber(Math.abs(v));
-                                                }
+                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0,
+                                    });
+                                }
 
-                                                if (colKey === "cm2_profit_per") {
-                                                    const v = Number(row.cm2_profit_per ?? 0);
-                                                    return `${formatAdsNumber(v)}%`;
-                                                }
+                                if (colKey === "promotional_rebates_percentage") {
+                                    const v = Number((row as any)[colKey] ?? 0);
 
-                                                // CM2 per unit (no %)
-                                                if (colKey === "cm2_profit_per_unit") {
-                                                    const v = Number(row.cm2_profit_per_unit ?? 0);
-                                                    return formatAdsNumber(v);
-                                                }
-                                                if (colKey === "ad_type") {
-                                                    if (row.isOthers || row.isTotal) return "-";
-                                                    return formatAdType((row as any).ad_type);
-                                                }
-                                                if (
-                                                    colKey === "product_spend" ||
-                                                    colKey === "display_spend" ||
-                                                    colKey === "brand_spend"
-                                                ) {
-                                                    const v = Number((row as any)[colKey] ?? 0);
+                                    const value = Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    });
 
-                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
-                                                        minimumFractionDigits: 0,
-                                                        maximumFractionDigits: 0,
-                                                    });
-                                                }
+                                    return `${value}%`;
+                                }
+                                if (
+                                    colKey === "gross_sales" ||
+                                    colKey === "refund_sales" ||
+                                    colKey === "net_sales_tax_and_credits" ||
+                                    colKey === "net_sales"
+                                ) {
+                                    const v = Number((row as any)[colKey] ?? 0);
 
-                                                if (colKey === "ads_spend") {
-                                                    const v = Number(row.ads_spend ?? 0);
+                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0,
+                                    });
+                                }
 
-                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
-                                                        minimumFractionDigits: 0,
-                                                        maximumFractionDigits: 0,
-                                                    });
-                                                }
+                                return (row as any)[colKey] ?? "";
+                            }}
+                            summary={{
+                                enabled: finalMonthlySkuwiseRowsForTable.length > 0,
+                                rows: productwiseSummaryRows,
 
-                                                if (colKey === "ads_spend")
-                                                    return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
-                                                if (colKey === "acos") {
-                                                    const v = Number(row.acos ?? 0);
-                                                    return `${formatAdsNumber(v)}%`;
-                                                }
-                                                if (colKey === "cogs")
-                                                    return Math.round(Math.abs(Number(row.cogs || 0))).toLocaleString();
+                                valueCols: 2,
+                                boldSectionsByDefault: false,
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
 
-                                                if (colKey === "fba_fees")
-                                                    return Math.round(Math.abs(Number(row.fba_fees || 0))).toLocaleString();
-
-                                                if (colKey === "selling_fees")
-                                                    return Math.round(Math.abs(Number(row.selling_fees || 0))).toLocaleString();
-
-                                                if (colKey === "marketplace_total")
-                                                    return Math.round(
-                                                        Math.abs(Number(row.fba_fees || 0)) + Math.abs(Number(row.selling_fees || 0))
-                                                    ).toLocaleString();
-                                                if (colKey === "cm2_profit")
-                                                    return Math.round(Number(row.cm2_profit || 0)).toLocaleString();
-                                                if (colKey === "profit")
-                                                    return Math.round(Number(row.profit || 0)).toLocaleString();
-                                                if (colKey === "promotional_rebates") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-
-                                                    return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
-                                                        minimumFractionDigits: 0,
-                                                        maximumFractionDigits: 0,
-                                                    });
-                                                }
-
-                                                if (colKey === "promotional_rebates_percentage") {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-
-                                                    const value = Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
-                                                        minimumFractionDigits: 2,
-                                                        maximumFractionDigits: 2,
-                                                    });
-
-                                                    return `${value}%`;
-                                                }
-                                                if (
-                                                    colKey === "gross_sales" ||
-                                                    colKey === "refund_sales" ||
-                                                    colKey === "net_sales_tax_and_credits" ||
-                                                    colKey === "net_sales"
-                                                ) {
-                                                    const v = Number((row as any)[colKey] ?? 0);
-
-                                                    return Math.round(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
-                                                        minimumFractionDigits: 0,
-                                                        maximumFractionDigits: 0,
-                                                    });
-                                                }
-
-                                                return (row as any)[colKey] ?? "";
-                                            }}
-                                            summary={{
-                                                enabled: finalMonthlySkuwiseRowsForTable.length > 0,
-                                                rows: productwiseSummaryRows,
-
-                                                valueCols: 2,
-                                                boldSectionsByDefault: false,
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                        </div>
+        </div>
     );
 }
