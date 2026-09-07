@@ -865,11 +865,11 @@ export default function GroupedCollapsibleTable<RowT>({
   };
 
   const stickyLeftDrawerWidth = snapToDevicePixel(
-    Array.from({ length: stickyLeftCount }).reduce(
-      (sum, _, colIndex) => sum + getResolvedStickyWidth(colIndex),
-      0
-    )
-  );
+  Array.from({ length: stickyLeftCount }).reduce<number>(
+    (sum, _, colIndex) => sum + getResolvedStickyWidth(colIndex),
+    0
+  )
+);
 
   const shouldHideStickyLeftDrawer =
     hideStickyLeftColsWhileScrolling &&
@@ -877,12 +877,12 @@ export default function GroupedCollapsibleTable<RowT>({
     stickyLeftDrawerWidth > 0;
 
   const getStickyLeftOffset = (colIndex: number) =>
-    snapToDevicePixel(
-      Array.from({ length: Math.min(colIndex, stickyLeftCount) }).reduce(
-        (sum, _, index) => sum + getResolvedStickyWidth(index),
-        0
-      )
-    );
+  snapToDevicePixel(
+    Array.from({ length: Math.min(colIndex, stickyLeftCount) }).reduce<number>(
+      (sum, _, index) => sum + getResolvedStickyWidth(index),
+      0
+    )
+  );
 
   const getStickyLeftStyle = (
     colIndex: number,
