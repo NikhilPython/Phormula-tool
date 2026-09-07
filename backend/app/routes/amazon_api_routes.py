@@ -3960,11 +3960,12 @@ def finances_mtd_transactions():
             2,
         )
 
-        # Recalculate total net_sales after final tax_and_credits
+        # Keep TOTAL net_sales aligned with SKU rows:
+        # gross_sales - refund_sales - absolute promotional_rebates.
         total_row["net_sales"] = round(
             float(total_row.get("gross_sales", 0.0) or 0.0)
             - float(total_row.get("refund_sales", 0.0) or 0.0)
-            + float(total_row.get("tax_and_credits", 0.0) or 0.0),
+            - abs(float(total_row.get("promotional_rebates", 0.0) or 0.0)),
             2
         )
 
