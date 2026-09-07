@@ -222,6 +222,15 @@ def remove_zero_rows(df):
         (df["sku"].astype(str).str.strip().str.lower() == "total")
     ]
 
+def calculate_uk_cm2_profit(total_profit, advertising_total, signed_platform_fee):
+    """
+    UK CM2 uses the same signed platform/inventory block shown in the report.
+
+    signed_platform_fee is negative for costs and positive for offsets such as
+    lost-inventory reimbursements, so adding it applies each component once.
+    """
+    return total_profit - abs(advertising_total) + signed_platform_fee
+
 def get_previous_month_year(month, year):
     year = int(year)
     prev_month_num = MONTHS_MAP[month] - 1
@@ -334,11 +343,12 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
             + num("other_adjustment")
         )
     else:
+        signed_platform_fee = (
+            -num("platform_fee").abs()
+            + num("lost_total").abs()
+        )
         out["cm2_profit"] = (
-            num("profit")
-            - spend
-            - num("lost_total").abs()
-            - num("platform_fee").abs()
+            calculate_uk_cm2_profit(num("profit"), spend, signed_platform_fee)
         )
 
     out["cm2_profit_per_unit"] = np.where(quantity != 0, out["cm2_profit"] / quantity, 0.0)
@@ -1617,9 +1627,11 @@ def process_skuwise_data(user_id, country, month, year):
 
         reimbursement_vs_sales = abs((rembursement_fee / total_sales) * 100) if total_sales != 0 else 0
 
-        cm2_profit = total_profit - lost_total_amount - (abs(advertising_total) + abs(platform_fee_fixed_total))
-        if ads_table_applied:
-            cm2_profit = float(pd.to_numeric(sku_grouped["cm2_profit"], errors="coerce").fillna(0.0).sum())
+        cm2_profit = calculate_uk_cm2_profit(
+            total_profit,
+            advertising_total,
+            platform_fee_fixed_total,
+        )
         cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
         rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
