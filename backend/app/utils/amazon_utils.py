@@ -2429,7 +2429,8 @@ def _flatten_transaction_to_row_core(
                 shipping_credits += amt
 
     _accumulate_shipping_from_breakdowns(item_breakdowns)
-    _accumulate_shipping_from_breakdowns(tx_breakdowns)
+    if abs(shipping_credits) < eps and abs(shipping_credits_tax) < eps:
+        _accumulate_shipping_from_breakdowns(tx_breakdowns)
 
     postage_credits = shipping_credits 
 
