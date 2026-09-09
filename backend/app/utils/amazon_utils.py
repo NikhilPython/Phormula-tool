@@ -483,7 +483,8 @@ def dedupe_rows_by_order_id(
         except Exception:
             return pd.Timestamp.min.tz_localize("UTC")
 
-    best_by_key: dict[tuple, dict] = {}
+    account_fee_by_key: dict[tuple, dict] = {}
+    financial_rows_by_key: dict[tuple, list[dict]] = {}
     untouched_rows: list[dict] = []
 
     for row in rows:
@@ -514,8 +515,8 @@ def dedupe_rows_by_order_id(
                     normalize_number(row.get("quantity")),
                     normalize_number(row.get("total")),
                 )
-                if key not in best_by_key:
-                    best_by_key[key] = row
+                if key not in account_fee_by_key:
+                    account_fee_by_key[key] = row
                 continue
 
             untouched_rows.append(row)
@@ -530,9 +531,8 @@ def dedupe_rows_by_order_id(
             untouched_rows.append(row)
             continue
 
-        # This key identifies the same financial event. Order/Shipment rows
-        # include date and split item index so partial shipments and repeated
-        # same-SKU item lines keep their quantity.
+        # This key identifies repeated status versions of the same financial
+        # event while split item indexes keep multi-SKU item rows separate.
         dedupe_detail_key = (
             order_id,
             str(row.get("sku") or "").strip().upper(),
@@ -566,44 +566,28 @@ def dedupe_rows_by_order_id(
         )
         if row_type in {"order", "shipment"}:
             dedupe_detail_key = dedupe_detail_key + (
-                normalize_text(row.get("date_time")),
                 normalize_number(row.get("__item_index")),
             )
 
-        key = dedupe_detail_key
+        financial_rows_by_key.setdefault(dedupe_detail_key, []).append(row)
 
-        existing_row = best_by_key.get(key)
-
-        if existing_row is None:
-            best_by_key[key] = row
+    deduped_financial_rows: list[dict] = []
+    for grouped_rows in financial_rows_by_key.values():
+        if len(grouped_rows) == 1:
+            deduped_financial_rows.extend(grouped_rows)
             continue
 
-        current_status = get_status(row)
-        existing_status = get_status(existing_row)
-
-        current_priority = status_priority.get(
-            current_status,
-            0,
+        best_priority = max(
+            status_priority.get(get_status(grouped_row), 0)
+            for grouped_row in grouped_rows
         )
-        existing_priority = status_priority.get(
-            existing_status,
-            0,
+        deduped_financial_rows.extend(
+            grouped_row
+            for grouped_row in grouped_rows
+            if status_priority.get(get_status(grouped_row), 0) == best_priority
         )
 
-        # Prefer DEFERRED_RELEASED, then RELEASED, then DEFERRED.
-        if current_priority > existing_priority:
-            best_by_key[key] = row
-            continue
-
-        # Same status: keep the latest posted row.
-        if (
-            current_priority == existing_priority
-            and get_posted_date(row)
-            > get_posted_date(existing_row)
-        ):
-            best_by_key[key] = row
-
-    return list(best_by_key.values()) + untouched_rows
+    return deduped_financial_rows + list(account_fee_by_key.values()) + untouched_rows
 
 
 def get_next_month_year(month, year):

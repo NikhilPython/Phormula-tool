@@ -300,6 +300,146 @@ def dedupe_duplicate_prone_account_fee_rows(df_):
     return df_.drop_duplicates(subset=dedupe_cols)
 
 
+def dedupe_us_repeated_status_financial_rows(df_):
+    if df_ is None or df_.empty:
+        return df_
+
+    work = df_.copy()
+    work["__dedupe_original_pos"] = np.arange(len(work))
+
+    type_norm = (
+        work.get("type_norm", work.get("type", pd.Series("", index=work.index)))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+    )
+    target_mask = type_norm.isin(["order", "shipment", "refund"])
+    if not target_mask.any():
+        return work.drop(columns=["__dedupe_original_pos"], errors="ignore")
+
+    target = work.loc[target_mask].copy()
+    untouched = work.loc[~target_mask].copy()
+
+    text_key_cols = [
+        "order_id",
+        "sku",
+        "description",
+        "type",
+        "transaction_type",
+    ]
+    number_key_cols = [
+        "quantity",
+        "product_sales",
+        "product_sales_tax",
+        "postage_credits",
+        "shipping_credits",
+        "shipping_credits_tax",
+        "gift_wrap_credits",
+        "giftwrap_credits_tax",
+        "promotional_rebates",
+        "promotional_rebates_tax",
+        "marketplace_withheld_tax",
+        "marketplace_facilitator_tax",
+        "selling_fees",
+        "fba_fees",
+        "other_transaction_fees",
+        "other",
+        "total",
+    ]
+
+    key_cols = ["__row_type_key"]
+    target["__row_type_key"] = type_norm.loc[target.index].values
+
+    for col in text_key_cols:
+        if col not in target.columns:
+            continue
+        key_col = f"__key_text_{col}"
+        target[key_col] = (
+            target[col]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+        key_cols.append(key_col)
+
+    for col in number_key_cols:
+        if col not in target.columns:
+            continue
+        key_col = f"__key_num_{col}"
+        target[key_col] = (
+            pd.to_numeric(target[col], errors="coerce")
+            .fillna(0.0)
+            .round(6)
+        )
+        key_cols.append(key_col)
+
+    status = (
+        target.get("bucket", target.get("status", pd.Series("", index=target.index)))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+    if "transaction_status" in target.columns:
+        status = status.where(
+            status != "",
+            target["transaction_status"].fillna("").astype(str).str.strip().str.upper(),
+        )
+
+    status_priority = {
+        "DEFERRED_RELEASED": 3,
+        "RELEASED": 2,
+        "RELEASED": 2,
+        "DEFERRED": 1,
+    }
+    target["__status_key"] = status
+    target["__status_priority"] = status.map(status_priority).fillna(0).astype(int)
+    target["__date_key"] = (
+        target.get("date_time", pd.Series("", index=target.index))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+    selected_groups = []
+    for _, group in target.groupby(key_cols, dropna=False, sort=False):
+        if len(group) == 1:
+            selected_groups.append(group)
+            continue
+
+        best_priority = group["__status_priority"].max()
+        selected_groups.append(group.loc[group["__status_priority"].eq(best_priority)].copy())
+
+    selected_target = (
+        pd.concat(selected_groups, ignore_index=False)
+        if selected_groups
+        else target.iloc[0:0].copy()
+    )
+
+    result = (
+        pd.concat([untouched, selected_target], ignore_index=False)
+        .sort_values("__dedupe_original_pos")
+        .drop(
+            columns=[
+                col
+                for col in selected_target.columns.union(untouched.columns)
+                if col.startswith("__key_")
+                or col in {
+                    "__row_type_key",
+                    "__status_key",
+                    "__status_priority",
+                    "__date_key",
+                    "__dedupe_original_pos",
+                }
+            ],
+            errors="ignore",
+        )
+    )
+    return result
+
+
 def sum_us_yearly_visible_ads_from_adsmonthly(conn, user_id, country, year):
     country_key = str(country).lower()
     total_visible_ads = 0.0
@@ -1029,15 +1169,16 @@ def process_skuwise_us_data(user_id, country, month, year):
             df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors="coerce").fillna(0)
 
         df["sku"] = df["sku"].astype(str).str.strip()
+        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
+        df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
+        df = dedupe_us_repeated_status_financial_rows(df)
+
         df_valid = df[
             df["sku"].notna()
             & (df["sku"] != "")
             & (df["sku"] != "0")
             & (df["sku"].str.lower() != "none")
         ].copy()
-
-        df["type_norm"] = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
-        df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
 
         # ---------- main totals ----------
         debt_payment_total = abs(sum_total_where_desc_exact(df, ["DebtPayment"]))
@@ -2599,6 +2740,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         df["sku"] = df["sku"].astype(str).str.strip()
         df["type_norm"] = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
+        df = dedupe_us_repeated_status_financial_rows(df)
 
         df_valid = df[
             df["sku"].notna()
@@ -3614,6 +3756,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         df["sku"] = df["sku"].astype(str).str.strip()
         df["type_norm"] = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
         df["desc_norm"] = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
+        df = dedupe_us_repeated_status_financial_rows(df)
 
         df_valid = df[
             df["sku"].notna()
