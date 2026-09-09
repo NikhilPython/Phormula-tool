@@ -12,7 +12,7 @@ from app.models.user_models import amazon_user
 from app.utils.amazon_utils import (
     _month_date_range_utc,
     _month_date_range_us_pacific_utc,
-    _flatten_transaction_to_row,
+    _flatten_transaction_to_rows,
     run_upload_pipeline_from_df,
     dedupe_rows_by_order_id,
     amazon_client,
@@ -87,6 +87,18 @@ def _normalize_order_id(value: Any) -> str:
         return ""
 
     normalized = str(value).strip()
+
+    if normalized.casefold() in {"", "none", "nan", "null", "0"}:
+        return ""
+
+    return normalized
+
+
+def _normalize_sku(value: Any) -> str:
+    if value is None:
+        return ""
+
+    normalized = str(value).strip().upper()
 
     if normalized.casefold() in {"", "none", "nan", "null", "0"}:
         return ""
@@ -175,7 +187,7 @@ def _remove_orders_existing_in_previous_month(
 
     engine = create_engine(database_url, pool_pre_ping=True)
 
-    previous_order_ids: set[str] = set()
+    previous_order_sku_keys: set[tuple[str, str]] = set()
     previous_table_exists = False
 
     try:
@@ -197,12 +209,14 @@ def _remove_orders_existing_in_previous_month(
             )
 
             if previous_table_exists:
-                # We only need order IDs that previously had an Order or
+                # We only need order/SKU pairs that previously had an Order or
                 # Shipment row. A previous-month refund by itself should not
                 # block a current-month Order or Shipment row.
                 query = text(
                     f"""
-                    SELECT DISTINCT BTRIM(order_id::text) AS order_id
+                    SELECT DISTINCT
+                        BTRIM(order_id::text) AS order_id,
+                        BTRIM(COALESCE(sku::text, '')) AS sku
                     FROM public."{previous_table}"
                     WHERE order_id IS NOT NULL
                       AND BTRIM(order_id::text) <> ''
@@ -213,19 +227,19 @@ def _remove_orders_existing_in_previous_month(
                     """
                 )
 
-                db_order_ids = connection.execute(query).scalars().all()
+                db_order_skus = connection.execute(query).mappings().all()
 
-                previous_order_ids = {
-                    normalized
-                    for value in db_order_ids
-                    if (normalized := _normalize_order_id(value))
+                previous_order_sku_keys = {
+                    (order_id, _normalize_sku(row.get("sku")))
+                    for row in db_order_skus
+                    if (order_id := _normalize_order_id(row.get("order_id")))
                 }
 
     finally:
         engine.dispose()
 
-    current_order_or_shipment_ids = {
-        normalized_order_id
+    current_order_or_shipment_keys = {
+        (normalized_order_id, _normalize_sku(row.get("sku")))
         for row in rows
         if _normalize_transaction_type(row) in {"order", "shipment"}
         if (
@@ -234,18 +248,23 @@ def _remove_orders_existing_in_previous_month(
         )
     }
 
-    matching_order_ids = (
-        current_order_or_shipment_ids.intersection(previous_order_ids)
+    matching_order_sku_keys = (
+        current_order_or_shipment_keys.intersection(previous_order_sku_keys)
     )
 
     base_stats = {
         "previous_month_table": previous_table,
         "previous_table_exists": previous_table_exists,
-        "previous_unique_order_ids": len(previous_order_ids),
+        "previous_unique_order_ids": len(previous_order_sku_keys),
+        "previous_unique_order_sku_keys": len(previous_order_sku_keys),
         "current_unique_order_ids_before_filter": len(
-            current_order_or_shipment_ids
+            current_order_or_shipment_keys
         ),
-        "matching_order_ids": len(matching_order_ids),
+        "current_unique_order_sku_keys_before_filter": len(
+            current_order_or_shipment_keys
+        ),
+        "matching_order_ids": len(matching_order_sku_keys),
+        "matching_order_sku_keys": len(matching_order_sku_keys),
         "rows_removed": 0,
         "order_rows_removed": 0,
         "shipment_rows_removed": 0,
@@ -253,7 +272,7 @@ def _remove_orders_existing_in_previous_month(
         "other_rows_removed": 0,
     }
 
-    if not matching_order_ids:
+    if not matching_order_sku_keys:
         return rows, base_stats
 
     filtered_rows: List[Dict[str, Any]] = []
@@ -263,6 +282,7 @@ def _remove_orders_existing_in_previous_month(
 
     for row in rows:
         order_id = _normalize_order_id(row.get("order_id"))
+        sku = _normalize_sku(row.get("sku"))
         row_type = _normalize_transaction_type(row)
 
         # Rows without an order ID must remain.
@@ -275,8 +295,8 @@ def _remove_orders_existing_in_previous_month(
             filtered_rows.append(row)
             continue
 
-        # Remove only duplicate Order or Shipment rows.
-        if order_id in matching_order_ids:
+        # Remove only duplicate Order or Shipment rows for the same order/SKU.
+        if (order_id, sku) in matching_order_sku_keys:
             if row_type == "order":
                 removed_order_rows += 1
             else:
@@ -432,8 +452,8 @@ def sync_monthly_transactions_for_user(
                 ):
                     continue
 
-                all_rows.append(
-                    _flatten_transaction_to_row(transaction)
+                all_rows.extend(
+                    _flatten_transaction_to_rows(transaction)
                 )
 
             next_token = payload.get("nextToken")

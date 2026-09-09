@@ -253,6 +253,52 @@ def sum_total_where_desc_exact(df_, keywords):
     mask = desc.isin(wanted)
     return float(pd.to_numeric(df_.loc[mask, "total"], errors="coerce").fillna(0).sum())
 
+_DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS = (
+    "fbainboundconvenience",
+    "awdprocessingfee",
+    "agsglobalinboundtransportation",
+    "awdtransportationfee",
+    "fbastoragebilling",
+    "fbalongtermstoragebilling",
+    "fbastoragefeeadjustment",
+    "storagereservationbilling",
+)
+
+
+def _keywords_need_account_fee_duplicate_guard(keywords):
+    normalized = [str(keyword or "").strip().casefold() for keyword in keywords]
+    return any(
+        fee_keyword in keyword or keyword in fee_keyword
+        for keyword in normalized
+        for fee_keyword in _DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS
+        if keyword
+    )
+
+
+def dedupe_duplicate_prone_account_fee_rows(df_):
+    if df_ is None or df_.empty:
+        return df_
+
+    dedupe_cols = [
+        col
+        for col in [
+            "date_time",
+            "settlement_id",
+            "type",
+            "transaction_type",
+            "order_id",
+            "sku",
+            "description",
+            "quantity",
+            "total",
+        ]
+        if col in df_.columns
+    ]
+    if not dedupe_cols:
+        return df_
+
+    return df_.drop_duplicates(subset=dedupe_cols)
+
 
 def sum_us_yearly_visible_ads_from_adsmonthly(conn, user_id, country, year):
     country_key = str(country).lower()
@@ -349,6 +395,17 @@ def apply_us_visible_ads_total_exclusions(df_, user_id, country, year, visible_a
             corrected_total -= abs(float(totals.loc[mask].sum()))
 
     return max(corrected_total, 0.0)
+
+
+def dedupe_us_quantity_rows_by_order_sku(df_):
+    row_type = (
+        df_.get("type_norm", df_.get("type", pd.Series("", index=df_.index)))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+    )
+    return df_.loc[row_type.isin(["order", "shipment"])].copy()
 
 
 
@@ -802,7 +859,10 @@ def process_skuwise_us_data(user_id, country, month, year):
         desc = df_.get("description", pd.Series("", index=df_.index)).astype(str)
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
-        return float(pd.to_numeric(df_.loc[mask, "total"], errors="coerce").fillna(0).sum())
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+        return float(pd.to_numeric(matched["total"], errors="coerce").fillna(0).sum())
 
     def sku_sum_total_where_desc_contains(df_, keywords, out_col):
         if "total" not in df_.columns:
@@ -812,12 +872,15 @@ def process_skuwise_us_data(user_id, country, month, year):
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
 
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+
         out = (
-            df_.loc[
-                mask
-                & df_["sku"].notna()
-                & (df_["sku"].astype(str).str.strip() != "")
-                & (df_["sku"].astype(str).str.strip() != "0")
+            matched.loc[
+                matched["sku"].notna()
+                & (matched["sku"].astype(str).str.strip() != "")
+                & (matched["sku"].astype(str).str.strip() != "0")
             ]
             .groupby("sku", as_index=False)["total"]
             .sum()
@@ -1029,10 +1092,11 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
 
-        # FBA fees: use only Shipment and Refund transaction types
+        # FBA fees: use sold-order shipment costs only, matching Seller Central
+        # MTD's Order/Shipment FBA fee total.
         fba_fees_df = (
             df.loc[
-                df["type_norm"].isin(["shipment", "refund"])
+                df["type_norm"].isin(["order", "shipment"])
                 & df["sku"].notna()
                 & (df["sku"].astype(str).str.strip() != "")
                 & (df["sku"].astype(str).str.strip() != "0")
@@ -1049,8 +1113,9 @@ def process_skuwise_us_data(user_id, country, month, year):
             errors="coerce"
         ).fillna(0.0)
 
+        quantity_rows = dedupe_us_quantity_rows_by_order_sku(df)
         quantity_df = (
-            df[df["type_norm"].isin(["order", "shipment"])]
+            quantity_rows
             .groupby("sku", as_index=False)["quantity"]
             .sum()
         )
@@ -1498,10 +1563,8 @@ def process_skuwise_us_data(user_id, country, month, year):
             errors="coerce"
         ).fillna(0)
 
-        # ✅ quantity = shipment/order quantity + refund quantity
-        sku_grouped["quantity"] = (
-            sku_grouped["quantity"] + sku_grouped["return_quantity"]
-        ).astype(int)
+        # quantity is gross sold units from Order/Shipment rows only.
+        sku_grouped["quantity"] = sku_grouped["quantity"].astype(int)
 
         # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (
@@ -2467,7 +2530,10 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         desc = df_.get("description", pd.Series("", index=df_.index)).astype(str)
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
-        return float(pd.to_numeric(df_.loc[mask, "total"], errors="coerce").fillna(0).sum())
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+        return float(pd.to_numeric(matched["total"], errors="coerce").fillna(0).sum())
 
     def sku_sum_total_where_desc_contains(df_, keywords, out_col):
         if "total" not in df_.columns:
@@ -2477,12 +2543,15 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
 
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+
         out = (
-            df_.loc[
-                mask
-                & df_["sku"].notna()
-                & (df_["sku"].astype(str).str.strip() != "")
-                & (df_["sku"].astype(str).str.strip() != "0")
+            matched.loc[
+                matched["sku"].notna()
+                & (matched["sku"].astype(str).str.strip() != "")
+                & (matched["sku"].astype(str).str.strip() != "0")
             ]
             .groupby("sku", as_index=False)["total"]
             .sum()
@@ -2589,7 +2658,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         # FBA fees: only Shipment and Refund
         fba_fees_df = (
             df.loc[
-                df["type_norm"].isin(["shipment", "refund"])
+                df["type_norm"].isin(["order", "shipment"])
                 & df["sku"].notna()
                 & (df["sku"].astype(str).str.strip() != "")
                 & (df["sku"].astype(str).str.strip() != "0")
@@ -2606,8 +2675,9 @@ def process_us_yearly_skuwise_data(user_id, country, year):
             errors="coerce"
         ).fillna(0.0)
 
+        quantity_rows = dedupe_us_quantity_rows_by_order_sku(df)
         quantity_df = (
-            df[df["type_norm"].isin(["order", "shipment"])]
+            quantity_rows
             .groupby("sku", as_index=False)["quantity"]
             .sum()
         )
@@ -2972,10 +3042,8 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["lost_total"] = safe_series(sku_grouped, "lost_total")
         sku_grouped["misc_transaction"] = safe_series(sku_grouped, "misc_transaction")
 
-        # ✅ quantity = shipment/order quantity + refund quantity
-        sku_grouped["quantity"] = (
-            sku_grouped["quantity"] + sku_grouped["return_quantity"]
-        ).astype(int)
+        # quantity is gross sold units from Order/Shipment rows only.
+        sku_grouped["quantity"] = sku_grouped["quantity"].astype(int)
 
         # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (
@@ -3472,7 +3540,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         desc = df_.get("description", pd.Series("", index=df_.index)).astype(str)
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
-        return float(pd.to_numeric(df_.loc[mask, "total"], errors="coerce").fillna(0).sum())
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+        return float(pd.to_numeric(matched["total"], errors="coerce").fillna(0).sum())
 
     def sku_sum_total_where_desc_contains(df_, keywords, out_col):
         if "total" not in df_.columns:
@@ -3482,12 +3553,15 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         pattern = "|".join(re.escape(k) for k in keywords)
         mask = desc.str.contains(pattern, case=False, na=False, regex=True)
 
+        matched = df_.loc[mask].copy()
+        if _keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+
         out = (
-            df_.loc[
-                mask
-                & df_["sku"].notna()
-                & (df_["sku"].astype(str).str.strip() != "")
-                & (df_["sku"].astype(str).str.strip() != "0")
+            matched.loc[
+                matched["sku"].notna()
+                & (matched["sku"].astype(str).str.strip() != "")
+                & (matched["sku"].astype(str).str.strip() != "0")
             ]
             .groupby("sku", as_index=False)["total"]
             .sum()
@@ -3595,7 +3669,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         # FBA fees: only Shipment and Refund
         fba_fees_df = (
             df.loc[
-                df["type_norm"].isin(["shipment", "refund"])
+                df["type_norm"].isin(["order", "shipment"])
                 & df["sku"].notna()
                 & (df["sku"].astype(str).str.strip() != "")
                 & (df["sku"].astype(str).str.strip() != "0")
@@ -3612,8 +3686,9 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
             errors="coerce"
         ).fillna(0.0)
 
+        quantity_rows = dedupe_us_quantity_rows_by_order_sku(df)
         quantity_df = (
-            df[df["type_norm"].isin(["order", "shipment"])]
+            quantity_rows
             .groupby("sku", as_index=False)["quantity"]
             .sum()
         )
@@ -3976,10 +4051,8 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped["lost_total"] = safe_series(sku_grouped, "lost_total")
         sku_grouped["misc_transaction"] = safe_series(sku_grouped, "misc_transaction")
 
-        # ✅ quantity = shipment/order quantity + refund quantity
-        sku_grouped["quantity"] = (
-            sku_grouped["quantity"] + sku_grouped["return_quantity"]
-        ).astype(int)
+        # quantity is gross sold units from Order/Shipment rows only.
+        sku_grouped["quantity"] = sku_grouped["quantity"].astype(int)
 
         # ✅ total_quantity = quantity - refund
         sku_grouped["total_quantity"] = (

@@ -1068,9 +1068,10 @@ def us_amazon_fee(
 
         Amazon Fee
         = abs(adjusted selling fees)
-        + abs(FBA fees from Shipment and Refund only)
+        + abs(FBA fees from Order/Shipment rows only)
 
-    FBA fees from other transaction types are excluded.
+    FBA fees from refund and other transaction types are excluded from this
+    displayed cost bucket to match Seller Central MTD Order/Shipment totals.
     """
 
     w = df.copy()
@@ -1105,9 +1106,9 @@ def us_amazon_fee(
     type_norm = text_series(w, "type").str.strip().str.casefold()
 
     # -------------------------------------------------
-    # FBA fees: only Shipment and Refund transactions
+    # FBA fees: sold-order shipment cost only
     # -------------------------------------------------
-    fba_mask = type_norm.isin(["shipment", "refund"])
+    fba_mask = type_norm.isin(["order", "shipment"])
 
     fba_by = (
         w.loc[fba_mask]
