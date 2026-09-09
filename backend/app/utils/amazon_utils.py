@@ -417,6 +417,17 @@ MTD_COLUMNS = [
     "account_type", "regulatory_fee", "tax_on_regulatory_fee", "bucket",
 ]
 
+_DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS = (
+    "fbainboundconvenience",
+    "awdprocessingfee",
+    "agsglobalinboundtransportation",
+    "awdtransportationfee",
+    "fbastoragebilling",
+    "fbalongtermstoragebilling",
+    "fbastoragefeeadjustment",
+    "storagereservationbilling",
+)
+
 def dedupe_rows_by_order_id(
     rows: list[dict],
 ) -> list[dict]:
@@ -480,13 +491,33 @@ def dedupe_rows_by_order_id(
             row.get("type")
             or row.get("transaction_type")
         )
+        description = normalize_text(row.get("description"))
 
         # Dedupe Order, Shipment and Refund financial rows.
         # Amazon can return the same Refund in RELEASED and
         # DEFERRED_RELEASED buckets; keeping both inflates return quantity.
-        # ServiceFee, Transfer, Adjustment and other non-order transactions
-        # remain untouched.
+        # Account-level service fees are handled by their own exact-row guard
+        # because Amazon may return duplicate fee events in the same payload.
         if row_type not in {"order", "shipment", "refund"}:
+            if (
+                row_type.replace(" ", "") == "servicefee"
+                and any(keyword in description for keyword in _DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS)
+            ):
+                key = (
+                    "account_service_fee",
+                    normalize_text(row.get("date_time")),
+                    normalize_text(row.get("settlement_id")),
+                    row_type,
+                    normalize_text(row.get("order_id")),
+                    normalize_text(row.get("sku")),
+                    description,
+                    normalize_number(row.get("quantity")),
+                    normalize_number(row.get("total")),
+                )
+                if key not in best_by_key:
+                    best_by_key[key] = row
+                continue
+
             untouched_rows.append(row)
             continue
 
@@ -499,9 +530,10 @@ def dedupe_rows_by_order_id(
             untouched_rows.append(row)
             continue
 
-        # This key identifies the same financial Order/Shipment/Refund event.
-        # Date and status are intentionally excluded.
-        key = (
+        # This key identifies the same financial event. Order/Shipment rows
+        # include date and split item index so partial shipments and repeated
+        # same-SKU item lines keep their quantity.
+        dedupe_detail_key = (
             order_id,
             str(row.get("sku") or "").strip().upper(),
             row_type,
@@ -532,6 +564,13 @@ def dedupe_rows_by_order_id(
             normalize_number(row.get("other")),
             normalize_number(row.get("total")),
         )
+        if row_type in {"order", "shipment"}:
+            dedupe_detail_key = dedupe_detail_key + (
+                normalize_text(row.get("date_time")),
+                normalize_number(row.get("__item_index")),
+            )
+
+        key = dedupe_detail_key
 
         existing_row = best_by_key.get(key)
 
@@ -1017,6 +1056,14 @@ def run_upload_pipeline_from_df(
         for c in df.columns
     ]
 
+    df.drop(
+        columns=[
+            col
+            for col in ("__item_index", "item_index")
+            if col in df.columns
+        ],
+        inplace=True,
+    )
 
     if "product_sales_tax" not in df.columns:
         df["product_sales_tax"] = 0.0
@@ -2009,7 +2056,11 @@ def _sum_where(
 # =========================================================
 # FLATTEN TRANSACTION (FULL MTD SCHEMA)
 # =========================================================
-def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
+def _flatten_transaction_to_row_core(
+    tx: Dict[str, Any],
+    selected_item: Optional[Dict[str, Any]] = None,
+    use_transaction_breakdowns: bool = True,
+) -> Dict[str, Any]:
     posted_date = tx.get("postedDate")
     ttype = tx.get("transactionType")
     tstatus = tx.get("transactionStatus")
@@ -2034,7 +2085,19 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
     quantity = None
     item_breakdowns: List[Dict[str, Any]] = []
     items = tx.get("items") or []
-    if items:
+    if selected_item is not None:
+        item0 = selected_item or {}
+        sku, quantity = _extract_sku_and_qty_from_contexts(item0.get("contexts") or [])
+        sku = (
+            sku
+            or _extract_sku_from_related_identifiers(item0.get("relatedIdentifiers") or [])
+            or _extract_sku_from_payload(item0)
+        )
+        if quantity is None:
+            quantity = _extract_quantity_from_payload(item0)
+        if isinstance(item0.get("breakdowns"), list):
+            item_breakdowns = item0["breakdowns"]
+    elif items:
         item0 = items[0] or {}
         sku, quantity = _extract_sku_and_qty_from_contexts(item0.get("contexts") or [])
         sku = (
@@ -2056,7 +2119,9 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
         quantity = _extract_quantity_from_payload(tx)
 
     # ---------- tx level ----------
-    tx_breakdowns: List[Dict[str, Any]] = tx.get("breakdowns") or []
+    tx_breakdowns: List[Dict[str, Any]] = (
+        tx.get("breakdowns") or []
+    ) if use_transaction_breakdowns else []
 
     # ---------- leaves ----------
     item_leaves = _walk_leaf_breakdowns(item_breakdowns)
@@ -2352,6 +2417,9 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
             if not is_shipping:
                 continue
 
+            if "chargeback" in path_str:
+                continue
+
             if is_promo or is_withheld_or_facilitator:
                 continue
 
@@ -2361,7 +2429,8 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
                 shipping_credits += amt
 
     _accumulate_shipping_from_breakdowns(item_breakdowns)
-    _accumulate_shipping_from_breakdowns(tx_breakdowns)
+    if abs(shipping_credits) < eps and abs(shipping_credits_tax) < eps:
+        _accumulate_shipping_from_breakdowns(tx_breakdowns)
 
     postage_credits = shipping_credits 
 
@@ -2401,33 +2470,50 @@ def _flatten_transaction_to_row_core(tx: Dict[str, Any]) -> Dict[str, Any]:
     _accumulate_withheld_and_facilitator(tx_breakdowns)
     _accumulate_withheld_and_facilitator(item_breakdowns)
 
-    # fee nets from tx tree (leaf only)
-    for node, t, path in _walk_all_breakdowns_with_path(tx_breakdowns):
-        if _node_has_children(node):
-            continue
+    def _accumulate_fees_from_breakdowns(breakdowns: List[Dict[str, Any]]):
+        nonlocal selling_fees, fba_fees
 
-        amt = _amt(node)
-        if abs(amt) < 1e-12:
-            continue
+        for node, t, path in _walk_all_breakdowns_with_path(breakdowns):
+            if _node_has_children(node):
+                continue
 
-        path_str = "".join(path)
-        is_tax = ("tax" in t) or ("tax" in path_str)
+            amt = _amt(node)
+            if abs(amt) < 1e-12:
+                continue
 
-        # skip withheld/facilitator
-        if _contains_any(path_str, WITHHELD_KEYS_STRONG) or _contains_any(path_str, FACILITATOR_KEYS_STRONG):
-            continue
+            path_str = "".join(path)
+            is_tax = ("tax" in t) or ("tax" in path_str)
 
-        is_selling_fee = _contains_any(path_str, SELLING_FEE_KEYS)
-        is_fba_fee = _contains_any(path_str, FBA_FEE_KEYS)
-        is_service_fee_like = (ttype_norm == "servicefee") or _contains_any(path_str, SERVICE_FEE_EXCLUDE_KEYS)
+            # skip withheld/facilitator
+            if _contains_any(path_str, WITHHELD_KEYS_STRONG) or _contains_any(path_str, FACILITATOR_KEYS_STRONG):
+                continue
 
-        if is_selling_fee and (not is_tax) and (not is_fba_fee):
-            selling_fees += amt
-            continue
+            is_selling_fee = _contains_any(path_str, SELLING_FEE_KEYS)
+            is_fba_fee = _contains_any(path_str, FBA_FEE_KEYS)
+            is_shipping_chargeback_fee = (
+                "chargeback" in path_str
+                and _contains_any(path_str, SHIPPING_KEYS)
+            )
+            is_service_fee_like = (ttype_norm == "servicefee") or _contains_any(path_str, SERVICE_FEE_EXCLUDE_KEYS)
 
-        if is_fba_fee and (not is_tax) and (not is_service_fee_like):
-            fba_fees += amt
-            continue
+            if is_selling_fee and (not is_tax) and (not is_fba_fee):
+                selling_fees += amt
+                continue
+
+            if (
+                (is_fba_fee or is_shipping_chargeback_fee)
+                and (not is_tax)
+                and (not is_service_fee_like)
+            ):
+                fba_fees += amt
+                continue
+
+    # Existing single-row flow uses tx-level fees. Item-split flow uses the
+    # selected item's breakdowns so multi-SKU orders do not duplicate tx totals.
+    if use_transaction_breakdowns:
+        _accumulate_fees_from_breakdowns(tx_breakdowns)
+    else:
+        _accumulate_fees_from_breakdowns(item_breakdowns)
 
     # normalize signs
     # normalize signs: selling_fees must always be negative because it is a cost
@@ -2597,6 +2683,64 @@ def _flatten_transaction_to_row(tx: Dict[str, Any]) -> Dict[str, Any]:
     row = _flatten_transaction_to_row_core(tx)
     row["transaction_release_date"] = _extract_transaction_release_date(tx)
     return row
+
+
+def _flatten_transaction_to_rows(tx: Dict[str, Any]) -> List[Dict[str, Any]]:
+    items = [
+        item
+        for item in (tx.get("items") or [])
+        if isinstance(item, dict)
+    ]
+
+    if len(items) <= 1:
+        return [_flatten_transaction_to_row(tx)]
+
+    release_date = _extract_transaction_release_date(tx)
+    transaction_row = _flatten_transaction_to_row(tx)
+    rows: List[Dict[str, Any]] = []
+
+    for item_index, item in enumerate(items):
+        row = _flatten_transaction_to_row_core(
+            tx,
+            selected_item=item,
+            use_transaction_breakdowns=False,
+        )
+        row["transaction_release_date"] = release_date
+        row["__item_index"] = item_index
+        rows.append(row)
+
+    def _num(value: Any) -> float:
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    transaction_fba_fees = _num(transaction_row.get("fba_fees"))
+    item_fba_fees = sum(_num(row.get("fba_fees")) for row in rows)
+    fba_delta = transaction_fba_fees - item_fba_fees
+
+    if abs(transaction_fba_fees) > 1e-9 and abs(fba_delta) > 1e-9:
+        weights = [_num(row.get("fba_fees")) for row in rows]
+        weight_total = sum(abs(value) for value in weights)
+
+        if weight_total <= 1e-9:
+            weights = [_num(row.get("product_sales")) for row in rows]
+            weight_total = sum(abs(value) for value in weights)
+
+        if weight_total <= 1e-9:
+            weights = [_num(row.get("quantity")) for row in rows]
+            weight_total = sum(abs(value) for value in weights)
+
+        if weight_total <= 1e-9:
+            weights = [1.0 for _ in rows]
+            weight_total = float(len(rows))
+
+        for row, weight in zip(rows, weights):
+            allocated_delta = fba_delta * (abs(weight) / weight_total)
+            row["fba_fees"] = _num(row.get("fba_fees")) + allocated_delta
+            row["total"] = _num(row.get("total")) + allocated_delta
+
+    return rows
 
 def _month_to_num(mname: str) -> int:
     m = mname.strip().lower()
@@ -3031,10 +3175,42 @@ def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[
     work["total"] = pd.to_numeric(work["total"], errors="coerce").fillna(0.0)
     desc_all = work["description"]
 
+    def keywords_need_account_fee_duplicate_guard(keywords: list[str]) -> bool:
+        normalized = [str(keyword or "").strip().casefold() for keyword in keywords]
+        return any(
+            fee_keyword in keyword or keyword in fee_keyword
+            for keyword in normalized
+            for fee_keyword in _DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS
+            if keyword
+        )
+
+    def dedupe_duplicate_prone_account_fee_rows(fee_rows: pd.DataFrame) -> pd.DataFrame:
+        dedupe_cols = [
+            col
+            for col in [
+                "date_time",
+                "settlement_id",
+                "type",
+                "transaction_type",
+                "order_id",
+                "sku",
+                "description",
+                "quantity",
+                "total",
+            ]
+            if col in fee_rows.columns
+        ]
+        if not dedupe_cols:
+            return fee_rows
+        return fee_rows.drop_duplicates(subset=dedupe_cols)
+
     def sum_total_where_desc_contains(keywords: list[str]) -> float:
         pattern = "|".join(re.escape(keyword) for keyword in keywords)
         mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
-        return float(work.loc[mask, "total"].sum())
+        matched = work.loc[mask].copy()
+        if keywords_need_account_fee_duplicate_guard(keywords):
+            matched = dedupe_duplicate_prone_account_fee_rows(matched)
+        return float(matched["total"].sum())
 
     platformfeenew_total = sum_total_where_desc_contains(["Subscription"])
     platform_fee_inventory_storage_total = sum_total_where_desc_contains([

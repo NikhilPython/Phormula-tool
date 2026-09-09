@@ -18,7 +18,7 @@ from app.utils.amazon_utils import (_fetch_fba_skus_all,
 _upsert_products_to_db_with_open_date , 
 _month_date_range_utc, 
 _apply_region_and_marketplace_from_request ,
-_flatten_transaction_to_row, 
+_flatten_transaction_to_rows,
 run_upload_pipeline_from_df, 
 _month_name_lower,
 _month_to_num,
@@ -2686,25 +2686,24 @@ def finances_mtd_transactions():
             ):
                 continue
 
-            row = _flatten_transaction_to_row(tx)
+            for row in _flatten_transaction_to_rows(tx):
+                sku = str(row.get("sku") or "").strip()
+                qty = _i(row.get("quantity")) or 0
+                price = sku_price_map.get(sku) if sku else None
 
-            sku = str(row.get("sku") or "").strip()
-            qty = _i(row.get("quantity")) or 0
-            price = sku_price_map.get(sku) if sku else None
-
-            row["cogs"] = (
-                float(qty)
-                * float(price)
-                * float(conversion_rate_fx)
-                if (
-                    price is not None
-                    and qty > 0
-                    and conversion_rate_fx is not None
+                row["cogs"] = (
+                    float(qty)
+                    * float(price)
+                    * float(conversion_rate_fx)
+                    if (
+                        price is not None
+                        and qty > 0
+                        and conversion_rate_fx is not None
+                    )
+                    else 0.0
                 )
-                else 0.0
-            )
 
-            all_rows.append(row)
+                all_rows.append(row)
 
         next_token = payload_res.get("nextToken")
 
@@ -2970,12 +2969,55 @@ def finances_mtd_transactions():
 
         desc_all = df_all["description"].fillna("").astype(str)
 
+        duplicate_prone_account_fee_keywords = (
+            "fbainboundconvenience",
+            "awdprocessingfee",
+            "agsglobalinboundtransportation",
+            "awdtransportationfee",
+            "fbastoragebilling",
+            "fbalongtermstoragebilling",
+            "fbastoragefeeadjustment",
+            "storagereservationbilling",
+        )
+
+        def _keywords_need_account_fee_duplicate_guard(keywords):
+            normalized = [str(keyword or "").strip().casefold() for keyword in keywords]
+            return any(
+                fee_keyword in keyword or keyword in fee_keyword
+                for keyword in normalized
+                for fee_keyword in duplicate_prone_account_fee_keywords
+                if keyword
+            )
+
+        def _dedupe_duplicate_prone_account_fee_rows(df_fee):
+            dedupe_cols = [
+                col
+                for col in [
+                    "date_time",
+                    "settlement_id",
+                    "type",
+                    "transaction_type",
+                    "order_id",
+                    "sku",
+                    "description",
+                    "quantity",
+                    "total",
+                ]
+                if col in df_fee.columns
+            ]
+            if not dedupe_cols:
+                return df_fee
+            return df_fee.drop_duplicates(subset=dedupe_cols)
+
         def sum_total_where_desc_contains(keywords):
             if "total" not in df_all.columns:
                 return 0.0
             pattern = "|".join([re.escape(k) for k in keywords])
             mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
-            return float(pd.to_numeric(df_all.loc[mask, "total"], errors="coerce").fillna(0.0).sum())
+            matched = df_all.loc[mask].copy()
+            if _keywords_need_account_fee_duplicate_guard(keywords):
+                matched = _dedupe_duplicate_prone_account_fee_rows(matched)
+            return float(pd.to_numeric(matched["total"], errors="coerce").fillna(0.0).sum())
         
         def sku_sum_total_where_desc_contains(keywords, out_col):
             if "total" not in df_all.columns:
@@ -2983,12 +3025,14 @@ def finances_mtd_transactions():
 
             pattern = "|".join([re.escape(k) for k in keywords])
             mask = desc_all.str.contains(pattern, case=False, na=False, regex=True)
+            matched = df_all.loc[mask].copy()
+            if _keywords_need_account_fee_duplicate_guard(keywords):
+                matched = _dedupe_duplicate_prone_account_fee_rows(matched)
 
-            tmp = df_all.loc[
-                mask
-                & df_all["sku"].notna()
-                & (df_all["sku"].astype(str).str.strip() != "")
-                & (df_all["sku"].astype(str).str.strip() != "0"),
+            tmp = matched.loc[
+                matched["sku"].notna()
+                & (matched["sku"].astype(str).str.strip() != "")
+                & (matched["sku"].astype(str).str.strip() != "0"),
                 ["sku", "total"]
             ].copy()
 

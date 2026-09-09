@@ -896,12 +896,68 @@ def us_credits(
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
     """
-    Amazon US Net Credits using the SAME formula engine as UK.
+    Amazon US Net Credits.
 
-    This intentionally calls uk_credits() so US and UK calculate the
-    Other Transactions -> Net Credits column from the same reusable helper.
+    Seller Central's US MTD credit total matches non-refund shipping credits
+    plus gift wrap credits. In flattened SP-API rows, postage_credits is an
+    alias of shipping_credits, so prefer shipping_credits when it exists.
     """
-    return uk_credits(df, country=country, want_breakdown=want_breakdown, **kwargs)
+    parts = [
+        "postage_credits",
+        "gift_wrap_credits",
+    ]
+
+    if df is None or df.empty:
+        return (
+            0.0,
+            pd.DataFrame(columns=["sku", "__metric__", *parts]),
+            parts,
+        )
+
+    type_str = text_series(df, "type").str.strip().str.casefold()
+    non_refund_mask = ~type_str.str.contains("refund", na=False)
+
+    shipping_values = num_series(df, "shipping_credits")
+    postage_values = num_series(df, "postage_credits")
+    credit_values = (
+        shipping_values
+        if "shipping_credits" in df.columns and shipping_values.abs().sum() > 0
+        else postage_values
+    )
+    gift_values = num_series(df, "gift_wrap_credits")
+
+    total = float(
+        credit_values.loc[non_refund_mask].sum()
+        + gift_values.loc[non_refund_mask].sum()
+    )
+
+    if "sku" not in df.columns:
+        return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
+
+    work = df.loc[non_refund_mask].copy()
+    work["postage_credits"] = credit_values.loc[non_refund_mask]
+    work["gift_wrap_credits"] = gift_values.loc[non_refund_mask]
+    work = work.loc[sku_mask(work)].copy()
+
+    by = agg_by(
+        work,
+        "sku",
+        parts,
+    )
+
+    if by.empty:
+        return (
+            total,
+            pd.DataFrame(columns=["sku", "__metric__", *parts]),
+            parts,
+        )
+
+    by["__metric__"] = (
+        safe_num(by["postage_credits"])
+        + safe_num(by["gift_wrap_credits"])
+    )
+
+    return total, by[["sku", "__metric__", *parts]], parts
 
 def us_gross_sales(
     df: pd.DataFrame,
@@ -1068,9 +1124,10 @@ def us_amazon_fee(
 
         Amazon Fee
         = abs(adjusted selling fees)
-        + abs(FBA fees from Shipment and Refund only)
+        + abs(FBA fees from Order/Shipment rows only)
 
-    FBA fees from other transaction types are excluded.
+    FBA fees from refund and other transaction types are excluded from this
+    displayed cost bucket to match Seller Central MTD Order/Shipment totals.
     """
 
     w = df.copy()
@@ -1105,9 +1162,9 @@ def us_amazon_fee(
     type_norm = text_series(w, "type").str.strip().str.casefold()
 
     # -------------------------------------------------
-    # FBA fees: only Shipment and Refund transactions
+    # FBA fees: sold-order shipment cost only
     # -------------------------------------------------
-    fba_mask = type_norm.isin(["shipment", "refund"])
+    fba_mask = type_norm.isin(["order", "shipment"])
 
     fba_by = (
         w.loc[fba_mask]
