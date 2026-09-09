@@ -2720,7 +2720,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </>
         ),
         endValue: formatSummaryValueOrDash(
-          usSummaryValues.inventoryChargesAndReimbursement,
+          usSummaryValues.inventoryChargesAndReimbursement === null
+            ? null
+            : Math.abs(Number(usSummaryValues.inventoryChargesAndReimbursement)),
           "inventory_charges_and_reimbursement"
         ),
         defaultCollapsed: true,

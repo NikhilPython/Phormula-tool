@@ -276,7 +276,9 @@ export default function DashboardProductwisePnlSection({
                     </>
                 ),
                 endValue: formatSummaryValueOrDash(
-                    inventoryChargesAndReimbursement,
+                    inventoryChargesAndReimbursement === null
+                        ? null
+                        : Math.abs(Number(inventoryChargesAndReimbursement)),
                     "inventory_charges_and_reimbursement"
                 ),
                 defaultCollapsed: true,
