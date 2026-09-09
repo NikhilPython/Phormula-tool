@@ -77,7 +77,12 @@ export default function AdminLayout({
             </div>
           </div>
 
-          <ChatbotWidget hide={isPreviewMode} />
+          <ChatbotWidget
+  hide={
+    isPreviewMode ||
+    currentParams.countryName?.toLowerCase() === "global"
+  }
+/>
           {/* <PreviewModeNotice /> */}
           <AmazonAdsSuccessPopup />
         </div>
