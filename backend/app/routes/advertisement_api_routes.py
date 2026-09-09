@@ -805,10 +805,20 @@ def manager_sp_advertised_product_report():
 
 # ------------------------------------------- Combine Sponsored product and display routes ------------------------------------------------
 @advertisement_api_routes_bp.route("/api/ads/monthly_sp_sd_to_db", methods=["POST"])
-def monthly_sp_sd_to_db():
+def monthly_sp_sd_to_db(
+    *,
+    user_id_override=None,
+    payload_override=None,
+    rebuild_global=True,
+):
     """
     Save monthly aggregated Sponsored Products + Sponsored Display + Sponsored Brands (keywords) into:
       public.adsmonthly_{user_id}_{country}_{month}_{year}
+
+    ``user_id_override`` and ``payload_override`` are for trusted internal callers
+    that have already authenticated and authorized the target user (for example,
+    the superadmin formula-update route). Normal HTTP requests still resolve the
+    user from the JWT and read their JSON request body.
 
     ✅ Adds 3 columns:
       - product_spend (SP spend)
@@ -823,8 +833,15 @@ def monthly_sp_sd_to_db():
       as a grouped row with empty sku/asin and included in Grand Total.
     """
     try:
-        user_id = _require_jwt_user_id()
-        payload = request.get_json(force=True) or {}
+        if user_id_override is None:
+            user_id = _require_jwt_user_id()
+        else:
+            user_id = int(user_id_override)
+
+        if payload_override is None:
+            payload = request.get_json(force=True) or {}
+        else:
+            payload = dict(payload_override)
 
         # ---- inputs ----
         month = int(payload.get("month") or 0)
@@ -1946,7 +1963,7 @@ def monthly_sp_sd_to_db():
 
             global_rebuild_result = None
 
-            if country in ("UK", "GB", "US"):
+            if rebuild_global and country in ("UK", "GB", "US"):
                 try:
                     global_rebuild_result = _rebuild_global_skuwise_after_monthly_ads(
                         user_id=user_id,

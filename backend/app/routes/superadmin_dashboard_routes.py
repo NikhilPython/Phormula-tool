@@ -2520,6 +2520,10 @@ def formula_update():
         11: "november",
         12: "december",
     }
+    month_numbers = {
+        month_name: month_number
+        for month_number, month_name in month_names.items()
+    }
 
     quarter_mapping = {
         "january": "Q1",
@@ -2731,7 +2735,57 @@ def formula_update():
             })
 
     # =========================================================
-    # 6. Rebuild each affected quarter once
+    # 6. Aggregate saved ads data into each monthly formula table
+    # =========================================================
+    # Import lazily to avoid coupling the two blueprint modules at app startup.
+    from app.routes.advertisement_api_routes import monthly_sp_sd_to_db
+
+    monthly_ads_results = []
+    monthly_ads_success_count = 0
+    monthly_ads_failed_count = 0
+
+    for item in successful_periods:
+        try:
+            response, status_code = monthly_sp_sd_to_db(
+                user_id_override=item["user_id"],
+                payload_override={
+                    "country": item["country"].upper(),
+                    "month": month_numbers[item["month"]],
+                    "year": item["year"],
+                    "include": ["SP", "SD", "SB"],
+                },
+                # formula_update rebuilds global month/quarter/year tables below,
+                # after every country-level monthly ads table has been refreshed.
+                rebuild_global=False,
+            )
+            response_payload = response.get_json(silent=True) or {}
+            ads_succeeded = 200 <= int(status_code) < 300
+
+            result_item = {
+                **item,
+                "success": ads_succeeded,
+                "status_code": int(status_code),
+                "response": response_payload,
+            }
+            monthly_ads_results.append(result_item)
+
+            if ads_succeeded:
+                monthly_ads_success_count += 1
+            else:
+                monthly_ads_failed_count += 1
+
+        except Exception as exc:
+            db.session.rollback()
+            monthly_ads_failed_count += 1
+            monthly_ads_results.append({
+                **item,
+                "success": False,
+                "status_code": 500,
+                "error": str(exc),
+            })
+
+    # =========================================================
+    # 7. Rebuild each affected quarter once
     # =========================================================
     affected_quarters = {
         (
@@ -2828,7 +2882,7 @@ def formula_update():
             })
 
     # =========================================================
-    # 7. Rebuild each affected year once
+    # 8. Rebuild each affected year once
     # =========================================================
     affected_years = {
         (
@@ -2886,7 +2940,7 @@ def formula_update():
             })
 
     # =========================================================
-    # 8. Rebuild global formula tables
+    # 9. Rebuild global formula tables
     # =========================================================
     global_monthly_results = []
     global_quarterly_results = []
@@ -2997,10 +3051,11 @@ def formula_update():
             })
 
     # =========================================================
-    # 9. Response
+    # 10. Response
     # =========================================================
     total_failed = (
         monthly_failed_count
+        + monthly_ads_failed_count
         + quarterly_failed_count
         + yearly_failed_count
         + global_monthly_failed
@@ -3011,10 +3066,11 @@ def formula_update():
     return jsonify({
         "success": total_failed == 0,
         "message": (
-            "Formula update completed using existing database tables. "
-            "Amazon SP-API was not called."
+            "Formula update and monthly ads aggregation completed using "
+            "existing database tables. Amazon APIs were not called."
         ),
         "amazon_fetch_performed": False,
+        "ads_aggregation_performed": bool(successful_periods),
         "source_table_format": (
             "user_{user_id}_{country}_{month}{year}_data"
         ),
@@ -3030,6 +3086,12 @@ def formula_update():
             "success_count": monthly_success_count,
             "failed_count": monthly_failed_count,
             "results": monthly_results,
+        },
+        "monthly_ads": {
+            "attempted": len(successful_periods),
+            "success_count": monthly_ads_success_count,
+            "failed_count": monthly_ads_failed_count,
+            "results": monthly_ads_results,
         },
         "quarterly": {
             "attempted": len(unique_quarters),
