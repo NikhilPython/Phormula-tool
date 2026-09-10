@@ -491,6 +491,41 @@ def sum_us_yearly_visible_ads_from_adsmonthly(conn, user_id, country, year):
     return abs(total_visible_ads) if found_ads_table else None
 
 
+def us_return_rows_with_history(conn, df_, user_id, country, month, year):
+    """Count refunds in their original period, not again when later released."""
+    current = df_.loc[df_["type_norm"].eq("refund")].copy()
+    if current.empty:
+        return current
+
+    previous_month, previous_year = get_previous_month_year(month, year)
+    country = str(country).lower()
+    history_table = f"user_{int(user_id)}_{country}_{previous_month}{previous_year}_data"
+    merged_table = f"user_{int(user_id)}_{country}_merge_data_of_all_months"
+    if table_exists_conn(conn, history_table):
+        history = pd.read_sql(
+            text(f'SELECT * FROM "{history_table}" WHERE LOWER(TRIM(type)) = :refund'),
+            conn, params={"refund": "refund"},
+        )
+    elif table_exists_conn(conn, merged_table):
+        history = pd.read_sql(
+            text(f'SELECT * FROM "{merged_table}" '
+                 'WHERE LOWER(TRIM(type)) = :refund '
+                 'AND LOWER(month) = :month AND year::text = :year'),
+            conn, params={"refund": "refund", "month": previous_month, "year": str(previous_year)},
+        )
+    else:
+        history = current.iloc[:0].copy()
+
+    history["type_norm"] = "refund"
+    history["__return_current_period"] = False
+    current["__return_current_period"] = True
+    combined = pd.concat([history, current], ignore_index=True)
+    cleaned = dedupe_us_repeated_status_financial_rows(combined)
+    return cleaned.loc[cleaned["__return_current_period"]].drop(
+        columns=["__return_current_period"]
+    )
+
+
 def us_inventory_reimbursement_rows(df_):
     """Return recovery rows using the report's negative-per-SKU convention."""
     desc = df_.get("description", pd.Series("", index=df_.index)).fillna("").astype(str).str.strip().str.casefold()
@@ -1239,30 +1274,9 @@ def process_skuwise_us_data(user_id, country, month, year):
             .sum()
         )
 
-        # Amazon may return the same refund financial event in both
-        # RELEASED and DEFERRED_RELEASED buckets. Remove only exact refund
-        # duplicates before summing quantity, otherwise June becomes 180
-        # instead of the correct 138.
-        refund_rows = df[df["type_norm"] == "refund"].copy()
-
-        refund_dedupe_cols = [
-            col for col in [
-                "order_id", "sku", "description", "quantity",
-                "product_sales", "product_sales_tax",
-                "postage_credits", "shipping_credits",
-                "shipping_credits_tax", "gift_wrap_credits",
-                "giftwrap_credits_tax", "promotional_rebates",
-                "promotional_rebates_tax", "selling_fees",
-                "fba_fees", "other_transaction_fees", "other", "total",
-            ]
-            if col in refund_rows.columns
-        ]
-
-        if refund_dedupe_cols:
-            refund_rows = refund_rows.drop_duplicates(
-                subset=refund_dedupe_cols,
-                keep="last",
-            )
+        # Repeated status versions were removed before aggregation. Keep
+        # separate refund events even when their order, SKU and amounts match.
+        refund_rows = us_return_rows_with_history(conn, df, user_id, country, month, year)
 
         return_qty_df = (
             refund_rows
@@ -2738,11 +2752,14 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         ))
 
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
-        adsmonthly_visible_ads_total = sum_us_yearly_visible_ads_from_adsmonthly(
-            conn, user_id, country, year
-        )
-        if adsmonthly_visible_ads_total is not None:
-            visible_ads_total = adsmonthly_visible_ads_total
+        # Match the monthly/quarterly settlement totals. Ads-report tables can
+        # cover only part of the year, so use them only without payment rows.
+        if not df["desc_norm"].str.contains("ProductAdsPayment", case=False, na=False).any():
+            adsmonthly_visible_ads_total = sum_us_yearly_visible_ads_from_adsmonthly(
+                conn, user_id, country, year
+            )
+            if adsmonthly_visible_ads_total is not None:
+                visible_ads_total = adsmonthly_visible_ads_total
         dealsvouchar_ads_total = abs(sum_total_where_desc_contains(df, [
             "Cost of Advertising",
             "Coupon Redemption Fee",
@@ -2793,7 +2810,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         )
 
         return_qty_df = (
-            df[df["type_norm"] == "refund"]
+            us_return_rows_with_history(conn, df, user_id, country, "january", year)
             .groupby("sku", as_index=False)["quantity"]
             .sum()
             .rename(columns={"quantity": "return_quantity"})
@@ -3795,7 +3812,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         )
 
         return_qty_df = (
-            df[df["type_norm"] == "refund"]
+            us_return_rows_with_history(conn, df, user_id, country, months[0], year)
             .groupby("sku", as_index=False)["quantity"]
             .sum()
             .rename(columns={"quantity": "return_quantity"})
