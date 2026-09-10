@@ -67,17 +67,6 @@ REPORT_COMPAT_COLUMNS = [
 
 REPORT_TEXT_COLUMNS = {"ad_type", "generated_at_utc"}
 
-US_VISIBLE_ADS_TOTAL_EXCLUSIONS = {
-    ("2", "us", "2025"): [
-        {
-            "description": "ProductAdsPayment",
-            "date_time": "2025-12-19 03:17:40 PST",
-            "total": -32.21,
-        }
-    ],
-}
-
-
 def _numeric_series(df_: pd.DataFrame, col: str) -> pd.Series:
     if col in df_.columns:
         return pd.to_numeric(df_[col], errors="coerce").fillna(0.0)
@@ -502,39 +491,31 @@ def sum_us_yearly_visible_ads_from_adsmonthly(conn, user_id, country, year):
     return abs(total_visible_ads) if found_ads_table else None
 
 
-def apply_us_visible_ads_total_exclusions(df_, user_id, country, year, visible_ads_total):
-    exclusions = US_VISIBLE_ADS_TOTAL_EXCLUSIONS.get(
-        (str(user_id), str(country).lower(), str(year))
+def us_inventory_reimbursement_rows(df_):
+    """Return recovery rows using the report's negative-per-SKU convention."""
+    desc = df_.get("description", pd.Series("", index=df_.index)).fillna("").astype(str).str.strip().str.casefold()
+    row_type = df_.get("type", pd.Series("", index=df_.index)).fillna("").astype(str).str.strip().str.casefold()
+    reimbursement_mask = desc.isin({
+        "reversal_reimbursement",
+        "warehouse_lost",
+        "warehouse_damage",
+        "missing_from_inbound",
+        "free_replacement_refund_items",
+        "multichannel_order_lost",
+    })
+    liquidation_mask = row_type.isin({"liquidations", "liquidation"}) | (
+        row_type.eq("removalshipment")
+        & desc.eq("recommerceaftermarketplaceshipmentitem")
     )
-    if not exclusions or "total" not in df_.columns:
-        return visible_ads_total
-
-    corrected_total = float(visible_ads_total or 0.0)
-    desc = (
-        df_.get("description", pd.Series("", index=df_.index))
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .str.casefold()
-    )
-    date_time = (
-        df_.get("date_time", pd.Series("", index=df_.index))
-        .fillna("")
-        .astype(str)
-        .str.strip()
-    )
-    totals = pd.to_numeric(df_["total"], errors="coerce").fillna(0.0)
-
-    for exclusion in exclusions:
-        mask = (
-            desc.eq(str(exclusion["description"]).casefold())
-            & date_time.eq(str(exclusion["date_time"]))
-            & np.isclose(totals, float(exclusion["total"]), atol=0.005)
-        )
-        if mask.any():
-            corrected_total -= abs(float(totals.loc[mask].sum()))
-
-    return max(corrected_total, 0.0)
+    rows = df_.loc[reimbursement_mask | liquidation_mask].copy()
+    amounts = pd.to_numeric(rows["total"], errors="coerce").fillna(0.0)
+    # Legacy reimbursement fetches store credits negative; liquidation totals
+    # are signed net proceeds and must retain any reversal before conversion.
+    rows["total"] = -amounts.abs()
+    rows.loc[liquidation_mask.loc[rows.index], "total"] = -amounts.loc[
+        liquidation_mask.loc[rows.index]
+    ]
+    return rows
 
 
 def dedupe_us_quantity_rows_by_order_sku(df_):
@@ -1201,9 +1182,6 @@ def process_skuwise_us_data(user_id, country, month, year):
             ["AWDTransportationFee"],
         ))
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
-        visible_ads_total = apply_us_visible_ads_total_exclusions(
-            df, user_id, country, year, visible_ads_total
-        )
 
         dealsvouchar_ads_total = abs(sum_total_where_desc_contains(df, [
             "Cost of Advertising",
@@ -1296,18 +1274,10 @@ def process_skuwise_us_data(user_id, country, month, year):
             return_qty_df["return_quantity"] = pd.to_numeric(return_qty_df["return_quantity"], errors="coerce").fillna(0).abs()
 
         # ---------- lost / misc ----------
-        LOST_DESCRIPTIONS = {
-            "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST",
-            "WAREHOUSE_DAMAGE",
-            "MISSING_FROM_INBOUND",
-            "MISSING_FROM_INBOUND_CLAWBACK",
-            "FREE_REPLACEMENT_REFUND_ITEMS",
-        }
-
-        lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
+        lost_rows = us_inventory_reimbursement_rows(df)
+        lost_mask = df.index.isin(lost_rows.index)
         lost_total_df = (
-            df.loc[lost_mask]
+            lost_rows
             .groupby("sku", as_index=False)["total"]
             .sum()
             .rename(columns={"total": "lost_total"})
@@ -1391,6 +1361,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         leftout_mask = (
             ~df["desc_key"].isin(exclude_desc_keys)
             & ~df["type_key"].isin(exclude_type_keys)
+            & ~lost_mask
         )
 
         all_misc_transaction_total = (
@@ -2767,9 +2738,6 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         ))
 
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
-        visible_ads_total = apply_us_visible_ads_total_exclusions(
-            df, user_id, country, year, visible_ads_total
-        )
         adsmonthly_visible_ads_total = sum_us_yearly_visible_ads_from_adsmonthly(
             conn, user_id, country, year
         )
@@ -2835,18 +2803,10 @@ def process_us_yearly_skuwise_data(user_id, country, year):
                 return_qty_df["return_quantity"], errors="coerce"
             ).fillna(0).abs()
 
-        LOST_DESCRIPTIONS = {
-            "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST",
-            "WAREHOUSE_DAMAGE",
-            "MISSING_FROM_INBOUND",
-            "MISSING_FROM_INBOUND_CLAWBACK",
-            "FREE_REPLACEMENT_REFUND_ITEMS",
-        }
-
-        lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
+        lost_rows = us_inventory_reimbursement_rows(df)
+        lost_mask = df.index.isin(lost_rows.index)
         lost_total_df = (
-            df.loc[lost_mask]
+            lost_rows
             .groupby("sku", as_index=False)["total"]
             .sum()
             .rename(columns={"total": "lost_total"})
@@ -2932,6 +2892,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         leftout_mask = (
             ~df["desc_key"].isin(exclude_desc_keys)
             & ~df["type_key"].isin(exclude_type_keys)
+            & ~lost_mask
         )
 
         all_misc_transaction_total = (
@@ -3783,9 +3744,6 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         ))
 
         visible_ads_total = abs(sum_total_where_desc_contains(df, ["ProductAdsPayment"]))
-        visible_ads_total = apply_us_visible_ads_total_exclusions(
-            df, user_id, country, year, visible_ads_total
-        )
         dealsvouchar_ads_total = abs(sum_total_where_desc_contains(df, [
             "Cost of Advertising",
             "Coupon Redemption Fee",
@@ -3847,18 +3805,10 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
                 return_qty_df["return_quantity"], errors="coerce"
             ).fillna(0).abs()
 
-        LOST_DESCRIPTIONS = {
-            "REVERSAL_REIMBURSEMENT",
-            "WAREHOUSE_LOST",
-            "WAREHOUSE_DAMAGE",
-            "MISSING_FROM_INBOUND",
-            "MISSING_FROM_INBOUND_CLAWBACK",
-            "FREE_REPLACEMENT_REFUND_ITEMS",
-        }
-
-        lost_mask = df["desc_norm"].isin(LOST_DESCRIPTIONS)
+        lost_rows = us_inventory_reimbursement_rows(df)
+        lost_mask = df.index.isin(lost_rows.index)
         lost_total_df = (
-            df.loc[lost_mask]
+            lost_rows
             .groupby("sku", as_index=False)["total"]
             .sum()
             .rename(columns={"total": "lost_total"})
@@ -3944,6 +3894,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         leftout_mask = (
             ~df["desc_key"].isin(exclude_desc_keys)
             & ~df["type_key"].isin(exclude_type_keys)
+            & ~lost_mask
         )
 
         all_misc_transaction_total = (
