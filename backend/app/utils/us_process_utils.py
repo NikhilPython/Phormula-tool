@@ -4206,7 +4206,6 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
         tax_total, tax_by_sku, _ = us_tax(df, country=country)
         credits_total, credits_by_sku, _ = us_credits(df, country=country)
-        fee_total, fees_by_sku, _ = us_amazon_fee(df, country=country)
 
         merge_formula_metric(
             sales_by_sku,
@@ -4236,7 +4235,12 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
                 errors="coerce"
             ).fillna(0.0).abs()
         )
-        merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
+        # Use the displayed quarterly fee components. Reapplying the shared
+        # refund adjustment here makes the combined fee disagree with them.
+        sku_grouped["amazon_fee"] = (
+            safe_series(sku_grouped, "selling_fees").abs()
+            + safe_series(sku_grouped, "fba_fees").abs()
+        )
 
         for col in [
             "Net Sales", "gross_sales", "refund_sales", "tex_and_credits",
