@@ -1882,6 +1882,17 @@ def monthly_sp_sd_to_db(
                         if "storage_fee" in skuwise_columns
                         else "0.0"
                     )
+                    # Older UK formula tables keep storage in two components.
+                    if country in ("UK", "GB") and "storage_fee" not in skuwise_columns:
+                        storage_components = [
+                            f"ABS(COALESCE(s.{column}, 0.0))"
+                            for column in ("short_term_storage_fee", "long_term_storage_fee")
+                            if column in skuwise_columns
+                        ]
+                        total_storage_expr = (
+                            "(" + " + ".join(storage_components) + ")"
+                            if storage_components else "0.0"
+                        )
                     total_lost_expr = (
                         "ABS(COALESCE(s.lost_total, 0.0))"
                         if "lost_total" in skuwise_columns
@@ -1897,6 +1908,12 @@ def monthly_sp_sd_to_db(
                         if "platform_management_fees" in skuwise_columns
                         else "0.0"
                     )
+                    if (
+                        country in ("UK", "GB")
+                        and "platform_management_fees" not in skuwise_columns
+                        and "platformfeenew" in skuwise_columns
+                    ):
+                        total_platform_management_expr = "ABS(COALESCE(s.platformfeenew, 0.0))"
                     total_other_adjustment_expr = (
                         "ABS(COALESCE(s.other_adjustment, 0.0))"
                         if "other_adjustment" in skuwise_columns
