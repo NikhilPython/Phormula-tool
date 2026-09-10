@@ -11949,7 +11949,7 @@ export default function DashboardPage() {
 
         return (
             <div className="">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 ">
                     <AmazonStatCard
                         label="Units"
                         current={c.units}
