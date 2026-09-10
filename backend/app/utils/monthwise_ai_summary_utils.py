@@ -7504,6 +7504,34 @@ def get_or_create_global_summary(
                 )
             )
 
+                            # ✅ Always refresh numeric metrics for old cached Global periods
+            fresh_global_numeric_metrics = build_global_numeric_metrics(
+                    user_id=user_id,
+                    period=period,
+                    timeline=timeline,
+                    year=year,
+                )
+
+            fresh_metrics = {
+                    "portfolio": fresh_global_numeric_metrics.get("portfolio", {}),
+
+                    "sku_current": key_metrics_by_product_name(
+                        fresh_global_numeric_metrics.get("sku_current", {})
+                    ),
+
+                    "sku_mom": key_metrics_by_product_name(
+                        fresh_global_numeric_metrics.get("sku_mom", {})
+                    ),
+
+                    "focus_skus": fresh_global_numeric_metrics.get("focus_skus", []),
+
+                    "remaining_agg": fresh_global_numeric_metrics.get("remaining_agg", {}),
+
+                    "all_sku_mom": key_metrics_by_product_name(
+                        fresh_global_numeric_metrics.get("sku_mom", {})
+                    ),
+                }
+
             return {
                 "summary": cached.summary,
                 "scope": "global",
@@ -7517,7 +7545,7 @@ def get_or_create_global_summary(
                     "allow_global_recommendations",
                     allow_global_recommendations,
                 ),
-                "metrics": cached_recommendations.get("metrics", {}),
+                "metrics": fresh_metrics,
 
                 # ✅ NEW
                 "country_contribution_context": (

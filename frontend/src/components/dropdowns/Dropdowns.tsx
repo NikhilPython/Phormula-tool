@@ -810,23 +810,23 @@ const RecommendationMetricCard = ({
         </div>
 
         {delta ? (
-  <div
-    className={[
-      "mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap",
-      "min-[1700px]:shrink-0 min-[1700px]:text-right",
-      deltaColor,
-    ].join(" ")}
-  >
-    {formatMetricDelta(delta)}
-  </div>
-) : (
-  ["cm1 profit", "cm1 profit per unit", "cm2 profit", "cm2 profit per unit"]
-    .includes(metric.label.trim().toLowerCase()) && (
-      <div className="mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap text-charcoal-400">
-        -
-      </div>
-    )
-)}
+          <div
+            className={[
+              "mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap",
+              "min-[1700px]:shrink-0 min-[1700px]:text-right",
+              deltaColor,
+            ].join(" ")}
+          >
+            {formatMetricDelta(delta)}
+          </div>
+        ) : (
+          ["cm1 profit", "cm1 profit per unit", "cm2 profit", "cm2 profit per unit"]
+            .includes(metric.label.trim().toLowerCase()) && (
+            <div className="mt-0.5 min-[1700px]:mt-0 text-xs font-semibold whitespace-nowrap text-charcoal-400">
+              -
+            </div>
+          )
+        )}
       </div>
     </div>
   );
@@ -940,27 +940,32 @@ const parseProductInsightsBlocks = (
     const metrics = block.metrics || [];
 
     const cm1Profit = metrics.find(
-  (m) => m.label.trim().toLowerCase() === "cm1 profit"
-);
+      (m) => m.label.trim().toLowerCase() === "cm1 profit"
+    );
 
-const cm2Profit = metrics.find(
-  (m) => m.label.trim().toLowerCase() === "cm2 profit"
-);
+    const cm2Profit = metrics.find(
+      (m) => m.label.trim().toLowerCase() === "cm2 profit"
+    );
 
-const cm1ProfitValue = getMetricNumberValue(cm1Profit?.value);
-const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
+    const cm1ProfitValue = getMetricNumberValue(cm1Profit?.value);
+    const cm2ProfitValue = getMetricNumberValue(cm2Profit?.value);
 
-const profitsAreSame =
-  Math.abs(cm1ProfitValue - cm2ProfitValue) < 0.01;
+    const hasCm1Profit = !!cm1Profit;
+    const hasCm2Profit = !!cm2Profit;
 
-// ✅ Quarterly / Yearly me always CM1
-// ✅ Monthly me:
-//    CM1 === CM2 -> CM1
-//    CM1 !== CM2 -> CM2
-const useCm1 =
-  !isMonthlyRange(range) ||
-  !cm2Profit ||
-  profitsAreSame;
+    const profitsAreSame =
+      hasCm1Profit &&
+      hasCm2Profit &&
+      Math.abs(cm1ProfitValue - cm2ProfitValue) < 0.01;
+
+    // Quarterly / Yearly -> always CM1.
+    // Monthly -> CM2 only when the incoming block actually contains a
+    // distinct CM2 metric. Missing CM1 must NOT be treated as numeric 0,
+    // otherwise a placeholder CM2 = 0 gets removed and only 3 cards remain.
+    const useCm1 =
+      !isMonthlyRange(range) ||
+      !hasCm2Profit ||
+      profitsAreSame;
 
     const cleanedMetrics = metrics
       .map((m) => {
@@ -1734,21 +1739,23 @@ const areValuesSame = (
 const hasRealCm2ForPeriod = (
   cm1Metric: any,
   cm2Metric: any,
-  period: "current" | "previous"
+  period: "current" | "previous",
+  adsMetric?: any
 ) => {
-  if (!cm2Metric || typeof cm2Metric !== "object") {
-    return false;
-  }
+  const getPeriodValue = (metric: any) => {
+    if (metric && typeof metric === "object") {
+      return period === "current"
+        ? getMetricCurrent(metric)
+        : getMetricPrevious(metric);
+    }
 
-  const cm1Value =
-    period === "current"
-      ? getMetricCurrent(cm1Metric)
-      : getMetricPrevious(cm1Metric);
+    // Scalar values can only represent the current period.
+    return period === "current" ? metric : undefined;
+  };
 
-  const cm2Value =
-    period === "current"
-      ? getMetricCurrent(cm2Metric)
-      : getMetricPrevious(cm2Metric);
+  const cm1Value = getPeriodValue(cm1Metric);
+  const cm2Value = getPeriodValue(cm2Metric);
+  const adsValue = getPeriodValue(adsMetric);
 
   if (
     cm2Value === null ||
@@ -1758,9 +1765,23 @@ const hasRealCm2ForPeriod = (
     return false;
   }
 
-  // Backend fallback me CM2 ko CM1 ke equal bhej raha hai.
-  // Equal hone ka matlab genuine CM2 available nahi hai.
-  return !areValuesSame(cm1Value, cm2Value);
+  // If CM2 is exactly the same as CM1, it is the old fallback value,
+  // not genuine CM2.
+  if (areValuesSame(cm1Value, cm2Value)) {
+    return false;
+  }
+
+  const cm2Number = toNum(cm2Value);
+  const adsNumber = Math.abs(toNum(adsValue));
+
+  // Historical Global monthly rows can contain CM2 = 0 as a placeholder
+  // even though that month has no productwise ads / real CM2 data.
+  // Do not treat that zero placeholder as genuine CM2.
+  if (Math.abs(cm2Number) < 0.01 && adsNumber < 0.01) {
+    return false;
+  }
+
+  return true;
 };
 
 const removeMetricDelta = (metric: any) => {
@@ -1795,13 +1816,15 @@ const getProfitMetricConfig = (
   const currentHasRealCm2 = hasRealCm2ForPeriod(
     cm1ProfitMetric,
     cm2ProfitMetric,
-    "current"
+    "current",
+    row?.productwise_ads_spend
   );
 
   const previousHasRealCm2 = hasRealCm2ForPeriod(
     cm1ProfitMetric,
     cm2ProfitMetric,
-    "previous"
+    "previous",
+    row?.productwise_ads_spend
   );
 
   // Quarterly / Yearly -> CM1
@@ -1844,8 +1867,8 @@ const getProfitMetricConfig = (
     profitPerUnitMetric: previousHasRealCm2
       ? row?.cm2_profit_per_unit ?? row?.cm2_profit_per
       : removeMetricDelta(
-          row?.cm2_profit_per_unit ?? row?.cm2_profit_per
-        ),
+        row?.cm2_profit_per_unit ?? row?.cm2_profit_per
+      ),
   };
 };
 
@@ -2379,26 +2402,26 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                             </span>
 
                             {delta ? (
-  <span
-    className={[
-      "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
-      isAdsMetric ? "text-charcoal-500" : deltaColor,
-    ].join(" ")}
-  >
-    {formatMetricDelta(delta)}
-  </span>
-) : (
-  [
-    "cm1 profit",
-    "cm1 profit per unit",
-    "cm2 profit",
-    "cm2 profit per unit",
-  ].includes(m.label.trim().toLowerCase()) && (
-    <span className="text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right text-charcoal-400">
-      -
-    </span>
-  )
-)}
+                              <span
+                                className={[
+                                  "text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right",
+                                  isAdsMetric ? "text-charcoal-500" : deltaColor,
+                                ].join(" ")}
+                              >
+                                {formatMetricDelta(delta)}
+                              </span>
+                            ) : (
+                              [
+                                "cm1 profit",
+                                "cm1 profit per unit",
+                                "cm2 profit",
+                                "cm2 profit per unit",
+                              ].includes(m.label.trim().toLowerCase()) && (
+                                <span className="text-[10px] 2xl:text-xs font-semibold whitespace-nowrap text-right text-charcoal-400">
+                                  -
+                                </span>
+                              )
+                            )}
                           </div>
                         </div>
                       );
@@ -7972,72 +7995,73 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       );
 
       const currentCm1Profit = currentRow?.profit;
-const currentCm2Profit = currentRow?.cm2_profit;
+      const currentCm2Profit = currentRow?.cm2_profit;
 
-const previousCm1Profit =
-  getMetricPrevious(momRow?.profit);
+      const previousCm1Profit = getMetricPrevious(momRow?.profit);
+      const previousCm2Profit = getMetricPrevious(momRow?.cm2_profit);
 
-const previousCm2Profit =
-  getMetricPrevious(momRow?.cm2_profit);
+      const productwiseAdsMetric =
+        momRow?.productwise_ads_spend ?? currentRow?.productwise_ads_spend;
 
-const currentHasRealCm2 =
-  !areValuesSame(currentCm1Profit, currentCm2Profit);
+      const currentHasRealCm2 = hasRealCm2ForPeriod(
+        currentCm1Profit,
+        currentCm2Profit,
+        "current",
+        productwiseAdsMetric
+      );
 
-const previousHasRealCm2 =
-  previousCm2Profit !== null &&
-  previousCm2Profit !== undefined &&
-  !areValuesSame(previousCm1Profit, previousCm2Profit);
+      const previousHasRealCm2 = hasRealCm2ForPeriod(
+        momRow?.profit ?? previousCm1Profit,
+        momRow?.cm2_profit ?? previousCm2Profit,
+        "previous",
+        productwiseAdsMetric
+      );
 
-const useCm1Profit =
-  !isMonthlyRange(range) ||
-  !currentHasRealCm2;
+      // Always provide CM1 to the parser.
+      // For monthly periods, additionally provide CM2 only when it is genuine.
+      // parseProductInsightsBlocks() will then keep CM2 for CM2 months and CM1
+      // for historical CM1-only months.
+      lines.push(
+        `CM1 profit: ${formatMoneyValue(currentCm1Profit)}${formatDelta(
+          getMetricDelta(momRow, "profit")
+        )}`
+      );
 
-const profitLabel = useCm1Profit
-  ? "CM1 profit"
-  : "CM2 profit";
+      lines.push(
+        `CM1 profit per unit: ${formatMoneyValue(
+          currentRow?.unit_wise_profitability
+        )}${formatDelta(getMetricDelta(momRow, "unit_wise_profitability"))}`
+      );
 
-const profitValue = useCm1Profit
-  ? currentRow?.profit
-  : currentRow?.cm2_profit;
+      if (isMonthlyRange(range) && currentHasRealCm2) {
+        const cm2ProfitDelta = previousHasRealCm2
+          ? getMetricDelta(momRow, "cm2_profit")
+          : null;
 
-const profitDelta = useCm1Profit
-  ? getMetricDelta(momRow, "profit")
-  : previousHasRealCm2
-    ? getMetricDelta(momRow, "cm2_profit")
-    : null;
+        const cm2ProfitPerUnitDelta = previousHasRealCm2
+          ? getMetricDelta(momRow, "cm2_profit_per_unit") ??
+            getMetricDelta(momRow, "cm2_profit_per")
+          : null;
 
-const profitPerUnitLabel = useCm1Profit
-  ? "CM1 profit per unit"
-  : "CM2 profit per unit";
+        lines.push(
+          `CM2 profit: ${formatMoneyValue(currentCm2Profit)}${
+            cm2ProfitDelta === null || cm2ProfitDelta === undefined
+              ? ""
+              : formatDelta(cm2ProfitDelta)
+          }`
+        );
 
-const profitPerUnitValue = useCm1Profit
-  ? currentRow?.unit_wise_profitability
-  : currentRow?.cm2_profit_per_unit ??
-    currentRow?.cm2_profit_per;
-
-const profitPerUnitDelta = useCm1Profit
-  ? getMetricDelta(momRow, "unit_wise_profitability")
-  : previousHasRealCm2
-    ? getMetricDelta(momRow, "cm2_profit_per_unit") ??
-      getMetricDelta(momRow, "cm2_profit_per")
-    : null;
-
-lines.push(
-  `${profitLabel}: ${formatMoneyValue(profitValue)}${
-    profitDelta === null || profitDelta === undefined
-      ? ""
-      : formatDelta(profitDelta)
-  }`
-);
-
-lines.push(
-  `${profitPerUnitLabel}: ${formatMoneyValue(profitPerUnitValue)}${
-    profitPerUnitDelta === null ||
-    profitPerUnitDelta === undefined
-      ? ""
-      : formatDelta(profitPerUnitDelta)
-  }`
-);
+        lines.push(
+          `CM2 profit per unit: ${formatMoneyValue(
+            currentRow?.cm2_profit_per_unit ?? currentRow?.cm2_profit_per
+          )}${
+            cm2ProfitPerUnitDelta === null ||
+            cm2ProfitPerUnitDelta === undefined
+              ? ""
+              : formatDelta(cm2ProfitPerUnitDelta)
+          }`
+        );
+      }
 
       lines.push(
         `Stock Cover: ${formatCoverageValue(
