@@ -2164,8 +2164,13 @@ def _flatten_transaction_to_row_core(
             "total": total_calc, "bucket": tstatus,
         }
 
-    # Transfer/Disbursement => payout
-    if ttype_norm == "transfer":
+    # Liquidation proceeds use the signed net settlement, including its fees.
+    # They are inventory recovery, not ordinary product sales.
+    is_liquidation = (
+        ttype_norm == "removalshipment"
+        and desc_norm == "recommerceaftermarketplaceshipmentitem"
+    )
+    if ttype_norm == "transfer" or is_liquidation:
         other = total_amount
         total_calc = other
         return {
