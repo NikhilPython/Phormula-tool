@@ -302,6 +302,25 @@ function formatEtaDuration(totalSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+function getNextDisplayedEta(
+  previousSeconds: number | null,
+  calculatedSeconds: number | null,
+  advanceCountdown = false
+) {
+  if (calculatedSeconds === null) return previousSeconds;
+
+  const safeCalculatedSeconds = Math.max(1, Math.ceil(calculatedSeconds));
+  if (previousSeconds === null) return safeCalculatedSeconds;
+
+  const countdownCeiling = advanceCountdown
+    ? Math.max(1, previousSeconds - 1)
+    : previousSeconds;
+
+  // An ETA is only useful as a countdown. New timing information may shorten
+  // the value, but it must never make the visible time move backwards.
+  return Math.min(countdownCeiling, safeCalculatedSeconds);
+}
+
 function updateLatestFetchedPeriod(monthSlug: string, yearStr: string) {
   if (typeof window === "undefined") return;
 
@@ -1685,7 +1704,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     const remaining = plan.units.reduce((total, unit) => {
       if (unit.completedAt) return total;
 
-      const estimate = getEtaEstimate(unit.type, unit.fallbackSeconds);
+      // Each unit's estimate is resolved when the plan starts. Keep it fixed for
+      // this run; samples collected mid-run are used by the next sync instead of
+      // unexpectedly increasing the current countdown.
+      const estimate = unit.fallbackSeconds;
 
       if (!unit.startedAt) {
         return total + estimate;
@@ -1707,7 +1729,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     }, 0);
 
     return Math.max(1, Math.ceil(remaining));
-  }, [getEtaEstimate]);
+  }, []);
 
   const calculateDynamicProgressPercentage = useCallback(() => {
     const plan = etaPlanRef.current;
@@ -1731,7 +1753,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     (units: FetchEtaUnit[]) => {
       etaSamplesRef.current = {};
       const initialEstimate = units.reduce(
-        (total, unit) => total + getEtaEstimate(unit.type, unit.fallbackSeconds),
+        (total, unit) => total + unit.fallbackSeconds,
         0
       );
       const estimatedTotalSeconds = Math.max(1, Math.ceil(initialEstimate));
@@ -1745,7 +1767,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setRemainingSeconds(estimatedTotalSeconds);
       setDynamicProgress(0);
     },
-    [getEtaEstimate]
+    []
   );
 
   const startEtaUnit = useCallback(
@@ -1759,7 +1781,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       }
 
       plan.activeUnitId = unitId;
-      setRemainingSeconds(calculateDynamicRemainingSeconds());
+      const calculatedRemaining = calculateDynamicRemainingSeconds();
+      setRemainingSeconds((previous) =>
+        getNextDisplayedEta(previous, calculatedRemaining)
+      );
       setDynamicProgress((prev) =>
         Math.max(prev, calculateDynamicProgressPercentage())
       );
@@ -1795,7 +1820,10 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         plan.activeUnitId = undefined;
       }
 
-      setRemainingSeconds(calculateDynamicRemainingSeconds());
+      const calculatedRemaining = calculateDynamicRemainingSeconds();
+      setRemainingSeconds((previous) =>
+        getNextDisplayedEta(previous, calculatedRemaining)
+      );
       setDynamicProgress((prev) =>
         Math.max(prev, calculateDynamicProgressPercentage())
       );
@@ -1899,13 +1927,19 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
     }
 
     const interval = window.setInterval(() => {
-      setRemainingSeconds(calculateDynamicRemainingSeconds());
+      const calculatedRemaining = calculateDynamicRemainingSeconds();
+      setRemainingSeconds((previous) =>
+        getNextDisplayedEta(previous, calculatedRemaining, true)
+      );
       setDynamicProgress((prev) =>
         Math.max(prev, calculateDynamicProgressPercentage())
       );
     }, 1000);
 
-    setRemainingSeconds(calculateDynamicRemainingSeconds());
+    const calculatedRemaining = calculateDynamicRemainingSeconds();
+    setRemainingSeconds((previous) =>
+      getNextDisplayedEta(previous, calculatedRemaining)
+    );
     setDynamicProgress((prev) =>
       Math.max(prev, calculateDynamicProgressPercentage())
     );
@@ -3613,7 +3647,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
                   {/* Center */}
                   <div className="inline-flex items-center justify-center rounded-full bg-slate-100 px-4 py-1.5 text-[13px] text-slate-500 leading-none whitespace-nowrap">
-                    <span className="mr-2 font-medium text-slate-400">Estimated Time:</span>
+                    <span className="mr-2 font-medium text-slate-400">Estimated time left:</span>
                     <span className="font-medium tabular-nums text-slate-600">
                       {etaText}
                     </span>
