@@ -212,11 +212,13 @@ def _remove_orders_existing_in_previous_month(
                 # We only need order/SKU pairs that previously had an Order or
                 # Shipment row. A previous-month refund by itself should not
                 # block a current-month Order or Shipment row.
+                is_uk = normalized_country in {"uk", "gb", "united_kingdom"}
+                date_column = ", date_time" if is_uk else ""
                 query = text(
                     f"""
                     SELECT DISTINCT
                         BTRIM(order_id::text) AS order_id,
-                        BTRIM(COALESCE(sku::text, '')) AS sku
+                        BTRIM(COALESCE(sku::text, '')) AS sku{date_column}
                     FROM public."{previous_table}"
                     WHERE order_id IS NOT NULL
                       AND BTRIM(order_id::text) <> ''
@@ -228,6 +230,20 @@ def _remove_orders_existing_in_previous_month(
                 )
 
                 db_order_skus = connection.execute(query).mappings().all()
+
+                if is_uk:
+                    # Old UTC-month tables can contain the next UK month's
+                    # first hour. Those rows must not block the corrected fetch.
+                    start, end = _month_date_range_utc(
+                        previous_year, previous_month, "Europe/London"
+                    )
+                    start, end = pd.Timestamp(start), pd.Timestamp(end)
+                    db_order_skus = [
+                        row for row in db_order_skus
+                        if pd.isna(posted := pd.to_datetime(
+                            row.get("date_time"), utc=True, errors="coerce"
+                        )) or start <= posted < end
+                    ]
 
                 previous_order_sku_keys = {
                     (order_id, _normalize_sku(row.get("sku")))
@@ -381,7 +397,13 @@ def sync_monthly_transactions_for_user(
             month,
         )
     else:
-        posted_after, posted_before = _month_date_range_utc(year, month)
+        is_uk_marketplace = (
+            (country or "").strip().lower() in {"uk", "gb", "united_kingdom"}
+            or amazon_client.marketplace_id == "A1F83G8C2ARO7P"
+        )
+        posted_after, posted_before = _month_date_range_utc(
+            year, month, "Europe/London" if is_uk_marketplace else "UTC"
+        )
 
     all_rows: List[Dict[str, Any]] = []
 

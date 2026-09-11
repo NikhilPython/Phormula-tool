@@ -1793,15 +1793,16 @@ def _upsert_products_to_db_with_open_date(
 # =========================================================
 # DATE RANGE
 # =========================================================
-def _month_date_range_utc(year: int, month: int) -> Tuple[str, str]:
-    start = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
+def _month_date_range_utc(year: int, month: int, timezone_name: str = "UTC") -> Tuple[str, str]:
+    local_timezone = ZoneInfo(timezone_name)
+    start = datetime(year, month, 1, 0, 0, 0, tzinfo=local_timezone)
     if month == 12:
-        end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(year + 1, 1, 1, 0, 0, 0, tzinfo=local_timezone)
     else:
-        end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        end = datetime(year, month + 1, 1, 0, 0, 0, tzinfo=local_timezone)
 
     def iso_z(dt: datetime) -> str:
-        return dt.isoformat().replace("+00:00", "Z")
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
     return iso_z(start), iso_z(end)
 
@@ -2061,6 +2062,12 @@ def _flatten_transaction_to_row_core(
 
     marketplace_details = tx.get("marketplaceDetails") or {}
     marketplace = marketplace_details.get("marketplaceName") or marketplace_details.get("marketplaceId")
+    is_uk_marketplace = (
+        marketplace_details.get("marketplaceId") == "A1F83G8C2ARO7P"
+        or tx.get("marketplaceId") == "A1F83G8C2ARO7P"
+        or (tx.get("sellingPartnerMetadata") or {}).get("marketplaceId") == "A1F83G8C2ARO7P"
+        or str(marketplace or "").lower() == "amazon.co.uk"
+    )
 
     order_id = _extract_order_id_from_related_identifiers(tx.get("relatedIdentifiers") or [])
 
@@ -2170,7 +2177,10 @@ def _flatten_transaction_to_row_core(
         ttype_norm == "removalshipment"
         and desc_norm == "recommerceaftermarketplaceshipmentitem"
     )
-    if ttype_norm == "transfer" or is_liquidation:
+    if (
+        ttype_norm == "transfer" or is_liquidation
+        or (is_uk_marketplace and ttype_norm == "fbainventoryreimbursement")
+    ):
         other = total_amount
         total_calc = other
         return {
@@ -2457,10 +2467,13 @@ def _flatten_transaction_to_row_core(
                 marketplace_facilitator_tax += amt
 
     _accumulate_withheld_and_facilitator(tx_breakdowns)
-    _accumulate_withheld_and_facilitator(item_breakdowns)
+    if not is_uk_marketplace or (
+        abs(marketplace_withheld_tax) < eps and abs(marketplace_facilitator_tax) < eps
+    ):
+        _accumulate_withheld_and_facilitator(item_breakdowns)
 
     def _accumulate_fees_from_breakdowns(breakdowns: List[Dict[str, Any]]):
-        nonlocal selling_fees, fba_fees
+        nonlocal selling_fees, fba_fees, other_transaction_fees
 
         for node, t, path in _walk_all_breakdowns_with_path(breakdowns):
             if _node_has_children(node):
@@ -2485,6 +2498,10 @@ def _flatten_transaction_to_row_core(
             )
             is_service_fee_like = (ttype_norm == "servicefee") or _contains_any(path_str, SERVICE_FEE_EXCLUDE_KEYS)
 
+            if is_uk_marketplace and is_shipping_chargeback_fee and not is_tax:
+                other_transaction_fees += amt
+                continue
+
             if is_selling_fee and (not is_tax) and (not is_fba_fee):
                 selling_fees += amt
                 continue
@@ -2501,17 +2518,25 @@ def _flatten_transaction_to_row_core(
     # selected item's breakdowns so multi-SKU orders do not duplicate tx totals.
     if use_transaction_breakdowns:
         _accumulate_fees_from_breakdowns(tx_breakdowns)
+        if is_uk_marketplace and abs(selling_fees) < eps and abs(fba_fees) < eps:
+            transaction_other_fees = other_transaction_fees
+            other_transaction_fees = 0.0
+            for fee_item in items:
+                _accumulate_fees_from_breakdowns(fee_item.get("breakdowns") or [])
+            if abs(transaction_other_fees) > eps:
+                other_transaction_fees = transaction_other_fees
     else:
         _accumulate_fees_from_breakdowns(item_breakdowns)
 
     # normalize signs
     # normalize signs: selling_fees must always be negative because it is a cost
-    selling_fees = -abs(pd.to_numeric(selling_fees, errors="coerce") or 0)
-    if fba_fees > 0:
+    if not is_uk_marketplace:
+        selling_fees = -abs(pd.to_numeric(selling_fees, errors="coerce") or 0)
+    if fba_fees > 0 and not is_uk_marketplace:
         fba_fees = -abs(fba_fees)
-    if marketplace_withheld_tax > 0:
+    if marketplace_withheld_tax > 0 and not is_uk_marketplace:
         marketplace_withheld_tax = -abs(marketplace_withheld_tax)
-    if marketplace_facilitator_tax > 0:
+    if marketplace_facilitator_tax > 0 and not is_uk_marketplace:
         marketplace_facilitator_tax = -abs(marketplace_facilitator_tax)
 
     sales_tax_collected = marketplace_withheld_tax
@@ -2533,6 +2558,10 @@ def _flatten_transaction_to_row_core(
     if abs(total_calc) < eps and abs(total_amount) > eps and ttype_norm not in sales_like_types:
         other = total_amount
         total_calc = other
+
+    # The UK settlement total is authoritative, including VAT and fee credits.
+    if is_uk_marketplace and use_transaction_breakdowns and total_amount_raw is not None:
+        total_calc = total_amount
 
     return {
         "date_time": posted_date,

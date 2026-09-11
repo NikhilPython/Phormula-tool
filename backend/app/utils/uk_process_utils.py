@@ -22,6 +22,7 @@ from app.utils.formulas_utils import (
     us_sales, us_tax, us_credits, us_gross_sales, us_cogs, us_amazon_fee,
     uk_platform_fee, uk_advertising,
 )
+from app.utils.us_process_utils import us_return_rows_with_history
 import warnings
 import re
 warnings.filterwarnings("ignore") 
@@ -641,6 +642,17 @@ def process_skuwise_data(user_id, country, month, year):
         if numeric_columns:
             df[numeric_columns] = df[numeric_columns].apply(pd.to_numeric, errors='coerce').fillna(0)
 
+        # A later release is not a second refund. Filter before both financial
+        # and quantity calculations, while SKUs still match the raw history.
+        refund_input = df.assign(type_norm=df["type"].str.strip().str.casefold())
+        refund_rows = us_return_rows_with_history(
+            conn, refund_input, user_id, country, month, year
+        )
+        df = pd.concat([
+            df.loc[~refund_input["type_norm"].eq("refund")],
+            refund_rows.reindex(columns=df.columns),
+        ], ignore_index=True)
+
         # ------------------- LOST / LEFTOUT LOGIC (NEW) -------------------
 
         desc_str = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip()
@@ -1059,7 +1071,6 @@ def process_skuwise_data(user_id, country, month, year):
 
         df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
 
-
         # return_quantity = sum(quantity) where type == "Refund" (SKU wise)
         return_qty_df = (
             df_refund.groupby("sku", as_index=False)["quantity"]
@@ -1076,40 +1087,14 @@ def process_skuwise_data(user_id, country, month, year):
 
         # ---------------- TOTAL QTY (per SKU) ----------------
         quantity_df = (
-            df.groupby("sku", as_index=False)["quantity"]
+            df.loc[df["type"].str.strip().str.casefold().isin(["order", "shipment"])]
+            .groupby("sku", as_index=False)["quantity"]
             .sum()
             .rename(columns={"quantity": "quantity"})
         )
 
-        # merge lost quantities
-        quantity_df = quantity_df.merge(lost_qty_df, on="sku", how="left")
-        quantity_df["lost_quantity"] = (
-            pd.to_numeric(quantity_df.get("lost_quantity", 0), errors="coerce")
-            .fillna(0)
-            .abs()
-        )
-
-        # merge refund quantities
-        quantity_df = quantity_df.merge(return_qty_df, on="sku", how="left")
-        quantity_df["return_quantity"] = (
-            pd.to_numeric(quantity_df.get("return_quantity", 0), errors="coerce")
-            .fillna(0)
-            .abs()
-        )
-
-        # ✅ FINAL:
-        # quantity = shipment/order quantity + refund quantity
-        # total_quantity will subtract return_quantity later
-        quantity_df["quantity"] = (
-            pd.to_numeric(quantity_df["quantity"], errors="coerce").fillna(0)
-            - quantity_df["lost_quantity"]
-        )
-
-        # optional: drop helper cols if you don't want them here
-        quantity_df.drop(columns=["lost_quantity"], inplace=True)
-
-        # quantity_df already contains return_quantity; avoid duplicate merge collisions
-        quantity_df = quantity_df.drop(columns=["return_quantity"], errors="ignore")
+        # Returns and inventory adjustments are not sold units. The report
+        # subtracts return_quantity once when calculating total_quantity.
 
 
 
