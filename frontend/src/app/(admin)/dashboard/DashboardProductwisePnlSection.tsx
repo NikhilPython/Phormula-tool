@@ -182,7 +182,10 @@ export default function DashboardProductwisePnlSection({
 
     const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
     const others = getSummaryNumber(["other_adjustment"]);
-    const otherFees = differenceKnownNumbers(platformManagementFees, others);
+    const otherFees = differenceKnownNumbers(
+        others,
+        -Math.abs(Number(platformManagementFees ?? 0))
+    );
 
     const formatSummaryValueOrDash = (value: number | null, key: string) => {
         return value === null ? "-" : formatSummaryValue(value, key);
@@ -319,7 +322,9 @@ export default function DashboardProductwisePnlSection({
                         ) : null}
                     </>
                 ),
-                endValue: formatRoundedSummaryValueOrDash(otherFees),
+                endValue: formatRoundedSummaryValueOrDash(
+                    otherFees === null ? null : Math.abs(Number(otherFees))
+                ),
                 defaultCollapsed: true,
                 children: [
                     {
@@ -348,7 +353,7 @@ export default function DashboardProductwisePnlSection({
                             </>
                         ),
                         midValue: formatSummaryValueOrDash(
-                            others,
+                            others === null ? null : Math.abs(Number(others)),
                             "other_adjustment"
                         ),
                     },
