@@ -926,54 +926,199 @@ const valueCol =
   ]);
 
   const summaryAoA: any[][] = [];
-  const percentSummaryRowIndices: number[] = [];
-  const boldSummaryRowIndices: number[] = [];
+const percentSummaryRowIndices: number[] = [];
+const boldSummaryRowIndices: number[] = [];
 
-  if (summaryRows?.length) {
-    // spacer
-    summaryAoA.push(new Array(headerCount).fill(""));
+// Find a summary row value by label.
+// Existing (+) / (-) suffix does not matter.
+const getSummaryValueByLabel = (targetLabel: string) => {
+  const found = (summaryRows || []).find((item) => {
+    const raw = String(item?.label ?? "").trim();
 
-    summaryRows.forEach((s) => {
-      const row = new Array(headerCount).fill("");
+    const base = raw
+      .replace(/\s*\(\+\)\s*$/i, "")
+      .replace(/\s*\(-\)\s*$/i, "")
+      .trim();
 
-      const rawLabel = String(s?.label ?? "").trim();
-      const cleanLabel = rawLabel.replace(/^\(\+\)\s*/i, "").trim(); // keep consistent with SKU logic
-      const indent = Math.max(0, Number(s?.indent ?? 0));
-      const excelLabel = `${"  ".repeat(indent)}${rawLabel}`;
+    return base === targetLabel;
+  });
 
-      // value parse
-      let v: any = s?.value;
-      const n = toNumberLoose(v);
+  return found ? toNumberLoose(found.value) : null;
+};
 
-      const isPercentRow =
-        PERCENT_SUMMARY_LABELS.has(cleanLabel) || isPercentLabel(rawLabel);
+// Needed for:
+// Inventory Charges and Reimbursement sign
+const inventoryChargesSummaryValue =
+  getSummaryValueByLabel("Inventory Charges");
 
-      // blank value for parent rows
-      if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
-        v = "";
-      } else if (String(v).trim() === "-") {
-        v = "-";
-      } else if (n === null) {
-        v = "";
-      } else if (isPercentRow) {
-        // UI gives 27.37 -> excel needs 0.2737
-        v = n > 1 ? n / 100 : n;
+const reimbursementLostInventorySummaryValue =
+  getSummaryValueByLabel("Reimbursement for lost Inventory");
+
+if (summaryRows?.length) {
+  // spacer
+  summaryAoA.push(new Array(headerCount).fill(""));
+
+  summaryRows.forEach((s) => {
+    const row = new Array(headerCount).fill("");
+
+    const rawLabel = String(s?.label ?? "").trim();
+
+    // Remove existing hardcoded suffix first
+    const baseLabel = rawLabel
+      .replace(/\s*\(\+\)\s*$/i, "")
+      .replace(/\s*\(-\)\s*$/i, "")
+      .trim();
+
+    const indent = Math.max(0, Number(s?.indent ?? 0));
+
+    let label = baseLabel;
+    let v: any = s?.value;
+
+    const n = toNumberLoose(v);
+
+    /*
+     * Inventory Charges and Reimbursement
+     *
+     * Reimbursement > Inventory Charges => (+)
+     * Inventory Charges > Reimbursement => (-)
+     * Equal => no sign
+     */
+    if (baseLabel === "Inventory Charges and Reimbursement") {
+      const inventoryValue = Math.abs(
+        Number(inventoryChargesSummaryValue ?? 0)
+      );
+
+      const reimbursementValue = Math.abs(
+        Number(reimbursementLostInventorySummaryValue ?? 0)
+      );
+
+      if (reimbursementValue > inventoryValue) {
+        label = "Inventory Charges and Reimbursement (+)";
+      } else if (inventoryValue > reimbursementValue) {
+        label = "Inventory Charges and Reimbursement (-)";
       } else {
-        v = n;
+        label = "Inventory Charges and Reimbursement";
       }
 
-      row[labelCol] = excelLabel;
-      row[valueCol] = v;
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
 
-      summaryAoA.push(row);
+    /*
+     * Inventory Charges
+     * Always (-)
+     */
+    else if (baseLabel === "Inventory Charges") {
+      label = "Inventory Charges (-)";
 
-      // we'll style these later
-      const aoaRowIndexInSheet =
-      firstDataRowIndex + bodyAoA.length + (summaryAoA.length - 1);
-      if (isPercentRow) percentSummaryRowIndices.push(aoaRowIndexInSheet);
-      if (s?.bold) boldSummaryRowIndices.push(aoaRowIndexInSheet);
-    });
-  }
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
+
+    /*
+     * Reimbursement for lost Inventory
+     * Always (+)
+     */
+    else if (baseLabel.startsWith("Reimbursement for lost Inventory")) {
+      label = `${baseLabel} (+)`;
+
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
+
+    /*
+     * Other Fees
+     * Sign depends on calculated value.
+     * Numeric cell always shows absolute value.
+     */
+    else if (baseLabel === "Other Fees") {
+      if (n !== null && n > 0) {
+        label = "Other Fees (+)";
+      } else if (n !== null && n < 0) {
+        label = "Other Fees (-)";
+      } else {
+        label = "Other Fees";
+      }
+
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
+
+    /*
+     * Platform Management Fees
+     * Always (-)
+     */
+    else if (baseLabel === "Platform Management Fees") {
+      label = "Platform Management Fees (-)";
+
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
+
+    /*
+     * Others
+     * Dynamic sign.
+     * Numeric cell must NOT show its own minus.
+     */
+    else if (baseLabel === "Others") {
+      if (n !== null && n > 0) {
+        label = "Others (+)";
+      } else if (n !== null && n < 0) {
+        label = "Others (-)";
+      } else {
+        label = "Others";
+      }
+
+      if (n !== null) {
+        v = Math.abs(n);
+      }
+    }
+
+    const cleanLabel = baseLabel;
+
+    const isPercentRow =
+      PERCENT_SUMMARY_LABELS.has(cleanLabel) ||
+      isPercentLabel(cleanLabel);
+
+    // Existing parent rows
+    if (SUMMARY_NO_VALUE_LABELS.has(cleanLabel)) {
+      v = "";
+    } else if (String(v).trim() === "-") {
+      v = "-";
+    } else if (toNumberLoose(v) === null) {
+      v = "";
+    } else if (isPercentRow) {
+      const percentValue = Number(v);
+      v = percentValue > 1 ? percentValue / 100 : percentValue;
+    }
+
+    const excelLabel = `${"  ".repeat(indent)}${label}`;
+
+    row[labelCol] = excelLabel;
+    row[valueCol] = v;
+
+    summaryAoA.push(row);
+
+    // we'll style these later
+    const aoaRowIndexInSheet =
+      firstDataRowIndex +
+      bodyAoA.length +
+      (summaryAoA.length - 1);
+
+    if (isPercentRow) {
+      percentSummaryRowIndices.push(aoaRowIndexInSheet);
+    }
+
+    if (s?.bold) {
+      boldSummaryRowIndices.push(aoaRowIndexInSheet);
+    }
+  });
+}
 
 const sheetAoA = [
   ...topAoA,
