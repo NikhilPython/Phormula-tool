@@ -2817,6 +2817,20 @@ def process_quarterly_skuwise_data(user_id, country, month, year, q, db_url):
                 .eq("total")
             )
 
+            # FIX: Quarter TOTAL "other" must come from the monthly TOTAL rows.
+            # `other` is a TOTAL-only signed value in the monthly tables, so do not
+            # depend only on the generic product_name groupby for this value.
+            source_total_mask = (
+                df["product_name"].astype(str).str.strip().str.lower().eq("total")
+                | df["sku"].astype(str).str.strip().str.lower().eq("total")
+            )
+            quarter_other_total = pd.to_numeric(
+                df.loc[source_total_mask, "other"],
+                errors="coerce"
+            ).fillna(0.0).sum()
+
+            sku_grouped.loc[total_mask, "other"] = float(quarter_other_total)
+
             sku_grouped.loc[total_mask, "rembursement_fee"] = (
                 pd.to_numeric(sku_grouped.loc[total_mask, "disbursement"], errors="coerce").fillna(0)
                 - pd.to_numeric(sku_grouped.loc[total_mask, "debt_payment"], errors="coerce").fillna(0)
