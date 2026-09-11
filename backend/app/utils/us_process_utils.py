@@ -526,6 +526,19 @@ def us_return_rows_with_history(conn, df_, user_id, country, month, year):
     )
 
 
+def us_monthly_net_fee_components(df_, refund_rows):
+    """Net order costs against signed fee credits from unique refund events."""
+    row_type = df_["type"].fillna("").astype(str).str.strip().str.casefold()
+    rows = pd.concat([
+        df_.loc[row_type.isin(["order", "shipment"])], refund_rows,
+    ], ignore_index=True)
+    rows["sku"] = rows["sku"].fillna("").astype(str).str.strip()
+    rows = rows.loc[~rows["sku"].str.casefold().isin(["", "0", "none", "nan"])].copy()
+    for column in ["selling_fees", "fba_fees"]:
+        rows[column] = pd.to_numeric(rows[column], errors="coerce").fillna(0.0)
+    return rows.groupby("sku", as_index=False)[["selling_fees", "fba_fees"]].sum()
+
+
 def us_inventory_reimbursement_rows(df_):
     """Return recovery rows using the report's negative-per-SKU convention."""
     desc = df_.get("description", pd.Series("", index=df_.index)).fillna("").astype(str).str.strip().str.casefold()
@@ -1238,28 +1251,19 @@ def process_skuwise_us_data(user_id, country, month, year):
 
 
         # ---------- refund / quantity ----------
+        refund_rows = us_return_rows_with_history(conn, df, user_id, country, month, year)
+        net_fee_components = us_monthly_net_fee_components(df, refund_rows)
         refund_fees = (
-            df[df["type_norm"] == "refund"]
+            refund_rows
             .groupby("sku", as_index=False)["selling_fees"]
             .sum()
             .rename(columns={"selling_fees": "refund_selling_fees"})
         )
         refund_fees["sku"] = refund_fees["sku"].astype(str).str.strip()
 
-        # FBA fees: use sold-order shipment costs only, matching Seller Central
-        # MTD's Order/Shipment FBA fee total.
-        fba_fees_df = (
-            df.loc[
-                df["type_norm"].isin(["order", "shipment"])
-                & df["sku"].notna()
-                & (df["sku"].astype(str).str.strip() != "")
-                & (df["sku"].astype(str).str.strip() != "0")
-                & (df["sku"].astype(str).str.lower() != "none"),
-                ["sku", "fba_fees"]
-            ]
-            .groupby("sku", as_index=False)["fba_fees"]
-            .sum()
-        )
+        # Refund fee credits reduce sold-order costs; storage and other
+        # service charges remain in their separate report categories.
+        fba_fees_df = net_fee_components[["sku", "fba_fees"]].copy()
 
         fba_fees_df["sku"] = fba_fees_df["sku"].astype(str).str.strip()
         fba_fees_df["fba_fees"] = pd.to_numeric(
@@ -1276,8 +1280,6 @@ def process_skuwise_us_data(user_id, country, month, year):
 
         # Repeated status versions were removed before aggregation. Keep
         # separate refund events even when their order, SKU and amounts match.
-        refund_rows = us_return_rows_with_history(conn, df, user_id, country, month, year)
-
         return_qty_df = (
             refund_rows
             .groupby("sku", as_index=False)["quantity"]
@@ -1707,11 +1709,9 @@ def process_skuwise_us_data(user_id, country, month, year):
             errors="coerce"
         ).fillna(0)
 
-        # keep selling_fees as cost/fee, same sign style as fba_fees
-        sku_grouped["selling_fees"] = -(
-            sku_grouped["selling_fees"].abs()
-            + sku_grouped["refund_selling_fees"].abs()
-        )
+        sku_grouped["selling_fees"] = sku_grouped["sku"].map(
+            net_fee_components.set_index("sku")["selling_fees"]
+        ).fillna(0.0)
 
         # ---------- shared formula engine: US uses the same reusable formulas as UK ----------
         # Keep the US-specific preparation/merges above, but calculate financial metrics from
@@ -1760,7 +1760,14 @@ def process_skuwise_us_data(user_id, country, month, year):
         sales_total, sales_by_sku, _ = us_sales(df, country=country)
         gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
         tax_total, tax_by_sku, _ = us_tax(df, country=country)
-        credits_total, credits_by_sku, _ = us_credits(df, country=country)
+        # Use the same historical refund selection as return_quantity so a
+        # later release does not subtract shipping credits a second time.
+        credit_rows = pd.concat([
+            df.loc[~df["type_norm"].eq("refund")], refund_rows,
+        ], ignore_index=True)
+        credits_total, credits_by_sku, _ = us_credits(
+            credit_rows, country=country, include_refunds=True
+        )
         platform_total, platform_by_sku, _ = us_platform_fee(df, country=country)
         advertising_total_formula, advertising_by_sku, _ = us_advertising(df, country=country)
 

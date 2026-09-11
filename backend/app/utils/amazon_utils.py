@@ -2121,6 +2121,12 @@ def _flatten_transaction_to_row_core(
     eps = 1e-9
     ttype_norm = (ttype or "").lower().replace(" ", "")
     desc_norm = (desc or "").lower().replace(" ", "")
+    is_us_refund = ttype_norm == "refund" and (
+        marketplace_details.get("marketplaceId") == "ATVPDKIKX0DER"
+        or tx.get("marketplaceId") == "ATVPDKIKX0DER"
+        or (tx.get("sellingPartnerMetadata") or {}).get("marketplaceId") == "ATVPDKIKX0DER"
+        or str(marketplace or "").lower() == "amazon.com"
+    )
 
     # =========================================================
     # DEFAULT OUTPUTS
@@ -2472,6 +2478,8 @@ def _flatten_transaction_to_row_core(
     ):
         _accumulate_withheld_and_facilitator(item_breakdowns)
 
+    fee_components_seen = set()
+
     def _accumulate_fees_from_breakdowns(breakdowns: List[Dict[str, Any]]):
         nonlocal selling_fees, fba_fees, other_transaction_fees
 
@@ -2503,6 +2511,7 @@ def _flatten_transaction_to_row_core(
                 continue
 
             if is_selling_fee and (not is_tax) and (not is_fba_fee):
+                fee_components_seen.add("selling")
                 selling_fees += amt
                 continue
 
@@ -2511,6 +2520,7 @@ def _flatten_transaction_to_row_core(
                 and (not is_tax)
                 and (not is_service_fee_like)
             ):
+                fee_components_seen.add("fba")
                 fba_fees += amt
                 continue
 
@@ -2518,7 +2528,19 @@ def _flatten_transaction_to_row_core(
     # selected item's breakdowns so multi-SKU orders do not duplicate tx totals.
     if use_transaction_breakdowns:
         _accumulate_fees_from_breakdowns(tx_breakdowns)
-        if is_uk_marketplace and abs(selling_fees) < eps and abs(fba_fees) < eps:
+        if is_us_refund and items:
+            # Refund item summaries contain returned commission/fulfilment
+            # fees. Prefer them per component; never add duplicate tx totals.
+            transaction_selling, transaction_fba = selling_fees, fba_fees
+            selling_fees = fba_fees = 0.0
+            fee_components_seen.clear()
+            for fee_item in items:
+                _accumulate_fees_from_breakdowns(fee_item.get("breakdowns") or [])
+            if "selling" not in fee_components_seen:
+                selling_fees = transaction_selling
+            if "fba" not in fee_components_seen:
+                fba_fees = transaction_fba
+        elif is_uk_marketplace and abs(selling_fees) < eps and abs(fba_fees) < eps:
             transaction_other_fees = other_transaction_fees
             other_transaction_fees = 0.0
             for fee_item in items:
@@ -2528,11 +2550,10 @@ def _flatten_transaction_to_row_core(
     else:
         _accumulate_fees_from_breakdowns(item_breakdowns)
 
-    # normalize signs
-    # normalize signs: selling_fees must always be negative because it is a cost
-    if not is_uk_marketplace:
+    # Refunds contain signed fee credits, including negative admin charges.
+    if not is_uk_marketplace and not is_us_refund:
         selling_fees = -abs(pd.to_numeric(selling_fees, errors="coerce") or 0)
-    if fba_fees > 0 and not is_uk_marketplace:
+    if fba_fees > 0 and not is_uk_marketplace and not is_us_refund:
         fba_fees = -abs(fba_fees)
     if marketplace_withheld_tax > 0 and not is_uk_marketplace:
         marketplace_withheld_tax = -abs(marketplace_withheld_tax)

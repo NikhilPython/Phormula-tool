@@ -893,14 +893,16 @@ def us_credits(
     *,
     country: Optional[str] = "us",
     want_breakdown: Optional[bool] = None,
+    include_refunds: bool = False,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
     """
     Amazon US Net Credits.
 
-    Seller Central's US MTD credit total matches non-refund shipping credits
-    plus gift wrap credits. In flattened SP-API rows, postage_credits is an
-    alias of shipping_credits, so prefer shipping_credits when it exists.
+    Shipping plus gift wrap credits. Monthly callers include signed refunds
+    after resolving repeated releases against history. Other callers retain
+    their existing non-refund behavior. In flattened SP-API rows,
+    postage_credits aliases shipping_credits, so do not count both.
     """
     parts = [
         "postage_credits",
@@ -915,7 +917,11 @@ def us_credits(
         )
 
     type_str = text_series(df, "type").str.strip().str.casefold()
-    non_refund_mask = ~type_str.str.contains("refund", na=False)
+    credit_mask = (
+        pd.Series(True, index=df.index)
+        if include_refunds
+        else ~type_str.str.contains("refund", na=False)
+    )
 
     shipping_values = num_series(df, "shipping_credits")
     postage_values = num_series(df, "postage_credits")
@@ -927,16 +933,16 @@ def us_credits(
     gift_values = num_series(df, "gift_wrap_credits")
 
     total = float(
-        credit_values.loc[non_refund_mask].sum()
-        + gift_values.loc[non_refund_mask].sum()
+        credit_values.loc[credit_mask].sum()
+        + gift_values.loc[credit_mask].sum()
     )
 
     if "sku" not in df.columns:
         return total, pd.DataFrame(columns=["sku", "__metric__", *parts]), parts
 
-    work = df.loc[non_refund_mask].copy()
-    work["postage_credits"] = credit_values.loc[non_refund_mask]
-    work["gift_wrap_credits"] = gift_values.loc[non_refund_mask]
+    work = df.loc[credit_mask].copy()
+    work["postage_credits"] = credit_values.loc[credit_mask]
+    work["gift_wrap_credits"] = gift_values.loc[credit_mask]
     work = work.loc[sku_mask(work)].copy()
 
     by = agg_by(
