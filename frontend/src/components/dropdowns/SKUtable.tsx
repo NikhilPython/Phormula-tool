@@ -2632,8 +2632,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
   const usOtherFees = differenceKnownNumbers(
-    usSummaryValues.platformManagementFees,
-    usSummaryValues.otherAdjustment
+    usSummaryValues.otherAdjustment,
+    -Math.abs(Number(usSummaryValues.platformManagementFees ?? 0))
   );
 
   const skuSummaryRows = isUsCountry
@@ -2764,7 +2764,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
             ) : null}
           </>
         ),
-        endValue: formatSummaryValueOrDash(usOtherFees, "other_fees"),
+        endValue: formatSummaryValueOrDash(
+          usOtherFees === null ? null : Math.abs(usOtherFees),
+          "other_fees"
+        ),
         defaultCollapsed: true,
         children: [
           {
@@ -2787,7 +2790,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 ) : null}
               </>
             ),
-            midValue: formatSummaryValueOrDash(usSummaryValues.otherAdjustment, "other_adjustment"),
+            midValue: formatSummaryValueOrDash(
+              usSummaryValues.otherAdjustment === null
+                ? null
+                : Math.abs(Number(usSummaryValues.otherAdjustment)),
+              "other_adjustment"
+            ),
           },
         ],
       },
