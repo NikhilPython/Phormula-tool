@@ -1876,6 +1876,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const otherAdjustment = getOptionalNumber(rawTotalRow, [
       "other_adjustment",
+      "other", // backend total row sends the Others value under this key
     ]);
 
     return {

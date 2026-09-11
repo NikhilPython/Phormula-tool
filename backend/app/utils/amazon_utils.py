@@ -426,6 +426,7 @@ _DUPLICATE_PRONE_ACCOUNT_FEE_KEYWORDS = (
     "fbalongtermstoragebilling",
     "fbastoragefeeadjustment",
     "storagereservationbilling",
+    "eprfeechargeback",
 )
 
 def dedupe_rows_by_order_id(

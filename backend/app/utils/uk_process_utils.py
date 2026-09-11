@@ -972,11 +972,22 @@ def process_skuwise_data(user_id, country, month, year):
 
         # Logic 1: TOTAL misc_transaction
         # Includes rows with SKU and rows without SKU.
+        # TOTAL misc must use the unfiltered source so account-level rows such as
+        # EPRFeeChargeback (often sku=0) are not lost after SKU filtering.
+        # Drop exact duplicates first because Amazon can return the same service-fee
+        # event more than once in the payload.
+        misc_total_rows = misc_df.loc[leftout_mask].copy()
+        misc_dedupe_cols = [
+            c for c in [
+                "date_time", "settlement_id", "type", "order_id", "sku",
+                "description", "quantity", "total"
+            ] if c in misc_total_rows.columns
+        ]
+        if misc_dedupe_cols:
+            misc_total_rows = misc_total_rows.drop_duplicates(subset=misc_dedupe_cols, keep="first")
+
         misc_transaction_total = (
-            pd.to_numeric(
-                df.loc[leftout_mask, "total"],
-                errors="coerce"
-            )
+            pd.to_numeric(misc_total_rows.get("total", 0.0), errors="coerce")
             .fillna(0.0)
             .sum()
         )
@@ -1695,6 +1706,12 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["country"] = country
         sum_row["year"] = year
         sum_row["product_name"] = "TOTAL"
+
+        # Keep the signed account-level misc value temporarily for TOTAL profit.
+        # Example: EPRFeeChargeback in May 2026 = -60.67.
+        # Profit intentionally uses abs(misc_transaction), so -60.67 contributes +60.67.
+        sum_row["misc_transaction"] = float(misc_transaction_total)
+
         # Recompute TOTAL profit using the same US formula rather than summing SKU percentages/derived values.
         sum_row["profit"] = (
             float(sum_row.get("Net Sales", 0) or 0)
@@ -1759,7 +1776,12 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["previous_selling_fees"]= r
         sum_row["return_quantity"] = int(float(sum_row.get("return_quantity", 0) or 0))
         sum_row["total_quantity"]  = int(float(sum_row.get("total_quantity", 0) or 0))
-        sum_row["misc_transaction"] = float(misc_transaction_total)
+        # Final TOTAL-row DB storage:
+        # store the original signed account-level amount only in `other`,
+        # and keep `misc_transaction` empty/zero in the stored TOTAL row.
+        # Example May 2026: other = -60.67, misc_transaction = 0.0.
+        sum_row["other"] = float(misc_transaction_total)
+        sum_row["misc_transaction"] = 0.0
         sum_row["tex_and_credits"] = (
             float(sum_row.get("product_sales_tax", 0) or 0)
             + float(sum_row.get("postage_credits", 0) or 0)
