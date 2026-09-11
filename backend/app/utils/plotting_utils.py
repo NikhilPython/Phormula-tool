@@ -362,10 +362,6 @@ def apply_modifications_fatch(df, country):
         df["total_value"] = 0.0
         
 
-        # Selling fees ko absolute value mein convert karo
-        if 'selling_fees' in df.columns:
-            df['selling_fees'] = df['selling_fees'].abs()
-
         # Ensure all expected columns exist
         column_dtypes = {
             'product_sales_tax': float,
@@ -422,7 +418,9 @@ def apply_modifications_fatch(df, country):
 
             # Get selling_fees
             try:
-                selling_fees = float(row.get('selling_fees', 0) or 0)
+                # Diagnostics compare fee magnitudes without rewriting the
+                # signed source column used by refund/report calculations.
+                selling_fees = abs(float(row.get('selling_fees', 0) or 0))
             except (TypeError, ValueError):
                 selling_fees = 0.0
             

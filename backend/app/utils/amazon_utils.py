@@ -1321,12 +1321,12 @@ def run_upload_pipeline_from_df(
         lambda x: pd.to_numeric(x, errors="ignore") if x.dtype == "object" else x
     )
 
-    # ✅ Force selling_fees to always be negative before saving raw monthly table
+    # Preserve signed Amazon fees: refund credits must stay positive in storage.
     if "selling_fees" in df.columns:
-        df["selling_fees"] = -pd.to_numeric(
+        df["selling_fees"] = pd.to_numeric(
             df["selling_fees"],
             errors="coerce"
-        ).fillna(0).abs()
+        ).fillna(0)
 
     # consolidated
     # df_cons = df.copy()
@@ -1347,12 +1347,12 @@ def run_upload_pipeline_from_df(
         lambda x: pd.to_numeric(x, errors="ignore") if x.dtype == "object" else x
     )
 
-    # ✅ Keep selling_fees negative after adding month/year also
+    # Numeric conversion must not turn refund credits into charges.
     if "selling_fees" in df.columns:
-        df["selling_fees"] = -pd.to_numeric(
+        df["selling_fees"] = pd.to_numeric(
             df["selling_fees"],
             errors="coerce"
-        ).fillna(0).abs()
+        ).fillna(0)
     # ---------------------------
     # SAFE CURRENCY HANDLING (your block kept)
     # ---------------------------
@@ -1441,10 +1441,10 @@ def run_upload_pipeline_from_df(
         )
 
     if "selling_fees" in df_modified.columns:
-        df_modified["selling_fees"] = -pd.to_numeric(
+        df_modified["selling_fees"] = pd.to_numeric(
             df_modified["selling_fees"],
             errors="coerce"
-        ).fillna(0).abs()
+        ).fillna(0)
 
     # preserve product_sales_tax after apply_modifications_fatch
     original_product_sales_tax = pd.to_numeric(
@@ -2506,10 +2506,6 @@ def _flatten_transaction_to_row_core(
             )
             is_service_fee_like = (ttype_norm == "servicefee") or _contains_any(path_str, SERVICE_FEE_EXCLUDE_KEYS)
 
-            if is_uk_marketplace and is_shipping_chargeback_fee and not is_tax:
-                other_transaction_fees += amt
-                continue
-
             if is_selling_fee and (not is_tax) and (not is_fba_fee):
                 fee_components_seen.add("selling")
                 selling_fees += amt
@@ -2528,7 +2524,7 @@ def _flatten_transaction_to_row_core(
     # selected item's breakdowns so multi-SKU orders do not duplicate tx totals.
     if use_transaction_breakdowns:
         _accumulate_fees_from_breakdowns(tx_breakdowns)
-        if is_us_refund and items:
+        if (is_us_refund or (is_uk_marketplace and ttype_norm == "refund")) and items:
             # Refund item summaries contain returned commission/fulfilment
             # fees. Prefer them per component; never add duplicate tx totals.
             transaction_selling, transaction_fba = selling_fees, fba_fees

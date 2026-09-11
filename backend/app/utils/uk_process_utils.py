@@ -19,10 +19,10 @@ from calendar import month_name
 from dotenv import load_dotenv
 from datetime import datetime
 from app.utils.formulas_utils import (
-    us_sales, us_tax, us_credits, us_gross_sales, us_cogs, us_amazon_fee,
+    us_sales, us_tax, us_credits, us_gross_sales, us_cogs,
     uk_platform_fee, uk_advertising,
 )
-from app.utils.us_process_utils import us_return_rows_with_history
+from app.utils.us_process_utils import us_return_rows_with_history, us_monthly_net_fee_components
 import warnings
 import re
 warnings.filterwarnings("ignore") 
@@ -1255,15 +1255,17 @@ def process_skuwise_data(user_id, country, month, year):
 
 
 
-        # US-aligned selling-fee display logic
-        sku_grouped["selling_fees"] = pd.to_numeric(sku_grouped["selling_fees"], errors="coerce").fillna(0.0)
+        # The refund selection above has already removed repeated releases.
+        # Net signed refund fee credits against order costs, not their magnitudes.
+        fees_by_sku = us_monthly_net_fee_components(df, df_refund)
+        net_fees = fees_by_sku.set_index("sku")
+        for fee_column in ["selling_fees", "fba_fees"]:
+            sku_grouped[fee_column] = sku_grouped["sku"].map(net_fees[fee_column]).fillna(0.0)
         sku_grouped["refund_selling_fees"] = pd.to_numeric(
             sku_grouped.get("refund_selling_fees", 0.0), errors="coerce"
         ).fillna(0.0)
-        sku_grouped["selling_fees"] = -(
-            sku_grouped["selling_fees"].abs()
-            + sku_grouped["refund_selling_fees"].abs()
-        )
+        fees_by_sku["__metric__"] = fees_by_sku["selling_fees"].abs() + fees_by_sku["fba_fees"].abs()
+        fee_total = float(fees_by_sku["__metric__"].sum())
 
         # ---------------------------------------------------------------------
         # SHARED UK formulas for Net Sales / Net Taxes / net_credits / Fees / Profit
@@ -1273,11 +1275,6 @@ def process_skuwise_data(user_id, country, month, year):
         # fee_total,   fees_by_sku,  _ = uk_amazon_fee(df_base)
 
         sales_total, sales_by_sku, _ = us_sales(
-            df,
-            country=country,
-        )
-
-        fee_total, fees_by_sku, _ = us_amazon_fee(
             df,
             country=country,
         )
