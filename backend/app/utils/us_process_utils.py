@@ -1761,7 +1761,6 @@ def process_skuwise_us_data(user_id, country, month, year):
         gross_total, gross_by_sku, _ = us_gross_sales(df, country=country)
         tax_total, tax_by_sku, _ = us_tax(df, country=country)
         credits_total, credits_by_sku, _ = us_credits(df, country=country)
-        fee_total, fees_by_sku, _ = us_amazon_fee(df, country=country)
         platform_total, platform_by_sku, _ = us_platform_fee(df, country=country)
         advertising_total_formula, advertising_by_sku, _ = us_advertising(df, country=country)
 
@@ -1797,7 +1796,12 @@ def process_skuwise_us_data(user_id, country, month, year):
                 errors="coerce"
             ).fillna(0.0).abs()
         )
-        merge_formula_metric(fees_by_sku, "__metric__", "amazon_fee")
+        # The displayed components already include the monthly refund handling.
+        # Recomputing from raw rows applies a different selling-fee adjustment.
+        sku_grouped["amazon_fee"] = (
+            safe_series(sku_grouped, "selling_fees").abs()
+            + safe_series(sku_grouped, "fba_fees").abs()
+        )
         merge_formula_metric(cogs_by_sku, "__metric__", "cost_of_unit_sold")
         merge_formula_metric(platform_by_sku, "__metric__", "platform_fee")
 
