@@ -477,13 +477,24 @@ for (const r of rows || []) {
   );
 
   const inventoryChargesReimbursementSign =
-    reimbursementLostInventoryValue > inventoryChargesValue
-      ? "(+)"
-      : inventoryChargesValue > reimbursementLostInventoryValue
-        ? "(-)"
-        : "";
+  reimbursementLostInventoryValue > inventoryChargesValue
+    ? "(+)"
+    : inventoryChargesValue > reimbursementLostInventoryValue
+      ? "(-)"
+      : "";
 
-  for (const sr of summaryRows || []) {
+// Other Fees = Others - Platform Management Fees
+// Platform Management Fees ko hamesha deduction maana jayega.
+const othersValue = getSummaryNumericValue("Others");
+
+const platformManagementFeesValue = Math.abs(
+  getSummaryNumericValue("Platform Management Fees")
+);
+
+const otherFeesSignedValue =
+  Number(othersValue) - Number(platformManagementFeesValue);
+
+for (const sr of summaryRows || []) {
     const rawLabelText = String((sr as any)?.[labelKey] ?? "");
     const labelIndent = rawLabelText.match(/^\s*/)?.[0] ?? "";
     let label = rawLabelText.trim();
@@ -509,19 +520,15 @@ for (const r of rows || []) {
 
     // Other Fees: sign comes from the calculated signed value, while the number stays positive.
     else if (baseLabel === "Other Fees") {
-      const n = Number(value);
+  label =
+    otherFeesSignedValue > 0
+      ? "Other Fees (+)"
+      : otherFeesSignedValue < 0
+        ? "Other Fees (-)"
+        : "Other Fees";
 
-      label =
-        Number.isFinite(n) && n > 0
-          ? "Other Fees (+)"
-          : Number.isFinite(n) && n < 0
-            ? "Other Fees (-)"
-            : "Other Fees";
-
-      if (Number.isFinite(n)) {
-        value = Math.abs(n);
-      }
-    }
+  value = Math.abs(otherFeesSignedValue);
+}
 
     // Others: sign comes from its actual value, while the displayed number stays positive.
     else if (baseLabel === "Others") {
