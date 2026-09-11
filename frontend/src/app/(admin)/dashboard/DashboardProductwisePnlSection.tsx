@@ -309,13 +309,27 @@ export default function DashboardProductwisePnlSection({
             {
                 type: "section" as const,
                 id: "other_fees",
-                label: <>Other Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                label: (
+                    <>
+                        Other Fees{" "}
+                        {Number(otherFees ?? 0) > 0 ? (
+                            <strong className="text-green-500">(+)</strong>
+                        ) : Number(otherFees ?? 0) < 0 ? (
+                            <strong className="text-[#ff5c5c]">(-)</strong>
+                        ) : null}
+                    </>
+                ),
                 endValue: formatRoundedSummaryValueOrDash(otherFees),
                 defaultCollapsed: true,
                 children: [
                     {
                         id: "platform_management_fees",
-                        label: <>Platform Management Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+                        label: (
+                            <>
+                                Platform Management Fees{" "}
+                                <strong className="text-[#ff5c5c]">(-)</strong>
+                            </>
+                        ),
                         midValue: formatSummaryValueOrDash(
                             platformManagementFees,
                             "platform_management_fees"
@@ -323,8 +337,20 @@ export default function DashboardProductwisePnlSection({
                     },
                     {
                         id: "others",
-                        label: <>Others <strong className="text-green-500">(+)</strong></>,
-                        midValue: formatSummaryValueOrDash(others, "other_adjustment"),
+                        label: (
+                            <>
+                                Others{" "}
+                                {Number(others ?? 0) > 0 ? (
+                                    <strong className="text-green-500">(+)</strong>
+                                ) : Number(others ?? 0) < 0 ? (
+                                    <strong className="text-[#ff5c5c]">(-)</strong>
+                                ) : null}
+                            </>
+                        ),
+                        midValue: formatSummaryValueOrDash(
+                            others,
+                            "other_adjustment"
+                        ),
                     },
                 ],
             },

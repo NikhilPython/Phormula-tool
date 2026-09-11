@@ -2753,7 +2753,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
       {
         type: "section" as const,
         id: "other_fees",
-        label: <>Other Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+        label: (
+          <>
+            Other Fees{" "}
+            {Number(usOtherFees ?? 0) > 0 ? (
+              <strong className="text-green-500">(+)</strong>
+            ) : Number(usOtherFees ?? 0) < 0 ? (
+              <strong className="text-[#ff5c5c]">(-)</strong>
+            ) : null}
+          </>
+        ),
         endValue: formatSummaryValueOrDash(usOtherFees, "other_fees"),
         defaultCollapsed: true,
         children: [
@@ -2767,7 +2776,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
           },
           {
             id: "others",
-            label: <>Others <strong className="text-green-500">(+)</strong></>,
+            label: (
+              <>
+                Others{" "}
+                {Number(usSummaryValues.otherAdjustment ?? 0) > 0 ? (
+                  <strong className="text-green-500">(+)</strong>
+                ) : Number(usSummaryValues.otherAdjustment ?? 0) < 0 ? (
+                  <strong className="text-[#ff5c5c]">(-)</strong>
+                ) : null}
+              </>
+            ),
             midValue: formatSummaryValueOrDash(usSummaryValues.otherAdjustment, "other_adjustment"),
           },
         ],
