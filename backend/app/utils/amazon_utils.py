@@ -2738,9 +2738,43 @@ def _flatten_transaction_to_rows(tx: Dict[str, Any]) -> List[Dict[str, Any]]:
     transaction_row = _flatten_transaction_to_row(tx)
     rows: List[Dict[str, Any]] = []
 
+    marketplace = tx.get("marketplaceDetails") or {}
+    is_uk = (
+        marketplace.get("marketplaceId") == "A1F83G8C2ARO7P"
+        or tx.get("marketplaceId") == "A1F83G8C2ARO7P"
+        or (tx.get("sellingPartnerMetadata") or {}).get("marketplaceId") == "A1F83G8C2ARO7P"
+        or str(marketplace.get("marketplaceName") or "").lower() == "amazon.co.uk"
+    )
+    row_type = str(tx.get("transactionType") or "").strip().casefold()
+    is_uk_inventory = is_uk and (
+        row_type == "fbainventoryreimbursement"
+        or (row_type == "servicefee" and "fbadisposal" in str(tx.get("description") or "").casefold())
+    )
+    if is_uk_inventory:
+        try:
+            item_amounts = [Decimal(str(item["totalAmount"]["currencyAmount"])) for item in items]
+            transaction_amount = Decimal(str(tx["totalAmount"]["currencyAmount"]))
+            item_totals_match = (
+                transaction_amount.is_finite()
+                and all(amount.is_finite() for amount in item_amounts)
+                and abs(sum(item_amounts) - transaction_amount) <= Decimal("0.01")
+            )
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            item_totals_match = False
+
+        if not item_totals_match:
+            # Keep an unallocated account-level amount once rather than
+            # inventing SKU allocations or repeating the full transaction.
+            transaction_row["sku"] = None
+            transaction_row["quantity"] = None
+            return [transaction_row]
+
     for item_index, item in enumerate(items):
+        item_transaction = (
+            {**tx, "totalAmount": item["totalAmount"]} if is_uk_inventory else tx
+        )
         row = _flatten_transaction_to_row_core(
-            tx,
+            item_transaction,
             selected_item=item,
             use_transaction_breakdowns=False,
         )

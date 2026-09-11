@@ -836,6 +836,10 @@ def process_skuwise_data(user_id, country, month, year):
 
 
         lost_mask = desc_str.isin(LOST_DESCRIPTIONS)
+        # Include account-level recoveries without a SKU in the period total.
+        lost_transaction_total = float(pd.to_numeric(
+            df.loc[lost_mask, "total"], errors="coerce"
+        ).fillna(0.0).sum())
 
         lost_qty_df = (
             df.loc[lost_mask]
@@ -1623,9 +1627,7 @@ def process_skuwise_data(user_id, country, month, year):
             advertising_total = abs(pd.to_numeric(sku_grouped["advertising_total"], errors="coerce").fillna(0.0).sum())
             total_advertising = advertising_total
 
-        lost_total_amount = float(
-            pd.to_numeric(sku_grouped["lost_total"], errors="coerce").fillna(0).sum()
-        )
+        lost_total_amount = lost_transaction_total
 
         # ✅ platform fee should be only your breakup totals (NOT uk_platform_fee helper total)
         # Signed value matching frontend signs:
@@ -1685,6 +1687,7 @@ def process_skuwise_data(user_id, country, month, year):
         cols_for_sum = [c for c in cols_for_sum if c in sku_grouped.columns]
 
         sum_row = sku_grouped[cols_for_sum].sum(numeric_only=True)
+        sum_row["lost_total"] = lost_transaction_total
         if "quantity" not in sum_row.index and "quantity" in sku_grouped.columns:
             sum_row["quantity"] = sku_grouped["quantity"].sum()
         if "previous_quantity" not in sum_row.index and "previous_quantity" in sku_grouped.columns:
