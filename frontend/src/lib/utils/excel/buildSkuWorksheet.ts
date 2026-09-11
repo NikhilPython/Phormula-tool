@@ -456,14 +456,105 @@ for (const r of rows || []) {
 
   const percentSummaryRowNumbers: number[] = [];
 
+  const getSummaryNumericValue = (startsWithLabel: string) => {
+    const row = (summaryRows || []).find((item: any) => {
+      const text = String(item?.[labelKey] ?? "").trim();
+      return text.startsWith(startsWithLabel);
+    });
+
+    if (!row) return 0;
+
+    const rawValue = Number((row as any)?.[valueKey] ?? 0);
+    return Number.isFinite(rawValue) ? rawValue : 0;
+  };
+
+  const inventoryChargesValue = Math.abs(
+    getSummaryNumericValue("Inventory Charges (-)")
+  );
+
+  const reimbursementLostInventoryValue = Math.abs(
+    getSummaryNumericValue("Reimbursement for lost Inventory")
+  );
+
+  const inventoryChargesReimbursementSign =
+    reimbursementLostInventoryValue > inventoryChargesValue
+      ? "(+)"
+      : inventoryChargesValue > reimbursementLostInventoryValue
+        ? "(-)"
+        : "";
+
   for (const sr of summaryRows || []) {
     const rawLabelText = String((sr as any)?.[labelKey] ?? "");
     const labelIndent = rawLabelText.match(/^\s*/)?.[0] ?? "";
     let label = rawLabelText.trim();
     let value: any = (sr as any)?.[valueKey] ?? "";
 
-    if (label === "Reimbursement for lost Inventory") {
-      label = "Reimbursement for lost Inventory (+)";
+    // Remove an existing trailing sign first so the Excel output stays dynamic.
+    const baseLabel = label
+      .replace(/\s*\(\+\)\s*$/i, "")
+      .replace(/\s*\(-\)\s*$/i, "")
+      .trim();
+
+    // Inventory Charges and Reimbursement:
+    // reimbursement > inventory charges => (+), inventory charges > reimbursement => (-)
+    if (baseLabel === "Inventory Charges and Reimbursement") {
+      label = inventoryChargesReimbursementSign
+        ? `Inventory Charges and Reimbursement ${inventoryChargesReimbursementSign}`
+        : "Inventory Charges and Reimbursement";
+
+      if (typeof value === "number") {
+        value = Math.abs(value);
+      }
+    }
+
+    // Other Fees: sign comes from the calculated signed value, while the number stays positive.
+    else if (baseLabel === "Other Fees") {
+      const n = Number(value);
+
+      label =
+        Number.isFinite(n) && n > 0
+          ? "Other Fees (+)"
+          : Number.isFinite(n) && n < 0
+            ? "Other Fees (-)"
+            : "Other Fees";
+
+      if (Number.isFinite(n)) {
+        value = Math.abs(n);
+      }
+    }
+
+    // Others: sign comes from its actual value, while the displayed number stays positive.
+    else if (baseLabel === "Others") {
+      const n = Number(value);
+
+      label =
+        Number.isFinite(n) && n > 0
+          ? "Others (+)"
+          : Number.isFinite(n) && n < 0
+            ? "Others (-)"
+            : "Others";
+
+      if (Number.isFinite(n)) {
+        value = Math.abs(n);
+      }
+    }
+
+    // Platform Management Fees are always treated as a deduction.
+    else if (baseLabel === "Platform Management Fees") {
+      label = "Platform Management Fees (-)";
+
+      if (typeof value === "number") {
+        value = Math.abs(value);
+      }
+    }
+
+    // Reimbursement for lost inventory is always an addition.
+    else if (baseLabel.startsWith("Reimbursement for lost Inventory")) {
+      label = `${baseLabel} (+)`;
+
+      if (typeof value === "number") {
+        value = Math.abs(value);
+      }
     }
 
     const cleanLabel = label.replace(/^\(\+\)\s*/i, "").trim();
