@@ -182,10 +182,11 @@ export default function DashboardProductwisePnlSection({
 
     const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
     const others = getSummaryNumber(["other_adjustment"]);
-    const otherFees = differenceKnownNumbers(
-        others,
-        -Math.abs(Number(platformManagementFees ?? 0))
-    );
+    const otherFees =
+    others === null && platformManagementFees === null
+        ? null
+        : Number(others ?? 0) -
+          Math.abs(Number(platformManagementFees ?? 0));
 
     const formatSummaryValueOrDash = (value: number | null, key: string) => {
         return value === null ? "-" : formatSummaryValue(value, key);

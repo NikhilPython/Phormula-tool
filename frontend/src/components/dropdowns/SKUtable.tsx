@@ -2631,10 +2631,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
     TOTAL_ROW_HEIGHT +
     SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
-  const usOtherFees = differenceKnownNumbers(
-    usSummaryValues.otherAdjustment,
-    -Math.abs(Number(usSummaryValues.platformManagementFees ?? 0))
-  );
+ const usOtherFees =
+  usSummaryValues.otherAdjustment === null &&
+  usSummaryValues.platformManagementFees === null
+    ? null
+    : Number(usSummaryValues.otherAdjustment ?? 0) -
+      Math.abs(Number(usSummaryValues.platformManagementFees ?? 0));
 
   const skuSummaryRows = isUsCountry
     ? [
