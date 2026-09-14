@@ -1234,15 +1234,13 @@ const AppSidebar: React.FC = () => {
   //   name: "Inventory Reconciliation",
   //   path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
   // },
-  // {
-  //   name: "Expense Reconciliation",
-  //   path: ({ ranged, countryName, month, year }) =>
-  //     `/expense-reconciliation/${encodeURIComponent(
-  //       ranged
-  //     )}/${encodeURIComponent(countryName)}/${encodeURIComponent(
-  //       month
-  //     )}/${encodeURIComponent(year)}`,
-  // },
+  {
+    name: "Expense Reconciliation",
+    path: ({ countryName, month, year }) =>
+      `/expense-reconciliation/${encodeURIComponent(countryName)}/${encodeURIComponent(
+        month
+      )}/${encodeURIComponent(year)}`,
+  },
 ],
     },
   ];
