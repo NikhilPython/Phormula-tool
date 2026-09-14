@@ -143,7 +143,7 @@ export default function SalesTargetStatsCard({
   const prevMtd =
     biEnabled && biAlignedTotals
       ? biAlignedTotals.total_previous_net_sales
-      : active?.lastMonthToDateUSD || 0;
+      : lastMonthToDateHome || active?.lastMonthToDateUSD || 0;
 
   const prevFullMonth =
     biEnabled && biAlignedTotals

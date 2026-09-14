@@ -88,6 +88,7 @@ export default function DashboardLiveSalesTab({
     finalTargetsMtdHome,
     finalStatsTargetHome,
     finalTargetsLastMonthTotalHome,
+    finalTargetsLastMonthToDateHome,
     targets_lastMonthToDateHome,
     finalStatsSalesTrendPct,
     finalStatsTargetTrendPct,
@@ -743,12 +744,12 @@ export default function DashboardLiveSalesTab({
                                         mtdHome={finalTargetsMtdHome}
                                         targetHome={finalStatsTargetHome}
                                         lastMonthTotalHome={finalTargetsLastMonthTotalHome}
-                                        lastMonthToDateHome={targets_lastMonthToDateHome}
+                                        lastMonthToDateHome={finalTargetsLastMonthToDateHome}
                                         salesTrendPct={finalStatsSalesTrendPct}
                                         targetTrendPct={finalStatsTargetTrendPct}
                                         currentReimbursement={finalTargetsReimbursement.current}
                                         previousReimbursement={finalTargetsReimbursement.previous}
-                                        biAlignedTotals={shouldShowDummyUi ? null : biAlignedTotalsHome}
+                                        biAlignedTotals={shouldShowDummyUi ? null : salesTargetBiAlignedTotals}
                                         biEnabled={shouldShowDummyUi ? false : biCardsReady}
                                         currentMonthLabel={formattedMonthYear}
                                         previousMonthLabel={prevLabel}

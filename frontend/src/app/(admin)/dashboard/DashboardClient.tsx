@@ -12961,6 +12961,7 @@ export default function DashboardPage() {
                         finalTargetsMtdHome={finalTargetsMtdHome}
                         finalStatsTargetHome={finalStatsTargetHome}
                         finalTargetsLastMonthTotalHome={finalTargetsLastMonthTotalHome}
+                        finalTargetsLastMonthToDateHome={finalTargetsLastMonthToDateHome}
                         targets_lastMonthToDateHome={targets_lastMonthToDateHome}
                         finalStatsSalesTrendPct={finalStatsSalesTrendPct}
                         finalStatsTargetTrendPct={finalStatsTargetTrendPct}
