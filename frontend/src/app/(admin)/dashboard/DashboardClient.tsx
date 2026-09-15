@@ -8786,19 +8786,26 @@ export default function DashboardPage() {
             : toNumber(backendDashboardMetric("cost_of_ads").change_percentage);
 
     const mtdTacosCurrent = shouldShowDummyUi
-        ? dummyStatData.tacos.current
+    ? dummyStatData.tacos.current
+    : dashboardActionSourceMetrics?.tacos != null
+        ? toNumber(dashboardActionSourceMetrics.tacos)
         : rangeActive
             ? toNumber(biAlignedTotals?.total_current_tacos)
             : toNumber(backendDashboardMetric("tacos").current);
 
-    const mtdTacosPrevious = shouldShowDummyUi
-        ? dummyStatData.tacos.previous
-        : rangeActive
-            ? toNumber(biAlignedTotals?.total_previous_tacos)
-            : toNumber(backendDashboardMetric("tacos").previous);
+const mtdTacosPrevious = shouldShowDummyUi
+    ? dummyStatData.tacos.previous
+    : rangeActive
+        ? toNumber(biAlignedTotals?.total_previous_tacos)
+        : toNumber(backendDashboardMetric("tacos").previous);
 
-    const mtdTacosDelta = shouldShowDummyUi
-        ? dummyStatData.tacos.deltaPct
+const mtdTacosDelta = shouldShowDummyUi
+    ? dummyStatData.tacos.deltaPct
+    : dashboardActionSourceMetrics?.tacos != null
+        ? safeDeltaPctFromPct(
+            toNumber(dashboardActionSourceMetrics.tacos),
+            mtdTacosPrevious
+        )
         : rangeActive
             ? toNumber(biAlignedTotals?.tacos_change_percentage)
             : toNumber(backendDashboardMetric("tacos").change_percentage);
