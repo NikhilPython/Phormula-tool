@@ -30,7 +30,30 @@ type SummaryShape = {
   fba_fees?: number;
   selling_fees?: number;
   promotional_rebates?: number;
+};
 
+type CashflowCardMetricValues = {
+  units: number;
+  gross_sales: number;
+  gross_sales_per_unit: number;
+  net_sales: number;
+  net_sales_per_unit: number;
+  promotions: number;
+  promotions_pct: number;
+  marketplace_fees: number;
+  marketplace_fees_per_unit: number;
+  others: number;
+  others_per_unit: number;
+  cash_generated: number;
+  cash_generated_per_unit: number;
+  net_reimbursement: number;
+  net_reimbursement_per_unit: number;
+};
+
+type CashflowCardMetrics = {
+  current: CashflowCardMetricValues;
+  previous: CashflowCardMetricValues;
+  deltas: CashflowCardMetricValues;
 };
 
 type Props = {
@@ -40,6 +63,7 @@ type Props = {
   periodType?: "monthly" | "quarterly" | "yearly";
   currency: string;
   isPreviewMode?: boolean;
+  cardMetrics?: CashflowCardMetrics;
 };
 
 /* ================= COMPONENT ================= */
@@ -51,6 +75,7 @@ const CashFlowSankey: React.FC<Props> = ({
   currency,
   periodType = "monthly",
   isPreviewMode = false,
+  cardMetrics,
 }) => {
   /* ---------- helpers ---------- */
   const [screenWidth, setScreenWidth] = React.useState(
@@ -205,26 +230,15 @@ const CashFlowSankey: React.FC<Props> = ({
     // Year format: "2024" → "2024"
     return label;
   };
-  const marketplaceFees =
-    (data.amazon_fee || 0);
-
+  const currentMetrics = cardMetrics?.current;
+  const previousMetrics = cardMetrics?.previous;
+  const metricDeltas = cardMetrics?.deltas;
+  const marketplaceFees = currentMetrics?.marketplace_fees ?? data.amazon_fee ?? 0;
   const prevMarketplaceFees =
-    (previous_summary?.amazon_fee || 0);
-
-
-
-  const getChangePercent = (curr?: number, prev?: number) => {
-    if (curr === undefined || prev === undefined || prev === 0) return undefined;
-    return (((curr - prev) / Math.abs(prev)) * 100).toFixed(2);
-  };
+    previousMetrics?.marketplace_fees ?? previous_summary?.amazon_fee ?? 0;
 
   const formatInteger = (val?: number) =>
     val !== undefined ? Math.round(val).toLocaleString() : "-";
-
-  const getPerUnitValue = (amount?: number, units?: number) => {
-    if (!amount || !units || units === 0) return undefined;
-    return (amount / units).toFixed(2);
-  };
 
   /* ---------- CARDS CONFIG ---------- */
 
@@ -240,8 +254,9 @@ const CashFlowSankey: React.FC<Props> = ({
   const cards = [
     {
       label: "Units",
-      value: data.quantity_total,
-      prev: previous_summary?.quantity_total,
+      metricKey: "units" as const,
+      value: currentMetrics?.units ?? data.quantity_total,
+      prev: previousMetrics?.units ?? previous_summary?.quantity_total,
       icon: <FaBoxArchive size={16} color="#87AD12" />,
       bg: "bg-white",
       border: " border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
@@ -249,8 +264,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Gross Sales",
-      value: data.gross_sales,
-      prev: previous_summary?.gross_sales,
+      metricKey: "gross_sales" as const,
+      value: currentMetrics?.gross_sales ?? data.gross_sales,
+      prev: previousMetrics?.gross_sales ?? previous_summary?.gross_sales,
+      perUnit: currentMetrics?.gross_sales_per_unit,
+      previousPerUnit: previousMetrics?.gross_sales_per_unit,
       icon: <FaMoneyBillTrendUp size={16} />,
       bg: "bg-white",
       border: "border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
@@ -258,8 +276,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Net Sales",
-      value: data.net_sales,
-      prev: previous_summary?.net_sales,
+      metricKey: "net_sales" as const,
+      value: currentMetrics?.net_sales ?? data.net_sales,
+      prev: previousMetrics?.net_sales ?? previous_summary?.net_sales,
+      perUnit: currentMetrics?.net_sales_per_unit,
+      previousPerUnit: previousMetrics?.net_sales_per_unit,
       icon: <FaTags size={16} />,
       bg: "bg-white",
       border: "border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
@@ -267,8 +288,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Promotions",
-      value: data.promotional_rebates,
-      prev: previous_summary?.promotional_rebates,
+      metricKey: "promotions" as const,
+      value: currentMetrics?.promotions ?? data.promotional_rebates,
+      prev: previousMetrics?.promotions ?? previous_summary?.promotional_rebates,
+      percentage: currentMetrics?.promotions_pct,
+      previousPercentage: previousMetrics?.promotions_pct,
       icon: <FaPercent size={16} />,
       bg: "bg-white",
       border: "border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
@@ -280,8 +304,11 @@ const CashFlowSankey: React.FC<Props> = ({
 
     {
       label: "Marketplace Fees",
+      metricKey: "marketplace_fees" as const,
       value: marketplaceFees,
       prev: prevMarketplaceFees,
+      perUnit: currentMetrics?.marketplace_fees_per_unit,
+      previousPerUnit: previousMetrics?.marketplace_fees_per_unit,
       icon: <FaAmazon size={16} />, // ya FaLayerGroup if you prefer
       bg: "bg-white",
       border: " border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
@@ -289,8 +316,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Others",
-      value: data.otherwplatform,
-      prev: previous_summary?.otherwplatform,
+      metricKey: "others" as const,
+      value: currentMetrics?.others ?? data.otherwplatform,
+      prev: previousMetrics?.others ?? previous_summary?.otherwplatform,
+      perUnit: currentMetrics?.others_per_unit,
+      previousPerUnit: previousMetrics?.others_per_unit,
       icon: <FaLayerGroup size={16} />,
       bg: "bg-white",
       border: "border-[#3A8EA4]  border-t-4 border-t-[#3A8EA4]",
@@ -298,8 +328,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Cash Generated",
-      value: data.cashflow,
-      prev: previous_summary?.cashflow,
+      metricKey: "cash_generated" as const,
+      value: currentMetrics?.cash_generated ?? data.cashflow,
+      prev: previousMetrics?.cash_generated ?? previous_summary?.cashflow,
+      perUnit: currentMetrics?.cash_generated_per_unit,
+      previousPerUnit: previousMetrics?.cash_generated_per_unit,
       icon: <FaWallet size={16} />,
       bg: "bg-white",
       border: "border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
@@ -307,8 +340,11 @@ const CashFlowSankey: React.FC<Props> = ({
     },
     {
       label: "Net Reimbursement",
-      value: data.rembursement_fee,
-      prev: previous_summary?.rembursement_fee,
+      metricKey: "net_reimbursement" as const,
+      value: currentMetrics?.net_reimbursement ?? data.rembursement_fee,
+      prev: previousMetrics?.net_reimbursement ?? previous_summary?.rembursement_fee,
+      perUnit: currentMetrics?.net_reimbursement_per_unit,
+      previousPerUnit: previousMetrics?.net_reimbursement_per_unit,
       icon: <FaArrowRotateRight size={16} />,
       bg: "bg-white",
       border: "border-[#C49466] border-t-4 border-t-[#C49466]",
@@ -562,19 +598,11 @@ const CashFlowSankey: React.FC<Props> = ({
             c.isDiscount ||
             c.label === "Marketplace Fees" ||
             c.label === "Others";
-          const currentForDelta = c.isDiscount
-            ? Math.round(Math.abs(c.value || 0))
-            : lowerIsBetter
-              ? Math.abs(c.value || 0)
-              : c.value;
-          const previousForDelta = c.isDiscount
-            ? Math.round(Math.abs(c.prev || 0))
-            : lowerIsBetter
-              ? Math.abs(c.prev || 0)
-              : c.prev;
-          const p = getChangePercent(currentForDelta, previousForDelta);
+          const backendDelta = metricDeltas?.[c.metricKey];
           const deltaNumber =
-            p === undefined || Number.isNaN(Number(p)) ? null : Number(p);
+            typeof backendDelta === "number" && Number.isFinite(backendDelta)
+              ? backendDelta
+              : null;
 
           const shouldShowPositive =
             c.label === "Marketplace Fees" ||
@@ -593,10 +621,7 @@ const CashFlowSankey: React.FC<Props> = ({
                 {formatCurrencyRoundedWithSign(Math.abs(c.value || 0))}
                 <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                   (
-                  {(
-                    (Math.abs(c.value || 0) / Math.abs(data.net_sales || 1)) *
-                    100
-                  ).toFixed(2)}
+                  {Number(c.percentage ?? 0).toFixed(2)}
                   %)
                 </span>
               </>
@@ -610,7 +635,7 @@ const CashFlowSankey: React.FC<Props> = ({
                   <span className="ml-1 2xl:text-xs text-[10px] font-medium text-charcoal-500">
                     (
                     {formatCurrencyRoundedWithSign(
-                      Number(getPerUnitValue(displayValue, data.quantity_total))
+                      Number(c.perUnit ?? 0)
                     )}{" "}
                     / Unit)
                   </span>
@@ -625,13 +650,9 @@ const CashFlowSankey: React.FC<Props> = ({
             : c.label === "Units"
               ? formatInteger(c.prev)
               : c.isDiscount
-                ? previous_summary?.net_sales
-                  ? `${formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))} (${(
-                    (Math.abs(c.prev || 0) /
-                      Math.abs(previous_summary.net_sales)) *
-                    100
-                  ).toFixed(2)}%)`
-                  : formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))
+                ? `${formatCurrencyRoundedWithSign(Math.abs(c.prev || 0))} (${Number(
+                  c.previousPercentage ?? 0
+                ).toFixed(2)}%)`
                 : `${c.isCurrency
                   ? formatCurrencyByLabel(
                     c.label,
@@ -642,14 +663,7 @@ const CashFlowSankey: React.FC<Props> = ({
                   : formatNumber(c.prev)
                 }${perUnitCards.includes(c.label)
                   ? ` (${formatCurrencyRoundedWithSign(
-                    Number(
-                      getPerUnitValue(
-                        ["Marketplace Fees", "Others"].includes(c.label)
-                          ? Math.abs(c.prev || 0)
-                          : c.prev,
-                        previous_summary?.quantity_total
-                      )
-                    )
+                    Number(c.previousPerUnit ?? 0)
                   )} / Unit)`
                   : ""
                 }`;

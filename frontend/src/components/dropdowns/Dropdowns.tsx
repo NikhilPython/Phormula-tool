@@ -82,6 +82,30 @@ type Summary = {
   tacos?: number;
 };
 
+type PnlCardMetricValues = {
+  units: number;
+  asp: number;
+  gross_sales: number;
+  gross_sales_per_unit: number;
+  net_sales: number;
+  net_sales_per_unit: number;
+  marketplace_fees: number;
+  marketplace_fees_per_unit: number;
+  cost_of_ads: number;
+  cost_of_ads_per_unit: number;
+  tacos_pct: number;
+  cm2_profit: number;
+  cm2_margin_pct: number;
+  promotions: number;
+  promotions_pct: number;
+};
+
+type PnlCardMetrics = {
+  current: PnlCardMetricValues;
+  previous: PnlCardMetricValues;
+  deltas: PnlCardMetricValues;
+};
+
 type UploadRow = {
   country: string;
   month: string;
@@ -118,6 +142,7 @@ type SummaryComparisons = {
 type UploadHistoryResponse = {
   summary: Summary;
   summaryComparisons?: SummaryComparisons;
+  card_metrics?: PnlCardMetrics;
   [key: string]: unknown;
 };
 
@@ -1462,24 +1487,22 @@ const getTotalCm2ProfitValue = (row: Partial<TableRow> | null | undefined) => {
     : toNum(totalCm2Profit);
 };
 
-const getCm2MarginValue = (row: any, netSales: any, cm2Profit: any) =>
+const getCm2MarginValue = (row: any, _netSales: any, _cm2Profit: any) =>
   pickFirstNonZeroNum(
-    row?.cm2_margins,
     row?.total_cm2_margins,
+    row?.cm2_margins,
     row?.cm2_profit_percentage,
     row?.cm2_profit_percent,
-    row?.cm2_profit_percentage_value,
-    toNum(netSales) !== 0 ? (toNum(cm2Profit) / toNum(netSales)) * 100 : 0
+    row?.cm2_profit_percentage_value
   );
 
-const getCm2PerValue = (row: any, netSales: any, cm2Profit: any) =>
+const getCm2PerValue = (row: any, _netSales: any, _cm2Profit: any) =>
   pickFirstNonZeroNum(
     row?.cm2_profit_per,
     row?.cm2_profit_per_unit,
     row?.cm2_profit_percentage,
     row?.cm2_profit_percent,
-    row?.cm2_profit_percentage_value,
-    toNum(netSales) !== 0 ? (toNum(cm2Profit) / toNum(netSales)) * 100 : 0
+    row?.cm2_profit_percentage_value
   );
 
 const mergeToSingleBullet = (arr: string[]) => {
@@ -7579,10 +7602,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm2ProfitPer = getCm2PerValue(row, netSales, cm2ProfitTotal);
 
     const promotionalRebates = toNum(row?.promotional_rebates);
-    const promotionalRebatesPercentage =
-      netSales !== 0
-        ? (promotionalRebates / netSales) * 100
-        : toNum(row?.promotional_rebates_percentage);
+    const promotionalRebatesPercentage = toNum(
+      row?.promotional_rebates_percentage
+    );
 
     return {
       unit_sold: toNum(row?.total_quantity),
@@ -7642,10 +7664,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm2ProfitPer = getCm2PerValue(row, netSales, cm2ProfitTotal);
 
     const promotionalRebates = toNum(row?.promotional_rebates);
-    const promotionalRebatesPercentage =
-      netSales !== 0
-        ? (promotionalRebates / netSales) * 100
-        : toNum(row?.promotional_rebates_percentage);
+    const promotionalRebatesPercentage = toNum(
+      row?.promotional_rebates_percentage
+    );
 
     return {
       country,
@@ -7714,6 +7735,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       previous_data: data?.previous_data ?? [],
       current_table_name: data?.current_table_name,
       previous_table_name: data?.previous_table_name,
+      card_metrics: data?.card_metrics,
     };
   };
 
@@ -9808,10 +9830,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum((totalRow as any)?.promotional_rebates) ||
       sumSkuRows(rows, "promotional_rebates");
 
-    const promotionalRebatesPercentage =
-      netSales !== 0
-        ? (promotionalRebates / netSales) * 100
-        : toNum((totalRow as any)?.promotional_rebates_percentage);
+    const promotionalRebatesPercentage = toNum(
+      (totalRow as any)?.promotional_rebates_percentage
+    );
 
     const cm2Margin = getCm2MarginValue(totalRow, netSales, cm2);
 
@@ -9872,10 +9893,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm2ProfitTotal = getTotalCm2ProfitValue(totalRow);
 
     const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
-    const promotionalRebatesPercentage =
-      netSales !== 0
-        ? (promotionalRebates / netSales) * 100
-        : toNum((totalRow as any)?.promotional_rebates_percentage);
+    const promotionalRebatesPercentage = toNum(
+      (totalRow as any)?.promotional_rebates_percentage
+    );
 
     const cm2Margins = getCm2MarginValue(totalRow, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(totalRow, netSales, cm2ProfitTotal);
@@ -9954,10 +9974,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const cm2Margins = getCm2MarginValue(totalRow, netSales, cm2ProfitTotal);
     const cm2ProfitPer = getCm2PerValue(totalRow, netSales, cm2ProfitTotal);
     const promotionalRebates = toNum((totalRow as any)?.promotional_rebates);
-    const promotionalRebatesPercentage =
-      netSales !== 0
-        ? (promotionalRebates / netSales) * 100
-        : toNum((totalRow as any)?.promotional_rebates_percentage);
+    const promotionalRebatesPercentage = toNum(
+      (totalRow as any)?.promotional_rebates_percentage
+    );
 
     return [
       {
@@ -10278,7 +10297,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
               (() => {
                 const summary = displayData;
-                const netSales = summary.total_sales;
+                const backendCardMetrics = uploadsData?.card_metrics;
+                const currentCardMetrics = backendCardMetrics?.current;
+                const previousCardMetrics = backendCardMetrics?.previous;
+                const cardMetricDeltas = backendCardMetrics?.deltas;
+                const netSales = currentCardMetrics?.net_sales ?? summary.total_sales;
                 // const rawComparisons =
                 //   (uploadsData as any).summaryComparisons ??
                 //   (uploadsData as any).summary_comparisons;
@@ -10311,6 +10334,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 };
 
                 const costOfAds =
+                  currentCardMetrics?.cost_of_ads ??
                   summary.advertising_total_final ??
                   summary.advertising_total ??
                   0;
@@ -10325,7 +10349,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 };
 
 
-                const roas = getRoas(summary);
+                const roas = currentCardMetrics?.tacos_pct ?? getRoas(summary);
 
                 const formatRoas = (val: number) =>
                   `${val.toLocaleString(undefined, {
@@ -10405,24 +10429,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 const formatUnits = (val: number) =>
                   val.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
-                const safeDiv = (num: number, den: number) => (den > 0 ? num / den : 0);
-
                 const renderMoneyWithPerUnit = (
                   total: number,
-                  units: number,
-                  roundPerUnit = false,
+                  perUnit: number,
                   decimals = 2
                 ) => {
                   const totalText = formatMoney(total, { decimals });
-
-                  if (!units) {
-                    return <span>{totalText}</span>;
-                  }
-
-                  const perUnitRaw = total / units;
-                  const perUnit = roundPerUnit ? Math.round(perUnitRaw) : perUnitRaw;
                   const perUnitText = formatMoney(perUnit, {
-                    decimals: roundPerUnit ? 0 : decimals,
+                    decimals: 0,
                   });
 
                   return (
@@ -10686,27 +10700,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     return explicitValue;
                   }
 
-                  const sales = toNum(s?.total_sales);
-                  return sales !== 0 ? (toNum(s?.cm2_profit) / sales) * 100 : 0;
+                  return 0;
                 };
 
-                const cm2Margin = getCm2Percent(summary);
-                const promotionsAmount = Math.abs(toNum(summary.promotional_rebates));
+                const cm2Margin =
+                  currentCardMetrics?.cm2_margin_pct ?? getCm2Percent(summary);
+                const promotionsAmount =
+                  currentCardMetrics?.promotions ??
+                  Math.abs(toNum(summary.promotional_rebates));
                 const getPromotionsPercent = (s?: Summary) => {
-                  const rebates = toNum(s?.promotional_rebates);
-                  const sales = toNum(s?.total_sales);
-                  const hasRebates =
-                    s?.promotional_rebates !== undefined &&
-                    s?.promotional_rebates !== null;
-
-                  return Math.abs(
-                    hasRebates && sales !== 0
-                      ? (rebates / sales) * 100
-                      : toNum(s?.promotional_rebates_percentage)
-                  );
+                  return Math.abs(toNum(s?.promotional_rebates_percentage));
                 };
 
-                const promotionsPercent = getPromotionsPercent(summary);
+                const promotionsPercent =
+                  currentCardMetrics?.promotions_pct ?? getPromotionsPercent(summary);
 
                 const getActivePreviousComparison = () => {
                   const yNum = Number(selectedYear);
@@ -10785,25 +10792,74 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   ];
                 };
 
+                const getBackendComparisonLabel = () => {
+                  const yNum = Number(selectedYear);
+                  if (range === "monthly") {
+                    return selectedMonth && yNum
+                      ? getPrevMonthLabel(selectedMonth, yNum)
+                      : "Prev month";
+                  }
+                  if (range === "quarterly") {
+                    return selectedQuarter && yNum
+                      ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
+                      : "Prev quarter";
+                  }
+                  return yNum ? getPrevYearLabel(yNum) : "Prev year";
+                };
+
+                const buildBackendComparisonRow = (
+                  key: keyof PnlCardMetricValues,
+                  valueText: string,
+                  lowerIsBetter = false
+                ) => {
+                  const delta = cardMetricDeltas?.[key];
+                  const hasPrevious = previousCardMetrics !== undefined;
+                  const hasDelta = typeof delta === "number" && Number.isFinite(delta);
+                  const deltaClassName = !hasDelta || delta === 0
+                    ? "text-gray-400"
+                    : lowerIsBetter
+                      ? delta < 0 ? "text-emerald-600" : "text-red-600"
+                      : delta > 0 ? "text-emerald-600" : "text-red-600";
+
+                  return [{
+                    label: getBackendComparisonLabel(),
+                    valueText: hasPrevious ? valueText : "-",
+                    deltaText: hasDelta
+                      ? `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(2)}%`
+                      : "-",
+                    deltaClassName,
+                  }];
+                };
+
                 const cards = [
                   {
                     key: "units",
                     title: "Units",
-                    value: formatUnits(summary.unit_sold),
+                    value: formatUnits(currentCardMetrics?.units ?? summary.unit_sold),
                     // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
                     className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
-                    comparisons: buildComparisonsRows("unit_sold", formatUnits),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "units",
+                        formatUnits(previousCardMetrics?.units ?? 0)
+                      )
+                      : buildComparisonsRows("unit_sold", formatUnits),
                   },
                   {
                     key: "asp",
                     title: "ASP",
 
                     // ✅ Shows decimals, e.g. £9.92 instead of £10
-                    value: formatAspMoney(summary?.asp ?? 0),
+                    value: formatAspMoney(currentCardMetrics?.asp ?? summary?.asp ?? 0),
 
                     className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
 
-                    comparisons: (() => {
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "asp",
+                        formatAspMoney(previousCardMetrics?.asp ?? 0)
+                      )
+                      : (() => {
                       const items = getAspComparisons();
 
                       return items.map((item) => {
@@ -10830,43 +10886,57 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           deltaClassName,
                         };
                       });
-                    })(),
+                      })(),
                   },
                   {
                     key: "netSales",
                     title: "Net Sales",
                     value: renderMoneyWithPerUnit(
                       roundMoney(netSales),
-                      summary.unit_sold,
-                      true,
+                      currentCardMetrics?.net_sales_per_unit ?? 0,
                       0
                     ),
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-                    comparisons: buildComparisonsRows("total_sales", formatWholeMoney),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "net_sales",
+                        formatWholeMoney(previousCardMetrics?.net_sales ?? 0)
+                      )
+                      : buildComparisonsRows("total_sales", formatWholeMoney),
                   },
                   {
                     key: "expenses",
                     title: "Marketplace Fees",
                     value: renderMoneyWithPerUnit(
-                      roundMoney(marketplaceFeesFromTable),
-                      summary.unit_sold,
-                      true,
+                      roundMoney(currentCardMetrics?.marketplace_fees ?? marketplaceFeesFromTable),
+                      currentCardMetrics?.marketplace_fees_per_unit ?? 0,
                       0
                     ),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                    comparisons: buildComparisonsRows("total_amazon_fee", formatWholeMoney),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "marketplace_fees",
+                        formatWholeMoney(previousCardMetrics?.marketplace_fees ?? 0),
+                        true
+                      )
+                      : buildComparisonsRows("total_amazon_fee", formatWholeMoney),
                   },
                   {
                     key: "ads",
                     title: "Cost of Advertisement",
                     value: renderMoneyWithPerUnit(
                       roundMoney(costOfAds),
-                      summary.unit_sold,
-                      true,
+                      currentCardMetrics?.cost_of_ads_per_unit ?? 0,
                       0
                     ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                    comparisons: buildComparisonsRows("advertising_total_final", formatWholeMoney),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "cost_of_ads",
+                        formatWholeMoney(previousCardMetrics?.cost_of_ads ?? 0),
+                        true
+                      )
+                      : buildComparisonsRows("advertising_total_final", formatWholeMoney),
                   },
                   {
                     key: "tacos",
@@ -10874,21 +10944,35 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     value: formatRoas(roas),
                     // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
                     className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-                    comparisons: buildTacosComparisonRows(),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "tacos_pct",
+                        formatRoas(previousCardMetrics?.tacos_pct ?? 0),
+                        true
+                      )
+                      : buildTacosComparisonRows(),
                   },
                   {
                     key: "cm2",
                     title: "CM2 Profit",
                     value: formatCurrentAmountWithPct(
-                      roundMoney(summary.cm2_profit),
+                      roundMoney(currentCardMetrics?.cm2_profit ?? summary.cm2_profit),
                       cm2Margin
                     ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                    comparisons: buildAmountPctComparisonRows(
-                      roundMoney(summary.cm2_profit),
-                      (s) => roundMoney(toNum(s?.cm2_profit)),
-                      getCm2Percent
-                    ),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "cm2_profit",
+                        formatAmountWithPct(
+                          previousCardMetrics?.cm2_profit ?? 0,
+                          previousCardMetrics?.cm2_margin_pct ?? 0
+                        )
+                      )
+                      : buildAmountPctComparisonRows(
+                        roundMoney(summary.cm2_profit),
+                        (s) => roundMoney(toNum(s?.cm2_profit)),
+                        getCm2Percent
+                      ),
                   },
                   {
                     key: "promotions",
@@ -10899,13 +10983,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       true
                     ),
                     className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-                    comparisons: buildAmountPctComparisonRows(
-                      roundMoney(promotionsAmount),
-                      (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),
-                      getPromotionsPercent,
-                      true,
-                      true
-                    ),
+                    comparisons: backendCardMetrics
+                      ? buildBackendComparisonRow(
+                        "promotions",
+                        formatAmountWithPct(
+                          previousCardMetrics?.promotions ?? 0,
+                          previousCardMetrics?.promotions_pct ?? 0,
+                          true
+                        ),
+                        true
+                      )
+                      : buildAmountPctComparisonRows(
+                        roundMoney(promotionsAmount),
+                        (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),
+                        getPromotionsPercent,
+                        true,
+                        true
+                      ),
                   },
                 ];
 
