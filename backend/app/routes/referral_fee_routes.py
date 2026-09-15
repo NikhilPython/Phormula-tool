@@ -263,6 +263,11 @@ MKT_TO_COUNTRY = {
     "A1F83G8C2ARO7P": "United Kingdom",
 }
 
+MKT_TO_CURRENCY = {
+    "ATVPDKIKX0DER": "USD",
+    "A1F83G8C2ARO7P": "GBP",
+}
+
 # Central config for price buckets (you can tweak / extend this)
 PRICE_RANGE_BUCKETS = {
     # UK marketplace
@@ -276,7 +281,6 @@ PRICE_RANGE_BUCKETS = {
         (10.0, 99.99),
     ],
 }
-
 
 def get_price_bucket(price_val: float, marketplace_id: str):
     """
@@ -292,6 +296,131 @@ def get_price_bucket(price_val: float, marketplace_id: str):
 
     # Fallback: no defined bucket
     return price_val, price_val
+
+
+def get_bucket_probe_price(low: float, high: float):
+    if low <= 0:
+        return high
+    return low + 0.01
+
+
+def _extract_referral_amount_from_fees(fees_resp):
+    payload = (fees_resp or {}).get("payload") or {}
+    fer = payload.get("FeesEstimateResult") or {}
+    fees_est = fer.get("FeesEstimate")
+    if not fees_est:
+        return None
+
+    for detail in (fees_est.get("FeeDetailList") or []):
+        fee_type = (detail.get("FeeType") or "").lower()
+        if fee_type == "referralfee":
+            return float(
+                (detail.get("FinalFee") or {}).get("Amount")
+                or (detail.get("FeeAmount") or {}).get("Amount")
+                or 0.0
+            )
+    return None
+
+
+def _fetch_referral_fee_for_price(asin, marketplace_id, currency, price, is_fba):
+    fees_req = {
+        "FeesEstimateRequest": {
+            "MarketplaceId": marketplace_id,
+            "PriceToEstimateFees": {
+                "ListingPrice": {
+                    "CurrencyCode": currency,
+                    "Amount": price
+                },
+                "Shipping": {
+                    "CurrencyCode": currency,
+                    "Amount": 0
+                }
+            },
+            "Identifier": f"fee-{asin}-{price}-{int(time.time())}",
+            "IsAmazonFulfilled": bool(is_fba) if is_fba is not None else False,
+        }
+    }
+    fees_resp = amazon_client.make_api_call(
+        f"/products/fees/v0/items/{asin}/feesEstimate",
+        "POST",
+        data=fees_req
+    )
+    referral_amount = _extract_referral_amount_from_fees(fees_resp)
+    if referral_amount is None:
+        reason, detail = _sp_api_skip_info(fees_resp, "missing_fees_estimate", "fees")
+        return None, reason, detail
+
+    referral_pct = round((referral_amount / price) * 100.0) if price > 0 else None
+    return {
+        "referral_amount": referral_amount,
+        "referral_pct": referral_pct,
+    }, None, None
+
+
+def _fetch_referral_fee_bands(asin, marketplace_id, currency, is_fba):
+    rows = []
+    failures = []
+
+    for low, high in PRICE_RANGE_BUCKETS.get(marketplace_id, []):
+        probe_price = get_bucket_probe_price(low, high)
+        price_from = -50 if low == 0 else low
+        estimate, reason, detail = _fetch_referral_fee_for_price(
+            asin=asin,
+            marketplace_id=marketplace_id,
+            currency=currency,
+            price=probe_price,
+            is_fba=is_fba,
+        )
+        if not estimate:
+            failures.append({
+                "probe_price": probe_price,
+                "price_from": price_from,
+                "price_to": high,
+                "reason": reason,
+                "detail": detail,
+            })
+            continue
+
+        rows.append({
+            "referral_fee": estimate["referral_amount"],
+            "referral_fee_percent_est": estimate["referral_pct"],
+            "price_from": price_from,
+            "price_to": high,
+            "probe_price": probe_price,
+        })
+
+    return rows, failures
+
+
+def _dedupe_category_rows(rows):
+    grouped = {}
+
+    for row in rows:
+        key = (
+            str(row.country or "").strip().lower(),
+            str(row.category or "").strip().lower(),
+            str(row.brand or "").strip().lower(),
+            float(row.price_from or 0.0),
+            float(row.price_to or 0.0),
+        )
+        grouped.setdefault(key, []).append(row)
+
+    unique_rows = []
+    for group in grouped.values():
+        # Pick the rate Amazon returned most often for this band. If tied,
+        # prefer the higher rate because fee schedules normally step upward.
+        counts = {}
+        for row in group:
+            pct = float(row.referral_fee_percent_est or 0.0)
+            counts[pct] = counts.get(pct, 0) + 1
+        selected_pct = sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)[0][0]
+        selected = next(
+            row for row in group
+            if float(row.referral_fee_percent_est or 0.0) == selected_pct
+        )
+        unique_rows.append(selected)
+
+    return unique_rows, len(rows) - len(unique_rows)
 
 
 
@@ -490,7 +619,7 @@ def _verify_asin_in_marketplace(asin: str, marketplace_id: str):
     return False, res
 
 
-def _sp_api_skip_info(res, fallback_reason="sp_api_lookup_failed"):
+def _sp_api_skip_info(res, fallback_reason="sp_api_lookup_failed", operation="sp_api"):
     if not isinstance(res, dict):
         return fallback_reason, None
 
@@ -502,11 +631,11 @@ def _sp_api_skip_info(res, fallback_reason="sp_api_lookup_failed"):
     message = first_error.get("message") or res.get("message") or res.get("error")
 
     if status_code in (401, 403) or code == "unauthorized":
-        reason = f"catalog_{status_code or 403}_unauthorized"
+        reason = f"{operation}_{status_code or 403}_unauthorized"
     elif status_code == 404:
-        reason = "catalog_404_not_found"
+        reason = f"{operation}_404_not_found"
     elif status_code:
-        reason = f"catalog_{status_code}_error"
+        reason = f"{operation}_{status_code}_error"
     else:
         reason = fallback_reason
 
@@ -602,7 +731,7 @@ def fetch_and_store_fees():
             try:
                 ok, catalog_raw = _verify_asin_in_marketplace(asin, marketplace_id)
                 if not ok:
-                    reason, detail = _sp_api_skip_info(catalog_raw, "asin_not_found_in_marketplace")
+                    reason, detail = _sp_api_skip_info(catalog_raw, "asin_not_found_in_marketplace", "catalog")
                     mark_skipped(reason, asin, detail)
                     continue
 
@@ -618,88 +747,66 @@ def fetch_and_store_fees():
                     marketplace_id=marketplace_id,
                     debug=True,
                 )
-                price_val = float(fetched.get("price") or 0.0)
-                shipping_val = float(fetched.get("shipping") or 0.0)
-
                 offers_payload = ((fetched.get("debug") or {})
                                   .get("offers_raw") or {}).get("payload") or {}
                 currency, is_fba, _is_bb = _extract_currency_and_flags(offers_payload)
+                currency = currency or MKT_TO_CURRENCY.get(marketplace_id)
 
-                if not currency or price_val <= 0:
+                if not currency:
                     debug_payload = fetched.get("debug") or {}
                     pricing_error = debug_payload.get("offers_raw") or debug_payload.get("price_raw")
-                    reason, detail = _sp_api_skip_info(pricing_error, "missing_currency_or_price")
+                    reason, detail = _sp_api_skip_info(pricing_error, "missing_currency_or_price", "pricing")
                     mark_skipped(reason, asin, detail)
                     continue
 
-                # --- fees estimate call ---
-                fees_req = {
-                    "FeesEstimateRequest": {
-                        "MarketplaceId": marketplace_id,
-                        "PriceToEstimateFees": {
-                            "ListingPrice": {
-                                "CurrencyCode": currency,
-                                "Amount": price_val
-                            },
-                            "Shipping": {
-                                "CurrencyCode": currency,
-                                "Amount": shipping_val
-                            }
-                        },
-                        "Identifier": f"fee-{asin}-{int(time.time())}",
-                        "IsAmazonFulfilled": bool(is_fba) if is_fba is not None else False,
-                    }
-                }
-                fees_resp = amazon_client.make_api_call(
-                    f"/products/fees/v0/items/{asin}/feesEstimate",
-                    "POST",
-                    data=fees_req
+                band_estimates, band_failures = _fetch_referral_fee_bands(
+                    asin=asin,
+                    marketplace_id=marketplace_id,
+                    currency=currency,
+                    is_fba=is_fba,
                 )
-                payload = (fees_resp or {}).get("payload") or {}
-                fer = payload.get("FeesEstimateResult") or {}
-                fees_est = fer.get("FeesEstimate")
-                if not fees_est:
-                    mark_skipped("missing_fees_estimate")
+                for failure in band_failures:
+                    if len(skip_details) < 10:
+                        detail = failure.get("detail") or {}
+                        skip_details.append({
+                            "asin": asin,
+                            "probe_price": failure.get("probe_price"),
+                            "price_from": failure.get("price_from"),
+                            "price_to": failure.get("price_to"),
+                            "reason": failure.get("reason"),
+                            **detail,
+                        })
+
+                if not band_estimates:
+                    first_failure = band_failures[0] if band_failures else {}
+                    mark_skipped(
+                        first_failure.get("reason") or "missing_fees_estimate",
+                        asin,
+                        first_failure.get("detail"),
+                    )
                     continue
 
-                # ---- extract referral fee ----
-                referral_amount = None
-                for d in (fees_est.get("FeeDetailList") or []):
-                    fee_type = (d.get("FeeType") or "").lower()
-                    if fee_type == "referralfee":
-                        referral_amount = float(
-                            (d.get("FinalFee") or {}).get("Amount")
-                            or (d.get("FeeAmount") or {}).get("Amount")
-                            or 0.0
-                        )
-                if referral_amount is None:
-                    mark_skipped("missing_referral_fee")
-                    continue
+                for band in band_estimates:
+                    row = Category(
+                        user_id=user_id,
+                        country=country,
+                        category=cat_name,
+                        referral_fee=band["referral_fee"],
+                        referral_fee_percent_est=band["referral_fee_percent_est"],
+                        brand=brand,
+                        price_from=band["price_from"],
+                        price_to=band["price_to"]
+                    )
 
-                # percentage (rounded to whole number: 15, 8, etc.)
-                raw_pct = (referral_amount / price_val * 100.0) if price_val > 0 else None
-                referral_pct = round(raw_pct) if raw_pct is not None else None
-
-                # -------- fixed price buckets via helper --------
-                price_from, price_to = get_price_bucket(price_val, marketplace_id)
-
-                # -------- create Category row --------
-                row = Category(
-                    user_id=user_id,
-                    country=country,
-                    category=cat_name,
-                    referral_fee=referral_amount,
-                    referral_fee_percent_est=referral_pct,
-                    brand=brand,
-                    price_from=price_from,
-                    price_to=price_to
-                )
-
-                rows_to_commit.append(row)
-                stored += 1
+                    rows_to_commit.append(row)
+                    stored += 1
 
             except Exception as ex:
                 failures.append({"asin": asin, "error": str(ex)})
+
+        estimated_rows = stored
+        rows_to_commit, deduped_rows = _dedupe_category_rows(rows_to_commit)
+        stored = len(rows_to_commit)
 
         if rows_to_commit:
             db.session.query(Category).filter_by(user_id=user_id, country=country).delete()
@@ -709,6 +816,9 @@ def fetch_and_store_fees():
         return jsonify({
             "ok": True,
             "stored": stored,
+            "estimated_rows": estimated_rows,
+            "deduped_rows": deduped_rows,
+            "rate_source": "amazon_product_fees_estimate",
             "skipped": skipped,
             "skip_reasons": skip_reasons,
             "skip_details": skip_details,
