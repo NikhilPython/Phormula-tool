@@ -17,7 +17,7 @@ from app.routes.amazon_sales_api_routes import _normalize_sku_row
 from app.utils.token_utils import get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
@@ -2114,6 +2114,72 @@ def get_table_data(file_name):
 
         raw_df = pd.read_sql(text(f'SELECT * FROM "{source_table}"'), conn)
         raw_table_data = raw_df.to_dict(orient="records")
+        sku_monthly_summary = {}
+        sku_monthly_rows = []
+        sku_monthly_table = None
+
+        def _clean_ident_part(value):
+            return re.sub(r'[^a-zA-Z0-9_]+', '_', str(value or '').strip().lower()).strip('_')
+
+        def _first_total_or_sum(frame, column, total_rows, detail_rows):
+            if column not in frame.columns:
+                return 0.0
+            if not total_rows.empty:
+                values = pd.to_numeric(total_rows[column], errors="coerce").fillna(0.0)
+                if not values.empty:
+                    return float(values.iloc[-1])
+            return float(pd.to_numeric(detail_rows[column], errors="coerce").fillna(0.0).sum())
+
+        def _load_sku_monthly_context():
+            if range_ != "monthly" or not country or not month or not year:
+                return {}, [], None
+
+            month_token = _clean_ident_part(month)
+            country_token = _clean_ident_part(country)
+            candidates = []
+
+            if country_token == "global":
+                candidates.append(f"skuwisemonthly_{user_id}_global_{month_token}{year}_table")
+            else:
+                candidates.extend([
+                    f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}",
+                    f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}_table",
+                ])
+
+            table_names = set(inspector.get_table_names())
+            matched_table = next((t for t in candidates if t in table_names), None)
+            if not matched_table:
+                return {}, [], None
+
+            monthly_df = pd.read_sql(text(f'SELECT * FROM "{matched_table}"'), conn)
+            if monthly_df.empty:
+                return {}, [], matched_table
+
+            sku_text = monthly_df.get("sku", pd.Series("", index=monthly_df.index)).astype(str).str.strip().str.lower()
+            product_text = monthly_df.get("product_name", pd.Series("", index=monthly_df.index)).astype(str).str.strip().str.lower()
+            total_mask = sku_text.isin({"total", "grand_total", "grand total"}) | product_text.isin({"total", "grand total"})
+
+            detail_df = monthly_df[~total_mask].copy()
+            total_rows = monthly_df[total_mask].copy()
+            summary = {
+                "quantity": _first_total_or_sum(monthly_df, "quantity", total_rows, detail_df),
+                "return_quantity": _first_total_or_sum(monthly_df, "return_quantity", total_rows, detail_df),
+                "total_quantity": _first_total_or_sum(monthly_df, "total_quantity", total_rows, detail_df),
+                "net_sales": _first_total_or_sum(monthly_df, "net_sales", total_rows, detail_df),
+                "product_sales": _first_total_or_sum(monthly_df, "product_sales", total_rows, detail_df),
+                "gross_sales": _first_total_or_sum(monthly_df, "gross_sales", total_rows, detail_df),
+                "selling_fees": _first_total_or_sum(monthly_df, "selling_fees", total_rows, detail_df),
+                "fba_fees": _first_total_or_sum(monthly_df, "fba_fees", total_rows, detail_df),
+                "fbaanswer": _first_total_or_sum(monthly_df, "fbaanswer", total_rows, detail_df),
+                "other_transaction_fees": _first_total_or_sum(monthly_df, "other_transaction_fees", total_rows, detail_df),
+                "platform_fee": _first_total_or_sum(monthly_df, "platform_fee", total_rows, detail_df),
+                "source_table": matched_table,
+            }
+
+            detail_records = detail_df.where(pd.notna(detail_df), None).to_dict(orient="records")
+            return summary, detail_records, matched_table
+
+        sku_monthly_summary, sku_monthly_rows, sku_monthly_table = _load_sku_monthly_context()
 
         # ---------------------------------------------
         # ✅ FILTER MONTHS/YEAR IF quarterly/yearly
@@ -2200,18 +2266,15 @@ def get_table_data(file_name):
         df = df[df["sku"].notna() & (~df["sku"].str.lower().isin(invalid_skus))]
 
 
-        # ✅ RAW ROW-LEVEL split (after SKU cleanup)
-        df["errorstatus"] = df["errorstatus"].astype(str).str.strip().str.lower()
-
-        raw_ok_df    = df[df["errorstatus"] == "ok"]
-        raw_under_df = df[df["errorstatus"] == "undercharged"]
-        raw_over_df  = df[df["errorstatus"] == "overcharged"]
-        raw_ref_df   = df[~df["errorstatus"].isin(["ok", "undercharged", "overcharged"])]
+        if "errorstatus" in df.columns:
+            df["errorstatus"] = df["errorstatus"].astype(str).str.strip().str.lower()
+        else:
+            df["errorstatus"] = ""
 
         numeric_cols = [
-            "product_sales", "promotional_rebates", "other",
-            "selling_fees", "answer", "difference", "quantity", "total_value", "fba_fees",
-            "platform_fee"
+            "product_sales", "shipping_credits", "gift_wrap_credits", "promotional_rebates", "other",
+            "selling_fees", "answer", "difference", "quantity", "return_quantity",
+            "total_quantity", "total_value", "fba_fees", "fbaanswer", "platform_fee", "referral_fee"
         ]
 
         for col in numeric_cols:
@@ -2238,12 +2301,77 @@ def get_table_data(file_name):
             df.loc[exclude_qty_mask, "quantity"] = 0
         # ======================================================================
 
+        if "return_quantity" not in df.columns:
+            df["return_quantity"] = 0
+        df["return_quantity"] = pd.to_numeric(df["return_quantity"], errors="coerce").fillna(0)
 
-        df["net_sales_total_value"] = (
-            df.get("product_sales", 0) +
-            df.get("promotional_rebates", 0) +
-            df.get("other", 0)
-        )
+        if "total_quantity" not in df.columns:
+            df["total_quantity"] = df.get("quantity", 0) - df["return_quantity"]
+        df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0).clip(lower=0)
+
+        if "fbaanswer" not in df.columns:
+            df["fbaanswer"] = df.get("fba_fees", 0)
+
+        def _round_half_up(value):
+            return float(Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+        if str(country or "").strip().lower() == "us":
+            for col in ("product_sales", "shipping_credits", "gift_wrap_credits", "promotional_rebates", "other"):
+                if col not in df.columns:
+                    df[col] = 0
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+            df["net_sales_total_value"] = (
+                df["product_sales"] +
+                df["shipping_credits"] +
+                df["gift_wrap_credits"] +
+                df["promotional_rebates"]
+            )
+
+            if "referral_fee" in df.columns:
+                qty_for_calc = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+                qty_for_calc = qty_for_calc.where(qty_for_calc != 0, 1)
+                df["total_value"] = [
+                    _round_half_up(base / qty)
+                    for base, qty in zip(df["net_sales_total_value"], qty_for_calc)
+                ]
+
+                per_unit_fee = [
+                    _round_half_up(total_value * (rate / 100.0))
+                    for total_value, rate in zip(df["total_value"], df["referral_fee"])
+                ]
+                product_sales_for_calc = pd.to_numeric(df["product_sales"], errors="coerce").fillna(0)
+                df["answer"] = [
+                    fee * qty if product_sales != 0 else 0.0
+                    for fee, qty, product_sales in zip(per_unit_fee, qty_for_calc, product_sales_for_calc)
+                ]
+
+                charged_for_diff = pd.to_numeric(df["selling_fees"], errors="coerce").fillna(0).abs()
+                df["difference"] = [
+                    _round_half_up(charged - answer)
+                    for charged, answer in zip(charged_for_diff, df["answer"])
+                ]
+
+                df["errorstatus"] = "OK"
+                df.loc[df["difference"] < 0, "errorstatus"] = "undercharged"
+                df.loc[df["difference"] > 0, "errorstatus"] = "overcharged"
+
+                desc_str = df.get("description", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
+                txn_type = df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower()
+                no_fee_mask = (
+                    (pd.to_numeric(df["referral_fee"], errors="coerce").fillna(0) == 0)
+                    & (desc_str != "tax")
+                    & (txn_type != "other-transaction")
+                )
+                df.loc[no_fee_mask, "errorstatus"] = "NoReferralFee"
+                df.loc[txn_type == "adjustment", "errorstatus"] = "NoReferralFee"
+
+        else:
+            df["net_sales_total_value"] = (
+                df.get("product_sales", 0) +
+                df.get("promotional_rebates", 0) +
+                df.get("other", 0)
+            )
 
         def status_row(row):
             es = str(row.get("errorstatus", "")).lower()
@@ -2257,10 +2385,18 @@ def get_table_data(file_name):
 
         df["status"] = df.apply(status_row, axis=1)
 
+        # ✅ RAW ROW-LEVEL split (after any recalculation)
+        errorstatus_norm = df["errorstatus"].astype(str).str.strip().str.lower()
+        raw_ok_df    = df[errorstatus_norm == "ok"]
+        raw_under_df = df[errorstatus_norm == "undercharged"]
+        raw_over_df  = df[errorstatus_norm == "overcharged"]
+        raw_ref_df   = df[~errorstatus_norm.isin(["ok", "undercharged", "overcharged"])]
+
         req_cols = [
             "sku", "product_name", "product_sales",
             "net_sales_total_value", "selling_fees", "fba_fees",
-            "answer", "errorstatus", "difference", "status", "quantity", "total_value"
+            "fbaanswer", "answer", "errorstatus", "difference", "status",
+            "quantity", "return_quantity", "total_quantity", "total_value"
         ]
         # keep only available cols
         req_cols = [c for c in req_cols if c in df.columns]
@@ -2272,9 +2408,12 @@ def get_table_data(file_name):
             "net_sales_total_value",
             "selling_fees",
             "fba_fees",
+            "fbaanswer",
             "answer",
             "difference",
             "quantity",
+            "return_quantity",
+            "total_quantity",
             "total_value"
         ]
         agg_cols = [c for c in agg_cols if c in final_df.columns]
@@ -2420,6 +2559,9 @@ def get_table_data(file_name):
             "platform_fee_total": platform_fee_total,
             "other_total": other_total_adjusted,
             "advertising_total": advertising_total_sum,
+            "sku_monthly_summary": sku_monthly_summary,
+            "sku_monthly_rows": sku_monthly_rows,
+            "sku_monthly_table": sku_monthly_table,
 
         })
 
