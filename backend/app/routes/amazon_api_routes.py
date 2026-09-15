@@ -280,6 +280,10 @@ def amazon_oauth_callback():
     except Exception:
         return make_response("Invalid state format", 400)
 
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return make_response("Unsupported marketplace", 400)
+    amazon_client.set_marketplace(marketplace_id)
+
     r = requests.post(
         AmazonSPAPIClient.TOKEN_URL,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
@@ -332,7 +336,7 @@ def amazon_oauth_callback():
 
     db.session.commit()
 
-    amazon_client.refresh_token = refresh
+    amazon_client.set_refresh_token(refresh)
 
     try:
         with open(".refresh_token", "w") as f:
@@ -399,7 +403,7 @@ def amazon_status():
             "has_refresh_token": False,
         }), 200
 
-    amazon_client.refresh_token = au.refresh_token
+    amazon_client.set_refresh_token(au.refresh_token)
 
     res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
     if res and "error" not in res:
@@ -964,7 +968,7 @@ def list_skus():
             "marketplace_id": marketplace_id
         }), 400
 
-    amazon_client.refresh_token = au.refresh_token
+    amazon_client.set_refresh_token(au.refresh_token)
 
     # -------------------------
     # 4) Query options
@@ -1241,7 +1245,7 @@ def amazon_account():
             "marketplace_id": marketplace_id
         }), 400
 
-    amazon_client.refresh_token = au.refresh_token
+    amazon_client.set_refresh_token(au.refresh_token)
 
     try:
         res = amazon_client.make_api_call("/sellers/v1/marketplaceParticipations", "GET")
@@ -2752,7 +2756,7 @@ def finances_mtd_transactions():
             400,
         )
 
-    amazon_client.refresh_token = au.refresh_token
+    amazon_client.set_refresh_token(au.refresh_token)
 
     now_utc = datetime.now(timezone.utc)
     posted_after, posted_before = _month_to_date_range_utc_safe(now_utc, safety_minutes=10)

@@ -1682,6 +1682,11 @@ export default function DashboardPage() {
     const [inventoryUnavailableNotice, setInventoryUnavailableNotice] =
         useState<InventoryUnavailableNotice | null>(null);
     const [dashboardActionItems, setDashboardActionItems] = useState<DashboardActionItem[]>([]);
+    const [dashboardActionSourceMetrics, setDashboardActionSourceMetrics] = useState<{
+        tacos: number;
+        ads_spend: number;
+        net_sales: number;
+    } | null>(null);
     const [dashboardActionItemsLoading, setDashboardActionItemsLoading] = useState(false);
     const [dashboardActionItemsError, setDashboardActionItemsError] = useState<string | null>(null);
     const [dashboardActionItemsRefreshKey, setDashboardActionItemsRefreshKey] = useState(0);
@@ -3020,6 +3025,7 @@ export default function DashboardPage() {
     useEffect(() => {
         if (shouldShowDummyUi) {
             setDashboardActionItems([]);
+            setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(false);
             setDashboardActionItemsError(null);
             return;
@@ -3030,6 +3036,7 @@ export default function DashboardPage() {
         // race ahead and render values from an older table snapshot.
         if (dashboardActionSourcesReadyKey !== inventoryInsightsRequestKey) {
             setDashboardActionItems([]);
+            setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(true);
             setDashboardActionItemsError(null);
             return;
@@ -3044,6 +3051,7 @@ export default function DashboardPage() {
 
             if (!token) {
                 setDashboardActionItems([]);
+                setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsLoading(false);
                 setDashboardActionItemsError("Authorization token is missing");
                 return;
@@ -3091,9 +3099,21 @@ export default function DashboardPage() {
                 setDashboardActionItems(
                     Array.isArray(payload?.items) ? payload.items : []
                 );
+
+                const sourceMetrics = payload?.source_metrics;
+                setDashboardActionSourceMetrics(
+                    sourceMetrics && typeof sourceMetrics === "object"
+                        ? {
+                            tacos: toNumber(sourceMetrics.tacos),
+                            ads_spend: toNumber(sourceMetrics.ads_spend),
+                            net_sales: toNumber(sourceMetrics.net_sales),
+                        }
+                        : null
+                );
             } catch (error: unknown) {
                 if (error instanceof DOMException && error.name === "AbortError") return;
                 setDashboardActionItems([]);
+                setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsError(
                     error instanceof Error
                         ? error.message
@@ -8432,28 +8452,30 @@ export default function DashboardPage() {
         return totalRowCm2Margins;
     }, [totalRowCm2Margins]);
 
+    // Use the exact same TACoS source as Business Scenario + Action Items.
+    // /dashboard/action-items returns this from the DB-backed monthly totals,
+    // so the P&L summary must not recalculate TACoS independently.
     const tacosFromDisplayedCardsForSummary = useMemo(() => {
-        if (platform === "global") {
-            return toNumber(
-                plSummaryTotals.acos ??
-                (data as any)?.derived_totals?.tacos_total_advertising_cost_of_sale ??
-                (data as any)?.derived_totals?.tacos ??
-                (data as any)?.tacos_total_advertising_cost_of_sale
-            );
+        // Primary source:
+        // exact same DB-backed TACoS returned by /dashboard/action-items
+        if (dashboardActionSourceMetrics?.tacos != null) {
+            return toNumber(dashboardActionSourceMetrics.tacos);
         }
 
-        const netSalesFromCard = curr.netSales;
-        const adsFromCard = adsSpendTotal;
-
-        return netSalesFromCard > 0
-            ? (Math.abs(adsFromCard) / Math.abs(netSalesFromCard)) * 100
-            : 0;
+        // Fallback while Action Items API is still loading.
+        // This comes from the P&L GRAND TOTAL / DB value,
+        // not from a frontend Ads / Net Sales recalculation.
+        return toNumber(
+            plSummaryTotals.acos ??
+            (data as any)?.derived_totals?.tacos_total_advertising_cost_of_sale ??
+            (data as any)?.derived_totals?.tacos ??
+            (data as any)?.tacos_total_advertising_cost_of_sale ??
+            0
+        );
     }, [
-        platform,
+        dashboardActionSourceMetrics?.tacos,
         plSummaryTotals.acos,
         data,
-        curr.netSales,
-        adsSpendTotal,
     ]);
 
     const reimbursementForSummary = useMemo(() => {
@@ -8917,11 +8939,16 @@ export default function DashboardPage() {
 
         {
             label: "TACoS",
+            // IMPORTANT: use the exact same backend/database source as
+            // /dashboard/action-items. This keeps the Business Scenario TACoS
+            // and the Ads action-item TACoS identical.
             current: shouldShowDummyUi
                 ? dummyStatData.tacos.current
-                : isStickyGlobal
-                    ? stickyTableTotals.tacos
-                    : mtdTacosCurrent,
+                : dashboardActionSourceMetrics?.tacos ?? (
+                    isStickyGlobal
+                        ? stickyTableTotals.tacos
+                        : mtdTacosCurrent
+                ),
 
             previous: shouldShowDummyUi
                 ? dummyStatData.tacos.previous
@@ -8929,11 +8956,21 @@ export default function DashboardPage() {
                     ? stickyPreviousTotals.tacos
                     : mtdTacosPrevious,
 
+            // If current TACoS came from the Action Items endpoint, recalculate
+            // the displayed MoM delta from the displayed current/previous pair
+            // instead of keeping the old Live-BI delta.
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
-                : isStickyGlobal
-                    ? globalMtdCardData.tacosDelta
-                    : mtdTacosDelta,
+                : dashboardActionSourceMetrics?.tacos != null
+                    ? safeDeltaPctFromPct(
+                        dashboardActionSourceMetrics.tacos,
+                        isStickyGlobal
+                            ? stickyPreviousTotals.tacos
+                            : mtdTacosPrevious
+                    )
+                    : isStickyGlobal
+                        ? globalMtdCardData.tacosDelta
+                        : mtdTacosDelta,
 
             inverseDelta: true,
             loading: !shouldShowDummyUi && (
@@ -11814,60 +11851,60 @@ export default function DashboardPage() {
     // Business Analysis uses the SAME resolved current/previous values as the dashboard KPI cards.
     // This keeps the Business Analysis numbers and MoM comparison in sync with what the user sees above.
     const businessAnalysisMonthlyData = useMemo<MonthlyMetricRow[]>(() => {
-    if (shouldShowDummyUi) {
-        const previousDummyRow: MonthlyMetricRow = {
-            sku: "TOTAL",
-            product_name: "TOTAL",
-            month: previousDisplayMonth.monthName.toLowerCase(),
-            year: previousDisplayMonth.year,
-            country: countryName,
+        if (shouldShowDummyUi) {
+            const previousDummyRow: MonthlyMetricRow = {
+                sku: "TOTAL",
+                product_name: "TOTAL",
+                month: previousDisplayMonth.monthName.toLowerCase(),
+                year: previousDisplayMonth.year,
+                country: countryName,
 
-            total_quantity: 0,
-            quantity: 0,
-            return_quantity: 0,
+                total_quantity: 0,
+                quantity: 0,
+                return_quantity: 0,
 
-            gross_sales: 0,
-            refund_sales: 0,
-            net_sales: 0,
-            asp: 0,
+                gross_sales: 0,
+                refund_sales: 0,
+                net_sales: 0,
+                asp: 0,
 
-            profit: 0,
+                profit: 0,
 
-            total_cm2_profit: 0,
-            total_cm2_margins: 0,
+                total_cm2_profit: 0,
+                total_cm2_margins: 0,
 
-            total_ads: 0,
-            tacos_total_advertising_cost_of_sale: 0,
+                total_ads: 0,
+                tacos_total_advertising_cost_of_sale: 0,
 
-            promotional_rebates: 0,
-            promotional_rebates_percentage: 0,
+                promotional_rebates: 0,
+                promotional_rebates_percentage: 0,
 
-            aged_inventory_181_270: 0,
-            aged_inventory_271_365: 0,
-            aged_inventory_365_plus: 0,
-            aged_inventory_180_plus: 0,
+                aged_inventory_181_270: 0,
+                aged_inventory_271_365: 0,
+                aged_inventory_365_plus: 0,
+                aged_inventory_180_plus: 0,
 
-            shipping_charges: 0,
-            storage_fee: 0,
-            misc_transaction: 0,
-            lost_total: 0,
+                shipping_charges: 0,
+                storage_fee: 0,
+                misc_transaction: 0,
+                lost_total: 0,
 
-            platform_fee_inventory_storage: 0,
-            platformfeenew: 0,
-            platform_fee: 0,
-            other_transactions: 0,
-        };
+                platform_fee_inventory_storage: 0,
+                platformfeenew: 0,
+                platform_fee: 0,
+                other_transactions: 0,
+            };
 
-        const currentDummyRow: MonthlyMetricRow = {
-            ...previousDummyRow,
-            month: currentDisplayMonth.monthName.toLowerCase(),
-            year: currentDisplayMonth.year,
-        };
+            const currentDummyRow: MonthlyMetricRow = {
+                ...previousDummyRow,
+                month: currentDisplayMonth.monthName.toLowerCase(),
+                year: currentDisplayMonth.year,
+            };
 
-        return [previousDummyRow, currentDummyRow];
-    }
+            return [previousDummyRow, currentDummyRow];
+        }
 
-    const kpiPair = (label: string) => {
+        const kpiPair = (label: string) => {
             const item = stickyKpiItems.find((entry) => entry.label === label);
             return {
                 current: toNumber(item?.current ?? 0),
@@ -12417,56 +12454,56 @@ export default function DashboardPage() {
                 )}
 
                 {activeTab === "action" && (
-    <>
-        {actionTabLoading ? (
-            <div className="flex min-h-[calc(100vh-300px)] w-full items-center justify-center">
-                <Loader />
-            </div>
-        ) : (
-            <div className="space-y-7">
-                {/* ================= BUSINESS ANALYSIS ================= */}
-                <BusinessAnalysisView
-                    monthlyData={businessAnalysisMonthlyData}
-                    unitContributorData={businessAnalysisUnitContributorData}
-                    currency={displayCurrency}
+                    <>
+                        {actionTabLoading ? (
+                            <div className="flex min-h-[calc(100vh-300px)] w-full items-center justify-center">
+                                <Loader />
+                            </div>
+                        ) : (
+                            <div className="space-y-7">
+                                {/* ================= BUSINESS ANALYSIS ================= */}
+                                <BusinessAnalysisView
+                                    monthlyData={businessAnalysisMonthlyData}
+                                    unitContributorData={businessAnalysisUnitContributorData}
+                                    currency={displayCurrency}
 
-                    // Loader is handled once at Action Tab level
-                    loading={false}
-                />
+                                    // Loader is handled once at Action Tab level
+                                    loading={false}
+                                />
 
-                {/* ================= ACTION ITEMS ================= */}
-                <div className="border-t border-[#E6ECEF] pt-5">
-                    <div className="mb-4">
-                        <PageBreadcrumb
-                            pageTitle="Action Items"
-                            variant="page"
-                            align="left"
-                            textSize="2xl"
-                        />
+                                {/* ================= ACTION ITEMS ================= */}
+                                <div className="border-t border-[#E6ECEF] pt-5">
+                                    <div className="mb-4">
+                                        <PageBreadcrumb
+                                            pageTitle="Action Items"
+                                            variant="page"
+                                            align="left"
+                                            textSize="2xl"
+                                        />
 
-                        <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
-                            Priority actions based on your current business performance.
-                        </p>
-                    </div>
+                                        <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
+                                            Priority actions based on your current business performance.
+                                        </p>
+                                    </div>
 
-                    <DashboardActionItemsTab
-                        actionItems={dashboardActionItems}
+                                    <DashboardActionItemsTab
+                                        actionItems={dashboardActionItems}
 
-                        // Loader is handled once at Action Tab level
-                        loading={false}
+                                        // Loader is handled once at Action Tab level
+                                        loading={false}
 
-                        error={dashboardActionItemsError}
-                        onRetry={() =>
-                            setDashboardActionItemsRefreshKey(
-                                (value) => value + 1
-                            )
-                        }
-                    />
-                </div>
-            </div>
-        )}
-    </>
-)}
+                                        error={dashboardActionItemsError}
+                                        onRetry={() =>
+                                            setDashboardActionItemsRefreshKey(
+                                                (value) => value + 1
+                                            )
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
 
                 {activeTab === "live" && (
                     <DashboardLiveSalesTab

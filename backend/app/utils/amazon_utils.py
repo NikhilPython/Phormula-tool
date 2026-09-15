@@ -157,6 +157,9 @@ class AmazonSPAPIClient:
     def set_region(self, region: str):
         if region not in self.PROD_ENDPOINTS:
             return
+        old_region = self.region
+        old_base_url = self.api_base_url
+        old_marketplace_id = self.marketplace_id
         self.region = region
         self.api_base_url = self.PROD_ENDPOINTS[region]
         self.session = boto3.Session(
@@ -168,6 +171,13 @@ class AmazonSPAPIClient:
         if (self.marketplace_id not in self.ALLOWED_MARKETPLACES or
                 self.MARKETPLACE_REGION[self.marketplace_id] != region):
             self.marketplace_id = self.DEFAULT_MARKETPLACE_BY_REGION[region]
+        if (
+            old_region != self.region
+            or old_base_url != self.api_base_url
+            or old_marketplace_id != self.marketplace_id
+        ):
+            self._access_token = None
+            self._token_expires_at = None
         logger.info(f"SP-API region -> {region}; base={self.api_base_url}; mkt={self.marketplace_id}")
 
     def set_marketplace(self, mkt: str):
@@ -175,6 +185,13 @@ class AmazonSPAPIClient:
             return
         self.marketplace_id = mkt
         self.set_region(self.MARKETPLACE_REGION[mkt])
+
+    def set_refresh_token(self, refresh_token: str):
+        refresh_token = (refresh_token or "").strip()
+        if refresh_token != self.refresh_token:
+            self._access_token = None
+            self._token_expires_at = None
+        self.refresh_token = refresh_token
 
     def get_oauth_url(self, state: str) -> str:
         base = self.SELLER_CENTRAL_BY_MKT.get(self.marketplace_id, "https://sellercentral.amazon.com")

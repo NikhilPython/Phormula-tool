@@ -28,6 +28,65 @@ db_url1= os.getenv('DATABASE_ADMIN_URL')
 
 
 
+COUNTRY_NAME_MAP = {
+    "uk": "United Kingdom",
+    "gb": "United Kingdom",
+    "united kingdom": "United Kingdom",
+    "us": "United States",
+    "usa": "United States",
+    "united states": "United States",
+    "united states of america": "United States",
+    "uae": "United Arab Emirates",
+    "in": "India",
+}
+
+US_BEAUTY_DEFAULT_RATES = [
+    {"country": "United States", "category": "beauty", "price_from": -50.0, "price_to": 9.99, "referral_fee_percent_est": 8.0},
+    {"country": "United States", "category": "beauty", "price_from": 10.0, "price_to": 99.99, "referral_fee_percent_est": 15.0},
+]
+
+
+def _normalized_country_name(country):
+    key = str(country or "").strip().lower()
+    return COUNTRY_NAME_MAP.get(key, str(country or "").strip())
+
+
+def _load_category_rates(engine_cat, country):
+    category_df = pd.read_sql(
+        "SELECT country, category, price_from, price_to, referral_fee_percent_est FROM category",
+        engine_cat,
+    )
+
+    category_df["price_from"] = pd.to_numeric(category_df["price_from"], errors="coerce").fillna(0)
+    category_df["price_to"] = pd.to_numeric(category_df["price_to"], errors="coerce").fillna(9999999)
+    category_df["referral_fee_percent_est"] = pd.to_numeric(
+        category_df["referral_fee_percent_est"],
+        errors="coerce",
+    ).fillna(0)
+    category_df["category"] = category_df["category"].astype(str).str.lower().str.strip()
+    category_df["country"] = category_df["country"].astype(str).str.strip()
+
+    normalized_country = _normalized_country_name(country)
+    country_filtered = category_df[
+        category_df["country"].str.lower() == normalized_country.lower()
+    ].copy()
+
+    if normalized_country.lower() == "united states":
+        for row in US_BEAUTY_DEFAULT_RATES:
+            has_band = (
+                (country_filtered["category"] == row["category"])
+                & (country_filtered["price_from"] == row["price_from"])
+                & (country_filtered["price_to"] == row["price_to"])
+            ).any()
+            if not has_band:
+                country_filtered = pd.concat(
+                    [country_filtered, pd.DataFrame([row])],
+                    ignore_index=True,
+                )
+
+    return country_filtered if not country_filtered.empty else category_df
+
+
  
 
 def aggregate_upload_data(uploads):
@@ -107,15 +166,7 @@ def apply_modifications(df, country):
         db_url1 = os.getenv('DATABASE_ADMIN_URL')
         engine_cat = create_engine(db_url1)
         
-        # Category table load karo
-        category_df = pd.read_sql("SELECT category, price_from, price_to, referral_fee_percent_est FROM category", engine_cat)
-        
-
-        # Ensure numeric types
-        category_df["price_from"] = pd.to_numeric(category_df["price_from"], errors="coerce").fillna(0)
-        category_df["price_to"] = pd.to_numeric(category_df["price_to"], errors="coerce").fillna(9999999)
-        category_df["referral_fee_percent_est"] = pd.to_numeric(category_df["referral_fee_percent_est"], errors="coerce").fillna(0)
-        category_df["category"] = category_df["category"].str.lower().str.strip()
+        category_df = _load_category_rates(engine_cat, country)
         
 
         # Initialize new columns
@@ -346,15 +397,7 @@ def apply_modifications_fatch(df, country):
         engine_cat = create_engine(db_url1)
        
 
-        # Category table load karo
-        category_df = pd.read_sql("SELECT category, price_from, price_to, referral_fee_percent_est FROM category", engine_cat)
-        
-
-        # Ensure numeric types
-        category_df["price_from"] = pd.to_numeric(category_df["price_from"], errors="coerce").fillna(0)
-        category_df["price_to"] = pd.to_numeric(category_df["price_to"], errors="coerce").fillna(9999999)
-        category_df["referral_fee_percent_est"] = pd.to_numeric(category_df["referral_fee_percent_est"], errors="coerce").fillna(0)
-        category_df["category"] = category_df["category"].str.lower().str.strip()
+        category_df = _load_category_rates(engine_cat, country)
         
 
         # Initialize new columns
