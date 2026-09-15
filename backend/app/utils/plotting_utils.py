@@ -280,8 +280,8 @@ def apply_modifications(df, country):
                 promotional_rebates = float(row.get('promotional_rebates', 0) or 0)
                 
 
-                additions = product_sales + gift_wrap_credits + shipping_credits
-                deductions = promotional_rebates
+                additions = product_sales + gift_wrap_credits + shipping_credits + promotional_rebates
+                deductions = 0.0
 
             else:
                 additions = product_sales
@@ -498,8 +498,8 @@ def apply_modifications_fatch(df, country):
                 promotional_rebates = float(row.get('promotional_rebates', 0) or 0)
                
 
-                additions = product_sales + gift_wrap_credits + shipping_credits
-                deductions = promotional_rebates
+                additions = product_sales + gift_wrap_credits + shipping_credits + promotional_rebates
+                deductions = 0.0
 
             else:
                 additions = product_sales

@@ -97,8 +97,11 @@ type ReferralRow = Partial<{
   category: string;
   asin: string;
   quantity: number | string;
+  return_quantity: number | string;
+  total_quantity: number | string;
   sales: number | string;
   product_sales: number | string;
+  gross_sales: number | string;
   refRate: number | string;
   refFeesApplicable: number | string;
   refFeesCharged: number | string;
@@ -106,6 +109,10 @@ type ReferralRow = Partial<{
   difference: number | string;
   errorstatus: string;
   selling_fees: number | string;
+  fba_fees: number | string;
+  fbaanswer: number | string;
+  other_transaction_fees: number | string;
+  platform_fee: number | string;
   answer: number | string;
 
   net_sales_total_value: number | string;
@@ -185,7 +192,85 @@ const toNumberSafe = (v: any): number => {
 const getNetSales = (r: any): number => {
   const net = toNumberSafe(r?.net_sales_total_value);
   if (net) return net;
+  const skuNet = toNumberSafe(r?.net_sales);
+  if (skuNet) return skuNet;
   return toNumberSafe(r?.product_sales ?? r?.sales);
+};
+
+const getGrossSales = (r: any): number => {
+  const gross = toNumberSafe(r?.gross_sales);
+  if (gross) return gross;
+  return toNumberSafe(r?.product_sales ?? r?.sales);
+};
+
+const hasNumericValue = (v: any): boolean => {
+  if (v === null || v === undefined) return false;
+  if (typeof v === "string" && v.trim() === "") return false;
+  return !Number.isNaN(Number(String(v).replace(/[, ]+/g, "")));
+};
+
+const getDisplayUnits = (r: any): number => {
+  if (hasNumericValue(r?.total_quantity)) return toNumberSafe(r.total_quantity);
+  const quantity = toNumberSafe(r?.quantity);
+  if (hasNumericValue(r?.return_quantity)) {
+    return Math.max(quantity - toNumberSafe(r.return_quantity), 0);
+  }
+  return quantity;
+};
+
+const getChargedReferralFees = (r: any): number => {
+  return toNumberSafe(r?.selling_fees);
+};
+
+const isGrandTotalLabel = (label: any): boolean =>
+  String(label ?? "").trim().toLowerCase() === "grand total";
+
+const scaleIntegerBreakdown = (values: number[], target: number): number[] => {
+  const roundedTarget = Math.round(toNumberSafe(target));
+  const sourceTotal = values.reduce((sum, value) => sum + toNumberSafe(value), 0);
+
+  if (!roundedTarget || !sourceTotal || Math.round(sourceTotal) === roundedTarget) {
+    return values.map((value) => Math.round(toNumberSafe(value)));
+  }
+
+  const scaled = values.map((value) => (toNumberSafe(value) * roundedTarget) / sourceTotal);
+  const floors = scaled.map((value) => Math.floor(value));
+  let remainder = roundedTarget - floors.reduce((sum, value) => sum + value, 0);
+
+  const order = scaled
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const item of order) {
+    if (remainder <= 0) break;
+    floors[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return floors;
+};
+
+const scaleMoneyBreakdown = (values: number[], target: number): number[] => {
+  const sourceTotal = values.reduce((sum, value) => sum + toNumberSafe(value), 0);
+  const targetValue = toNumberSafe(target);
+
+  if (!targetValue || !sourceTotal || Math.abs(sourceTotal - targetValue) < 0.005) {
+    return values.map((value) => Number(toNumberSafe(value).toFixed(2)));
+  }
+
+  const ratio = targetValue / sourceTotal;
+  const scaled = values.map((value) => Number((toNumberSafe(value) * ratio).toFixed(2)));
+  const residual = Number((targetValue - scaled.reduce((sum, value) => sum + value, 0)).toFixed(2));
+  const adjustIndex = scaled.reduce(
+    (bestIndex, value, index) => Math.abs(value) >= Math.abs(scaled[bestIndex] ?? 0) ? index : bestIndex,
+    0
+  );
+
+  if (scaled.length) {
+    scaled[adjustIndex] = Number((scaled[adjustIndex] + residual).toFixed(2));
+  }
+
+  return scaled;
 };
 
 const currencyFromCountryName = (countryName: string) => {
@@ -711,6 +796,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const [rows, setRows] = useState<ReferralRow[]>([]);
   const [skuwiseRows, setSkuwiseRows] = useState<ReferralRow[]>([]);
+  const [skuMonthlyRows, setSkuMonthlyRows] = useState<ReferralRow[]>([]);
+  const [skuMonthlySummary, setSkuMonthlySummary] = useState<ReferralRow | null>(null);
   const [summary, setSummary] = useState<Summary>({
     ordersUnits: 0,
     totalSales: 0,
@@ -767,6 +854,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       setRows(DUMMY_ROWS);
       setSkuwiseRows(DUMMY_SKU_ROWS);
+      setSkuMonthlyRows([]);
+      setSkuMonthlySummary(null);
       setFeeSummaryRows(DUMMY_FEE_SUMMARY_ROWS);
       setAllOrdersByStatus([]);
 
@@ -778,6 +867,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setError("Please select both month and year to view referral fees.");
       setRows([]);
       setSkuwiseRows([]);
+      setSkuMonthlyRows([]);
+      setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
@@ -828,6 +919,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       const table = json?.table ?? [];
       const arr: ReferralRow[] = Array.isArray(table) ? table : [];
+      const monthlyRows: ReferralRow[] = Array.isArray(json?.sku_monthly_rows) ? json.sku_monthly_rows : [];
+      const monthlySummary: ReferralRow | null =
+        json?.sku_monthly_summary && Object.keys(json.sku_monthly_summary).length
+          ? json.sku_monthly_summary
+          : null;
 
 
       // ✅ Pick summary rows directly from backend table
@@ -853,6 +949,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       setRows(arr);
       setSkuwiseRows(arr);
+      setSkuMonthlyRows(monthlyRows);
+      setSkuMonthlySummary(monthlySummary);
 
       const accurate = Array.isArray(json?.accurate_data) ? json.accurate_data : [];
       const overcharged = Array.isArray(json?.overcharged_data) ? json.overcharged_data : [];
@@ -928,14 +1026,43 @@ export default function ReferralFeesDashboard(): JSX.Element {
         return ai - bi;
       });
 
-      const mappedSummary: FeeSummaryRow[] = summarySource.map((r: ReferralRow) => ({
+      const mappedSummaryRaw: FeeSummaryRow[] = summarySource.map((r: ReferralRow) => ({
         label: String(r.sku ?? ""),
-        units: Math.round(toNumberSafe(r.quantity)),
+        units: Math.round(getDisplayUnits(r)),
         sales: getNetSales(r),
         refFeesApplicable: toNumberSafe(r.answer),
-        refFeesCharged: toNumberSafe(r.selling_fees),
+        refFeesCharged: getChargedReferralFees(r),
         overcharged: toNumberSafe(r.difference),
       }));
+
+      const mappedSummary: FeeSummaryRow[] = (() => {
+        if (!monthlySummary) return mappedSummaryRaw;
+
+        const targetUnits = Math.round(getDisplayUnits(monthlySummary));
+        const targetNetSales = getNetSales(monthlySummary);
+        const detailRows = mappedSummaryRaw.filter((r) => !isGrandTotalLabel(r.label));
+        const scaledUnits = scaleIntegerBreakdown(detailRows.map((r) => r.units), targetUnits);
+        const scaledSales = scaleMoneyBreakdown(detailRows.map((r) => r.sales), targetNetSales);
+        let detailIndex = 0;
+
+        return mappedSummaryRaw.map((r) => {
+          if (isGrandTotalLabel(r.label)) {
+            return {
+              ...r,
+              units: targetUnits || r.units,
+              sales: targetNetSales || r.sales,
+            };
+          }
+
+          const adjusted = {
+            ...r,
+            units: scaledUnits[detailIndex] ?? r.units,
+            sales: scaledSales[detailIndex] ?? r.sales,
+          };
+          detailIndex += 1;
+          return adjusted;
+        });
+      })();
 
       // use only actual SKU/product lines (exclude Charge-/Grand Total lines)
       const lineItems = arr.filter((r) => {
@@ -971,26 +1098,34 @@ export default function ReferralFeesDashboard(): JSX.Element {
       // }, 0);
 
 
-      const unitsSold = lineItems.reduce((acc, r) => acc + Math.round(toNumberSafe(r.quantity)), 0);
+      const unitsSold = monthlySummary
+        ? Math.round(getDisplayUnits(monthlySummary))
+        : lineItems.reduce((acc, r) => acc + Math.round(getDisplayUnits(r)), 0);
 
-      const salesTotal = lineItems.reduce((acc, r) => acc + getNetSales(r), 0);
+      const salesTotal = monthlySummary
+        ? getNetSales(monthlySummary)
+        : lineItems.reduce((acc, r) => acc + getNetSales(r), 0);
 
-      const productSalesTotal = lineItems.reduce(
-        (acc, r) => acc + toNumberSafe((r as any)?.product_sales),
-        0
-      );
+      const productSalesTotal = monthlySummary
+        ? getGrossSales(monthlySummary)
+        : lineItems.reduce(
+          (acc, r) => acc + getGrossSales(r),
+          0
+        );
 
 
 
       // Referral
       const refFeesApplicable = lineItems.reduce((acc, r) => acc + toNumberSafe(r.answer), 0);
-      const refFeesApplied = lineItems.reduce((acc, r) => acc + toNumberSafe(r.selling_fees), 0); // charged
+      const refFeesApplied = lineItems.reduce((acc, r) => acc + getChargedReferralFees(r), 0); // charged
 
-      const fbaFees = Math.abs(
-        lineItems.reduce((acc, r) => {
-          return acc + FBA_KEYS.reduce((s, k) => s + toNumberSafe((r as any)[k]), 0);
-        }, 0)
-      );
+      const fbaFees = monthlySummary
+        ? Math.abs(toNumberSafe((monthlySummary as any).fba_fees))
+        : Math.abs(
+          lineItems.reduce((acc, r) => {
+            return acc + FBA_KEYS.reduce((s, k) => s + toNumberSafe((r as any)[k]), 0);
+          }, 0)
+        );
 
 
       // Platform (charged)
@@ -1006,9 +1141,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const platformFees = platformFeeTotalFromApi !== 0 ? platformFeeTotalFromApi : platformFeesDerived;
       const otherFees = otherTotalFromApi !== 0 ? otherTotalFromApi : otherFeesDerived;
 
-      // ✅ APPLICABLE for non-ref fees:
-      // If you don’t have “applicable” yet, use charged as placeholder.
-      // Replace later if backend gives you: fba_applicable_total / platform_applicable_total / other_applicable_total
+      // FBA applicable is a dollar amount, so use the FBA fee total.
+      // The fbaanswer field is a diagnostic value and can be much larger when summed.
       const fbaFeesApplicable = fbaFees;
       const platformFeesApplicable = platformFees;
       const otherFeesApplicable = otherFees;
@@ -1046,7 +1180,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       let feeImpact = 0;
 
       for (const r of arr) {
-        totalUnits += Math.round(toNumberSafe(r.quantity));
+        totalUnits += Math.round(getDisplayUnits(r));
         totalSales += getNetSales(r);
         feeImpact += toNumberSafe(r.overcharged ?? r.difference);
       }
@@ -1056,6 +1190,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setError(e?.message || "Failed to load data");
       setRows([]);
       setSkuwiseRows([]);
+      setSkuMonthlyRows([]);
+      setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
@@ -1135,6 +1271,22 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const skuTableAll: Row[] = useMemo(() => {
     if (!skuwiseRows.length) return [];
 
+    const monthlyKey = (r: any) =>
+      `${String(r?.sku ?? "").trim().toLowerCase()}|${String(r?.product_name ?? r?.productName ?? "").trim().toLowerCase()}`;
+
+    const monthlyBySkuProduct = new Map<string, ReferralRow>();
+    const monthlyBySku = new Map<string, ReferralRow>();
+    for (const r of skuMonthlyRows) {
+      const skuStr = String(r?.sku ?? "").trim().toLowerCase();
+      const productStr = String(r?.product_name ?? r?.productName ?? "").trim().toLowerCase();
+      if (!skuStr || skuStr === "total" || skuStr === "grand_total" || skuStr === "grand total") continue;
+      if (productStr === "total" || productStr === "grand total") continue;
+      monthlyBySkuProduct.set(monthlyKey(r), r);
+      monthlyBySku.set(skuStr, r);
+    }
+
+    const usedMonthlyRows = new Set<string>();
+
     const filtered = skuwiseRows.filter((r) => {
       const skuStr = String(r.sku ?? "");
       if (skuStr === "Grand Total") return true;
@@ -1142,18 +1294,31 @@ export default function ReferralFeesDashboard(): JSX.Element {
     });
 
     return filtered.map((r) => {
-      const quantity = Math.round(toNumberSafe(r.quantity));
-      const sales = getNetSales(r);
+      const skuStr = String(r.sku ?? "");
+      const isTotal = skuStr.toLowerCase() === "grand total";
+      const key = monthlyKey(r);
+      const skuLookupKey = skuStr.trim().toLowerCase();
+      const monthlyMatch = isTotal ? skuMonthlySummary : monthlyBySkuProduct.get(key) ?? monthlyBySku.get(skuLookupKey);
+      const useMonthlyValues = Boolean(monthlyMatch) && (isTotal || !usedMonthlyRows.has(key));
+
+      if (useMonthlyValues && !isTotal) {
+        usedMonthlyRows.add(key);
+      }
+
+      const quantity = Math.round(useMonthlyValues ? getDisplayUnits(monthlyMatch) : getDisplayUnits(r));
+      const sales = useMonthlyValues ? getNetSales(monthlyMatch) : getNetSales(r);
+      const grossSales = useMonthlyValues ? getGrossSales(monthlyMatch) : getGrossSales(r);
 
       const ref_applicable = toNumberSafe(r.answer);
-      const ref_charged = toNumberSafe(r.selling_fees);
+      const ref_charged = getChargedReferralFees(r);
       const overcharged = toNumberSafe(r.overcharged ?? r.difference);
 
-      // ✅ FBA from row (usually negative in your data)
       const fba_charged = Math.abs(
-        FBA_KEYS.reduce((sum, k) => sum + toNumberSafe((r as any)[k]), 0)
+        useMonthlyValues
+          ? toNumberSafe((monthlyMatch as any)?.fba_fees)
+          : FBA_KEYS.reduce((sum, k) => sum + toNumberSafe((r as any)[k]), 0)
       );
-      const fba_applicable = fba_charged; // placeholder until backend gives applicable
+      const fba_applicable = fba_charged;
 
       // ✅ Other fees from row
       const other_charged = Math.abs(
@@ -1170,14 +1335,12 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const total_charged = ref_charged + fba_charged + other_charged + platform_charged;
       const total_applicable = ref_applicable + fba_applicable + other_applicable + platform_charged;
 
-      const skuStr = String(r.sku ?? "");
-      const isTotal = skuStr.toLowerCase() === "grand total";
-
       return {
         sku: isTotal ? "" : (r.sku ?? ""),
         productName: isTotal ? "Grand Total" : (r.product_name ?? ""),
         units: quantity,
         sales,
+        grossSales,
 
         // keep your existing ones if needed elsewhere
         applicable: ref_applicable,
@@ -1197,7 +1360,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         _isTotal: isTotal,
       };
     });
-  }, [skuwiseRows]);
+  }, [skuwiseRows, skuMonthlyRows, skuMonthlySummary]);
 
   const skuTableDistinctAll: Row[] = useMemo(() => {
     if (!skuTableAll.length) return [];
@@ -1222,6 +1385,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
           units: 0,
           sales: 0,
+          grossSales: 0,
 
           // referral
           ref_applicable: 0,
@@ -1241,6 +1405,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       acc.units += Math.round(toNumberSafe(r.units));
       acc.sales += toNumberSafe(r.sales);
+      acc.grossSales += toNumberSafe(r.grossSales);
 
       acc.ref_applicable += toNumberSafe(r.ref_applicable ?? r.applicable);
       acc.ref_charged += toNumberSafe(r.ref_charged ?? r.charged);
@@ -1488,7 +1653,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
     /* ---------------- Sheet 1: Summary ---------------- */
     const summaryData = feeSummaryRows.map((r) => {
-      const units = Math.round(toNumberSafe(r.units));
+      const isGrandTotal = String(r.label ?? "").trim().toLowerCase() === "grand total";
+      const units = isGrandTotal && card6.units
+        ? Math.round(toNumberSafe(card6.units))
+        : Math.round(toNumberSafe(r.units));
       const sales = toNumberSafe(r.sales);
       const applicable = toNumberSafe(r.refFeesApplicable);
       const charged = toNumberSafe(r.refFeesCharged);
@@ -1510,15 +1678,18 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const overData = skuTableDistinctAll.map((r: any) => {
       const units = Math.round(toNumberSafe(r.units));
       const sales = toNumberSafe(r.sales);
+      const grossSales = toNumberSafe(r.grossSales);
       const applicable = toNumberSafe(r.applicable ?? r.ref_applicable);
       const charged = toNumberSafe(r.charged ?? r.ref_charged);
       const overcharged = toNumberSafe(r.overcharged);
+      const isTotal = String(r.productName ?? "").trim().toLowerCase() === "grand total" || Boolean(r._isTotal);
 
       return {
         SKU: String(r.sku ?? ""),
         "Product Name": String(r.productName ?? ""),
-        Units: units,
-        "Net Sales": Number(sales.toFixed(2)),
+        Units: isTotal && card6.units ? Math.round(toNumberSafe(card6.units)) : units,
+        "Gross Sales": Number((isTotal && card6.productSales ? card6.productSales : grossSales).toFixed(2)),
+        "Net Sales": Number((isTotal && card6.sales ? card6.sales : sales).toFixed(2)),
         "Ref Fees Applicable": Number(applicable.toFixed(2)),
         "Ref Fees Charged": Number(charged.toFixed(2)),
         Overcharged: Number(overcharged.toFixed(2)),
@@ -1545,18 +1716,52 @@ export default function ReferralFeesDashboard(): JSX.Element {
         "Order ID": r.order_id ?? "",
         SKU: r.sku ?? "",
         "Product Name": r.product_name ?? "",
-        Quantity: toNumberSafe(r.quantity),
+        Quantity: getDisplayUnits(r),
+        "Gross Sales": getGrossSales(r),
         "Net Sales": getNetSales(r), // ✅ net sales
         "Referral Fees Applicable": toNumberSafe(r.answer),
-        "Referral Fees Charged": toNumberSafe(r.selling_fees),
+        "Referral Fees Charged": getChargedReferralFees(r),
         Overcharged: toNumberSafe(r.difference ?? r.overcharged),
         Status: r.errorstatus ?? "",
       };
     });
 
+    const orderStatusSummaryRows = [
+      {},
+      { Category: "Reconciled Monthly Total" },
+      {
+        Category: "Reconciled Monthly Total",
+        "Order ID": "",
+        SKU: "",
+        "Product Name": "Grand Total",
+        Quantity: Math.round(toNumberSafe(card6.units)),
+        "Gross Sales": Number(toNumberSafe(card6.productSales).toFixed(2)),
+        "Net Sales": Number(toNumberSafe(card6.sales).toFixed(2)),
+        "Referral Fees Applicable": Number(toNumberSafe(card6.refFeesApplicable).toFixed(2)),
+        "Referral Fees Charged": Number(toNumberSafe(card6.refFeesApplied).toFixed(2)),
+        Overcharged: Number(toNumberSafe(totalFeeRow?.overcharged).toFixed(2)),
+        Status: "total",
+      },
+      {},
+      { Category: "Status Summary" },
+      ...feeSummaryRows.map((r) => ({
+        Category: "Status Summary",
+        "Order ID": "",
+        SKU: "",
+        "Product Name": r.label,
+        Quantity: Math.round(toNumberSafe(r.units)),
+        "Gross Sales": "",
+        "Net Sales": Number(toNumberSafe(r.sales).toFixed(2)),
+        "Referral Fees Applicable": Number(toNumberSafe(r.refFeesApplicable).toFixed(2)),
+        "Referral Fees Charged": Number(toNumberSafe(r.refFeesCharged).toFixed(2)),
+        Overcharged: Number(toNumberSafe(r.overcharged).toFixed(2)),
+        Status: isGrandTotalLabel(r.label) ? "total" : "",
+      })),
+    ];
+
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.json_to_sheet(cleanedOrdersByStatus),
+      XLSX.utils.json_to_sheet([...cleanedOrdersByStatus, ...orderStatusSummaryRows]),
       "Orders by Status"
     );
 
@@ -1564,9 +1769,12 @@ export default function ReferralFeesDashboard(): JSX.Element {
     XLSX.writeFile(wb, `Referral-Fees-${country}-${month}-${year}.xlsx`);
   }, [
     feeSummaryRows,
+    card6,
     skuTableAll,
+    skuTableDistinctAll,
     rows,
     allOrdersByStatus,
+    totalFeeRow,
     country,
     month,
     year,
@@ -1865,41 +2073,41 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
               /* =========================
-                 3) RIGHT PANEL (Ref fee breakdown): use selling_fees from Charge lines
+                 3) RIGHT PANEL (Ref fee breakdown): use charged referral fee magnitudes
                  Also show difference in brackets next to value
               ========================= */
               const rightList = [
                 {
                   label: "Total Ref Fees",
-                  value: toNumberSafe(grand?.selling_fees),
+                  value: getChargedReferralFees(grand),
                   diff: toNumberSafe(grand?.difference),
                   pct: pctOf(toNumberSafe(grand?.difference), totalSalesForPct),
                   color: "#7B9A6D",
                 },
                 {
                   label: "Accurately charged",
-                  value: toNumberSafe(chargeAcc?.selling_fees),
+                  value: getChargedReferralFees(chargeAcc),
                   diff: toNumberSafe(chargeAcc?.difference),
                   pct: pctOf(toNumberSafe(chargeAcc?.difference), totalSalesForPct),
                   color: "#C49466",
                 },
                 {
                   label: "Over charged",
-                  value: toNumberSafe(chargeOver?.selling_fees),
+                  value: getChargedReferralFees(chargeOver),
                   diff: toNumberSafe(chargeOver?.difference),
                   pct: pctOf(toNumberSafe(chargeOver?.difference), totalSalesForPct),
                   color: "#B75A5A",
                 },
                 {
                   label: "Undercharged",
-                  value: toNumberSafe(chargeUnder?.selling_fees),
+                  value: getChargedReferralFees(chargeUnder),
                   diff: toNumberSafe(chargeUnder?.difference),
                   pct: pctOf(toNumberSafe(chargeUnder?.difference), totalSalesForPct),
                   color: "#FDD36F",
                 },
                 {
                   label: "No ref fee",
-                  value: toNumberSafe(chargeNoRef?.selling_fees),
+                  value: getChargedReferralFees(chargeNoRef),
                   diff: toNumberSafe(chargeNoRef?.difference),
                   pct: pctOf(toNumberSafe(chargeNoRef?.difference), totalSalesForPct),
                   color: "#ED9F50",
@@ -1919,7 +2127,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
               const rightTotalForBars = Math.max(
                 1,
-                Math.abs(toNumberSafe(grand?.selling_fees))
+                Math.abs(getChargedReferralFees(grand))
               );
 
               /* =========================
