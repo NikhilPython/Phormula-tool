@@ -15,6 +15,9 @@ export type AmazonStatCardProps = {
   className?: string;
   deltaPct?: number | null;
   inverseDelta?: boolean;
+  currentPerUnit?: number | null;
+  previousPerUnit?: number | null;
+  perUnitFormatter?: (v: number) => React.ReactNode;
 };
 
 export default function AmazonStatCard({
@@ -28,6 +31,9 @@ export default function AmazonStatCard({
   className = "text-charcoal-500",
   deltaPct,
   inverseDelta = false,
+  currentPerUnit,
+  previousPerUnit,
+  perUnitFormatter = formatter,
 }: AmazonStatCardProps) {
   const currVal = toNumberSafe(current);
   const prevVal = previous != null ? toNumberSafe(previous) : 0;
@@ -77,6 +83,11 @@ export default function AmazonStatCard({
         <ValueOrSkeleton loading={loading} mode="inline" compact>
           <span className="inline-flex text-charcoal-500 items-baseline gap-1 min-w-0 truncate">
             {formatter(currVal)}
+            {currentPerUnit != null && (
+              <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+                ({perUnitFormatter(toNumberSafe(currentPerUnit))}/unit)
+              </span>
+            )}
           </span>
         </ValueOrSkeleton>
       </div>
@@ -84,8 +95,13 @@ export default function AmazonStatCard({
       <div className="mt-2 flex items-end justify-between gap-2 text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight text-charcoal-500 min-w-0">
         <div className="flex flex-col min-w-0">
           <span className="truncate">{bottomLabel}:</span>
-          <span className="font-medium truncate">
+          <span className="font-medium inline-flex items-baseline gap-1 truncate">
             {previous == null ? "\u2014" : previousFormatter(prevVal)}
+            {previous != null && previousPerUnit != null && (
+              <span className="text-charcoal-400 font-normal">
+                ({perUnitFormatter(toNumberSafe(previousPerUnit))}/unit)
+              </span>
+            )}
           </span>
         </div>
 

@@ -55,6 +55,8 @@ export default function DashboardLiveSalesTab({
     deltas,
     mtdCostOfAdsCurrentDisplay,
     mtdCostOfAdsPreviousDisplay,
+    mtdCostOfAdsCurrentPerUnitDisplay,
+    mtdCostOfAdsPreviousPerUnitDisplay,
     mtdCostOfAdsDelta,
     mtdTacosCurrent,
     mtdTacosPrevious,
@@ -301,6 +303,17 @@ export default function DashboardLiveSalesTab({
                                                                 : globalMtdCardData.adsDelta
                                                         }
                                                         inverseDelta
+                                                        currentPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.costOfAds.currentPerUnit
+                                                                : globalMtdCardData.adsPerUnit
+                                                        }
+                                                        previousPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.costOfAds.previousPerUnit
+                                                                : globalMtdCardData.prevAdsPerUnit
+                                                        }
+                                                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
@@ -501,6 +514,9 @@ export default function DashboardLiveSalesTab({
                                                     previous={mtdCostOfAdsPreviousDisplay}
                                                     deltaPct={mtdCostOfAdsDelta}
                                                     inverseDelta
+                                                    currentPerUnit={mtdCostOfAdsCurrentPerUnitDisplay}
+                                                    previousPerUnit={mtdCostOfAdsPreviousPerUnitDisplay}
+                                                    perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                     loading={!shouldShowDummyUi && (loading || (rangeActive ? biLoading : false))}
                                                     formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}

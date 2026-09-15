@@ -152,6 +152,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 5;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -4963,7 +4964,8 @@ export default function DashboardPage() {
 
             const payload = json?.data?.payload ?? null;
             const isUsablePayload = Boolean(
-                payload?.complete === true && Number(payload?.schemaVersion) >= 4
+                payload?.complete === true &&
+                Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION
             );
 
             return {
@@ -5113,7 +5115,7 @@ export default function DashboardPage() {
             !json?.success ||
             !payload ||
             payload?.complete !== true ||
-            Number(payload?.schemaVersion) < 4
+            Number(payload?.schemaVersion) < DASHBOARD_CACHE_SCHEMA_VERSION
         ) return null;
 
         return payload;
@@ -7355,6 +7357,8 @@ export default function DashboardPage() {
             aspDelta: toNumber(metric("asp").change_percentage),
             ads: toNumber(metric("cost_of_ads").current),
             prevAds: toNumber(metric("cost_of_ads").previous),
+            adsPerUnit: toNumber(metric("cost_of_ads").current_per_unit),
+            prevAdsPerUnit: toNumber(metric("cost_of_ads").previous_per_unit),
             adsDelta: toNumber(metric("cost_of_ads").change_percentage),
             tacos: toNumber(metric("tacos").current),
             prevTacos: toNumber(metric("tacos").previous),
@@ -7378,6 +7382,7 @@ export default function DashboardPage() {
             netSales: globalMtdCardData.netSales,
             asp: globalMtdCardData.asp,
             costOfAds: globalMtdCardData.ads,
+            costOfAdsPerUnit: globalMtdCardData.adsPerUnit,
             tacos: globalMtdCardData.tacos,
             cm2Profit: globalMtdCardData.cm2Profit,
             cm2MarginPct: globalMtdCardData.cm2Pct,
@@ -7392,6 +7397,7 @@ export default function DashboardPage() {
             netSales: globalMtdCardData.prevNetSales,
             asp: globalMtdCardData.prevAsp,
             costOfAds: globalMtdCardData.prevAds,
+            costOfAdsPerUnit: globalMtdCardData.prevAdsPerUnit,
             tacos: globalMtdCardData.prevTacos,
             cm2Profit: globalMtdCardData.prevCm2Profit,
             cm2MarginPct: globalMtdCardData.prevCm2Pct,
@@ -8001,7 +8007,7 @@ export default function DashboardPage() {
         const finalLastRefreshAt = lastRefreshAt ?? Date.now();
 
         return {
-            schemaVersion: 4,
+            schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
             complete: true,
             source: "dashboard_client",
             data,
@@ -8779,6 +8785,18 @@ export default function DashboardPage() {
             ? toNumber(biAlignedTotals?.total_previous_advertising)
             : amazonPrevAdsDisp;
 
+    const mtdCostOfAdsCurrentPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.costOfAds.currentPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_current_cost_of_ads_per_unit)
+            : toNumber(backendDashboardMetric("cost_of_ads").current_per_unit);
+
+    const mtdCostOfAdsPreviousPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.costOfAds.previousPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_previous_cost_of_ads_per_unit)
+            : toNumber(backendDashboardMetric("cost_of_ads").previous_per_unit);
+
     const mtdCostOfAdsDelta = shouldShowDummyUi
         ? dummyStatData.costOfAds.deltaPct
         : rangeActive
@@ -8933,6 +8951,17 @@ const mtdTacosDelta = shouldShowDummyUi
                     : mtdCostOfAdsDelta,
 
             inverseDelta: true,
+            currentPerUnit: shouldShowDummyUi
+                ? dummyStatData.costOfAds.currentPerUnit
+                : isStickyGlobal
+                    ? stickyTableTotals.costOfAdsPerUnit
+                    : mtdCostOfAdsCurrentPerUnitDisplay,
+            previousPerUnit: shouldShowDummyUi
+                ? dummyStatData.costOfAds.previousPerUnit
+                : isStickyGlobal
+                    ? stickyPreviousTotals.costOfAdsPerUnit
+                    : mtdCostOfAdsPreviousPerUnitDisplay,
+            perUnitFormatter: (val: number) => formatDisplayAmount(val),
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || previousSkuwiseGlobalLoading)
@@ -11554,6 +11583,8 @@ const mtdTacosDelta = shouldShowDummyUi
             aspDelta: toNumber(metric("asp").change_percentage),
             ads: toNumber(metric("cost_of_ads").current),
             prevAds: toNumber(metric("cost_of_ads").previous),
+            adsPerUnit: toNumber(metric("cost_of_ads").current_per_unit),
+            prevAdsPerUnit: toNumber(metric("cost_of_ads").previous_per_unit),
             adsDelta: toNumber(metric("cost_of_ads").change_percentage),
             tacos: toNumber(metric("tacos").current),
             prevTacos: toNumber(metric("tacos").previous),
@@ -11633,6 +11664,9 @@ const mtdTacosDelta = shouldShowDummyUi
                         previous={c.prevAds}
                         deltaPct={c.adsDelta}
                         inverseDelta
+                        currentPerUnit={c.adsPerUnit}
+                        previousPerUnit={c.prevAdsPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         bottomLabel={prevLabel}
@@ -11742,6 +11776,9 @@ const mtdTacosDelta = shouldShowDummyUi
                         previous={c.prevAds}
                         deltaPct={null}
                         inverseDelta
+                        currentPerUnit={c.adsPerUnit}
+                        previousPerUnit={c.prevAdsPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         bottomLabel={prevLabel}
@@ -12556,6 +12593,8 @@ const mtdTacosDelta = shouldShowDummyUi
                         deltas={deltas}
                         mtdCostOfAdsCurrentDisplay={mtdCostOfAdsCurrentDisplay}
                         mtdCostOfAdsPreviousDisplay={mtdCostOfAdsPreviousDisplay}
+                        mtdCostOfAdsCurrentPerUnitDisplay={mtdCostOfAdsCurrentPerUnitDisplay}
+                        mtdCostOfAdsPreviousPerUnitDisplay={mtdCostOfAdsPreviousPerUnitDisplay}
                         mtdCostOfAdsDelta={mtdCostOfAdsDelta}
                         mtdTacosCurrent={mtdTacosCurrent}
                         mtdTacosPrevious={mtdTacosPrevious}

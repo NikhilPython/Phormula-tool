@@ -13,6 +13,9 @@ type KpiItem = Pick<
   | "className"
   | "deltaPct"
   | "inverseDelta"
+  | "currentPerUnit"
+  | "previousPerUnit"
+  | "perUnitFormatter"
 >;
 
 type DashboardStickyKpisProps = {
@@ -46,6 +49,9 @@ export default function DashboardStickyKpis({
               bottomLabel={item.bottomLabel}
               className={item.className}
               inverseDelta={item.inverseDelta}
+              currentPerUnit={item.currentPerUnit}
+              previousPerUnit={item.previousPerUnit}
+              perUnitFormatter={item.perUnitFormatter}
             />
           ))}
         </div>

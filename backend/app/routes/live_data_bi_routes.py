@@ -6157,6 +6157,17 @@ def live_mtd_vs_previous():
         total_current_quantity = float(curr_aligned_totals.get("quantity", 0) or 0)
         total_previous_quantity = float(prev_aligned_totals.get("quantity", 0) or 0)
 
+        total_current_cost_of_ads_per_unit = (
+            total_current_advertising / total_current_quantity
+            if total_current_quantity
+            else 0.0
+        )
+        total_previous_cost_of_ads_per_unit = (
+            total_previous_advertising / total_previous_quantity
+            if total_previous_quantity
+            else 0.0
+        )
+
         total_current_cm2_profit_per_unit = (
             total_current_profit_cm2 / total_current_quantity
             if total_current_quantity
@@ -6220,6 +6231,8 @@ def live_mtd_vs_previous():
 
             "total_current_advertising": round(total_current_advertising, 2),
             "total_previous_advertising": round(total_previous_advertising, 2),
+            "total_current_cost_of_ads_per_unit": round(total_current_cost_of_ads_per_unit, 2),
+            "total_previous_cost_of_ads_per_unit": round(total_previous_cost_of_ads_per_unit, 2),
 
             "total_current_net_sales": round(total_current_net_sales, 2),
             "total_previous_net_sales": round(total_previous_net_sales, 2),

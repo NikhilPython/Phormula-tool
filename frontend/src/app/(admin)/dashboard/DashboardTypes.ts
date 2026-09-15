@@ -281,6 +281,8 @@ export type BiAlignedTotals = {
 
     total_current_advertising?: number;
     total_previous_advertising?: number;
+    total_current_cost_of_ads_per_unit?: number;
+    total_previous_cost_of_ads_per_unit?: number;
 
     total_current_platform_fees?: number;
     total_previous_platform_fees?: number;

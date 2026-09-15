@@ -2551,6 +2551,9 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     derived_totals_global = {
+        # Keep the backend KPI contract self-contained. Per-unit dashboard
+        # values (including ad cost per unit) use this as their denominator.
+        "total_quantity": round(total_qty, 2),
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(float(total_row.get("platform_fee", 0.0) or 0.0), 2),
         "platform_fee_inventory_storage": round(float(total_row.get("platform_fee_inventory_storage", 0.0) or 0.0), 2),
