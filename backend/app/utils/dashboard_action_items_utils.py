@@ -529,6 +529,47 @@ def _sum(rows: Iterable[dict[str, Any]], *keys: str) -> float:
     return sum(_first_number(row, *keys) for row in rows)
 
 
+def _get_action_item_source_metrics(live: dict[str, Any]) -> dict[str, float]:
+    """Return the authoritative portfolio metrics used by Action Items.
+
+    TACoS deliberately comes from the skuwisemonthly total/GRAND TOTAL source,
+    because this is the database value used by the Action Items contract.
+    The same values are also exposed to the frontend via `source_metrics` so
+    Business Scenario can display the exact same source instead of Live BI.
+    """
+    rows = live.get("rows") or []
+    totals = live.get("totals") or {}
+    aligned_totals = live.get("aligned_totals") or {}
+    fee_totals = live.get("fee_totals") or {}
+
+    net_sales = (
+        _first_number(totals, "net_sales")
+        or _number(aligned_totals.get("net_sales"))
+        or _sum(rows, "net_sales")
+    )
+
+    ads_spend = (
+        _first_number(totals, "total_ads", "ads_spend", "advertising")
+        or _first_number(fee_totals, "advertising")
+        or abs(_number(aligned_totals.get("advertising")))
+        or _sum(rows, "total_ads", "ads_spend", "advertising")
+    )
+
+    tacos = abs(
+        _first_number(
+            totals,
+            "tacos_total_advertising_cost_of_sale",
+            "tacos",
+        )
+    )
+
+    return {
+        "net_sales": net_sales,
+        "ads_spend": ads_spend,
+        "tacos": tacos,
+    }
+
+
 def build_action_items(
     *,
     inventory: dict[str, Any],
@@ -656,27 +697,11 @@ def build_action_items(
             ],
         })
 
-    # Match the P&L dashboard cards exactly: these fields come from the
-    # skuwisemonthly GRAND TOTAL populated by mtd_transactions. Live BI totals
-    # are fallbacks only because they intentionally use a different definition.
-    net_sales = (
-        _first_number(totals, "net_sales")
-        or _number(aligned_totals.get("net_sales"))
-        or _sum(rows, "net_sales")
-    )
-    ads_spend = (
-        _first_number(totals, "total_ads", "ads_spend", "advertising")
-        or _first_number(fee_totals, "advertising")
-        or abs(_number(aligned_totals.get("advertising")))
-        or _sum(rows, "total_ads", "ads_spend", "advertising")
-    )
-    tacos = abs(
-    _first_number(
-        totals,
-        "tacos_total_advertising_cost_of_sale",
-        "tacos",
-    )
-)
+    # One authoritative source for the Ads action item and the frontend card.
+    source_metrics = _get_action_item_source_metrics(live)
+    net_sales = source_metrics["net_sales"]
+    ads_spend = source_metrics["ads_spend"]
+    tacos = source_metrics["tacos"]
     if ads_spend and tacos >= ACTION_THRESHOLDS["tacos_percent"]:
         items.append({
             "id": "ads-efficiency",
@@ -948,6 +973,7 @@ def get_dashboard_action_items(
         live=live,
         dispatch=dispatch,
     )
+    source_metrics = _get_action_item_source_metrics(live)
 
     return {
         "success": True,
@@ -959,6 +985,7 @@ def get_dashboard_action_items(
             "end_day": end_day,
         },
         "currency": live.get("currency") or {"code": "USD", "symbol": "$"},
+        "source_metrics": source_metrics,
         "items": items,
         "total_items": len(items),
         "partial": not (inventory.get("loaded") and live.get("loaded")),
