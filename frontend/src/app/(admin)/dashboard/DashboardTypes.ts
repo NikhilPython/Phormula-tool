@@ -290,6 +290,27 @@ export type BiAlignedTotals = {
 
     total_current_rembursement_fee: number;
     total_previous_rembursement_fee: number;
+    total_current_quantity?: number;
+    total_previous_quantity?: number;
+    total_current_asp?: number;
+    total_previous_asp?: number;
+    total_current_gross_sales?: number;
+    total_previous_gross_sales?: number;
+    total_current_promotional_rebates?: number;
+    total_previous_promotional_rebates?: number;
+    total_current_promotional_rebates_percentage?: number;
+    total_previous_promotional_rebates_percentage?: number;
+    total_current_tacos?: number;
+    total_previous_tacos?: number;
+    units_change_percentage?: number;
+    asp_change_percentage?: number;
+    gross_sales_change_percentage?: number;
+    net_sales_change_percentage?: number;
+    advertising_change_percentage?: number;
+    tacos_change_percentage?: number;
+    cm2_profit_change_percentage?: number;
+    cm2_margin_change_percentage?: number;
+    promotions_change_percentage?: number;
 };
 
 export type InventoryAlertRecord = Record<string, { alert?: string; alert_type?: string }>;

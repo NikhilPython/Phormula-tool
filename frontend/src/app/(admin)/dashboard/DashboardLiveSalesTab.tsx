@@ -233,7 +233,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.units.current, dummyStatData.units.previous)
-                                                                : safeDeltaPct(globalMtdCardData.units, globalMtdCardData.prevUnits)
+                                                                : globalMtdCardData.unitsDelta
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={fmtInt}
@@ -248,7 +248,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.asp.current, dummyStatData.asp.previous)
-                                                                : safeDeltaPct(globalMtdCardData.asp, globalMtdCardData.prevAsp)
+                                                                : globalMtdCardData.aspDelta
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={formatDisplayAmount}
@@ -265,7 +265,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.grossSales.current, dummyStatData.grossSales.previous)
-                                                                : safeDeltaPct(globalMtdCardData.grossSales, globalMtdCardData.prevGrossSales)
+                                                                : globalMtdCardData.grossSalesDelta
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
@@ -281,7 +281,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.netSales.current, dummyStatData.netSales.previous)
-                                                                : safeDeltaPct(globalMtdCardData.netSales, globalMtdCardData.prevNetSales)
+                                                                : globalMtdCardData.netSalesDelta
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatDisplayAmount(val, "Net Sales")}
@@ -298,7 +298,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.costOfAds.current, dummyStatData.costOfAds.previous)
-                                                                : safeDeltaPct(globalMtdCardData.ads, globalMtdCardData.prevAds)
+                                                                : globalMtdCardData.adsDelta
                                                         }
                                                         inverseDelta
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
@@ -315,7 +315,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.tacos.current, dummyStatData.tacos.previous)
-                                                                : safeDeltaPct(globalMtdCardData.tacos, globalMtdCardData.prevTacos)
+                                                                : globalMtdCardData.tacosDelta
                                                         }
                                                         inverseDelta
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || previousSkuwiseGlobalLoading)}
@@ -332,7 +332,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.cm2Profit.current, dummyStatData.cm2Profit.previous)
-                                                                : safeDeltaPct(globalMtdCardData.cm2Profit, globalMtdCardData.prevCm2Profit)
+                                                                : globalMtdCardData.cm2ProfitDelta
                                                         }
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatCurrentAmountWithPct(
@@ -356,7 +356,7 @@ export default function DashboardLiveSalesTab({
                                                         deltaPct={
                                                             shouldShowDummyUi
                                                                 ? safeDeltaPct(dummyStatData.promotions.current, dummyStatData.promotions.previous)
-                                                                : safeDeltaPct(globalMtdCardData.promotions, globalMtdCardData.prevPromotions)
+                                                                : globalMtdCardData.promotionsDelta
                                                         }
                                                         inverseDelta
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
@@ -456,7 +456,7 @@ export default function DashboardLiveSalesTab({
                                                             ? dummyStatData.grossSales.deltaPct
                                                             : (useBiForAmazonCards
                                                                 ? biCardKpis.deltas.grossSales
-                                                                : safeDeltaPct(uk.grossSalesGBP ?? 0, prev.grossSales ?? 0))
+                                                                : deltas.grossSalesPct)
                                                     }
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={(val) => formatDisplayAmount(val, "Gross Sales")}

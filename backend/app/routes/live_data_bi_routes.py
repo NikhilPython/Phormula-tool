@@ -6189,30 +6189,81 @@ def live_mtd_vs_previous():
         else:
             total_previous_profit_percentage = 0.0
 
+        def card_delta(current_value, previous_value):
+            if not previous_value:
+                return 0.0
+            return ((current_value - previous_value) / abs(previous_value)) * 100.0
+
+        total_current_gross_sales = float(curr_aligned_totals.get("product_sales", 0) or 0)
+        total_previous_gross_sales = float(prev_aligned_totals.get("product_sales", 0) or 0)
+        total_current_promotions = float(curr_aligned_totals.get("promotional_rebates", 0) or 0)
+        total_previous_promotions = float(prev_aligned_totals.get("promotional_rebates", 0) or 0)
+        total_current_tacos = (
+            total_current_advertising / total_current_net_sales * 100.0
+            if total_current_net_sales else 0.0
+        )
+        total_previous_tacos = (
+            total_previous_advertising / total_previous_net_sales * 100.0
+            if total_previous_net_sales else 0.0
+        )
+        total_current_asp = total_current_net_sales / total_current_quantity if total_current_quantity else 0.0
+        total_previous_asp = total_previous_net_sales / total_previous_quantity if total_previous_quantity else 0.0
+
         aligned_totals_payload = {
-            "total_current_profit": total_current_profit,
-            "total_previous_profit": total_previous_profit,
-            "total_current_profit_percentage": total_current_profit_percentage,
-            "total_previous_profit_percentage": total_previous_profit_percentage,
+            "total_current_profit": round(total_current_profit, 2),
+            "total_previous_profit": round(total_previous_profit, 2),
+            "total_current_profit_percentage": round(total_current_profit_percentage, 2),
+            "total_previous_profit_percentage": round(total_previous_profit_percentage, 2),
 
-            "total_current_platform_fees": total_current_platform_fees,
-            "total_previous_platform_fees": total_previous_platform_fees,
+            "total_current_platform_fees": round(total_current_platform_fees, 2),
+            "total_previous_platform_fees": round(total_previous_platform_fees, 2),
 
-            "total_current_advertising": total_current_advertising,
-            "total_previous_advertising": total_previous_advertising,
+            "total_current_advertising": round(total_current_advertising, 2),
+            "total_previous_advertising": round(total_previous_advertising, 2),
 
-            "total_current_net_sales": float(curr_aligned_totals.get("net_sales", 0) or 0),
-            "total_previous_net_sales": float(prev_aligned_totals.get("net_sales", 0) or 0),
+            "total_current_net_sales": round(total_current_net_sales, 2),
+            "total_previous_net_sales": round(total_previous_net_sales, 2),
 
             "total_previous_net_sales_full_month": float(total_previous_net_sales_full_month or 0),
 
             # ✅ NEW FIELDS
-            "total_current_profit_cm2": total_current_profit_cm2,
-            "total_previous_profit_cm2": total_previous_profit_cm2,
-            "total_current_rembursement_fee": total_current_rembursement_fee,
-            "total_previous_rembursement_fee": total_previous_rembursement_fee,
-            "total_current_cm2_profit_per_unit": total_current_cm2_profit_per_unit,
-            "total_previous_cm2_profit_per_unit": total_previous_cm2_profit_per_unit,
+            "total_current_profit_cm2": round(total_current_profit_cm2, 2),
+            "total_previous_profit_cm2": round(total_previous_profit_cm2, 2),
+            "total_current_rembursement_fee": round(total_current_rembursement_fee, 2),
+            "total_previous_rembursement_fee": round(total_previous_rembursement_fee, 2),
+            "total_current_cm2_profit_per_unit": round(total_current_cm2_profit_per_unit, 2),
+            "total_previous_cm2_profit_per_unit": round(total_previous_cm2_profit_per_unit, 2),
+
+            # Complete backend card derivatives for custom ranges.
+            "total_current_quantity": round(total_current_quantity, 2),
+            "total_previous_quantity": round(total_previous_quantity, 2),
+            "total_current_asp": round(total_current_asp, 2),
+            "total_previous_asp": round(total_previous_asp, 2),
+            "total_current_gross_sales": round(total_current_gross_sales, 2),
+            "total_previous_gross_sales": round(total_previous_gross_sales, 2),
+            "total_current_promotional_rebates": round(total_current_promotions, 2),
+            "total_previous_promotional_rebates": round(total_previous_promotions, 2),
+            "total_current_promotional_rebates_percentage": round(
+                total_current_promotions / total_current_net_sales * 100.0
+                if total_current_net_sales else 0.0,
+                2,
+            ),
+            "total_previous_promotional_rebates_percentage": round(
+                total_previous_promotions / total_previous_net_sales * 100.0
+                if total_previous_net_sales else 0.0,
+                2,
+            ),
+            "total_current_tacos": round(total_current_tacos, 2),
+            "total_previous_tacos": round(total_previous_tacos, 2),
+            "units_change_percentage": round(card_delta(total_current_quantity, total_previous_quantity), 2),
+            "asp_change_percentage": round(card_delta(total_current_asp, total_previous_asp), 2),
+            "gross_sales_change_percentage": round(card_delta(total_current_gross_sales, total_previous_gross_sales), 2),
+            "net_sales_change_percentage": round(card_delta(total_current_net_sales, total_previous_net_sales), 2),
+            "advertising_change_percentage": round(card_delta(total_current_advertising, total_previous_advertising), 2),
+            "tacos_change_percentage": round(card_delta(total_current_tacos, total_previous_tacos), 2),
+            "cm2_profit_change_percentage": round(card_delta(total_current_profit_cm2, total_previous_profit_cm2), 2),
+            "cm2_margin_change_percentage": round(card_delta(total_current_profit_percentage, total_previous_profit_percentage), 2),
+            "promotions_change_percentage": round(card_delta(total_current_promotions, total_previous_promotions), 2),
         }
         # --- build inventory block ---
         portfolio_inventory_block = render_portfolio_inventory_block(
@@ -6829,7 +6880,7 @@ def _build_aligned_totals(skuwise_items_global,extra_totals,total_previous_net_s
         "total_previous_promotional_rebates": round(promotional_rebates, 2),
         "total_previous_promotional_rebates_percentage": round(
             (promotional_rebates / net_sales) * 100 if net_sales else 0,
-            6
+            2
         ),
         "total_previous_rembursement_fee": round(
             _safe_float(
@@ -6884,7 +6935,7 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
         "promotional_rebates": round(promotional_rebates, 2),
         "promotional_rebates_percentage": round(
             (promotional_rebates / net_sales) * 100 if net_sales else 0,
-            6
+            2
         ),
 
         "cogs": round(cogs, 2),

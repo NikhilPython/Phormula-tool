@@ -887,7 +887,7 @@ export default function DashboardProductwisePnlSection({
 
                                 if (colKey === "cm1_profit_per_unit") {
                                     const v = Number(row.cm1_profit_per_unit ?? 0);
-                                    return formatAdsNumber(Math.abs(v));
+                                    return Math.round(Math.abs(v)).toLocaleString();
                                 }
 
                                 if (colKey === "cm2_profit_per") {
@@ -898,7 +898,7 @@ export default function DashboardProductwisePnlSection({
                                 // CM2 per unit (no %)
                                 if (colKey === "cm2_profit_per_unit") {
                                     const v = Number(row.cm2_profit_per_unit ?? 0);
-                                    return formatAdsNumber(v);
+                                    return Math.round(v).toLocaleString();
                                 }
                                 if (colKey === "ad_type") {
                                     if (row.isOthers || row.isTotal) return "-";

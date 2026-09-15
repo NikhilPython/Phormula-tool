@@ -85,6 +85,104 @@ AMAZON_ENGINE = create_engine(
     pool_recycle=1800,
 )
 
+
+def _dashboard_number(value):
+    """Return a finite dashboard number rounded to the DB/API precision."""
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        number = 0.0
+    return round(number, 2) if math.isfinite(number) else 0.0
+
+
+def _dashboard_delta(current, previous):
+    current_value = _dashboard_number(current)
+    previous_value = _dashboard_number(previous)
+    if previous_value == 0:
+        return 0.0
+    return _dashboard_number(
+        ((current_value - previous_value) / abs(previous_value)) * 100
+    )
+
+
+def _build_dashboard_card_metrics(current_totals, previous_totals=None):
+    """Build the complete KPI-card contract on the backend.
+
+    Parenthesized percentages, per-unit values, and the right-side change
+    percentages must all originate here rather than being derived by React.
+    """
+    current_totals = current_totals or {}
+    previous_totals = previous_totals or {}
+
+    def first(source, *keys):
+        for key in keys:
+            value = source.get(key)
+            if value not in (None, ""):
+                return _dashboard_number(value)
+        return 0.0
+
+    current_units = first(current_totals, "total_quantity", "quantity", "net_quantity")
+    previous_units = first(previous_totals, "total_quantity", "quantity", "net_quantity")
+    current_net_sales = first(current_totals, "net_sales", "total_current_net_sales")
+    previous_net_sales = first(previous_totals, "net_sales", "total_previous_net_sales")
+    current_ads = first(current_totals, "total_ads", "advertising_fees", "total_current_advertising", "ads_spend")
+    previous_ads = first(previous_totals, "total_ads", "advertising_fees", "total_previous_advertising", "ads_spend")
+    current_cm2 = first(current_totals, "total_cm2_profit", "cm2_profit", "total_current_profit_cm2")
+    previous_cm2 = first(previous_totals, "total_cm2_profit", "cm2_profit", "total_previous_profit_cm2")
+    current_promotions = first(current_totals, "promotional_rebates", "total_promotional_rebates")
+    previous_promotions = first(previous_totals, "promotional_rebates", "total_previous_promotional_rebates")
+
+    values = {
+        "units": (current_units, previous_units),
+        "asp": (
+            first(current_totals, "asp") or (_dashboard_number(current_net_sales / current_units) if current_units else 0.0),
+            first(previous_totals, "asp") or (_dashboard_number(previous_net_sales / previous_units) if previous_units else 0.0),
+        ),
+        "gross_sales": (
+            first(current_totals, "gross_sales"),
+            first(previous_totals, "gross_sales"),
+        ),
+        "net_sales": (current_net_sales, previous_net_sales),
+        "cost_of_ads": (current_ads, previous_ads),
+        "tacos": (
+            _dashboard_number(current_ads / current_net_sales * 100) if current_net_sales else 0.0,
+            _dashboard_number(previous_ads / previous_net_sales * 100) if previous_net_sales else 0.0,
+        ),
+        "cm2_profit": (current_cm2, previous_cm2),
+        "promotions": (abs(current_promotions), abs(previous_promotions)),
+    }
+
+    metrics = {}
+    for key, (current, previous) in values.items():
+        metrics[key] = {
+            "current": _dashboard_number(current),
+            "previous": _dashboard_number(previous),
+            "change_percentage": _dashboard_delta(current, previous),
+            "current_per_unit": _dashboard_number(current / current_units) if current_units else 0.0,
+            "previous_per_unit": _dashboard_number(previous / previous_units) if previous_units else 0.0,
+        }
+
+    metrics["cm2_profit"].update({
+        "current_percentage": _dashboard_number(current_cm2 / current_net_sales * 100) if current_net_sales else 0.0,
+        "previous_percentage": _dashboard_number(previous_cm2 / previous_net_sales * 100) if previous_net_sales else 0.0,
+    })
+    metrics["promotions"].update({
+        "current_percentage": _dashboard_number(current_promotions / current_net_sales * 100) if current_net_sales else 0.0,
+        "previous_percentage": _dashboard_number(previous_promotions / previous_net_sales * 100) if previous_net_sales else 0.0,
+    })
+    return metrics
+
+
+def _round_dashboard_payload_numbers(value):
+    """Round every finite float in a persisted dashboard snapshot to 2dp."""
+    if isinstance(value, dict):
+        return {key: _round_dashboard_payload_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_round_dashboard_payload_numbers(item) for item in value]
+    if isinstance(value, float):
+        return _dashboard_number(value)
+    return value
+
 if not db_url:
     raise RuntimeError("DATABASE_URL is not set")
 if not db_url1:
@@ -2272,12 +2370,12 @@ def get_current_global_data_for_live_bi(user_id: int):
     total_profit = float(total_row.get("profit", 0) or 0)
     total_cm2 = float(total_row.get("cm2_profit", 0) or 0)
 
-    total_row["asp"] = total_net_sales / total_qty if total_qty else 0
-    total_row["cm1_profit_per_unit"] = total_profit / total_qty if total_qty else 0
-    total_row["unit_wise_profitability"] = total_profit / total_qty if total_qty else 0
-    total_row["cm1_profit_per"] = total_profit / total_net_sales * 100 if total_net_sales else 0
-    total_row["cm2_profit_per_unit"] = total_cm2 / total_qty if total_qty else 0
-    total_row["cm2_profit_per"] = total_cm2 / total_net_sales * 100 if total_net_sales else 0
+    total_row["asp"] = round(total_net_sales / total_qty, 2) if total_qty else 0
+    total_row["cm1_profit_per_unit"] = round(total_profit / total_qty, 2) if total_qty else 0
+    total_row["unit_wise_profitability"] = round(total_profit / total_qty, 2) if total_qty else 0
+    total_row["cm1_profit_per"] = round(total_profit / total_net_sales * 100, 2) if total_net_sales else 0
+    total_row["cm2_profit_per_unit"] = round(total_cm2 / total_qty, 2) if total_qty else 0
+    total_row["cm2_profit_per"] = round(total_cm2 / total_net_sales * 100, 2) if total_net_sales else 0
     total_row["sales_mix"] = 100.0 if total_net_sales else 0.0
     total_row["promotional_rebates_percentage"] = round(
         (
@@ -2285,7 +2383,7 @@ def get_current_global_data_for_live_bi(user_id: int):
             / total_net_sales
             * 100.0
         ) if total_net_sales else 0.0,
-        6,
+        2,
     )
 
     # total_row["acos"] = round(
@@ -2434,6 +2532,8 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     global_df = pd.concat([global_df, pd.DataFrame([total_row])], ignore_index=True)
+    global_numeric_columns = global_df.select_dtypes(include=["number"]).columns
+    global_df[global_numeric_columns] = global_df[global_numeric_columns].round(2)
 
     # Keep DB write for global table.
     global_df.to_sql(
@@ -2474,7 +2574,7 @@ def get_current_global_data_for_live_bi(user_id: int):
                 / total_net_sales
                 * 100
             ) if total_net_sales else 0,
-            6
+            2
         ),
         "asp": round(float(total_row.get("asp", 0.0) or 0.0), 2),
         "profit": round(float(total_row.get("profit", 0.0) or 0.0), 2),
@@ -2589,6 +2689,42 @@ def finances_mtd_transactions():
 
     if ui_country == "global":
         payload_out = get_current_global_data_for_live_bi(user_id)
+        previous_global = {}
+        try:
+            # Import at request time to avoid a module-level circular import.
+            from app.routes.live_data_bi_routes import get_previous_global_data_for_live_bi
+
+            previous_global = get_previous_global_data_for_live_bi(user_id)
+            previous_source = {
+                **(previous_global.get("derived_totals_global") or {}),
+                **(previous_global.get("aligned_totals_global") or {}),
+            }
+        except Exception:
+            logging.exception("Failed to build previous GLOBAL dashboard card metrics")
+            previous_source = {}
+
+        payload_out["dashboard_card_metrics"] = _build_dashboard_card_metrics(
+            payload_out.get("derived_totals_global") or {},
+            previous_source,
+        )
+        payload_out["dashboard_card_metrics_by_country"] = {}
+        for card_country in ("uk", "us"):
+            current_rows = payload_out.get(f"skuwise_items_{card_country}") or []
+            current_total = next(
+                (
+                    row for row in current_rows
+                    if str(row.get("sku") or "").strip().upper() in {"TOTAL", "GRAND_TOTAL"}
+                    or str(row.get("product_name") or "").strip().lower() in {"total", "grand total"}
+                ),
+                {},
+            )
+            previous_country_source = {
+                **(previous_global.get(f"derived_totals_{card_country}") or {}),
+                **(previous_global.get(f"aligned_totals_{card_country}") or {}),
+            }
+            payload_out["dashboard_card_metrics_by_country"][card_country] = (
+                _build_dashboard_card_metrics(current_total, previous_country_source)
+            )
         return jsonify(_json_safe(payload_out)), 200
 
     transaction_status = (
@@ -3382,7 +3518,7 @@ def finances_mtd_transactions():
         "gross_sales": round(gross_sales_total, 2),
         "refund_sales": round(float(refund_sales_total or 0.0), 2),
         "promotional_rebates": round(promotional_rebates_total, 2),
-        "promotional_rebates_percentage": round(promotional_rebates_percentage, 6),
+        "promotional_rebates_percentage": round(promotional_rebates_percentage, 2),
         "asp": round(asp, 2),
         "profit": round(profit_total, 2),
         "cm2_profit": round(cm2_profit_dashboard, 2),
@@ -3976,7 +4112,7 @@ def finances_mtd_transactions():
                 / float(total_row.get("net_sales", 0.0) or 0.0)
                 * 100.0
             ) if float(total_row.get("net_sales", 0.0) or 0.0) else 0.0,
-            6
+            2
         )
 
         total_quantity = float(df_sku["quantity"].sum()) if "quantity" in df_sku.columns else 0.0
@@ -4340,6 +4476,8 @@ def finances_mtd_transactions():
 
         df_sku = df_sku[existing_first_cols + remaining_cols]
 
+        sku_numeric_columns = df_sku.select_dtypes(include=["number"]).columns
+        df_sku[sku_numeric_columns] = df_sku[sku_numeric_columns].round(2)
         skuwise_items = df_sku.to_dict(orient="records")
 
         # store SKU-wise table
@@ -4564,6 +4702,14 @@ def finances_mtd_transactions():
         "totals": totals,
         "derived_totals": derived_totals,
         "previous_period": previous_period,
+        "dashboard_card_metrics": _build_dashboard_card_metrics(
+            {
+                **totals,
+                **derived_totals,
+                "total_quantity": net_qty_total,
+            },
+            previous_period.get("totals") or {},
+        ),
         "skuwise_table": {
             "name": skuwise_table_name,
             "saved": sku_summary_saved,
@@ -4660,6 +4806,7 @@ def save_live_dashboard_data():
         cache_payload = body.get("cachePayload")
         if cache_payload is None:
             return jsonify({"success": False, "error": "cachePayload is required"}), 400
+        cache_payload = _round_dashboard_payload_numbers(cache_payload)
 
         saved_at = body.get("savedAt") or int(time.time() * 1000)
 

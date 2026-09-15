@@ -564,37 +564,6 @@ const pickFirstNonZeroNumber = (...values: any[]) => {
     return fallback;
 };
 
-const pickPromotionalRebates = (...sources: any[]) =>
-    pickFirstNonZeroNumber(
-        ...sources.map((source) =>
-            source?.promotional_rebates ??
-            source?.total_promotional_rebates ??
-            source?.total_previous_promotional_rebates ??
-            source?.promotions
-        )
-    );
-
-const calculatePromotionalRebatesPct = (
-    promotionalRebates: number,
-    netSales: number,
-    ...sources: any[]
-) => {
-    const explicitPct = pickFirstNonZeroNumber(
-        ...sources.map((source) =>
-            source?.promotional_rebates_percentage ??
-            source?.total_promotional_rebates_percentage ??
-            source?.total_previous_promotional_rebates_percentage ??
-            source?.promotions_percentage
-        )
-    );
-
-    return Math.abs(
-        netSales
-            ? (promotionalRebates / netSales) * 100
-            : explicitPct
-    );
-};
-
 function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
     const grand = getGrandTotalRow(rows);
 
@@ -2079,6 +2048,14 @@ export default function DashboardPage() {
     const [unauthorized, setUnauthorized] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<any>(null);
+    const backendDashboardMetrics = useMemo(
+        () => (data as any)?.dashboard_card_metrics || {},
+        [data]
+    );
+    const backendDashboardMetric = useCallback(
+        (key: string) => backendDashboardMetrics[key] || {},
+        [backendDashboardMetrics]
+    );
     const { connections: amazonConnections } = useAmazonConnections();
     const [shopifyLoading, setShopifyLoading] = useState(false);
     const [shopifyError, setShopifyError] = useState<string | null>(null);
@@ -4153,24 +4130,6 @@ export default function DashboardPage() {
         }
     }, [platform, amazonConnections, isMonthYearNA]);
 
-    const renderMoneyWithPerUnit = (amount: number, units: number, fmt: (v: number) => string) => {
-        const totalText = fmt(amount);
-
-        if (!units) return <span>{totalText}</span>;
-
-        const perUnit = amount / units;
-        const perUnitText = fmt(perUnit);
-
-        return (
-            <>
-                <span>{totalText}</span>
-                <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
-                    ({perUnitText}/unit)
-                </span>
-            </>
-        );
-    };
-
     /* ===================== SHOPIFY STORE INFO ===================== */
     useEffect(() => {
         const fetchShopifyStore = async () => {
@@ -4984,7 +4943,7 @@ export default function DashboardPage() {
 
             const payload = json?.data?.payload ?? null;
             const isUsablePayload = Boolean(
-                payload?.complete === true && Number(payload?.schemaVersion) >= 2
+                payload?.complete === true && Number(payload?.schemaVersion) >= 4
             );
 
             return {
@@ -5134,7 +5093,7 @@ export default function DashboardPage() {
             !json?.success ||
             !payload ||
             payload?.complete !== true ||
-            Number(payload?.schemaVersion) < 2
+            Number(payload?.schemaVersion) < 4
         ) return null;
 
         return payload;
@@ -5768,8 +5727,8 @@ export default function DashboardPage() {
     }, [data?.previous_period?.totals?.advertising_fees, convertToDisplayCurrency, amazonDataCurrency]);
 
     const amazonAdsDeltaPct = useMemo(() => {
-        return safeDeltaPct(amazonCurrAdsDisp, amazonPrevAdsDisp);
-    }, [amazonCurrAdsDisp, amazonPrevAdsDisp]);
+        return toNumber(backendDashboardMetric("cost_of_ads").change_percentage);
+    }, [backendDashboardMetric]);
 
     const amazonCurrRoasPct = useMemo(() => {
         const sales = toNumberSafe(derived?.net_sales ?? 0);
@@ -5795,16 +5754,17 @@ export default function DashboardPage() {
 
     const deltas = useMemo(() => {
         return {
-            quantityPct: safeDeltaPct(curr.quantity, prev.quantity),
-            netSalesPct: safeDeltaPct(curr.netSales, prev.netSales),
-            aspPct: safeDeltaPct(curr.asp, prev.asp),
-            profitPct: safeDeltaPct(curr.profit, prev.profit),
+            quantityPct: toNumber(backendDashboardMetric("units").change_percentage),
+            grossSalesPct: toNumber(backendDashboardMetric("gross_sales").change_percentage),
+            netSalesPct: toNumber(backendDashboardMetric("net_sales").change_percentage),
+            aspPct: toNumber(backendDashboardMetric("asp").change_percentage),
+            profitPct: toNumber(backendDashboardMetric("cm2_profit").change_percentage),
             profitMarginPctPts:
                 curr.profitPct != null && prev.profitPct != null
                     ? Number(curr.profitPct) - Number(prev.profitPct)
                     : null,
         };
-    }, [curr, prev]);
+    }, [backendDashboardMetric, curr.profitPct, prev.profitPct]);
 
     const deltaPctAbs = (currentPct: number, previousPct: number) => {
         const c = Number(currentPct) || 0;
@@ -5836,112 +5796,44 @@ export default function DashboardPage() {
 
 
     const biCardKpis = useMemo(() => {
-        const currAll = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
-        const prevAll = (biDailySeriesHome?.previous || []).filter(isPreviousPointAllowed);
-
-        const currPts = sliceByDayRange(currAll, selectedStartDay, selectedEndDay);
-        const prevPts = sliceByDayRange(prevAll, selectedStartDay, selectedEndDay);
-
-        const sum = (arr: DailyPoint[], key: keyof DailyPoint) =>
-            arr.reduce((a, d) => a + (Number(d[key]) || 0), 0);
-
         const curr = {
-            units: sum(currPts, "quantity"),
-            netSales: sum(currPts, "net_sales"),
-            grossSales: sum(currPts, "gross_sales"),
-            profit: sum(currPts, "profit"),
-            cm2Profit: sum(currPts, "cm2_profit"),
+            units: toNumber(biAlignedTotals?.total_current_quantity),
+            netSales: toNumber(biAlignedTotals?.total_current_net_sales),
+            grossSales: toNumber(biAlignedTotals?.total_current_gross_sales),
+            profit: toNumber(biAlignedTotals?.total_current_profit),
+            cm2Profit: toNumber(biAlignedTotals?.total_current_profit_cm2),
+            asp: toNumber(biAlignedTotals?.total_current_asp),
+            profitPct: toNumber(biAlignedTotals?.total_current_profit_percentage),
         };
 
         const prev = {
-            units: sum(prevPts, "quantity"),
-            netSales: sum(prevPts, "net_sales"),
-            grossSales: sum(prevPts, "gross_sales"),
-            profit: sum(prevPts, "profit"),
-            cm2Profit: sum(prevPts, "cm2_profit"),
+            units: toNumber(biAlignedTotals?.total_previous_quantity),
+            netSales: toNumber(biAlignedTotals?.total_previous_net_sales),
+            grossSales: toNumber(biAlignedTotals?.total_previous_gross_sales),
+            profit: toNumber(biAlignedTotals?.total_previous_profit),
+            cm2Profit: toNumber(biAlignedTotals?.total_previous_profit_cm2),
+            asp: toNumber(biAlignedTotals?.total_previous_asp),
+            profitPct: toNumber(biAlignedTotals?.total_previous_profit_percentage),
         };
-
-        const currAsp = curr.units > 0 ? curr.netSales / curr.units : 0;
-        const prevAsp = prev.units > 0 ? prev.netSales / prev.units : 0;
-
-        const currProfitPct = curr.netSales !== 0 ? (curr.cm2Profit / curr.netSales) * 100 : 0;
-        const prevProfitPct = prev.netSales !== 0 ? (prev.cm2Profit / prev.netSales) * 100 : 0;
-
-        const deltaPct = (c: number, p: number) => (p ? ((c - p) / p) * 100 : null);
 
         return {
-            curr: { ...curr, asp: currAsp, profitPct: currProfitPct },
-            prev: { ...prev, asp: prevAsp, profitPct: prevProfitPct },
+            curr,
+            prev,
             deltas: {
-                units: deltaPct(curr.units, prev.units),
-                netSales: deltaPct(curr.netSales, prev.netSales),
-                grossSales: deltaPct(curr.grossSales, prev.grossSales),
-                asp: deltaPct(currAsp, prevAsp),
-                profit: deltaPct(curr.profit, prev.profit),
-                profitPct: safeDeltaPct(currProfitPct, prevProfitPct),
-
+                units: toNumber(biAlignedTotals?.units_change_percentage),
+                netSales: toNumber(biAlignedTotals?.net_sales_change_percentage),
+                grossSales: toNumber(biAlignedTotals?.gross_sales_change_percentage),
+                asp: toNumber(biAlignedTotals?.asp_change_percentage),
+                profit: toNumber(biAlignedTotals?.cm2_profit_change_percentage),
+                profitPct: toNumber(biAlignedTotals?.cm2_margin_change_percentage),
             },
         };
-    }, [biDailySeriesHome, selectedStartDay, selectedEndDay, isCurrentPointAllowed,
-        isPreviousPointAllowed,]);
+    }, [biAlignedTotals]);
 
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const useBiCm2 = showLiveBI && rangeActive;
     const cm2Ready = useBiCm2 && !biLoading && !!biAlignedTotals;
     const biCardsReady = rangeActive && !biLoading && !!biAlignedTotals;
-
-    const cachedRangeTotals = useMemo(() => {
-        const currAll = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
-        const prevAll = (biDailySeriesHome?.previous || []).filter(isPreviousPointAllowed);
-
-        const currPts = sliceByDayRange(currAll, selectedStartDay, selectedEndDay);
-        const prevPts = sliceByDayRange(prevAll, selectedStartDay, selectedEndDay);
-
-        const sum = (arr: DailyPoint[], key: keyof DailyPoint) =>
-            arr.reduce((acc, row) => acc + Number(row?.[key] ?? 0), 0);
-
-        const currentProfit = sum(currPts, "profit");
-        const previousProfit = sum(prevPts, "profit");
-
-        const currentAds = sum(currPts as any[], "advertising" as keyof DailyPoint);
-        const previousAds = sum(prevPts as any[], "advertising" as keyof DailyPoint);
-
-        const currentPlatformFees = sum(currPts as any[], "platform_fee" as keyof DailyPoint);
-        const previousPlatformFees = sum(prevPts as any[], "platform_fee" as keyof DailyPoint);
-
-        const currentNetSales = sum(currPts, "net_sales");
-        const previousNetSales = sum(prevPts, "net_sales");
-
-        const currentCm2Profit = currentProfit - currentAds - currentPlatformFees;
-        const previousCm2Profit = previousProfit - previousAds - previousPlatformFees;
-
-        const currentCm2Pct =
-            currentNetSales > 0 ? (currentCm2Profit / currentNetSales) * 100 : 0;
-
-        const previousCm2Pct =
-            previousNetSales > 0 ? (previousCm2Profit / previousNetSales) * 100 : 0;
-
-        return {
-            currentProfit,
-            previousProfit,
-            currentAds,
-            previousAds,
-            currentPlatformFees,
-            previousPlatformFees,
-            currentNetSales,
-            previousNetSales,
-            currentCm2Profit,
-            previousCm2Profit,
-            currentCm2Pct,
-            previousCm2Pct,
-        };
-    }, [
-        biDailySeriesHome,
-        selectedStartDay,
-        selectedEndDay,
-        isCurrentPointAllowed,
-        isPreviousPointAllowed,
-    ]);
 
     const biAlignedTotalsHome = useMemo(() => {
         if (!biCardsReady || !biAlignedTotals) return null;
@@ -6796,18 +6688,14 @@ export default function DashboardPage() {
         );
 
     const mtdUnitsCurrent = useMemo(() => {
-        return getNetUnits(grandTotalRowRaw ?? grandTotalRowDisplay ?? {});
-    }, [grandTotalRowRaw, grandTotalRowDisplay]);
+        return toNumber(backendDashboardMetric("units").current);
+    }, [backendDashboardMetric]);
 
     const mtdUnitsPrevious = useMemo(() => {
-        return toNumber(
-            data?.previous_period?.totals?.total_quantity ??
-            data?.previous_period?.totals?.net_quantity ??
-            prev.quantity
-        );
-    }, [data, prev.quantity]);
+        return toNumber(backendDashboardMetric("units").previous);
+    }, [backendDashboardMetric]);
 
-    const mtdUnitsDelta = safeDeltaPct(mtdUnitsCurrent, mtdUnitsPrevious);
+    const mtdUnitsDelta = toNumber(backendDashboardMetric("units").change_percentage);
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
         return computePlSummaryTotals(data, monthlySkuwiseRows, platform);
@@ -7429,234 +7317,68 @@ export default function DashboardPage() {
     ]);
 
     const globalMtdCardData = useMemo(() => {
-        const globalRows =
-            platform === "global" && Array.isArray(data?.skuwise_items_global)
-                ? data.skuwise_items_global
-                : Array.isArray(data?.skuwise_items)
-                    ? data.skuwise_items
-                    : monthlySkuwiseRows || [];
-
-        const globalGrand = getGrandTotalRow(globalRows) as GrandTotalSkuwiseRow;
-
-        const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
-        const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
-        const previousGlobalRows = Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
-            ? previousSkuwiseGlobalData.skuwise_items_global
-            : [];
-        const previousGlobalGrand = getGrandTotalRow(previousGlobalRows);
-        const currentPromotionsRaw = pickPromotionalRebates(
-            globalGrand,
-            (data as any)?.derived_totals_global,
-            (data as any)?.derived_totals
-        );
-        const previousPromotionsRaw = pickPromotionalRebates(
-            prevDerived,
-            prevAligned,
-            previousGlobalGrand,
-            data?.previous_period?.totals
-        );
-        const previousPromotionsNetSales = pickFirstNonZeroNumber(
-            prevDerived.net_sales,
-            prevAligned.total_previous_net_sales,
-            previousGlobalGrand.net_sales,
-            data?.previous_period?.totals?.net_sales
-        );
+        const metrics = (data as any)?.dashboard_card_metrics || {};
+        const metric = (key: string) => metrics[key] || {};
 
         return {
-            units: getNetUnits(globalGrand),
-            prevUnits: toNumber(prevDerived.total_quantity ?? prevDerived.net_quantity ?? prevDerived.quantity),
-
-            grossSales: toNumber(globalGrand.gross_sales),
-            prevGrossSales: toNumber(prevDerived.gross_sales),
-
-            netSales: toNumber(globalGrand.net_sales),
-            prevNetSales: toNumber(prevDerived.net_sales),
-
-            asp: toNumber(globalGrand.asp),
-            prevAsp: toNumber(prevDerived.asp),
-
-            ads: toNumber(globalGrand.total_ads ?? globalGrand.advertising_fees ?? globalGrand.ads_spend),
-            prevAds: toNumber(prevAligned.total_previous_advertising ?? prevDerived.advertising_fees),
-
-            tacos: toNumber(globalGrand.tacos_total_advertising_cost_of_sale ?? globalGrand.acos),
-            prevTacos: toNumber(
-                prevDerived.net_sales
-                    ? (toNumber(prevAligned.total_previous_advertising ?? prevDerived.advertising_fees) /
-                        toNumber(prevDerived.net_sales)) * 100
-                    : 0
-            ),
-
-            cm2Profit: toNumber(globalGrand.total_cm2_profit ?? globalGrand.cm2_profit),
-            prevCm2Profit: toNumber(prevAligned.total_previous_profit_cm2 ?? prevDerived.cm2_profit),
-
-            cm2Pct: toNumber(globalGrand.total_cm2_margins ?? globalGrand.profit_percentage ?? globalGrand.cm2_profit_per),
-            prevCm2Pct: toNumber(
-                prevAligned.total_previous_profit_percentage ??
-                prevDerived.cm2_profit_percentage
-            ),
-
-            promotions: Math.abs(currentPromotionsRaw),
-            prevPromotions: Math.abs(previousPromotionsRaw),
-            promotionsPct: calculatePromotionalRebatesPct(
-                currentPromotionsRaw,
-                toNumber(globalGrand.net_sales),
-                globalGrand,
-                (data as any)?.derived_totals_global,
-                (data as any)?.derived_totals
-            ),
-            prevPromotionsPct: calculatePromotionalRebatesPct(
-                previousPromotionsRaw,
-                previousPromotionsNetSales,
-                prevDerived,
-                prevAligned,
-                previousGlobalGrand,
-                data?.previous_period?.totals
-            ),
+            units: toNumber(metric("units").current),
+            prevUnits: toNumber(metric("units").previous),
+            unitsDelta: toNumber(metric("units").change_percentage),
+            grossSales: toNumber(metric("gross_sales").current),
+            prevGrossSales: toNumber(metric("gross_sales").previous),
+            grossSalesDelta: toNumber(metric("gross_sales").change_percentage),
+            netSales: toNumber(metric("net_sales").current),
+            prevNetSales: toNumber(metric("net_sales").previous),
+            netSalesDelta: toNumber(metric("net_sales").change_percentage),
+            asp: toNumber(metric("asp").current),
+            prevAsp: toNumber(metric("asp").previous),
+            aspDelta: toNumber(metric("asp").change_percentage),
+            ads: toNumber(metric("cost_of_ads").current),
+            prevAds: toNumber(metric("cost_of_ads").previous),
+            adsDelta: toNumber(metric("cost_of_ads").change_percentage),
+            tacos: toNumber(metric("tacos").current),
+            prevTacos: toNumber(metric("tacos").previous),
+            tacosDelta: toNumber(metric("tacos").change_percentage),
+            cm2Profit: toNumber(metric("cm2_profit").current),
+            prevCm2Profit: toNumber(metric("cm2_profit").previous),
+            cm2ProfitDelta: toNumber(metric("cm2_profit").change_percentage),
+            cm2Pct: toNumber(metric("cm2_profit").current_percentage),
+            prevCm2Pct: toNumber(metric("cm2_profit").previous_percentage),
+            promotions: toNumber(metric("promotions").current),
+            prevPromotions: toNumber(metric("promotions").previous),
+            promotionsDelta: toNumber(metric("promotions").change_percentage),
+            promotionsPct: toNumber(metric("promotions").current_percentage),
+            prevPromotionsPct: toNumber(metric("promotions").previous_percentage),
         };
-    }, [
-        platform,
-        data,
-        monthlySkuwiseRows,
-        previousSkuwiseGlobalData,
-    ]);
+    }, [data]);
 
     const stickyTableTotals = useMemo(() => {
-        const row: GrandTotalSkuwiseRow = grandTotalRowRaw ?? grandTotalRowDisplay ?? {};
-
-        const units = getNetUnits(row);
-        const netSales = toNumber(row.net_sales);
-        const asp = toNumber(row.asp);
-
-        const costOfAds = toNumber(
-            platform === "global"
-                ? (
-                    plSummaryTotals.advertising_total ??
-                    row.total_ads ??
-                    row.advertising_total ??
-                    row.advertising_fees ??
-                    row.ads_spend
-                )
-                : (
-                    row.total_ads ??
-                    row.ads_spend ??
-                    row.advertising_total ??
-                    row.advertising_fees
-                )
-        );
-
-        const tacos = toNumber(
-            platform === "global"
-                ? (
-                    plSummaryTotals.acos ??
-                    row.tacos_total_advertising_cost_of_sale ??
-                    row.acos
-                )
-                : (
-                    row.tacos_total_advertising_cost_of_sale ??
-                    row.acos
-                )
-        );
-
-        const cm2Profit = toNumber(
-            platform === "global"
-                ? (
-                    plSummaryTotals.cm2_profit ??
-                    row.total_cm2_profit ??
-                    row.cm2_profit
-                )
-                : (
-                    row.total_cm2_profit ??
-                    row.cm2_profit
-                )
-        );
-
-        const cm2MarginPct = toNumber(
-            row.total_cm2_margins ??
-            row.cm2_profit_per
-        );
-
-        const promotions = Math.abs(toNumber(row.promotional_rebates));
-        const promotionsPct = Math.abs(
-            netSales
-                ? (toNumber(row.promotional_rebates) / netSales) * 100
-                : toNumber(row.promotional_rebates_percentage)
-        );
-
         return {
-            units,
-            netSales,
-            asp,
-            costOfAds,
-            tacos,
-            cm2Profit,
-            cm2MarginPct,
-            promotions,
-            promotionsPct,
+            units: globalMtdCardData.units,
+            netSales: globalMtdCardData.netSales,
+            asp: globalMtdCardData.asp,
+            costOfAds: globalMtdCardData.ads,
+            tacos: globalMtdCardData.tacos,
+            cm2Profit: globalMtdCardData.cm2Profit,
+            cm2MarginPct: globalMtdCardData.cm2Pct,
+            promotions: globalMtdCardData.promotions,
+            promotionsPct: globalMtdCardData.promotionsPct,
         };
-    }, [
-        platform,
-        grandTotalRowRaw,
-        grandTotalRowDisplay,
-        plSummaryTotals.advertising_total,
-        plSummaryTotals.acos,
-        plSummaryTotals.cm2_profit,
-    ]);
+    }, [globalMtdCardData]);
 
     const stickyPreviousTotals = useMemo(() => {
-        const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
-        const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
-        const previousGlobalRows = Array.isArray(previousSkuwiseGlobalData?.skuwise_items_global)
-            ? previousSkuwiseGlobalData.skuwise_items_global
-            : [];
-        const previousGlobalGrand = getGrandTotalRow(previousGlobalRows);
-
-        const prevNetSales = pickFirstNonZeroNumber(
-            prevDerived.net_sales,
-            prevAligned.total_previous_net_sales,
-            previousGlobalGrand.net_sales
-        );
-        const prevAds = toNumber(
-            prevAligned.total_previous_advertising ??
-            prevDerived.advertising_fees
-        );
-        const prevPromotionsRaw = pickPromotionalRebates(
-            prevDerived,
-            prevAligned,
-            previousGlobalGrand
-        );
-        const prevPromotions = Math.abs(prevPromotionsRaw);
-
         return {
-            units: toNumber(prevDerived.quantity),
-            netSales: prevNetSales,
-            asp: toNumber(prevDerived.asp),
-
-            costOfAds: prevAds,
-
-            tacos: prevNetSales
-                ? (prevAds / prevNetSales) * 100
-                : 0,
-
-            cm2Profit: toNumber(
-                prevAligned.total_previous_profit_cm2 ??
-                prevDerived.cm2_profit
-            ),
-
-            cm2MarginPct: toNumber(
-                prevAligned.total_previous_profit_percentage ??
-                prevDerived.cm2_profit_percentage
-            ),
-
-            promotions: prevPromotions,
-            promotionsPct: calculatePromotionalRebatesPct(
-                prevPromotionsRaw,
-                prevNetSales,
-                prevDerived,
-                prevAligned,
-                previousGlobalGrand
-            ),
+            units: globalMtdCardData.prevUnits,
+            netSales: globalMtdCardData.prevNetSales,
+            asp: globalMtdCardData.prevAsp,
+            costOfAds: globalMtdCardData.prevAds,
+            tacos: globalMtdCardData.prevTacos,
+            cm2Profit: globalMtdCardData.prevCm2Profit,
+            cm2MarginPct: globalMtdCardData.prevCm2Pct,
+            promotions: globalMtdCardData.prevPromotions,
+            promotionsPct: globalMtdCardData.prevPromotionsPct,
         };
-    }, [previousSkuwiseGlobalData]);
+    }, [globalMtdCardData]);
 
     const globalTargetCardTotals = useMemo(() => {
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
@@ -7960,14 +7682,6 @@ export default function DashboardPage() {
     const useBiForAmazonCards =
         showLiveBI && rangeActive && (isCountryMode || platform === "global");
 
-    const unitsToUse = useBiForAmazonCards ? (biCardKpis.curr.units ?? 0) : toNumberSafe(totals?.quantity ?? 0);
-
-    const moneyPerUnitFormatter = useCallback(
-        (v: number) => renderMoneyWithPerUnit(Number(v) || 0, unitsToUse, formatDisplayAmount),
-        [unitsToUse, renderMoneyWithPerUnit, formatDisplayAmount]
-    );
-
-
     /* ===================== ✅ GLOBAL CARD: prev/current + deltas ===================== */
 
     // Global Units
@@ -8267,7 +7981,7 @@ export default function DashboardPage() {
         const finalLastRefreshAt = lastRefreshAt ?? Date.now();
 
         return {
-            schemaVersion: 3,
+            schemaVersion: 4,
             complete: true,
             source: "dashboard_client",
             data,
@@ -9034,53 +8748,38 @@ export default function DashboardPage() {
     const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.current
         : rangeActive
-            ? cachedRangeTotals.currentAds
+            ? toNumber(biAlignedTotals?.total_current_advertising)
             : adsSpendTotal;
 
     const mtdCostOfAdsPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.previous
         : rangeActive
-            ? cachedRangeTotals.previousAds
+            ? toNumber(biAlignedTotals?.total_previous_advertising)
             : amazonPrevAdsDisp;
 
     const mtdCostOfAdsDelta = shouldShowDummyUi
         ? dummyStatData.costOfAds.deltaPct
-        : safeDeltaPct(
-            mtdCostOfAdsCurrentDisplay,
-            mtdCostOfAdsPreviousDisplay
-        );
+        : rangeActive
+            ? toNumber(biAlignedTotals?.advertising_change_percentage)
+            : toNumber(backendDashboardMetric("cost_of_ads").change_percentage);
 
     const mtdTacosCurrent = shouldShowDummyUi
         ? dummyStatData.tacos.current
         : rangeActive
-            ? (
-                cachedRangeTotals.currentNetSales > 0
-                    ? (cachedRangeTotals.currentAds / cachedRangeTotals.currentNetSales) * 100
-                    : 0
-            )
-            : (
-                Number(plSummaryTotals.net_sales ?? 0) > 0
-                    ? (Number(adsSpendTotal ?? 0) / Number(plSummaryTotals.net_sales ?? 0)) * 100
-                    : 0
-            );
+            ? toNumber(biAlignedTotals?.total_current_tacos)
+            : toNumber(backendDashboardMetric("tacos").current);
 
     const mtdTacosPrevious = shouldShowDummyUi
         ? dummyStatData.tacos.previous
         : rangeActive
-            ? (
-                cachedRangeTotals.previousNetSales > 0
-                    ? (cachedRangeTotals.previousAds / cachedRangeTotals.previousNetSales) * 100
-                    : 0
-            )
-            : (
-                Number(prev.netSales ?? 0) > 0
-                    ? (Number(amazonPrevAdsDisp ?? 0) / Number(prev.netSales ?? 0)) * 100
-                    : 0
-            );
+            ? toNumber(biAlignedTotals?.total_previous_tacos)
+            : toNumber(backendDashboardMetric("tacos").previous);
 
     const mtdTacosDelta = shouldShowDummyUi
         ? dummyStatData.tacos.deltaPct
-        : safeDeltaPct(mtdTacosCurrent, mtdTacosPrevious);
+        : rangeActive
+            ? toNumber(biAlignedTotals?.tacos_change_percentage)
+            : toNumber(backendDashboardMetric("tacos").change_percentage);
 
     const stickyKpiItems = [
         {
@@ -9100,7 +8799,7 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.units.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.units, stickyPreviousTotals.units)
+                    ? globalMtdCardData.unitsDelta
                     : (useBiForAmazonCards ? biCardKpis.deltas.units : mtdUnitsDelta),
 
             loading: !shouldShowDummyUi && (
@@ -9133,7 +8832,7 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.asp.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.asp, stickyPreviousTotals.asp)
+                    ? globalMtdCardData.aspDelta
                     : (useBiForAmazonCards
                         ? biCardKpis.deltas.asp
                         : deltas.aspPct),
@@ -9169,7 +8868,7 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.netSales.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.netSales, stickyPreviousTotals.netSales)
+                    ? globalMtdCardData.netSalesDelta
                     : (useBiForAmazonCards
                         ? biCardKpis.deltas.netSales
                         : deltas.netSalesPct),
@@ -9201,7 +8900,7 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.costOfAds.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.costOfAds, stickyPreviousTotals.costOfAds)
+                    ? globalMtdCardData.adsDelta
                     : mtdCostOfAdsDelta,
 
             inverseDelta: true,
@@ -9233,7 +8932,7 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.tacos, stickyPreviousTotals.tacos)
+                    ? globalMtdCardData.tacosDelta
                     : mtdTacosDelta,
 
             inverseDelta: true,
@@ -9265,11 +8964,10 @@ export default function DashboardPage() {
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
                 : isStickyGlobal
-                    ? safeDeltaPct(stickyTableTotals.cm2Profit, stickyPreviousTotals.cm2Profit)
-                    : safeDeltaPct(
-                        totalRowCm2Profit,
-                        convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency)
-                    ),
+                    ? globalMtdCardData.cm2ProfitDelta
+                    : rangeActive
+                        ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
+                        : toNumber(backendDashboardMetric("cm2_profit").change_percentage),
 
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
@@ -9284,7 +8982,9 @@ export default function DashboardPage() {
                         ? dummyStatData.cm2ProfitPct.current
                         : isStickyGlobal
                             ? stickyTableTotals.cm2MarginPct
-                            : totalRowCm2Margins,
+                            : rangeActive
+                                ? toNumber(biAlignedTotals?.total_current_profit_percentage)
+                                : toNumber(backendDashboardMetric("cm2_profit").current_percentage),
                     "CM2 Profit"
                 ),
             previousFormatter: (val: number) =>
@@ -9294,7 +8994,9 @@ export default function DashboardPage() {
                         ? dummyStatData.cm2ProfitPct.previous
                         : isStickyGlobal
                             ? stickyPreviousTotals.cm2MarginPct
-                            : prev.profitPct,
+                            : rangeActive
+                                ? toNumber(biAlignedTotals?.total_previous_profit_percentage)
+                                : toNumber(backendDashboardMetric("cm2_profit").previous_percentage),
                     "CM2 Profit"
                 ),
             bottomLabel: prevLabel,
@@ -10835,10 +10537,9 @@ export default function DashboardPage() {
                 Number(
                     source?.cm2_profit_per_unit_curr ??
                     source?.cm2_profit_per_unit ??
-                    source?.cm2_profit_per ??
                     source?.cm2_profit_unit ??
                     0
-                ) || (units > 0 ? cm2Profit / units : 0);
+                ) || 0;
 
             const hasCm2 =
                 source?.cm2_profit_curr !== undefined ||
@@ -10866,30 +10567,15 @@ export default function DashboardPage() {
                 "Profit Per Unit (%)"
             );
 
-            const cm2ProfitPrev = Number(
-                source?.cm2_profit_prev ??
-                source?.previous_cm2_profit ??
-                0
-            ) || 0;
-
-            const cm2ProfitPerUnitPrev = Number(
-                source?.cm2_profit_per_unit_prev ??
-                0
-            ) || 0;
-
             const cm2ProfitGrowth =
                 source?.cm2_profit_growth_pct !== undefined
                     ? Number(source.cm2_profit_growth_pct)
-                    : cm2ProfitPrev
-                        ? ((cm2Profit - cm2ProfitPrev) / Math.abs(cm2ProfitPrev)) * 100
-                        : 0;
+                    : 0;
 
             const cm2ProfitPerUnitGrowth =
                 source?.cm2_profit_per_unit_growth_pct !== undefined
                     ? Number(source.cm2_profit_per_unit_growth_pct)
-                    : cm2ProfitPerUnitPrev
-                        ? ((cm2ProfitPerUnit - cm2ProfitPerUnitPrev) / Math.abs(cm2ProfitPerUnitPrev)) * 100
-                        : 0;
+                    : 0;
 
             const valueCurrency: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency;
 
@@ -10931,7 +10617,7 @@ export default function DashboardPage() {
                         {
                             label: "CM2 profit per unit",
                             value: formatDrawerMetricValue(
-                                cm2ProfitPerUnit,
+                                Math.round(cm2ProfitPerUnit),
                                 cm2ProfitPerUnitGrowth,
                                 "money",
                                 valueCurrency
@@ -10954,7 +10640,7 @@ export default function DashboardPage() {
                         {
                             label: "CM1 profit per unit",
                             value: formatDrawerMetricValue(
-                                cm1ProfitPerUnit,
+                                Math.round(cm1ProfitPerUnit),
                                 cm1ProfitPerUnitGrowth,
                                 "money",
                                 valueCurrency
@@ -11665,13 +11351,13 @@ export default function DashboardPage() {
                 : 0)
             : Number(prev?.cm2Profit ?? 0);
 
-    const rangeCm2ProfitCurrent = cachedRangeTotals.currentCm2Profit;
+    const rangeCm2ProfitCurrent = toNumber(biAlignedTotals?.total_current_profit_cm2);
 
-    const rangeCm2ProfitPrevious = cachedRangeTotals.previousCm2Profit;
+    const rangeCm2ProfitPrevious = toNumber(biAlignedTotals?.total_previous_profit_cm2);
 
-    const rangeCm2ProfitPctCurrent = cachedRangeTotals.currentCm2Pct;
+    const rangeCm2ProfitPctCurrent = toNumber(biAlignedTotals?.total_current_profit_percentage);
 
-    const rangeCm2ProfitPctPrevious = cachedRangeTotals.previousCm2Pct;
+    const rangeCm2ProfitPctPrevious = toNumber(biAlignedTotals?.total_previous_profit_percentage);
 
     const mtdCm2ProfitCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
@@ -11687,76 +11373,62 @@ export default function DashboardPage() {
 
     const mtdCm2ProfitDelta = shouldShowDummyUi
         ? dummyStatData.cm2Profit.deltaPct
-        : safeDeltaPct(
-            mtdCm2ProfitCurrentDisplay,
-            mtdCm2ProfitPreviousDisplay
-        );
+        : rangeActive
+            ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
+            : toNumber(backendDashboardMetric("cm2_profit").change_percentage);
 
     const mtdCm2ProfitPctCurrent = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.current
         : rangeActive
             ? rangeCm2ProfitPctCurrent
-            : totalRowCm2Margins;
+            : toNumber(backendDashboardMetric("cm2_profit").current_percentage);
 
     const mtdCm2ProfitPctPrevious = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.previous
         : rangeActive
             ? rangeCm2ProfitPctPrevious
-            : Number(prev?.profitPct ?? 0);
+            : toNumber(backendDashboardMetric("cm2_profit").previous_percentage);
 
     const rawMtdPromotionsCurrent = Math.abs(
-        toNumber(
-            derived?.promotional_rebates ??
-            grandTotalRowRaw?.promotional_rebates ??
-            grandTotalRowDisplay?.promotional_rebates ??
-            totals?.promotional_rebates ??
-            0
-        )
+        toNumber(backendDashboardMetric("promotions").current)
     );
 
     const rawMtdPromotionsPctCurrent = Math.abs(
-        (
-            toNumber(derived?.net_sales ?? grandTotalRowRaw?.net_sales ?? grandTotalRowDisplay?.net_sales)
-                ? (
-                    toNumber(
-                        derived?.promotional_rebates ??
-                        grandTotalRowRaw?.promotional_rebates ??
-                        grandTotalRowDisplay?.promotional_rebates ??
-                        totals?.promotional_rebates ??
-                        0
-                    ) /
-                    toNumber(derived?.net_sales ?? grandTotalRowRaw?.net_sales ?? grandTotalRowDisplay?.net_sales)
-                ) * 100
-                : toNumber(
-                    derived?.promotional_rebates_percentage ??
-                    grandTotalRowRaw?.promotional_rebates_percentage ??
-                    grandTotalRowDisplay?.promotional_rebates_percentage
-                )
-        )
+        toNumber(backendDashboardMetric("promotions").current_percentage)
     );
 
     const mtdPromotionsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.promotions.current
-        : rawMtdPromotionsCurrent;
+        : rangeActive
+            ? Math.abs(toNumber(biAlignedTotals?.total_current_promotional_rebates))
+            : rawMtdPromotionsCurrent;
 
     const mtdPromotionsPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.promotions.previous
-        : convertToDisplayCurrency(prev.promotions ?? 0, amazonDataCurrency);
+        : rangeActive
+            ? Math.abs(toNumber(biAlignedTotals?.total_previous_promotional_rebates))
+            : convertToDisplayCurrency(
+                backendDashboardMetric("promotions").previous,
+                amazonDataCurrency
+            );
 
     const mtdPromotionsDelta = shouldShowDummyUi
         ? dummyStatData.promotions.deltaPct
-        : safeDeltaPct(
-            mtdPromotionsCurrentDisplay,
-            mtdPromotionsPreviousDisplay
-        );
+        : rangeActive
+            ? toNumber(biAlignedTotals?.promotions_change_percentage)
+            : toNumber(backendDashboardMetric("promotions").change_percentage);
 
     const mtdPromotionsPctCurrent = shouldShowDummyUi
         ? dummyStatData.promotionsPct.current
-        : rawMtdPromotionsPctCurrent;
+        : rangeActive
+            ? Math.abs(toNumber(biAlignedTotals?.total_current_promotional_rebates_percentage))
+            : rawMtdPromotionsPctCurrent;
 
     const mtdPromotionsPctPrevious = shouldShowDummyUi
         ? dummyStatData.promotionsPct.previous
-        : prev.promotionsPct;
+        : rangeActive
+            ? Math.abs(toNumber(biAlignedTotals?.total_previous_promotional_rebates_percentage))
+            : Math.abs(toNumber(backendDashboardMetric("promotions").previous_percentage));
 
     const globalCm2ProfitCurrentRaw = globalUseBi
         ? (globalCm2Ready ? Number(biAlignedTotals?.total_current_profit_cm2 ?? 0) : 0)
@@ -11819,129 +11491,41 @@ export default function DashboardPage() {
     const secondsLeft = remainingSteps * 30;
 
     const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
-        const currentRows =
-            country === "uk"
-                ? Array.isArray(data?.skuwise_items_uk)
-                    ? data.skuwise_items_uk
-                    : []
-                : Array.isArray(data?.skuwise_items_us)
-                    ? data.skuwise_items_us
-                    : [];
-
-        const currentGrand = getGrandTotalRow(currentRows) as GrandTotalSkuwiseRow;
-
-        const prevDerived =
-            country === "uk"
-                ? previousSkuwiseGlobalData?.derived_totals_uk || {}
-                : previousSkuwiseGlobalData?.derived_totals_us || {};
-
-        const prevAligned =
-            country === "uk"
-                ? previousSkuwiseGlobalData?.aligned_totals_uk || {}
-                : previousSkuwiseGlobalData?.aligned_totals_us || {};
-
-        const previousRows =
-            country === "uk"
-                ? Array.isArray(previousSkuwiseGlobalData?.skuwise_items_uk)
-                    ? previousSkuwiseGlobalData.skuwise_items_uk
-                    : []
-                : Array.isArray(previousSkuwiseGlobalData?.skuwise_items_us)
-                    ? previousSkuwiseGlobalData.skuwise_items_us
-                    : [];
-        const previousGrand = getGrandTotalRow(previousRows);
-        const currentDerived =
-            country === "uk"
-                ? (data as any)?.derived_totals_uk || {}
-                : (data as any)?.derived_totals_us || {};
-        const currentPromotionsRaw = pickPromotionalRebates(
-            currentGrand,
-            currentDerived
-        );
-        const previousPromotionsRaw = pickPromotionalRebates(
-            prevDerived,
-            prevAligned,
-            previousGrand
-        );
-        const previousPromotionsNetSales = pickFirstNonZeroNumber(
-            prevDerived.net_sales,
-            prevAligned.total_previous_net_sales,
-            previousGrand.net_sales
-        );
+        const countryMetrics = (data as any)?.dashboard_card_metrics_by_country?.[country];
+        const metrics = countryMetrics || (data as any)?.dashboard_card_metrics || {};
+        const metric = (key: string) => metrics[key] || {};
 
         return {
-            units: getNetUnits(currentGrand),
-            prevUnits: toNumber(
-                prevDerived.total_quantity ??
-                prevDerived.net_quantity ??
-                prevDerived.quantity
-            ),
-
-            grossSales: toNumber(currentGrand.gross_sales),
-            prevGrossSales: toNumber(prevDerived.gross_sales),
-
-            netSales: toNumber(currentGrand.net_sales),
-            prevNetSales: toNumber(prevDerived.net_sales),
-
-            asp: toNumber(currentGrand.asp),
-            prevAsp: toNumber(prevDerived.asp),
-
-            ads: toNumber(
-                currentGrand.total_ads ??
-                currentGrand.advertising_fees ??
-                currentGrand.ads_spend
-            ),
-            prevAds: toNumber(
-                prevAligned.total_previous_advertising ??
-                prevDerived.advertising_fees
-            ),
-
-            tacos: toNumber(
-                currentGrand.tacos_total_advertising_cost_of_sale ??
-                currentGrand.acos
-            ),
-            prevTacos: toNumber(
-                prevDerived.net_sales
-                    ? (toNumber(prevAligned.total_previous_advertising ?? prevDerived.advertising_fees) /
-                        toNumber(prevDerived.net_sales)) * 100
-                    : 0
-            ),
-
-            cm2Profit: toNumber(
-                currentGrand.total_cm2_profit ??
-                currentGrand.cm2_profit
-            ),
-            prevCm2Profit: toNumber(
-                prevAligned.total_previous_profit_cm2 ??
-                prevDerived.cm2_profit
-            ),
-
-            cm2Pct: toNumber(
-                currentGrand.total_cm2_margins ??
-                currentGrand.profit_percentage ??
-                currentGrand.cm2_profit_per
-            ),
-            prevCm2Pct: toNumber(
-                prevAligned.total_previous_profit_percentage ??
-                prevDerived.cm2_profit_percentage
-            ),
-
-            promotions: Math.abs(currentPromotionsRaw),
-            prevPromotions: Math.abs(previousPromotionsRaw),
-            promotionsPct: calculatePromotionalRebatesPct(
-                currentPromotionsRaw,
-                toNumber(currentGrand.net_sales),
-                currentGrand,
-                currentDerived
-            ),
-            prevPromotionsPct: calculatePromotionalRebatesPct(
-                previousPromotionsRaw,
-                previousPromotionsNetSales,
-                prevDerived,
-                prevAligned,
-                previousGrand
-            ),
+            units: toNumber(metric("units").current),
+            prevUnits: toNumber(metric("units").previous),
+            unitsDelta: toNumber(metric("units").change_percentage),
+            grossSales: toNumber(metric("gross_sales").current),
+            prevGrossSales: toNumber(metric("gross_sales").previous),
+            grossSalesDelta: toNumber(metric("gross_sales").change_percentage),
+            netSales: toNumber(metric("net_sales").current),
+            prevNetSales: toNumber(metric("net_sales").previous),
+            netSalesDelta: toNumber(metric("net_sales").change_percentage),
+            asp: toNumber(metric("asp").current),
+            prevAsp: toNumber(metric("asp").previous),
+            aspDelta: toNumber(metric("asp").change_percentage),
+            ads: toNumber(metric("cost_of_ads").current),
+            prevAds: toNumber(metric("cost_of_ads").previous),
+            adsDelta: toNumber(metric("cost_of_ads").change_percentage),
+            tacos: toNumber(metric("tacos").current),
+            prevTacos: toNumber(metric("tacos").previous),
+            tacosDelta: toNumber(metric("tacos").change_percentage),
+            cm2Profit: toNumber(metric("cm2_profit").current),
+            prevCm2Profit: toNumber(metric("cm2_profit").previous),
+            cm2ProfitDelta: toNumber(metric("cm2_profit").change_percentage),
+            cm2Pct: toNumber(metric("cm2_profit").current_percentage),
+            prevCm2Pct: toNumber(metric("cm2_profit").previous_percentage),
+            promotions: toNumber(metric("promotions").current),
+            prevPromotions: toNumber(metric("promotions").previous),
+            promotionsDelta: toNumber(metric("promotions").change_percentage),
+            promotionsPct: toNumber(metric("promotions").current_percentage),
+            prevPromotionsPct: toNumber(metric("promotions").previous_percentage),
         };
-    }, [data, previousSkuwiseGlobalData]);
+    }, [data]);
 
     const renderCountryMtdCards = (country: "uk" | "us") => {
         const c = getCountryMtdCardData(country);
@@ -11954,7 +11538,7 @@ export default function DashboardPage() {
                         label="Units"
                         current={c.units}
                         previous={c.prevUnits}
-                        deltaPct={safeDeltaPct(c.units, c.prevUnits)}
+                        deltaPct={c.unitsDelta}
                         formatter={fmtInt}
                         bottomLabel={prevLabel}
                         className="border-[#FDD36F] border-t-4"
@@ -11965,7 +11549,7 @@ export default function DashboardPage() {
                         label="ASP"
                         current={c.asp}
                         previous={c.prevAsp}
-                        deltaPct={safeDeltaPct(c.asp, c.prevAsp)}
+                        deltaPct={c.aspDelta}
                         formatter={formatDisplayAmount}
                         previousFormatter={formatDisplayAmount}
                         bottomLabel={prevLabel}
@@ -11977,7 +11561,7 @@ export default function DashboardPage() {
                         label="Gross Sales"
                         current={c.grossSales}
                         previous={c.prevGrossSales}
-                        deltaPct={safeDeltaPct(c.grossSales, c.prevGrossSales)}
+                        deltaPct={c.grossSalesDelta}
                         formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         bottomLabel={prevLabel}
@@ -11989,7 +11573,7 @@ export default function DashboardPage() {
                         label="Net Sales"
                         current={c.netSales}
                         previous={c.prevNetSales}
-                        deltaPct={safeDeltaPct(c.netSales, c.prevNetSales)}
+                        deltaPct={c.netSalesDelta}
                         formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         bottomLabel={prevLabel}
@@ -12003,7 +11587,7 @@ export default function DashboardPage() {
                         label="Cost of Ads"
                         current={c.ads}
                         previous={c.prevAds}
-                        deltaPct={safeDeltaPct(c.ads, c.prevAds)}
+                        deltaPct={c.adsDelta}
                         inverseDelta
                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
@@ -12016,7 +11600,7 @@ export default function DashboardPage() {
                         label="TACoS"
                         current={c.tacos}
                         previous={c.prevTacos}
-                        deltaPct={safeDeltaPct(c.tacos, c.prevTacos)}
+                        deltaPct={c.tacosDelta}
                         inverseDelta
                         formatter={fmtPct2}
                         bottomLabel={prevLabel}
@@ -12028,7 +11612,7 @@ export default function DashboardPage() {
                         label="CM2 Profit"
                         current={c.cm2Profit}
                         previous={c.prevCm2Profit}
-                        deltaPct={safeDeltaPct(c.cm2Profit, c.prevCm2Profit)}
+                        deltaPct={c.cm2ProfitDelta}
                         formatter={(val) => formatCurrentAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
                         bottomLabel={prevLabel}
@@ -12040,7 +11624,7 @@ export default function DashboardPage() {
                         label="Promotions"
                         current={c.promotions}
                         previous={c.prevPromotions}
-                        deltaPct={safeDeltaPct(c.promotions, c.prevPromotions)}
+                        deltaPct={c.promotionsDelta}
                         inverseDelta
                         formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
                         previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
