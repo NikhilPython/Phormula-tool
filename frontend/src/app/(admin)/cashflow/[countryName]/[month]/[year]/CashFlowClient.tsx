@@ -108,6 +108,37 @@ type SummaryShape = {
   otherwplatform: number;
   rembursement_fee: number;
   cashflow: number;
+  gross_sales_per_unit?: number;
+  net_sales_per_unit?: number;
+  marketplace_fees_per_unit?: number;
+  others_per_unit?: number;
+  cash_generated_per_unit?: number;
+  net_reimbursement_per_unit?: number;
+  promotions_pct?: number;
+};
+
+type CashflowCardMetricValues = {
+  units: number;
+  gross_sales: number;
+  gross_sales_per_unit: number;
+  net_sales: number;
+  net_sales_per_unit: number;
+  promotions: number;
+  promotions_pct: number;
+  marketplace_fees: number;
+  marketplace_fees_per_unit: number;
+  others: number;
+  others_per_unit: number;
+  cash_generated: number;
+  cash_generated_per_unit: number;
+  net_reimbursement: number;
+  net_reimbursement_per_unit: number;
+};
+
+type CashflowCardMetrics = {
+  current: CashflowCardMetricValues;
+  previous: CashflowCardMetricValues;
+  deltas: CashflowCardMetricValues;
 };
 
 type SummaryRow = {
@@ -123,10 +154,10 @@ type APIResponse = {
   previous_summary?: CashFlowSummary;
   summary?: CashFlowSummary;
   monthlyBreakdown?: Record<string, CashFlowSummary>;
+  card_metrics?: CashflowCardMetrics;
 };
 
 type QuarterlyMonthlyData = Record<string, CashFlowSummary>;
-type QuarterlyTotals = CashFlowSummary;
 
 const getCurrencySymbol = (country?: string) => {
   switch ((country || "").toLowerCase()) {
@@ -357,9 +388,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const [error, setError] = useState<string>("");
   const [data, setData] = useState<APIResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [allQuarterlyData, setAllQuarterlyData] = useState<
-    Record<string, QuarterlyTotals>
-  >({});
   const [allYearlyData, setAllYearlyData] = useState<
     Record<string, CashFlowSummary>
   >({});
@@ -501,15 +529,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const fetchQuarterlyMonthlyData = async (quarter: string, y: string) => {
     const qMonths = quarterMapping[quarter] || [];
     const monthlyData: QuarterlyMonthlyData = {};
-    const quarterSummary: QuarterlyTotals = {
-      net_sales: 0,
-      amazon_fee: 0,
-      advertising_total: 0,
-      taxncredit: 0,
-      otherwplatform: 0,
-      rembursement_fee: 0,
-      cashflow: 0,
-    };
 
     for (const mName of qMonths) {
       try {
@@ -520,18 +539,12 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         );
         if (result && result.summary) {
           monthlyData[mName] = result.summary;
-          (Object.keys(quarterSummary) as (keyof SummaryShape)[]).forEach(
-            (key) => {
-              quarterSummary[key] =
-                (quarterSummary[key] || 0) + (result.summary?.[key] || 0);
-            }
-          );
         }
       } catch {
         // continue
       }
     }
-    return { monthlyData, quarterSummary };
+    return { monthlyData };
   };
 
   const fetchYearlyMonthlyData = async (
@@ -559,36 +572,6 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     }
 
     return yearlyData;
-  };
-
-  const buildYearlySummaryFromMonths = (
-    yearlyData: Record<string, CashFlowSummary>
-  ): CashFlowSummary => {
-    const summary: CashFlowSummary = {};
-
-    Object.values(yearlyData).forEach((monthSummary) => {
-      Object.entries(monthSummary || {}).forEach(([key, rawValue]) => {
-        // Skip null, undefined, objects and non-numeric values
-        if (rawValue === null || rawValue === undefined) return;
-
-        const numericValue =
-          typeof rawValue === "number"
-            ? rawValue
-            : typeof rawValue === "string" &&
-              rawValue.trim() !== "" &&
-              Number.isFinite(Number(rawValue.replace(/,/g, "")))
-              ? Number(rawValue.replace(/,/g, ""))
-              : null;
-
-        if (numericValue === null || !Number.isFinite(numericValue)) {
-          return;
-        }
-
-        summary[key] = Number(summary[key] ?? 0) + numericValue;
-      });
-    });
-
-    return summary;
   };
 
   const fetchCashFlowData = async () => {
@@ -639,39 +622,19 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
         setQuarterlyMonthlyData(monthlyData);
       }
       else if (periodType === "yearly") {
-        const selectedYearNumber = Number(year);
-        const previousYear = String(selectedYearNumber - 1);
-
         // Current selected year:
         // If current year is selected, exclude the ongoing month.
         // For an old year, use all 12 months.
         const currentYearMonths = getCompletedMonthsForYear(year);
 
-        const currentYearData = await fetchYearlyMonthlyData(
-          year,
-          currentYearMonths
-        );
-
-        // Use the same months for previous year comparison.
-        // Example: Jan-Jun 2026 compared with Jan-Jun 2025.
-        const previousYearData = await fetchYearlyMonthlyData(
-          previousYear,
-          currentYearMonths
-        );
-
-        const currentSummary =
-          buildYearlySummaryFromMonths(currentYearData);
-
-        const previousSummary =
-          buildYearlySummaryFromMonths(previousYearData);
+        const [yearResponse, currentYearData] = await Promise.all([
+          fetchSpecificPeriodData(null, year, "yearly"),
+          fetchYearlyMonthlyData(year, currentYearMonths),
+        ]);
 
         // Used by the yearly line graph
         setAllYearlyData(currentYearData);
-
-        setData({
-          summary: currentSummary,
-          previous_summary: previousSummary,
-        });
+        setData(yearResponse);
       } else {
         const resp = await fetchSpecificPeriodData(
           month.toLowerCase(),
@@ -1230,6 +1193,7 @@ md:sticky md:top-0 md:z-40 sm:flex-row md:items-center md:justify-between"
               <CashFlowSankey
                 data={effectiveData.summary}
                 previous_summary={isPreviewMode ? undefined : data?.previous_summary}
+                cardMetrics={isPreviewMode ? undefined : data?.card_metrics}
                 previousLabel={isPreviewMode ? undefined : previousLabel}
                 periodType={periodType}
                 currency={currencySymbol}

@@ -19,6 +19,11 @@ from sqlalchemy import text
 import pandas as pd
 from decimal import Decimal
 from datetime import date
+from app.utils.dashboard_card_metrics import (
+    add_per_unit_fields,
+    build_pnl_card_metrics,
+    persist_per_unit_fields,
+)
 
 
 
@@ -277,6 +282,14 @@ def aggregate_monthly_sku_rows(rows):
         "reimbursement_vs_sales",
         "rembursment_vs_cm2_margins",
         "promotional_rebates_percentage",
+        "total_cm2_margins",
+        "marketplace_fees_per_unit",
+        "cost_of_ads_per_unit",
+        "gross_sales_per_unit",
+        "net_sales_per_unit",
+        "others_per_unit",
+        "cash_generated_per_unit",
+        "net_reimbursement_per_unit",
     }
 
     for row in rows:
@@ -378,6 +391,7 @@ def aggregate_monthly_sku_rows(rows):
         row["profit_percentage"] = profit_percentage
         row["unit_wise_profitability"] = unit_wise_profitability
         row["cm2_margins"] = cm2_margin
+        row["total_cm2_margins"] = cm2_margin
         row["cm2_profit_percentage"] = cm2_margin
         row["cm2_profit_per"] = cm2_margin
         row["cm2_profit_per_unit"] = cm2_profit / total_quantity if total_quantity else 0
@@ -430,7 +444,7 @@ def aggregate_monthly_sku_rows(rows):
         row["sales_mix"] = (net_sales / total_sales) * 100 if total_sales else 0
         row["profit_mix"] = (profit / total_profit) * 100 if total_profit else 0
 
-    return aggregated_rows
+    return add_per_unit_fields(aggregated_rows)
 
 
 def get_year_monthly_aggregated_data(
@@ -649,6 +663,7 @@ def YearlySKU():
 
         # 🔒 Normalize all rows so the UI gets true numbers, not strings
         current_data = [_normalize_sku_row(dict(row)) for row in results]
+        current_data = add_per_unit_fields(current_data)
         used_current_tables = [table_name]
 
         try:
@@ -682,6 +697,15 @@ def YearlySKU():
         except Exception:
             used_current_tables = [table_name]
 
+        # Old/full-year responses come directly from the yearly table, so keep
+        # its persisted decimal card columns in sync. Current-year rollups are
+        # assembled from monthly source tables and are not written over it.
+        if used_current_tables == [table_name]:
+            try:
+                persist_per_unit_fields(engine, table_name, current_data)
+            except Exception:
+                logger.exception("Could not persist yearly dashboard card columns")
+
         previous_year = get_previous_year(year)
         previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
         previous_data = []
@@ -705,12 +729,15 @@ def YearlySKU():
             used_previous_tables = []
             previous_year_month_limit = 0
 
+        previous_data = add_per_unit_fields(previous_data)
+
         return jsonify({
             "current_table_name": table_name,
             "used_current_tables": used_current_tables,
             "current_data": current_data,
             "previous_table_name": previous_table_name,
-            "previous_data": previous_data
+            "previous_data": previous_data,
+            "card_metrics": build_pnl_card_metrics(current_data, previous_data),
         }), 200
 
     except SQLAlchemyError as e:
@@ -872,6 +899,11 @@ def quarterlyskutable():
                 ).mappings().all()
 
             current_data = [_normalize_sku_row(dict(row)) for row in results]
+            current_data = add_per_unit_fields(current_data)
+            try:
+                persist_per_unit_fields(engine, table_name, current_data)
+            except Exception:
+                logger.exception("Could not persist quarterly dashboard card columns")
 
         except Exception:
             return jsonify({
@@ -895,6 +927,11 @@ def quarterlyskutable():
                     ).mappings().all()
 
                 previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+                previous_data = add_per_unit_fields(previous_data)
+                try:
+                    persist_per_unit_fields(engine, previous_table_name, previous_data)
+                except Exception:
+                    logger.exception("Could not persist previous-quarter dashboard card columns")
 
             except Exception:
                 previous_data = []
@@ -903,7 +940,8 @@ def quarterlyskutable():
             "current_table_name": table_name,
             "current_data": current_data,
             "previous_table_name": previous_table_name,
-            "previous_data": previous_data
+            "previous_data": previous_data,
+            "card_metrics": build_pnl_card_metrics(current_data, previous_data),
         }), 200
 
     except Exception as e:
@@ -1667,7 +1705,8 @@ def skutableprofit():
                 "current_data": [],
                 "previous_table_name": previous_table_name,
                 "previous_ads_table_name": None,
-                "previous_data": []
+                "previous_data": [],
+                "card_metrics": build_pnl_card_metrics([], []),
             }), 200
 
         ads_table_name = requested_ads_table_name if requested_ads_table_name in existing_tables else None
@@ -1923,10 +1962,14 @@ def skutableprofit():
 
                     break
 
-            return final_data
+            return add_per_unit_fields(final_data)
 
         try:
             current_data = _fetch_profit_data(table_name, ads_table_name)
+            try:
+                persist_per_unit_fields(engine, table_name, current_data)
+            except Exception:
+                logger.exception("Could not persist monthly dashboard card columns")
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
@@ -1957,6 +2000,10 @@ def skutableprofit():
                     previous_table_name,
                     None
                 )
+                try:
+                    persist_per_unit_fields(engine, previous_table_name, previous_data)
+                except Exception:
+                    logger.exception("Could not persist previous-month dashboard card columns")
             except Exception as e:
                 previous_data = []
                 print("Previous data error:", str(e))
@@ -1968,7 +2015,8 @@ def skutableprofit():
             "current_data": current_data,
             "previous_table_name": previous_table_name,
             "previous_ads_table_name": previous_ads_table_name,
-            "previous_data": previous_data
+            "previous_data": previous_data,
+            "card_metrics": build_pnl_card_metrics(current_data, previous_data),
         }), 200
 
     except Exception as e:

@@ -3,11 +3,18 @@ from sqlalchemy import create_engine, MetaData, text, inspect
 from sqlalchemy.orm import sessionmaker, scoped_session
 from zoneinfo import ZoneInfo
 from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.dashboard_card_metrics import (
+    add_cashflow_summary_fields,
+    add_per_unit_fields,
+    build_cashflow_card_metrics,
+    persist_per_unit_fields,
+)
 import jwt
 import os
 import base64
 import re
 import math
+import logging
 from datetime import datetime
 import pandas as pd
 from config import Config
@@ -3307,6 +3314,8 @@ def cashflow():
             return [m.capitalize() for m in QUARTER_MONTHS[period_type_value]]
 
         if period_type_value == 'yearly':
+            if year == datetime.now().year:
+                return MONTHS[:max(datetime.now().month - 1, 0)]
             return MONTHS.copy()
 
         return []
@@ -3468,7 +3477,7 @@ def cashflow():
 
             data_records.append(clean_record)
 
-        return totals, data_records
+        return totals, add_per_unit_fields(data_records)
 
     def convert_uk_to_usd_if_needed(totals, record_country, process_month, year_value, country_value):
         if country_value == "global" and currency_param == "usd" and record_country == "uk":
@@ -3554,6 +3563,14 @@ def cashflow():
                     if totals is None:
                         continue
 
+                    try:
+                        persist_per_unit_fields(engine, table_name, data_records)
+                    except Exception:
+                        logging.exception(
+                            "Could not persist cashflow dashboard card columns for %s",
+                            table_name,
+                        )
+
                     totals = convert_uk_to_usd_if_needed(
                         totals=totals,
                         record_country=record_country,
@@ -3589,6 +3606,8 @@ def cashflow():
 
         for key in combined_totals:
             combined_totals[key] = round(combined_totals[key], 2)
+
+        add_cashflow_summary_fields(combined_totals)
 
         meta = {
             'processed_months': processed_months
@@ -3674,12 +3693,18 @@ def cashflow():
         except Exception as e:
             previous_summary = None
 
+        add_cashflow_summary_fields(previous_summary)
+
         response_data = {
             'period_type': period_type,
             'year': year,
             'country': country,
             'summary': combined_totals,
             'previous_summary': previous_summary,
+            'card_metrics': build_cashflow_card_metrics(
+                combined_totals,
+                previous_summary,
+            ),
             'detailed_data': all_cashflow_data,
             'total_records': len(all_cashflow_data),
         }
