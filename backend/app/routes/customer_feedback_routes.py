@@ -95,7 +95,7 @@ def _get_customer_feedback_connection(user_id: int):
             marketplace_id=marketplace_id,
         )
 
-    amazon_client.refresh_token = au.refresh_token
+    amazon_client.set_refresh_token(au.refresh_token)
     return marketplace_id, au, None
 
 

@@ -20,11 +20,11 @@ export const AMAZON_MARKETPLACE_CONFIG: Partial<
     marketplaceId: "A1F83G8C2ARO7P", // UK, from your DB row
   },
   "amazon-us": {
-    region: "na-east-1",             // TODO: adjust if your backend expects different
+    region: "us-east-1",
     marketplaceId: "ATVPDKIKX0DER",  // Standard US marketplace id
   },
   "amazon-ca": {
-    region: "na-west-1",             // TODO: adjust if your backend expects different
+    region: "us-east-1",
     marketplaceId: "A2EUQ1WTGCTBG2", // Standard CA marketplace id
   },
 };
@@ -39,13 +39,13 @@ export const AMAZON_MARKETPLACE_DETAILS: Record<string, AmazonMarketplaceDetails
   ATVPDKIKX0DER: {
     label: "US",
     country: "us",
-    region: "na-east-1",
+    region: "us-east-1",
     marketplaceId: "ATVPDKIKX0DER",
   },
   A2EUQ1WTGCTBG2: {
     label: "Canada",
     country: "canada",
-    region: "na-west-1",
+    region: "us-east-1",
     marketplaceId: "A2EUQ1WTGCTBG2",
   },
 };

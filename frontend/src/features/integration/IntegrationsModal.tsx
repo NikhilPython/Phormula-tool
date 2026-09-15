@@ -9,6 +9,12 @@ import AmazonAdsConnectLegacy from "./AmazonAdsConnectLegacy";
 
 type Provider = "amazon" | "shopify" | "amazon_ads";
 
+const MARKETPLACE_BY_COUNTRY: Record<string, string> = {
+  UK: "A1F83G8C2ARO7P",
+  US: "ATVPDKIKX0DER",
+  CA: "A2EUQ1WTGCTBG2",
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -57,9 +63,16 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
 
     try {
       setAmazonStatusLoading(true);
+      const marketplaceId = MARKETPLACE_BY_COUNTRY[selectedCountry];
+      const url = new URL(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/status`
+      );
+      if (marketplaceId) {
+        url.searchParams.set("marketplace_id", marketplaceId);
+      }
 
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/amazon_api/status`,
+        url.toString(),
         {
           method: "GET",
           headers: {
@@ -83,7 +96,7 @@ const IntegrationsModal: React.FC<Props> = ({ open, onClose, onConnected }) => {
     } finally {
       setAmazonStatusLoading(false);
     }
-  }, [reduxToken]);
+  }, [reduxToken, selectedCountry]);
 
   useEffect(() => {
     const fetchShopifyStore = async () => {

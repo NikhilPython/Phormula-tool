@@ -74,6 +74,11 @@ FE_MARKETPLACES = {
     "A2Q3Y263D00KWC",  # BR (sometimes NA, depends)
 }
 
+US_BEAUTY_DEFAULT_RATES = [
+    ("United States", "Beauty", -50.0, 9.99, 8.0),
+    ("United States", "Beauty", 10.0, 99.99, 15.0),
+]
+
 def _region_base_for_marketplace(mp: str):
     mp = (mp or "").strip()
     if mp in EU_MARKETPLACES:
@@ -703,6 +708,18 @@ def _run_feepreview_upload_pipeline_from_fee_table(
         Category.price_to,
         Category.referral_fee_percent_est,
     ).filter(Category.country == normalized_country).all()
+    cats = list(cats)
+
+    if normalized_country == "United States":
+        for row in US_BEAUTY_DEFAULT_RATES:
+            has_band = any(
+                str(c[1] or "").strip().lower() == "beauty"
+                and float(c[2] or 0.0) == row[2]
+                and float(c[3] or 0.0) == row[3]
+                for c in cats
+            )
+            if not has_band:
+                cats.append(row)
 
     if cats:
         df_cat = pd.DataFrame(

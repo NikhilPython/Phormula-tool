@@ -7,7 +7,7 @@ from sqlalchemy import MetaData, Table, select
 from datetime import datetime 
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
-from app.models.user_models import User, Category
+from app.models.user_models import User, Category, amazon_user
 from app import db, mail  
 from dotenv import load_dotenv
 from datetime import datetime
@@ -490,6 +490,36 @@ def _verify_asin_in_marketplace(asin: str, marketplace_id: str):
     return False, res
 
 
+def _sp_api_skip_info(res, fallback_reason="sp_api_lookup_failed"):
+    if not isinstance(res, dict):
+        return fallback_reason, None
+
+    status_code = res.get("status_code")
+    response_json = res.get("response_json") or {}
+    errors = response_json.get("errors") if isinstance(response_json, dict) else None
+    first_error = errors[0] if isinstance(errors, list) and errors else {}
+    code = str(first_error.get("code") or res.get("error") or "unknown").lower()
+    message = first_error.get("message") or res.get("message") or res.get("error")
+
+    if status_code in (401, 403) or code == "unauthorized":
+        reason = f"catalog_{status_code or 403}_unauthorized"
+    elif status_code == 404:
+        reason = "catalog_404_not_found"
+    elif status_code:
+        reason = f"catalog_{status_code}_error"
+    else:
+        reason = fallback_reason
+
+    detail = {
+        "reason": reason,
+        "status_code": status_code,
+        "code": first_error.get("code") or res.get("error"),
+        "message": message,
+        "amzn_request_id": res.get("amzn_request_id"),
+    }
+    return reason, detail
+
+
 @referral_fee_bp.route('/fetch_fees', methods=['POST'])
 def fetch_and_store_fees():
     # -------- auth --------
@@ -507,6 +537,22 @@ def fetch_and_store_fees():
 
     body = request.get_json(silent=True) or {}
     marketplace_id = body.get("marketplace_id") or amazon_client.marketplace_id
+    if marketplace_id not in amazon_client.ALLOWED_MARKETPLACES:
+        return jsonify({"error": f"Unsupported marketplace_id: {marketplace_id}"}), 400
+    amazon_client.set_marketplace(marketplace_id)
+
+    au = amazon_user.query.filter_by(
+        user_id=user_id,
+        marketplace_id=marketplace_id
+    ).first()
+    if not au or not au.refresh_token:
+        return jsonify({
+            "ok": False,
+            "error": "Amazon account not connected for this marketplace",
+            "marketplace_id": marketplace_id,
+            "hint": "Connect this country from Amazon login before running /fetch_fees."
+        }), 400
+    amazon_client.set_refresh_token(au.refresh_token)
 
     table_name = f"sku_{user_id}_data_table"
 
@@ -536,27 +582,34 @@ def fetch_and_store_fees():
 
         asins = [r._mapping["asin"] for r in rows if r._mapping.get("asin")]
 
-        # Optional: clear previous rows for this user (and maybe marketplace)
-        db.session.query(Category).filter_by(user_id=user_id).delete()
-
         stored, skipped = 0, 0
         failures = []
         rows_to_commit = []
+        skip_reasons = {}
+        skip_details = []
+        country = MKT_TO_COUNTRY.get(marketplace_id, "Unknown")
+
+        def mark_skipped(reason, asin=None, detail=None):
+            nonlocal skipped
+            skipped += 1
+            skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            if detail and len(skip_details) < 10:
+                item = {"asin": asin, **detail} if asin else detail
+                skip_details.append(item)
 
         # -------- loop ASINs --------
         for asin in asins:
             try:
                 ok, catalog_raw = _verify_asin_in_marketplace(asin, marketplace_id)
                 if not ok:
-                    skipped += 1
+                    reason, detail = _sp_api_skip_info(catalog_raw, "asin_not_found_in_marketplace")
+                    mark_skipped(reason, asin, detail)
                     continue
 
                 # Category + brand from Catalog
                 cat_name, _subcat, brand, _item_name = _extract_taxonomy_from_catalog(catalog_raw)
                 if not cat_name:
                     cat_name = "Unknown"
-
-                country = MKT_TO_COUNTRY.get(marketplace_id, "Unknown")
 
                 # Fetch price & shipping from Amazon (Pricing API)
                 fetched = _auto_fetch_price(
@@ -573,7 +626,10 @@ def fetch_and_store_fees():
                 currency, is_fba, _is_bb = _extract_currency_and_flags(offers_payload)
 
                 if not currency or price_val <= 0:
-                    skipped += 1
+                    debug_payload = fetched.get("debug") or {}
+                    pricing_error = debug_payload.get("offers_raw") or debug_payload.get("price_raw")
+                    reason, detail = _sp_api_skip_info(pricing_error, "missing_currency_or_price")
+                    mark_skipped(reason, asin, detail)
                     continue
 
                 # --- fees estimate call ---
@@ -603,7 +659,7 @@ def fetch_and_store_fees():
                 fer = payload.get("FeesEstimateResult") or {}
                 fees_est = fer.get("FeesEstimate")
                 if not fees_est:
-                    skipped += 1
+                    mark_skipped("missing_fees_estimate")
                     continue
 
                 # ---- extract referral fee ----
@@ -617,7 +673,7 @@ def fetch_and_store_fees():
                             or 0.0
                         )
                 if referral_amount is None:
-                    skipped += 1
+                    mark_skipped("missing_referral_fee")
                     continue
 
                 # percentage (rounded to whole number: 15, 8, etc.)
@@ -645,13 +701,17 @@ def fetch_and_store_fees():
             except Exception as ex:
                 failures.append({"asin": asin, "error": str(ex)})
 
-        db.session.add_all(rows_to_commit)
+        if rows_to_commit:
+            db.session.query(Category).filter_by(user_id=user_id, country=country).delete()
+            db.session.add_all(rows_to_commit)
         db.session.commit()
 
         return jsonify({
             "ok": True,
             "stored": stored,
             "skipped": skipped,
+            "skip_reasons": skip_reasons,
+            "skip_details": skip_details,
             "failures": failures
         }), 200
 
