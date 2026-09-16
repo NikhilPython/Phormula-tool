@@ -1271,14 +1271,20 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const skuTableAll: Row[] = useMemo(() => {
     if (!skuwiseRows.length) return [];
 
-    const monthlyKey = (r: any) =>
-      `${String(r?.sku ?? "").trim().toLowerCase()}|${String(r?.product_name ?? r?.productName ?? "").trim().toLowerCase()}`;
+    const monthlyKey = (r: ReferralRow) =>
+      `${String(r?.sku ?? "").trim().toLowerCase()}|${String(
+        r?.product_name ?? ""
+      )
+        .trim()
+        .toLowerCase()}`;
 
     const monthlyBySkuProduct = new Map<string, ReferralRow>();
     const monthlyBySku = new Map<string, ReferralRow>();
     for (const r of skuMonthlyRows) {
       const skuStr = String(r?.sku ?? "").trim().toLowerCase();
-      const productStr = String(r?.product_name ?? r?.productName ?? "").trim().toLowerCase();
+      const productStr = String(r?.product_name ?? "")
+        .trim()
+        .toLowerCase();
       if (!skuStr || skuStr === "total" || skuStr === "grand_total" || skuStr === "grand total") continue;
       if (productStr === "total" || productStr === "grand total") continue;
       monthlyBySkuProduct.set(monthlyKey(r), r);
@@ -1290,7 +1296,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const filtered = skuwiseRows.filter((r) => {
       const skuStr = String(r.sku ?? "");
       if (skuStr === "Grand Total") return true;
-      return !skuStr.startsWith("Charge -");
+      return !skuStr.startsWith("Charge z-");
     });
 
     return filtered.map((r) => {
