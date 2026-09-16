@@ -7,6 +7,7 @@ from app.utils.dashboard_card_metrics import (
     add_cashflow_summary_fields,
     add_per_unit_fields,
     build_cashflow_card_metrics,
+    calculate_card_delta,
     persist_per_unit_fields,
 )
 import jwt
@@ -35,6 +36,52 @@ db_url_amazon = os.getenv('DATABASE_AMAZON_URL')
 
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
+
+
+@dashboard_bp.route('/dashboard/card-deltas', methods=['POST'])
+def dashboard_card_deltas():
+    """Return backend-owned deltas for composite dashboard card values."""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ', 1)[1]
+    try:
+        get_effective_user_id_from_token(token)
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+    except Exception:
+        return jsonify({'error': 'Invalid token payload'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    metrics = payload.get('metrics')
+    if not isinstance(metrics, dict):
+        return jsonify({'error': 'metrics must be an object'}), 400
+    if len(metrics) > 50:
+        return jsonify({'error': 'A maximum of 50 metrics is allowed'}), 400
+
+    deltas = {}
+    try:
+        for key, metric in metrics.items():
+            if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', key):
+                return jsonify({'error': 'Metric keys must be 1-64 safe characters'}), 400
+            if not isinstance(metric, dict):
+                return jsonify({'error': f'Metric {key} must be an object'}), 400
+
+            deltas[key] = calculate_card_delta(
+                metric.get('current'),
+                metric.get('previous'),
+                metric.get('mode', 'percentage_change'),
+                metric.get('basis'),
+                metric.get('completion_percentage'),
+                bool(metric.get('round_inputs', False)),
+            )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    return jsonify({'deltas': deltas}), 200
 
 
 engine = create_engine(

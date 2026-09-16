@@ -2,7 +2,7 @@
 
 import React from "react";
 import ValueOrSkeleton from "@/components/common/ValueOrSkeleton";
-import { calcDeltaPct, fmtGBP, toNumberSafe } from "@/lib/dashboard/format";
+import { fmtGBP, toNumberSafe } from "@/lib/dashboard/format";
 
 export type AmazonStatCardProps = {
   label: string;
@@ -13,7 +13,7 @@ export type AmazonStatCardProps = {
   previousFormatter?: (v: number) => React.ReactNode;
   bottomLabel: string;
   className?: string;
-  deltaPct?: number | null;
+  deltaPct: number | null;
   inverseDelta?: boolean;
   currentPerUnit?: number | null;
   previousPerUnit?: number | null;
@@ -38,14 +38,7 @@ export default function AmazonStatCard({
   const currVal = toNumberSafe(current);
   const prevVal = previous != null ? toNumberSafe(previous) : 0;
 
-  const computedDelta = calcDeltaPct(currVal, prevVal);
-
-  const deltaToShow =
-    deltaPct === undefined
-      ? computedDelta
-      : deltaPct == null
-        ? null
-        : Number(deltaPct);
+  const deltaToShow = deltaPct == null ? null : Number(deltaPct);
 
   const isIncrease = deltaToShow != null && deltaToShow >= 0;
   const isGood =

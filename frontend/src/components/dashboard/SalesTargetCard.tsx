@@ -240,9 +240,6 @@ function SalesTargetCard({
 
   const completedLabel = periodCompletedLabel ?? "Month";
 
-  const paceDeltaPct = pctDisplay - completedPct;
-
-
   const prevLabel = previousMonthLabel ?? getPrevMonthShortLabel();
   const thisMonthLabel = currentMonthLabel ?? getThisMonthShortLabel();
 

@@ -151,6 +151,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
+const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
 const DASHBOARD_CACHE_SCHEMA_VERSION = 5;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
@@ -1094,13 +1095,6 @@ const currencyForCountry = (countryName: string): CurrencyCode => {
     if (c === "ca") return "CAD";
     if (c === "india") return "INR";
     return "USD";
-};
-
-const safeDeltaPctFromPct = (currentPct: number, previousPct: number) => {
-    const c = Number(currentPct) || 0;
-    const p = Number(previousPct) || 0;
-    if (!p) return null;
-    return ((c - p) / Math.abs(p)) * 100;
 };
 
 const normalizeDeltaKey = (value: unknown) =>
@@ -5748,10 +5742,6 @@ export default function DashboardPage() {
         return convertToDisplayCurrency(ads, amazonDataCurrency);
     }, [data?.previous_period?.totals?.advertising_fees, convertToDisplayCurrency, amazonDataCurrency]);
 
-    const amazonAdsDeltaPct = useMemo(() => {
-        return toNumber(backendDashboardMetric("cost_of_ads").change_percentage);
-    }, [backendDashboardMetric]);
-
     const amazonCurrRoasPct = useMemo(() => {
         const sales = toNumberSafe(derived?.net_sales ?? 0);
         const ads = toNumberSafe(derived?.advertising_fees ?? 0);
@@ -5787,12 +5777,6 @@ export default function DashboardPage() {
                     : null,
         };
     }, [backendDashboardMetric, curr.profitPct, prev.profitPct]);
-
-    const deltaPctAbs = (currentPct: number, previousPct: number) => {
-        const c = Number(currentPct) || 0;
-        const p = Number(previousPct) || 0;
-        return c - p;
-    };
 
     /* ===================== ✅ RANGE KPIs FOR CARDS (FROM SAME BI DATA AS GRAPH) ===================== */
     useEffect(() => {
@@ -7448,10 +7432,6 @@ export default function DashboardPage() {
             previousNetSalesFullMonth,
             currentReimbursement,
             previousReimbursement,
-            reimbursementDeltaPct: safeDeltaPct(
-                currentReimbursement,
-                previousReimbursement
-            ),
         };
     }, [
         data,
@@ -7719,23 +7699,6 @@ export default function DashboardPage() {
         return toNumberSafe(prev.quantity ?? 0) + toNumberSafe(shopifyPrevDeriv?.totalOrders ?? 0);
     }, [prev.quantity, shopifyPrevDeriv?.totalOrders]);
 
-    const globalCurrSalesDisp = useMemo(() => {
-        return convertToDisplayCurrency(combinedUSD, "USD");
-    }, [combinedUSD, convertToDisplayCurrency]);
-
-    const globalPrevSalesDisp = useMemo(() => {
-        return convertToDisplayCurrency(globalPrevTotalUSD, "USD");
-    }, [globalPrevTotalUSD, convertToDisplayCurrency]);
-
-    const globalCurrAsp = useMemo(() => {
-        return globalCurrUnits > 0 ? globalCurrSalesDisp / globalCurrUnits : 0;
-    }, [globalCurrSalesDisp, globalCurrUnits]);
-
-    const globalPrevAsp = useMemo(() => {
-        return globalPrevUnits > 0 ? globalPrevSalesDisp / globalPrevUnits : 0;
-    }, [globalPrevSalesDisp, globalPrevUnits]);
-
-
     const globalCurrNetSalesDisp = useMemo(() => {
         if (onlyAmazon) return convertToDisplayCurrency(uk.netSalesGBP ?? 0, "GBP");
         return convertToDisplayCurrency(combinedUSD, "USD");
@@ -7756,11 +7719,6 @@ export default function DashboardPage() {
         const ads = toNumberSafe(data?.previous_period?.totals?.advertising_fees ?? 0);
         return convertToDisplayCurrency(ads, amazonDataCurrency);
     }, [data?.previous_period?.totals?.advertising_fees, convertToDisplayCurrency, amazonDataCurrency]);
-
-    const globalAdsDeltaPct = useMemo(
-        () => safeDeltaPct(globalCurrAdsDisp, globalPrevAdsDisp),
-        [globalCurrAdsDisp, globalPrevAdsDisp]
-    );
 
     const globalCurrRoasPct = useMemo(() => {
         const ads = toNumberSafe(derived?.advertising_fees ?? 0);
@@ -7820,36 +7778,6 @@ export default function DashboardPage() {
     }, [globalPrevUnits, globalPrevNetSalesDisp]);
 
 
-    const globalCurrProfit = useMemo(() => {
-        const pUsd = toNumberSafe(uk.profitGBP ?? 0) * gbpToUsd;
-        return convertToDisplayCurrency(pUsd, "USD");
-    }, [uk.profitGBP, gbpToUsd, convertToDisplayCurrency]);
-
-    const globalPrevProfit = useMemo(() => {
-        const prevProfitGbp = toNumberSafe(prev.profit ?? 0);
-        const pUsd = prevProfitGbp * gbpToUsd;
-        return convertToDisplayCurrency(pUsd, "USD");
-    }, [prev.profit, gbpToUsd, convertToDisplayCurrency]);
-
-    const globalDeltas = useMemo(() => {
-        return {
-            units: safeDeltaPct(globalCurrUnits, globalPrevUnits),
-            sales: safeDeltaPct(globalCurrSalesDisp, globalPrevSalesDisp),
-            asp: safeDeltaPct(globalCurrAsp, globalPrevAsp),
-            profit: safeDeltaPct(globalCurrProfit, globalPrevProfit),
-            profitPct: null as number | null,
-        };
-    }, [
-        globalCurrUnits,
-        globalPrevUnits,
-        globalCurrSalesDisp,
-        globalPrevSalesDisp,
-        globalCurrAsp,
-        globalPrevAsp,
-        globalCurrProfit,
-        globalPrevProfit,
-    ]);
-
     const globalCurrGrossDisp = useMemo(() => {
         return convertToDisplayCurrency(combinedGrossUSD, "USD");
     }, [combinedGrossUSD, convertToDisplayCurrency]);
@@ -7879,10 +7807,6 @@ export default function DashboardPage() {
         return {
             current: convertToDisplayCurrency(currRaw, amazonDataCurrency),
             previous: convertToDisplayCurrency(prevRaw, amazonDataCurrency),
-            deltaPct: safeDeltaPct(
-                convertToDisplayCurrency(currRaw, amazonDataCurrency),
-                convertToDisplayCurrency(prevRaw, amazonDataCurrency)
-            ),
         };
     }, [
         derived?.current_net_reimbursement,
@@ -8220,33 +8144,12 @@ export default function DashboardPage() {
                 ? stats_mtdHome / statsTodayDay
                 : 0;
 
-    const stats_salesTrendPct =
-        stats_lastMtdHome > 0
-            ? ((stats_mtdHome - stats_lastMtdHome) / stats_lastMtdHome) * 100
-            : 0;
-
-    const getDaysInMonthByRegion = (region: RegionKey) => {
-        const now = getRegionNow(region);
-        return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    };
-
     const todayByRegion = dashboardAllowedDay;
     const daysInMonthByRegion = dashboardDaysInMonth;
 
     const proratedTargetToDate = (daysInMonthByRegion > 0)
         ? (todayByRegion / daysInMonthByRegion) * stats_targetHome  // x
         : 0;
-
-    const stats_targetTrendPct =
-        stats_targetHome > 0
-            ? ((stats_mtdHome - proratedTargetToDate) / stats_targetHome) * 100
-            : 0;
-
-    const stats_targetTrendPrevPct = useMemo(() => {
-        return stats_targetHome > 0
-            ? ((stats_lastMtdHome - proratedTargetToDate) / stats_targetHome) * 100
-            : 0;
-    }, [stats_lastMtdHome, proratedTargetToDate, stats_targetHome]);
 
     const ADS_SIGN_PLUS = new Set([
         "gross_sales",
@@ -8722,6 +8625,7 @@ export default function DashboardPage() {
     }, [activeTab, scrollDashboardPageToTop]);
 
     const isStickyGlobal = platform === "global";
+    const [backendCardDeltas, setBackendCardDeltas] = useState<Record<string, number | null>>({});
 
     const roundedMoneyFormatter = (value: number) => {
         const rounded = Math.round(Number(value) || 0);
@@ -8736,25 +8640,6 @@ export default function DashboardPage() {
                 : stats_lastMonthTotalHome && stats_lastMonthTotalHome > 0
                     ? stats_lastMonthTotalHome
                     : 0;
-
-    const stickyTargetProratedToDate =
-        daysInMonthByRegion > 0
-            ? (todayByRegion / daysInMonthByRegion) * stickyTargetHome
-            : 0;
-
-    const stickyTargetTrendPct =
-        shouldShowDummyUi
-            ? dummySalesTargetStats.targetTrendPct
-            : stickyTargetHome > 0
-                ? ((targets_mtdHome / stickyTargetHome) * 100) - rangeCompletedPct
-                : 0;
-
-    const stickyTargetTrendPrevPct =
-        shouldShowDummyUi
-            ? 0
-            : stickyTargetHome > 0
-                ? ((targets_lastMonthToDateHome / stickyTargetHome) * 100) - rangeCompletedPct
-                : 0;
 
     const prevMonthTargetHome = useMemo(() => {
         return toNumberSafe(
@@ -8799,34 +8684,174 @@ export default function DashboardPage() {
 
     const mtdCostOfAdsDelta = shouldShowDummyUi
         ? dummyStatData.costOfAds.deltaPct
-        : rangeActive
-            ? toNumber(biAlignedTotals?.advertising_change_percentage)
-            : toNumber(backendDashboardMetric("cost_of_ads").change_percentage);
+        : backendCardDeltas.mtd_cost_of_ads ?? null;
 
     const mtdTacosCurrent = shouldShowDummyUi
-    ? dummyStatData.tacos.current
-    : dashboardActionSourceMetrics?.tacos != null
-        ? toNumber(dashboardActionSourceMetrics.tacos)
-        : rangeActive
-            ? toNumber(biAlignedTotals?.total_current_tacos)
-            : toNumber(backendDashboardMetric("tacos").current);
+        ? dummyStatData.tacos.current
+        : dashboardActionSourceMetrics?.tacos != null
+            ? toNumber(dashboardActionSourceMetrics.tacos)
+            : rangeActive
+                ? toNumber(biAlignedTotals?.total_current_tacos)
+                : toNumber(backendDashboardMetric("tacos").current);
 
-const mtdTacosPrevious = shouldShowDummyUi
-    ? dummyStatData.tacos.previous
-    : rangeActive
-        ? toNumber(biAlignedTotals?.total_previous_tacos)
-        : toNumber(backendDashboardMetric("tacos").previous);
-
-const mtdTacosDelta = shouldShowDummyUi
-    ? dummyStatData.tacos.deltaPct
-    : dashboardActionSourceMetrics?.tacos != null
-        ? safeDeltaPctFromPct(
-            toNumber(dashboardActionSourceMetrics.tacos),
-            mtdTacosPrevious
-        )
+    const mtdTacosPrevious = shouldShowDummyUi
+        ? dummyStatData.tacos.previous
         : rangeActive
-            ? toNumber(biAlignedTotals?.tacos_change_percentage)
-            : toNumber(backendDashboardMetric("tacos").change_percentage);
+            ? toNumber(biAlignedTotals?.total_previous_tacos)
+            : toNumber(backendDashboardMetric("tacos").previous);
+
+    const mtdCm2ProfitCurrentForDelta = rangeActive
+        ? toNumber(biAlignedTotals?.total_current_profit_cm2)
+        : totalRowCm2Profit;
+
+    const mtdCm2ProfitPreviousForDelta = rangeActive
+        ? toNumber(biAlignedTotals?.total_previous_profit_cm2)
+        : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
+
+    useEffect(() => {
+        if (shouldShowDummyUi) {
+            setBackendCardDeltas({});
+            return;
+        }
+
+        const token =
+            typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        if (!token) return;
+
+        const controller = new AbortController();
+        const actionTacosCurrent =
+            dashboardActionSourceMetrics?.tacos != null
+                ? toNumber(dashboardActionSourceMetrics.tacos)
+                : mtdTacosCurrent;
+        const stickyTacosPrevious = isStickyGlobal
+            ? stickyPreviousTotals.tacos
+            : mtdTacosPrevious;
+
+        const metrics = {
+            mtd_cost_of_ads: {
+                current: mtdCostOfAdsCurrentDisplay,
+                previous: mtdCostOfAdsPreviousDisplay,
+                round_inputs: true,
+            },
+            mtd_cm2_profit: {
+                current: mtdCm2ProfitCurrentForDelta,
+                previous: mtdCm2ProfitPreviousForDelta,
+                round_inputs: true,
+            },
+            mtd_tacos: {
+                current: actionTacosCurrent,
+                previous: mtdTacosPrevious,
+            },
+            sticky_tacos: {
+                current: actionTacosCurrent,
+                previous: stickyTacosPrevious,
+            },
+            sticky_target: {
+                current: stickyTargetHome,
+                previous: stickyPreviousTargetHome,
+            },
+            sticky_target_trend: {
+                current: targets_mtdHome,
+                previous: targets_lastMonthToDateHome,
+                basis: stickyTargetHome,
+                mode: "basis_percentage",
+            },
+            sticky_target_trend_current: {
+                current: targets_mtdHome,
+                previous: 0,
+                basis: stickyTargetHome,
+                completion_percentage: rangeCompletedPct,
+                mode: "target_trend",
+            },
+            sticky_target_trend_previous: {
+                current: targets_lastMonthToDateHome,
+                previous: 0,
+                basis: stickyTargetHome,
+                completion_percentage: rangeCompletedPct,
+                mode: "target_trend",
+            },
+            sales_metrics_sales_trend: {
+                current: stats_mtdHome,
+                previous: stats_lastMtdHome,
+            },
+            sales_metrics_target_trend: {
+                current: stats_mtdHome,
+                previous: proratedTargetToDate,
+                basis: stats_targetHome,
+                mode: "basis_percentage",
+            },
+            target_reimbursement: {
+                current: targets_reimbursement.current,
+                previous: targets_reimbursement.previous,
+            },
+            shopify_units: {
+                current: toNumber(shopifyDeriv?.totalOrders),
+                previous: toNumber(shopifyPrevDeriv?.totalOrders),
+            },
+            shopify_sales: {
+                current: toNumber(shopifyDeriv?.netSales),
+                previous: toNumber(shopifyPrevDeriv?.netSales),
+            },
+        };
+
+        void fetch(DASHBOARD_CARD_DELTAS_ENDPOINT, {
+            method: "POST",
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ metrics }),
+            signal: controller.signal,
+        })
+            .then(async (response) => {
+                const payload = await response.json().catch(() => null);
+                if (!response.ok || !payload?.deltas) {
+                    throw new Error(payload?.error || `Card delta request failed: ${response.status}`);
+                }
+                setBackendCardDeltas(payload.deltas);
+            })
+            .catch((error: unknown) => {
+                if (error instanceof DOMException && error.name === "AbortError") return;
+                setBackendCardDeltas({});
+            });
+
+        return () => controller.abort();
+    }, [
+        shouldShowDummyUi,
+        dashboardActionSourceMetrics?.tacos,
+        mtdCostOfAdsCurrentDisplay,
+        mtdCostOfAdsPreviousDisplay,
+        mtdCm2ProfitCurrentForDelta,
+        mtdCm2ProfitPreviousForDelta,
+        mtdTacosCurrent,
+        mtdTacosPrevious,
+        isStickyGlobal,
+        stickyPreviousTotals.tacos,
+        stickyTargetHome,
+        stickyPreviousTargetHome,
+        targets_mtdHome,
+        targets_lastMonthToDateHome,
+        rangeCompletedPct,
+        stats_mtdHome,
+        stats_lastMtdHome,
+        proratedTargetToDate,
+        stats_targetHome,
+        targets_reimbursement.current,
+        targets_reimbursement.previous,
+        shopifyDeriv?.totalOrders,
+        shopifyPrevDeriv?.totalOrders,
+        shopifyDeriv?.netSales,
+        shopifyPrevDeriv?.netSales,
+    ]);
+
+    const mtdTacosDelta = shouldShowDummyUi
+        ? dummyStatData.tacos.deltaPct
+        : dashboardActionSourceMetrics?.tacos != null
+            ? backendCardDeltas.mtd_tacos ?? null
+            : rangeActive
+                ? toNumber(biAlignedTotals?.tacos_change_percentage)
+                : toNumber(backendDashboardMetric("tacos").change_percentage);
 
     const stickyKpiItems = [
         {
@@ -8948,7 +8973,7 @@ const mtdTacosDelta = shouldShowDummyUi
                 ? dummyStatData.costOfAds.deltaPct
                 : isStickyGlobal
                     ? globalMtdCardData.adsDelta
-                    : mtdCostOfAdsDelta,
+                    : backendCardDeltas.mtd_cost_of_ads ?? null,
 
             inverseDelta: true,
             currentPerUnit: shouldShowDummyUi
@@ -8992,18 +9017,12 @@ const mtdTacosDelta = shouldShowDummyUi
                     ? stickyPreviousTotals.tacos
                     : mtdTacosPrevious,
 
-            // If current TACoS came from the Action Items endpoint, recalculate
-            // the displayed MoM delta from the displayed current/previous pair
-            // instead of keeping the old Live-BI delta.
+            // If current TACoS came from Action Items, use the backend batch
+            // result for that displayed current/previous pair.
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
                 : dashboardActionSourceMetrics?.tacos != null
-                    ? safeDeltaPctFromPct(
-                        dashboardActionSourceMetrics.tacos,
-                        isStickyGlobal
-                            ? stickyPreviousTotals.tacos
-                            : mtdTacosPrevious
-                    )
+                    ? backendCardDeltas.sticky_tacos ?? null
                     : isStickyGlobal
                         ? globalMtdCardData.tacosDelta
                         : mtdTacosDelta,
@@ -9038,9 +9057,7 @@ const mtdTacosDelta = shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
                 : isStickyGlobal
                     ? globalMtdCardData.cm2ProfitDelta
-                    : rangeActive
-                        ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
-                        : toNumber(backendDashboardMetric("cm2_profit").change_percentage),
+                    : backendCardDeltas.mtd_cm2_profit ?? null,
 
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
@@ -9087,8 +9104,8 @@ const mtdTacosDelta = shouldShowDummyUi
                 : stickyPreviousTargetHome,
 
             deltaPct: shouldShowDummyUi
-                ? safeDeltaPct(0, 0)
-                : safeDeltaPct(stickyTargetHome, stickyPreviousTargetHome),
+                ? null
+                : backendCardDeltas.sticky_target ?? null,
 
             loading: !shouldShowDummyUi && loading,
 
@@ -9105,13 +9122,17 @@ const mtdTacosDelta = shouldShowDummyUi
         {
             label: "Target Trend",
 
-            current: stickyTargetTrendPct,
+            current: shouldShowDummyUi
+                ? dummySalesTargetStats.targetTrendPct
+                : backendCardDeltas.sticky_target_trend_current ?? 0,
 
-            previous: stickyTargetTrendPrevPct,
+            previous: shouldShowDummyUi
+                ? 0
+                : backendCardDeltas.sticky_target_trend_previous ?? 0,
 
             deltaPct: shouldShowDummyUi
-                ? deltaPctAbs(dummySalesTargetStats.targetTrendPct, 0)
-                : deltaPctAbs(stickyTargetTrendPct, stickyTargetTrendPrevPct),
+                ? dummySalesTargetStats.targetTrendPct
+                : backendCardDeltas.sticky_target_trend ?? null,
 
             loading: !shouldShowDummyUi && loading,
 
@@ -10332,9 +10353,11 @@ const mtdTacosDelta = shouldShowDummyUi
 
     const finalStatsSalesTrendPct = shouldShowDummyUi
         ? dummySalesTargetStats.salesTrendPct
-        : stats_salesTrendPct;
+        : backendCardDeltas.sales_metrics_sales_trend ?? 0;
 
-    const finalStatsTargetTrendPct = stickyTargetTrendPct;
+    const finalStatsTargetTrendPct = shouldShowDummyUi
+        ? dummySalesTargetStats.targetTrendPct
+        : backendCardDeltas.sales_metrics_target_trend ?? 0;
 
     const finalTargetsReimbursement = shouldShowDummyUi
         ? dummySalesTargetStats.reimbursement
@@ -11424,31 +11447,21 @@ const mtdTacosDelta = shouldShowDummyUi
                 : 0)
             : Number(prev?.cm2Profit ?? 0);
 
-    const rangeCm2ProfitCurrent = toNumber(biAlignedTotals?.total_current_profit_cm2);
-
-    const rangeCm2ProfitPrevious = toNumber(biAlignedTotals?.total_previous_profit_cm2);
-
     const rangeCm2ProfitPctCurrent = toNumber(biAlignedTotals?.total_current_profit_percentage);
 
     const rangeCm2ProfitPctPrevious = toNumber(biAlignedTotals?.total_previous_profit_percentage);
 
     const mtdCm2ProfitCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.current
-        : rangeActive
-            ? rangeCm2ProfitCurrent
-            : totalRowCm2Profit;
+        : mtdCm2ProfitCurrentForDelta;
 
     const mtdCm2ProfitPreviousDisplay = shouldShowDummyUi
         ? dummyStatData.cm2Profit.previous
-        : rangeActive
-            ? rangeCm2ProfitPrevious
-            : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency);
+        : mtdCm2ProfitPreviousForDelta;
 
     const mtdCm2ProfitDelta = shouldShowDummyUi
         ? dummyStatData.cm2Profit.deltaPct
-        : rangeActive
-            ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
-            : toNumber(backendDashboardMetric("cm2_profit").change_percentage);
+        : backendCardDeltas.mtd_cm2_profit ?? null;
 
     const mtdCm2ProfitPctCurrent = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.current
@@ -11523,10 +11536,6 @@ const mtdTacosDelta = shouldShowDummyUi
             ? convertToDisplayCurrency(globalCm2ProfitPreviousRaw, biSourceCurrency)
             : convertToDisplayCurrency(prev.cm2Profit ?? 0, amazonDataCurrency));
 
-    const globalCm2ProfitDelta = shouldShowDummyUi
-        ? dummyStatData.cm2Profit.deltaPct
-        : safeDeltaPct(globalCm2ProfitCurrentDisplay, globalCm2ProfitPreviousDisplay);
-
     const globalCm2ProfitPctCurrent = shouldShowDummyUi
         ? dummyStatData.cm2ProfitPct.current
         : (() => {
@@ -11554,10 +11563,6 @@ const mtdTacosDelta = shouldShowDummyUi
 
             return sales > 0 ? (profit / sales) * 100 : 0;
         })();
-
-    const globalCm2ProfitPctDelta = shouldShowDummyUi
-        ? dummyStatData.cm2ProfitPct.deltaPct
-        : safeDeltaPct(globalCm2ProfitPctCurrent, globalCm2ProfitPctPrevious);
 
     const remainingSteps = dashboardSteps.length - currentStep;
 
@@ -12570,7 +12575,7 @@ const mtdTacosDelta = shouldShowDummyUi
                         shouldShowDummyUi={shouldShowDummyUi}
                         dummyStatData={dummyStatData}
                         globalMtdCardData={globalMtdCardData}
-                        safeDeltaPct={safeDeltaPct}
+                        backendCardDeltas={backendCardDeltas}
                         loading={loading}
                         shopifyLoading={shopifyLoading}
                         biLoading={biLoading}

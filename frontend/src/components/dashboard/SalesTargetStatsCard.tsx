@@ -135,11 +135,6 @@ export default function SalesTargetStatsCard({
       ? biAlignedTotals.total_current_net_sales
       : mtdHome || active?.mtdUSD || 0;
 
-  const prevMtdFromBi =
-    biEnabled && biAlignedTotals
-      ? Number(biAlignedTotals.total_previous_net_sales || 0)
-      : 0;
-
   const prevMtd =
     biEnabled && biAlignedTotals
       ? biAlignedTotals.total_previous_net_sales
@@ -161,32 +156,9 @@ export default function SalesTargetStatsCard({
             ? Number(prevFullMonth)
             : 0;
 
-  // Get today's date and total days in current month (IST aligned to your existing helpers)
-  const today = new Date();
-  const currentDay = today.getDate();
-
-  // Get total days in current month
-  const totalDaysInMonth = new Date(
-    today.getFullYear(),
-    today.getMonth() + 1,
-    0
-  ).getDate();
-
-  // X = (Current Date / Total Days in Month) * Target
-  const expectedSalesTillDate =
-    totalDaysInMonth > 0
-      ? (currentDay / totalDaysInMonth) * targetToUse
-      : 0;
-
-  // Sales Trend (unchanged – vs last month MTD)
-  const salesTrendPctToUse =
-    prevMtd > 0 ? ((currMtd - prevMtd) / prevMtd) * 100 : 0;
-
-  // ✅ New Target Trend formula
-  const targetTrendPctToUse =
-    targetToUse > 0
-      ? ((currMtd - expectedSalesTillDate) / targetToUse) * 100
-      : 0;
+  // Trend values are calculated by the backend and supplied by DashboardClient.
+  const salesTrendPctToUse = Number(salesTrendPct) || 0;
+  const targetTrendPctToUse = Number(targetTrendPct) || 0;
 
 
   return (

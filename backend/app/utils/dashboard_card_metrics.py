@@ -43,6 +43,60 @@ def dashboard_delta(current: Any, previous: Any) -> float:
     )
 
 
+def calculate_card_delta(
+    current: Any,
+    previous: Any,
+    mode: str = "percentage_change",
+    basis: Any = None,
+    completion_percentage: Any = None,
+    round_inputs: bool = False,
+) -> float | None:
+    """Calculate a UI card delta without requiring React-side arithmetic.
+
+    ``percentage_change`` preserves the dashboard's historical behavior of
+    returning no delta when the comparison value is zero. ``difference`` is
+    used by percentage-point cards. ``basis_percentage`` expresses the
+    current/previous gap as a percentage of an explicit target or other basis.
+    ``target_trend`` compares target achievement with period completion.
+    ``round_inputs`` keeps a delta aligned with whole-number card amounts.
+    """
+    current_value = _number(current)
+    previous_value = _number(previous)
+    if round_inputs:
+        # Match JavaScript Math.round, which is used by the card formatter.
+        current_value = float(math.floor(current_value + 0.5))
+        previous_value = float(math.floor(previous_value + 0.5))
+
+    if mode == "difference":
+        return dashboard_number(current_value - previous_value)
+
+    if mode == "basis_percentage":
+        basis_value = abs(_number(basis))
+        if basis_value == 0:
+            return 0.0
+        return dashboard_number(
+            ((current_value - previous_value) / basis_value) * 100
+        )
+
+    if mode == "target_trend":
+        basis_value = abs(_number(basis))
+        if basis_value == 0:
+            return 0.0
+        return dashboard_number(
+            (current_value / basis_value * 100) - _number(completion_percentage)
+        )
+
+    if mode != "percentage_change":
+        raise ValueError(f"Unsupported card delta mode: {mode}")
+
+    if previous_value == 0:
+        return None
+
+    return dashboard_number(
+        ((current_value - previous_value) / abs(previous_value)) * 100
+    )
+
+
 def _number(value: Any) -> float:
     try:
         number = float(value or 0)
