@@ -23,6 +23,27 @@ PER_UNIT_COLUMNS = (
     "net_reimbursement_per_unit",
 )
 
+PNL_WHOLE_VALUE_DELTA_KEYS = frozenset({
+    "units",
+    "gross_sales",
+    "net_sales",
+    "marketplace_fees",
+    "cost_of_ads",
+    "cm2_profit",
+    "promotions",
+})
+
+CASHFLOW_WHOLE_VALUE_DELTA_KEYS = frozenset({
+    "units",
+    "gross_sales",
+    "net_sales",
+    "promotions",
+    "marketplace_fees",
+    "others",
+    "cash_generated",
+    "net_reimbursement",
+})
+
 
 def dashboard_number(value: Any) -> float:
     """Return a finite number rounded to the precision used by the cards."""
@@ -95,6 +116,22 @@ def calculate_card_delta(
     return dashboard_number(
         ((current_value - previous_value) / abs(previous_value)) * 100
     )
+
+
+def _display_card_delta(
+    current: Any,
+    previous: Any,
+    *,
+    round_inputs: bool = False,
+) -> float:
+    """Return a delta that matches the values rendered on a metric card."""
+    delta = calculate_card_delta(
+        current,
+        previous,
+        round_inputs=round_inputs,
+    )
+    # Keep the existing API contract for periods without comparison data.
+    return 0.0 if delta is None else delta
 
 
 def _number(value: Any) -> float:
@@ -263,7 +300,11 @@ def build_pnl_card_metrics(
         "current": current,
         "previous": previous,
         "deltas": {
-            key: dashboard_delta(current[key], previous[key])
+            key: _display_card_delta(
+                current[key],
+                previous[key],
+                round_inputs=key in PNL_WHOLE_VALUE_DELTA_KEYS,
+            )
             for key in current
         },
     }
@@ -341,7 +382,11 @@ def build_cashflow_card_metrics(
         "current": current,
         "previous": previous,
         "deltas": {
-            key: dashboard_delta(current[key], previous[key])
+            key: _display_card_delta(
+                current[key],
+                previous[key],
+                round_inputs=key in CASHFLOW_WHOLE_VALUE_DELTA_KEYS,
+            )
             for key in current
         },
     }

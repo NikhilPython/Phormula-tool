@@ -223,11 +223,6 @@ type DropdownsProps = {
   initialMonth: string;
   initialYear: string;
 };
-type ComparisonItem = {
-  label: string;
-  value?: number;
-  diffPct?: number | null;
-};
 
 type InventoryCurrentRow = Record<string, any>;
 
@@ -7496,10 +7491,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     ? DEMO_SUMMARY
     : uploadsData?.summary ?? zeroData;
 
-  const displayComparisons: SummaryComparisons = isDemoMode
-    ? DEMO_SUMMARY_COMPARISONS
-    : uploadsData?.summaryComparisons ?? zeroComparisons;
-
 
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
     // ✅ Important: if user is already on this range, don't reset filters.
@@ -10302,21 +10293,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 const previousCardMetrics = backendCardMetrics?.previous;
                 const cardMetricDeltas = backendCardMetrics?.deltas;
                 const netSales = currentCardMetrics?.net_sales ?? summary.total_sales;
-                // const rawComparisons =
-                //   (uploadsData as any).summaryComparisons ??
-                //   (uploadsData as any).summary_comparisons;
-
-                // const comparisons: SummaryComparisons | undefined = rawComparisons
-                //   ? (rawComparisons as SummaryComparisons)
-                //   : undefined;
-
-                const rawComparisons =
-                  (uploadsData as any)?.summaryComparisons ??
-                  (uploadsData as any)?.summary_comparisons ??
-                  displayComparisons ??
-                  zeroComparisons;
-
-                const comparisons: SummaryComparisons = rawComparisons as SummaryComparisons;
 
                 const formatMoney = (
                   val: number,
@@ -10357,74 +10333,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     maximumFractionDigits: 2,
                   })}%`;
 
-                const buildTacosComparisonRows = () => {
-                  const yNum = Number(selectedYear);
-
-                  const label =
-                    range === "monthly"
-                      ? selectedMonth && yNum
-                        ? getPrevMonthLabel(selectedMonth, yNum)
-                        : "Prev month"
-                      : range === "quarterly"
-                        ? selectedQuarter && yNum
-                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                          : "Prev quarter"
-                        : yNum
-                          ? getPrevYearLabel(yNum)
-                          : "Prev year";
-
-                  const prevVal =
-                    range === "monthly"
-                      ? comparisons?.lastMonth
-                        ? getRoas(comparisons.lastMonth)
-                        : undefined
-                      : range === "quarterly"
-                        ? comparisons?.lastQuarter
-                          ? getRoas(comparisons.lastQuarter)
-                          : undefined
-                        : comparisons?.lastYear
-                          ? getRoas(comparisons.lastYear)
-                          : undefined;
-
-                  const hasPrev = typeof prevVal === "number" && !isNaN(prevVal);
-                  const delta =
-                    hasPrev && prevVal !== 0
-                      ? ((roas - prevVal!) / Math.abs(prevVal!)) * 100
-                      : null;
-
-                  const deltaClassName =
-                    typeof delta === "number"
-                      ? delta > 0
-                        ? "text-red-600"       // higher TACoS worse
-                        : delta < 0
-                          ? "text-emerald-600" // lower TACoS better
-                          : "text-gray-400"
-                      : "text-gray-400";
-
-                  const arrow =
-                    typeof delta === "number"
-                      ? roas > prevVal!
-                        ? "▲" // increased → bad
-                        : roas < prevVal!
-                          ? "▼" // decreased → good
-                          : ""
-                      : "";
-
-                  const deltaText =
-                    typeof delta === "number"
-                      ? `${arrow} ${Math.abs(delta).toFixed(2)}%`
-                      : "-";
-
-                  return [
-                    {
-                      label,
-                      valueText: hasPrev ? formatRoas(prevVal!) : "-",
-                      deltaText,
-                      deltaClassName,
-                    },
-                  ];
-                };
-
 
                 const formatUnits = (val: number) =>
                   val.toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -10457,9 +10365,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}%`;
-
-                const getGrossSales = (s?: Summary) =>
-                  s?.total_product_sales ?? s?.gross_sales ?? 0;
 
                 const roundMoney = (val: number) => Math.round(val || 0);
 
@@ -10499,194 +10404,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   );
                 };
 
-                const isSummaryZero =
-                  summary.unit_sold === 0 &&
-                  summary.total_sales === 0 &&
-                  summary.total_expense === 0 &&
-                  summary.cm2_profit === 0;
-
-                // ---------- generic comparisons helper ----------
-                const getComparisons = (metric: keyof Summary): ComparisonItem[] => {
-                  const current = summary[metric] ?? 0;
-
-                  const lm = comparisons?.lastMonth?.[metric];
-                  const lq = comparisons?.lastQuarter?.[metric];
-                  const ly = comparisons?.lastYear?.[metric];
-
-                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                    if (typeof prevVal !== "number") {
-                      return { label, value: undefined, diffPct: null };
-                    }
-
-                    const diffPct =
-                      prevVal === 0 ? null : ((current - prevVal) / Math.abs(prevVal)) * 100;
-
-                    return { label, value: prevVal, diffPct };
-                  };
-
-                  const yNum = Number(selectedYear);
-
-                  if (range === "monthly") {
-                    const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                    return [makeItem(label, lm)];
-                  }
-
-                  if (range === "quarterly") {
-                    const label =
-                      selectedQuarter && yNum
-                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter";
-                    return [makeItem(label, lq)];
-                  }
-
-                  if (range === "yearly") {
-                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                    return [makeItem(label, ly)];
-                  }
-
-                  return [];
-                };
-
-                const buildComparisonsRows = (
-                  metric: keyof Summary,
-                  formatter: (val: number) => string
-                ) => {
-                  const items = getComparisons(metric);
-
-                  return items.map((item) => {
-                    const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                    const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                    // ✅ define metric behavior INLINE
-                    const isCostMetric =
-                      metric === "advertising_total_final" ||
-                      metric === "advertising_total" ||
-                      metric === "total_amazon_fee";
-
-
-
-                    // ✅ FIXED COLOR LOGIC
-                    let deltaClassName = "text-gray-400";
-
-                    if (hasDiff) {
-                      if (isCostMetric) {
-                        // higher cost = BAD
-                        deltaClassName =
-                          item.diffPct! < 0 ? "text-emerald-600" : "text-red-600";
-                      } else {
-                        // higher = GOOD
-                        deltaClassName =
-                          item.diffPct! >= 0 ? "text-emerald-600" : "text-red-600";
-                      }
-                    }
-
-                    const deltaText = hasDiff
-                      ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                      : "-";
-
-                    return {
-                      label: item.label,
-                      valueText: hasValue ? formatter(item.value!) : "-",
-                      deltaText,
-                      deltaClassName,
-                    };
-                  });
-                };
-
-                const getAspComparisons = (): ComparisonItem[] => {
-                  const current = toNum(summary?.asp);
-                  const yNum = Number(selectedYear);
-
-                  const prevMonth = comparisons?.lastMonth
-                    ? toNum(comparisons.lastMonth.asp)
-                    : undefined;
-
-                  const prevQuarter = comparisons?.lastQuarter
-                    ? toNum(comparisons.lastQuarter.asp)
-                    : undefined;
-
-                  const prevYear = comparisons?.lastYear
-                    ? toNum(comparisons.lastYear.asp)
-                    : undefined;
-
-                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                    if (typeof prevVal !== "number" || !Number.isFinite(prevVal)) {
-                      return { label, value: undefined, diffPct: null };
-                    }
-
-                    const diffPct =
-                      prevVal === 0 ? null : ((current - prevVal) / Math.abs(prevVal)) * 100;
-
-                    return {
-                      label,
-                      value: prevVal,
-                      diffPct,
-                    };
-                  };
-
-                  if (range === "monthly") {
-                    const label =
-                      selectedMonth && yNum
-                        ? getPrevMonthLabel(selectedMonth, yNum)
-                        : "Prev month";
-
-                    return [makeItem(label, prevMonth)];
-                  }
-
-                  if (range === "quarterly") {
-                    const label =
-                      selectedQuarter && yNum
-                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter";
-
-                    return [makeItem(label, prevQuarter)];
-                  }
-
-                  if (range === "yearly") {
-                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                    return [makeItem(label, prevYear)];
-                  }
-
-                  return [];
-                };
-
-                // ---------- Gross Sales comparisons ----------
-                const getGrossSalesComparisons = (): ComparisonItem[] => {
-                  const current = getGrossSales(summary);
-                  const yNum = Number(selectedYear);
-
-                  const prevMonth = comparisons?.lastMonth ? getGrossSales(comparisons.lastMonth) : undefined;
-                  const prevQuarter = comparisons?.lastQuarter ? getGrossSales(comparisons.lastQuarter) : undefined;
-                  const prevYear = comparisons?.lastYear ? getGrossSales(comparisons.lastYear) : undefined;
-
-                  const makeItem = (label: string, prevVal?: number): ComparisonItem => {
-                    if (typeof prevVal !== "number") return { label, value: undefined, diffPct: null };
-                    const diffPct = prevVal === 0 ? null : ((current - prevVal) / prevVal) * 100;
-                    return { label, value: prevVal, diffPct };
-                  };
-
-                  if (range === "monthly") {
-                    const label = selectedMonth && yNum ? getPrevMonthLabel(selectedMonth, yNum) : "Prev month";
-                    return [makeItem(label, prevMonth)];
-                  }
-
-                  if (range === "quarterly") {
-                    const label =
-                      selectedQuarter && yNum
-                        ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                        : "Prev quarter";
-                    return [makeItem(label, prevQuarter)];
-                  }
-
-                  if (range === "yearly") {
-                    const label = yNum ? getPrevYearLabel(yNum) : "Prev year";
-                    return [makeItem(label, prevYear)];
-                  }
-
-                  return [];
-                };
-
-                // ---------- CM2% comparisons ----------
+                // ---------- CM2 percentage ----------
                 const getCm2Percent = (s?: Summary) => {
                   const explicitValue = [
                     s?.cm2_margins,
@@ -10714,83 +10432,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 const promotionsPercent =
                   currentCardMetrics?.promotions_pct ?? getPromotionsPercent(summary);
-
-                const getActivePreviousComparison = () => {
-                  const yNum = Number(selectedYear);
-
-                  if (range === "monthly") {
-                    return {
-                      label:
-                        selectedMonth && yNum
-                          ? getPrevMonthLabel(selectedMonth, yNum)
-                          : "Prev month",
-                      summary: comparisons?.lastMonth,
-                    };
-                  }
-
-                  if (range === "quarterly") {
-                    return {
-                      label:
-                        selectedQuarter && yNum
-                          ? getPrevQuarterLabel(selectedQuarter as Quarter, yNum)
-                          : "Prev quarter",
-                      summary: comparisons?.lastQuarter,
-                    };
-                  }
-
-                  return {
-                    label: yNum ? getPrevYearLabel(yNum) : "Prev year",
-                    summary: comparisons?.lastYear,
-                  };
-                };
-
-                const buildAmountPctComparisonRows = (
-                  currentAmount: number,
-                  getPreviousAmount: (s?: Summary) => number,
-                  getPreviousPct: (s?: Summary) => number,
-                  absoluteAmount = false,
-                  lowerIsBetter = false
-                ) => {
-                  const { label, summary: previousSummary } = getActivePreviousComparison();
-                  const previousAmount = getPreviousAmount(previousSummary);
-                  const previousPct = getPreviousPct(previousSummary);
-                  const hasPrev =
-                    typeof previousAmount === "number" &&
-                    Number.isFinite(previousAmount);
-                  const diffPct =
-                    hasPrev && previousAmount !== 0
-                      ? ((currentAmount - previousAmount) / Math.abs(previousAmount)) * 100
-                      : null;
-
-                  const deltaClassName =
-                    typeof diffPct === "number"
-                      ? diffPct === 0
-                        ? "text-gray-400"
-                        : lowerIsBetter
-                          ? diffPct < 0
-                            ? "text-emerald-600"
-                            : "text-red-600"
-                          : diffPct > 0
-                            ? "text-emerald-600"
-                            : "text-red-600"
-                      : "text-gray-400";
-
-                  const deltaText =
-                    typeof diffPct === "number"
-                      ? `${diffPct >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(diffPct).toFixed(2)}%`
-                      : "-";
-
-                  return [
-                    {
-                      label,
-                      valueText: hasPrev
-                        ? formatAmountWithPct(previousAmount, previousPct, absoluteAmount)
-                        : "-",
-                      deltaText,
-                      deltaClassName,
-                    },
-                  ];
-                };
 
                 const getBackendComparisonLabel = () => {
                   const yNum = Number(selectedYear);
@@ -10838,12 +10479,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     value: formatUnits(currentCardMetrics?.units ?? summary.unit_sold),
                     // className: "border border-[#FDD36F] bg-[#FDD36F4D]",
                     className: "bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F] ",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "units",
-                        formatUnits(previousCardMetrics?.units ?? 0)
-                      )
-                      : buildComparisonsRows("unit_sold", formatUnits),
+                    comparisons: buildBackendComparisonRow(
+                      "units",
+                      formatUnits(previousCardMetrics?.units ?? 0)
+                    ),
                   },
                   {
                     key: "asp",
@@ -10854,39 +10493,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                     className: "bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]",
 
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "asp",
-                        formatAspMoney(previousCardMetrics?.asp ?? 0)
-                      )
-                      : (() => {
-                      const items = getAspComparisons();
-
-                      return items.map((item) => {
-                        const hasValue = typeof item.value === "number" && !isNaN(item.value);
-                        const hasDiff = typeof item.diffPct === "number" && !isNaN(item.diffPct);
-
-                        const deltaClassName = hasDiff
-                          ? item.diffPct! >= 0
-                            ? "text-emerald-600"
-                            : "text-red-600"
-                          : "text-gray-400";
-
-                        const deltaText = hasDiff
-                          ? `${item.diffPct! >= 0 ? "▲" : "▼"} ${Math.abs(item.diffPct!).toFixed(2)}%`
-                          : "-";
-
-                        return {
-                          label: item.label,
-
-                          // ✅ Previous ASP also shows decimals
-                          valueText: hasValue ? formatAspMoney(item.value!) : "-",
-
-                          deltaText,
-                          deltaClassName,
-                        };
-                      });
-                      })(),
+                    comparisons: buildBackendComparisonRow(
+                      "asp",
+                      formatAspMoney(previousCardMetrics?.asp ?? 0)
+                    ),
                   },
                   {
                     key: "netSales",
@@ -10897,12 +10507,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "net_sales",
-                        formatWholeMoney(previousCardMetrics?.net_sales ?? 0)
-                      )
-                      : buildComparisonsRows("total_sales", formatWholeMoney),
+                    comparisons: buildBackendComparisonRow(
+                      "net_sales",
+                      formatWholeMoney(previousCardMetrics?.net_sales ?? 0)
+                    ),
                   },
                   {
                     key: "expenses",
@@ -10913,13 +10521,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "marketplace_fees",
-                        formatWholeMoney(previousCardMetrics?.marketplace_fees ?? 0),
-                        true
-                      )
-                      : buildComparisonsRows("total_amazon_fee", formatWholeMoney),
+                    comparisons: buildBackendComparisonRow(
+                      "marketplace_fees",
+                      formatWholeMoney(previousCardMetrics?.marketplace_fees ?? 0),
+                      true
+                    ),
                   },
                   {
                     key: "ads",
@@ -10930,13 +10536,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       0
                     ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "cost_of_ads",
-                        formatWholeMoney(previousCardMetrics?.cost_of_ads ?? 0),
-                        true
-                      )
-                      : buildComparisonsRows("advertising_total_final", formatWholeMoney),
+                    comparisons: buildBackendComparisonRow(
+                      "cost_of_ads",
+                      formatWholeMoney(previousCardMetrics?.cost_of_ads ?? 0),
+                      true
+                    ),
                   },
                   {
                     key: "tacos",
@@ -10944,13 +10548,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     value: formatRoas(roas),
                     // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
                     className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "tacos_pct",
-                        formatRoas(previousCardMetrics?.tacos_pct ?? 0),
-                        true
-                      )
-                      : buildTacosComparisonRows(),
+                    comparisons: buildBackendComparisonRow(
+                      "tacos_pct",
+                      formatRoas(previousCardMetrics?.tacos_pct ?? 0),
+                      true
+                    ),
                   },
                   {
                     key: "cm2",
@@ -10960,19 +10562,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       cm2Margin
                     ),
                     className: "bg-white border border-[#B8C78C] border-t-4 border-t-[#B8C78C]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "cm2_profit",
-                        formatAmountWithPct(
-                          previousCardMetrics?.cm2_profit ?? 0,
-                          previousCardMetrics?.cm2_margin_pct ?? 0
-                        )
+                    comparisons: buildBackendComparisonRow(
+                      "cm2_profit",
+                      formatAmountWithPct(
+                        previousCardMetrics?.cm2_profit ?? 0,
+                        previousCardMetrics?.cm2_margin_pct ?? 0
                       )
-                      : buildAmountPctComparisonRows(
-                        roundMoney(summary.cm2_profit),
-                        (s) => roundMoney(toNum(s?.cm2_profit)),
-                        getCm2Percent
-                      ),
+                    ),
                   },
                   {
                     key: "promotions",
@@ -10983,23 +10579,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       true
                     ),
                     className: "bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]",
-                    comparisons: backendCardMetrics
-                      ? buildBackendComparisonRow(
-                        "promotions",
-                        formatAmountWithPct(
-                          previousCardMetrics?.promotions ?? 0,
-                          previousCardMetrics?.promotions_pct ?? 0,
-                          true
-                        ),
-                        true
-                      )
-                      : buildAmountPctComparisonRows(
-                        roundMoney(promotionsAmount),
-                        (s) => roundMoney(Math.abs(toNum(s?.promotional_rebates))),
-                        getPromotionsPercent,
-                        true,
+                    comparisons: buildBackendComparisonRow(
+                      "promotions",
+                      formatAmountWithPct(
+                        previousCardMetrics?.promotions ?? 0,
+                        previousCardMetrics?.promotions_pct ?? 0,
                         true
                       ),
+                      true
+                    ),
                   },
                 ];
 
