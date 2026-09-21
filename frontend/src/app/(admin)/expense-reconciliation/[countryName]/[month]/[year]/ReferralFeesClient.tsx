@@ -182,6 +182,18 @@ const fmtInteger = (n: number): string =>
     })
     : "-";
 
+const getLastCompletedMonth = () => {
+  const now = new Date();
+  const lastCompleted = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  return {
+    month: lastCompleted
+      .toLocaleString("en-US", { month: "long" })
+      .toLowerCase(),
+    year: String(lastCompleted.getFullYear()),
+  };
+};
+
 const toNumberSafe = (v: any): number => {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
@@ -1839,6 +1851,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
             yearOptions={[new Date().getFullYear(), new Date().getFullYear() - 1]}
             onRangeChange={(v) => {
               let nextMonth = month;
+              let nextYear = year;
+
+              if (v === "monthly") {
+                const lastCompletedMonth = getLastCompletedMonth();
+                nextMonth = lastCompletedMonth.month;
+                nextYear = lastCompletedMonth.year;
+              }
 
               if (v === "quarterly") {
                 const m = quarterToMonth(selectedQuarter || "Q1");
@@ -1851,6 +1870,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
               setRange(v);
               if (nextMonth) setMonth(nextMonth);
+              if (nextYear) setYear(nextYear);
               setError(null);
             }}
 
