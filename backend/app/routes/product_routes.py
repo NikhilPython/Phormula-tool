@@ -4,6 +4,7 @@ import os
 import re
 import traceback
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
 from config import Config
 from config import basedir
 SECRET_KEY = Config.SECRET_KEY
@@ -12,9 +13,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.utils import secure_filename
 from sqlalchemy import MetaData, Table, inspect, select
-import logging
 from app.routes.amazon_sales_api_routes import _normalize_sku_row
-from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.token_utils import create_database_if_not_exists, get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
 from decimal import Decimal, ROUND_HALF_UP
@@ -27,16 +27,24 @@ from app.utils.dashboard_card_metrics import (
 
 
 
-# Setup logger
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL')
+db_url2 = os.getenv('DATABASE_EXPENSE_RECONCILIATION_URL')
+EXPENSE_RECONCILIATION_DB_NAME = (
+    make_url(db_url2).database if db_url2 else "expense_reconciliation_db"
+)
 
 user_engine = create_engine(
     db_url,
+    pool_pre_ping=True,
+    pool_size=3,
+    max_overflow=2,
+    pool_recycle=1800,
+)
+
+expense_reconciliation_engine = create_engine(
+    db_url2,
     pool_pre_ping=True,
     pool_size=3,
     max_overflow=2,
@@ -58,6 +66,451 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v3_period_units_net_sales"
+
+def _safe_identifier(value, fallback="value"):
+    cleaned = re.sub(r"[^a-zA-Z0-9_]+", "_", str(value or "").strip().lower())
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+    return cleaned or fallback
+
+
+def _expense_reconciliation_table_name(user_id, country, month, year, range_, quarter=None):
+    user_key = _safe_identifier(user_id, "user")
+    country_key = _safe_identifier(country, "country")
+    year_key = _safe_identifier(year, "year")
+
+    if range_ == "quarterly":
+        period_key = _safe_identifier(quarter or month, "quarter")
+        quarter_match = re.search(r"[1-4]", period_key)
+        quarter_key = f"q{quarter_match.group(0)}" if quarter_match else period_key
+        return f"quarterly_expense_reconciliation_{user_key}_{country_key}_{quarter_key}{year_key}"
+
+    if range_ == "yearly":
+        return f"skuwiseyearly_expense_reconciliation_{user_key}_{country_key}_{year_key}"
+
+    month_key = _safe_identifier(month, "month")
+    return f"skuwisemonthly_expense_reconciliation_{user_key}_{country_key}_{month_key}{year_key}"
+
+
+def _materialize_expense_reconciliation_table(
+    *,
+    user_id,
+    country,
+    month,
+    year,
+    range_,
+    quarter,
+    final_df,
+    sku_monthly_rows=None,
+    sku_monthly_summary=None,
+):
+    if expense_reconciliation_engine is None:
+        return {
+            "success": False,
+            "message": "Expense reconciliation database URL is not configured.",
+        }
+
+    table_name = _expense_reconciliation_table_name(
+        user_id=user_id,
+        country=country,
+        month=month,
+        year=year,
+        range_=range_,
+        quarter=quarter,
+    )
+
+    source = final_df.copy()
+    if source.empty:
+        rows = pd.DataFrame(columns=[
+            "sku",
+            "product_name",
+            "units",
+            "net_sales",
+            "referral_fees_applicable",
+            "referral_fees_charged",
+            "fba_fees_applicable",
+            "fba_fees_charged",
+            "referral_fees_accurate",
+            "referral_fees_undercharged",
+            "referral_fees_overcharged",
+        ])
+    else:
+        sku_text = source.get("sku", pd.Series("", index=source.index)).astype(str).str.strip()
+        detail_df = source[
+            (sku_text != "Grand Total") &
+            (~sku_text.str.startswith("Charge -", na=False))
+        ].copy()
+
+        numeric_defaults = {
+            "total_quantity": 0,
+            "quantity": 0,
+            "net_sales_total_value": 0,
+            "net_sales": 0,
+            "product_sales": 0,
+            "answer": 0,
+            "selling_fees": 0,
+            "fba_fees": 0,
+            "difference": 0,
+        }
+        for col, default in numeric_defaults.items():
+            if col not in detail_df.columns:
+                detail_df[col] = default
+            detail_df[col] = pd.to_numeric(detail_df[col], errors="coerce").fillna(0)
+
+        status_norm = detail_df.get("status", pd.Series("", index=detail_df.index)).astype(str).str.strip().str.lower()
+        detail_df["_units"] = detail_df["total_quantity"].where(
+            detail_df["total_quantity"] != 0,
+            detail_df["quantity"],
+        )
+        detail_df["_net_sales"] = detail_df["net_sales_total_value"].where(
+            detail_df["net_sales_total_value"] != 0,
+            detail_df["net_sales"].where(detail_df["net_sales"] != 0, detail_df["product_sales"]),
+        )
+        detail_df["_referral_fees_applicable"] = detail_df["answer"]
+        detail_df["_referral_fees_charged"] = detail_df["selling_fees"]
+        detail_df["_fba_fees_charged"] = detail_df["fba_fees"].abs()
+        detail_df["_fba_fees_applicable"] = detail_df["_fba_fees_charged"]
+        detail_df["_referral_fees_accurate"] = detail_df["answer"].where(status_norm == "accurate", 0)
+        detail_df["_referral_fees_undercharged"] = detail_df["difference"].where(
+            status_norm == "undercharged",
+            0,
+        ).abs()
+        detail_df["_referral_fees_overcharged"] = detail_df["difference"].where(
+            status_norm == "overcharged",
+            0,
+        ).clip(lower=0)
+
+        group_cols = ["sku", "product_name"]
+        value_cols = [
+            "_units",
+            "_net_sales",
+            "_referral_fees_applicable",
+            "_referral_fees_charged",
+            "_fba_fees_applicable",
+            "_fba_fees_charged",
+            "_referral_fees_accurate",
+            "_referral_fees_undercharged",
+            "_referral_fees_overcharged",
+        ]
+
+        if detail_df.empty:
+            rows = pd.DataFrame(columns=[
+                "sku",
+                "product_name",
+                "units",
+                "net_sales",
+                "referral_fees_applicable",
+                "referral_fees_charged",
+                "fba_fees_applicable",
+                "fba_fees_charged",
+                "referral_fees_accurate",
+                "referral_fees_undercharged",
+                "referral_fees_overcharged",
+            ])
+        else:
+            rows = (
+                detail_df.groupby(group_cols, as_index=False)[value_cols]
+                .sum()
+                .rename(columns={
+                    "_units": "units",
+                    "_net_sales": "net_sales",
+                    "_referral_fees_applicable": "referral_fees_applicable",
+                    "_referral_fees_charged": "referral_fees_charged",
+                    "_fba_fees_applicable": "fba_fees_applicable",
+                    "_fba_fees_charged": "fba_fees_charged",
+                    "_referral_fees_accurate": "referral_fees_accurate",
+                    "_referral_fees_undercharged": "referral_fees_undercharged",
+                    "_referral_fees_overcharged": "referral_fees_overcharged",
+                })
+            )
+
+        if sku_monthly_rows and not rows.empty:
+            monthly_df = pd.DataFrame(sku_monthly_rows).copy()
+            if "sku" in monthly_df.columns:
+                monthly_df["_sku_key"] = (
+                    monthly_df["sku"].fillna("").astype(str).str.strip().str.lower()
+                )
+
+                def _monthly_numeric(*columns):
+                    result = pd.Series(0.0, index=monthly_df.index)
+                    for column in columns:
+                        if column not in monthly_df.columns:
+                            continue
+                        candidate = pd.to_numeric(monthly_df[column], errors="coerce").fillna(0)
+                        result = result.where(result != 0, candidate)
+                    return result
+
+                monthly_df["_expense_units"] = _monthly_numeric("total_quantity", "quantity", "units")
+                if "return_quantity" in monthly_df.columns and "total_quantity" not in monthly_df.columns:
+                    returns = pd.to_numeric(monthly_df["return_quantity"], errors="coerce").fillna(0)
+                    monthly_df["_expense_units"] = (monthly_df["_expense_units"] - returns).clip(lower=0)
+                monthly_df["_expense_net_sales"] = _monthly_numeric(
+                    "net_sales",
+                    "net_sales_total_value",
+                    "product_sales",
+                )
+
+                monthly_totals = monthly_df.groupby("_sku_key", as_index=True)[
+                    ["_expense_units", "_expense_net_sales"]
+                ].sum()
+                row_sku_keys = rows["sku"].fillna("").astype(str).str.strip().str.lower()
+                mapped_units = row_sku_keys.map(monthly_totals["_expense_units"])
+                mapped_net_sales = row_sku_keys.map(monthly_totals["_expense_net_sales"])
+                rows.loc[mapped_units.notna(), "units"] = mapped_units[mapped_units.notna()]
+                rows.loc[mapped_net_sales.notna(), "net_sales"] = mapped_net_sales[mapped_net_sales.notna()]
+
+        if not rows.empty:
+            total = {
+                "sku": "",
+                "product_name": "Grand Total",
+            }
+            for col in [
+                "units",
+                "net_sales",
+                "referral_fees_applicable",
+                "referral_fees_charged",
+                "fba_fees_applicable",
+                "fba_fees_charged",
+                "referral_fees_accurate",
+                "referral_fees_undercharged",
+                "referral_fees_overcharged",
+            ]:
+                total[col] = float(pd.to_numeric(rows[col], errors="coerce").fillna(0).sum())
+
+            if sku_monthly_summary:
+                summary_units = sku_monthly_summary.get(
+                    "total_quantity",
+                    sku_monthly_summary.get("quantity"),
+                )
+                summary_net_sales = sku_monthly_summary.get("net_sales")
+                if summary_units is not None:
+                    total["units"] = float(summary_units or 0)
+                if summary_net_sales is not None:
+                    total["net_sales"] = float(summary_net_sales or 0)
+
+            rows = pd.concat([rows, pd.DataFrame([total])], ignore_index=True)
+
+    rows["units"] = pd.to_numeric(rows["units"], errors="coerce").fillna(0).round().astype("int64")
+    for column in [
+        "net_sales",
+        "referral_fees_applicable",
+        "referral_fees_charged",
+        "fba_fees_applicable",
+        "fba_fees_charged",
+        "referral_fees_accurate",
+        "referral_fees_undercharged",
+        "referral_fees_overcharged",
+    ]:
+        rows[column] = pd.to_numeric(rows[column], errors="coerce").fillna(0).round(2)
+
+    create_database_if_not_exists(db_url2)
+    rows.to_sql(
+        table_name,
+        expense_reconciliation_engine,
+        schema="public",
+        if_exists="replace",
+        index=False,
+    )
+    with expense_reconciliation_engine.begin() as conn:
+        conn.execute(text(
+            f'COMMENT ON TABLE public."{table_name}" '
+            f"IS '{EXPENSE_RECONCILIATION_CACHE_VERSION}'"
+        ))
+
+    return {
+        "success": True,
+        "database": EXPENSE_RECONCILIATION_DB_NAME,
+        "table_name": table_name,
+        "row_count": int(len(rows)),
+        "columns": rows.columns.tolist(),
+    }
+
+
+def _load_expense_reconciliation_table(*, user_id, country, month, year, range_, quarter):
+    if expense_reconciliation_engine is None:
+        return None
+
+    table_name = _expense_reconciliation_table_name(
+        user_id=user_id,
+        country=country,
+        month=month,
+        year=year,
+        range_=range_,
+        quarter=quarter,
+    )
+
+    try:
+        with expense_reconciliation_engine.connect() as conn:
+            table_inspector = inspect(conn)
+            if not table_inspector.has_table(table_name, schema="public"):
+                return None
+            table_comment = table_inspector.get_table_comment(
+                table_name,
+                schema="public",
+            ).get("text")
+            if table_comment != EXPENSE_RECONCILIATION_CACHE_VERSION:
+                return None
+            rows = pd.read_sql(text(f'SELECT * FROM "{table_name}"'), conn)
+    except SQLAlchemyError:
+        return None
+
+    return table_name, rows
+
+
+def _expense_reconciliation_api_response(*, table_name, rows, range_):
+    numeric_columns = [
+        "units",
+        "net_sales",
+        "referral_fees_applicable",
+        "referral_fees_charged",
+        "fba_fees_applicable",
+        "fba_fees_charged",
+        "referral_fees_accurate",
+        "referral_fees_undercharged",
+        "referral_fees_overcharged",
+    ]
+    cached = rows.copy()
+    for column in numeric_columns:
+        if column not in cached.columns:
+            cached[column] = 0
+        cached[column] = pd.to_numeric(cached[column], errors="coerce").fillna(0)
+
+    if "sku" not in cached.columns:
+        cached["sku"] = ""
+    if "product_name" not in cached.columns:
+        cached["product_name"] = ""
+
+    sku_text = cached["sku"].fillna("").astype(str).str.strip().str.lower()
+    product_text = cached["product_name"].fillna("").astype(str).str.strip().str.lower()
+    grand_mask = sku_text.eq("grand total") | product_text.eq("grand total")
+    detail_rows = cached[~grand_mask].copy()
+    stored_grand_rows = cached[grand_mask].copy()
+
+    def _status_for_row(row):
+        if float(row.get("referral_fees_overcharged", 0) or 0) != 0:
+            return "Overcharged"
+        if float(row.get("referral_fees_undercharged", 0) or 0) != 0:
+            return "Undercharged"
+        if float(row.get("referral_fees_applicable", 0) or 0) == 0:
+            return "noreferallfee"
+        return "Accurate"
+
+    def _legacy_record(row, *, status=None, sku=None, product_name=None):
+        units = float(row.get("units", 0) or 0)
+        net_sales = float(row.get("net_sales", 0) or 0)
+        applicable = float(row.get("referral_fees_applicable", 0) or 0)
+        charged = float(row.get("referral_fees_charged", 0) or 0)
+        fba_applicable = float(row.get("fba_fees_applicable", 0) or 0)
+        fba_charged = float(row.get("fba_fees_charged", 0) or 0)
+        undercharged = float(row.get("referral_fees_undercharged", 0) or 0)
+        overcharged = float(row.get("referral_fees_overcharged", 0) or 0)
+        resolved_status = status or _status_for_row(row)
+        errorstatus = "OK" if resolved_status == "Accurate" else resolved_status.lower()
+
+        return {
+            "sku": str(row.get("sku", "") if sku is None else sku),
+            "product_name": str(row.get("product_name", "") if product_name is None else product_name),
+            "quantity": units,
+            "return_quantity": 0,
+            "total_quantity": units,
+            "product_sales": net_sales,
+            "net_sales": net_sales,
+            "net_sales_total_value": net_sales,
+            "answer": applicable,
+            "selling_fees": charged,
+            "fbaanswer": fba_applicable,
+            "fba_fees": fba_charged,
+            "difference": overcharged - undercharged,
+            "overcharged": overcharged,
+            "referral_fees_accurate": float(row.get("referral_fees_accurate", 0) or 0),
+            "referral_fees_undercharged": undercharged,
+            "referral_fees_overcharged": overcharged,
+            "status": resolved_status,
+            "errorstatus": errorstatus,
+        }
+
+    detail_records = [_legacy_record(row) for _, row in detail_rows.iterrows()]
+    status_order = ["Accurate", "Undercharged", "Overcharged", "noreferallfee"]
+    display_records = []
+    status_records = {status: [] for status in status_order}
+
+    for record in detail_records:
+        status_records[record["status"]].append(record)
+
+    sum_fields = [
+        "quantity",
+        "total_quantity",
+        "product_sales",
+        "net_sales",
+        "net_sales_total_value",
+        "answer",
+        "selling_fees",
+        "fbaanswer",
+        "fba_fees",
+        "difference",
+        "overcharged",
+        "referral_fees_accurate",
+        "referral_fees_undercharged",
+        "referral_fees_overcharged",
+    ]
+
+    def _summary_record(status, records):
+        summary = {
+            "sku": f"Charge - {status}",
+            "product_name": "",
+            "return_quantity": 0,
+            "status": status,
+            "errorstatus": "",
+        }
+        for field in sum_fields:
+            summary[field] = float(sum(float(record.get(field, 0) or 0) for record in records))
+        return summary
+
+    for status in status_order:
+        display_records.append(_summary_record(status, status_records[status]))
+        display_records.extend(status_records[status])
+
+    if not stored_grand_rows.empty:
+        grand_record = _legacy_record(
+            stored_grand_rows.iloc[-1],
+            status="Total",
+            sku="Grand Total",
+            product_name="",
+        )
+    else:
+        grand_record = _summary_record("Total", detail_records)
+        grand_record["sku"] = "Grand Total"
+    display_records.append(grand_record)
+
+    original_records = cached.where(pd.notna(cached), None).to_dict(orient="records")
+    return {
+        "success": True,
+        "message": "Expense reconciliation table loaded successfully.",
+        "range": range_,
+        "table": display_records,
+        "accurate_data": status_records["Accurate"],
+        "undercharged_data": status_records["Undercharged"],
+        "overcharged_data": status_records["Overcharged"],
+        "no_ref_fee_data": status_records["noreferallfee"],
+        "created_table_name": table_name,
+        "raw_table": original_records,
+        "table_name": table_name,
+        "platform_fee_total": 0,
+        "other_total": 0,
+        "advertising_total": 0,
+        "sku_monthly_summary": grand_record if range_ == "monthly" else {},
+        "sku_monthly_rows": detail_records if range_ == "monthly" else [],
+        "sku_monthly_table": table_name if range_ == "monthly" else None,
+        "expense_reconciliation": {
+            "success": True,
+            "cached": True,
+            "database": EXPENSE_RECONCILIATION_DB_NAME,
+            "table_name": table_name,
+            "row_count": int(len(cached)),
+            "columns": cached.columns.tolist(),
+        },
+    }
+
 
 def get_previous_month(month, year):
     month = str(month).strip().lower()
@@ -704,7 +1157,7 @@ def YearlySKU():
             try:
                 persist_per_unit_fields(engine, table_name, current_data)
             except Exception:
-                logger.exception("Could not persist yearly dashboard card columns")
+                pass
 
         previous_year = get_previous_year(year)
         previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
@@ -903,7 +1356,7 @@ def quarterlyskutable():
             try:
                 persist_per_unit_fields(engine, table_name, current_data)
             except Exception:
-                logger.exception("Could not persist quarterly dashboard card columns")
+                pass
 
         except Exception:
             return jsonify({
@@ -931,7 +1384,7 @@ def quarterlyskutable():
                 try:
                     persist_per_unit_fields(engine, previous_table_name, previous_data)
                 except Exception:
-                    logger.exception("Could not persist previous-quarter dashboard card columns")
+                    pass
 
             except Exception:
                 previous_data = []
@@ -1969,7 +2422,7 @@ def skutableprofit():
             try:
                 persist_per_unit_fields(engine, table_name, current_data)
             except Exception:
-                logger.exception("Could not persist monthly dashboard card columns")
+                pass
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
@@ -2003,7 +2456,7 @@ def skutableprofit():
                 try:
                     persist_per_unit_fields(engine, previous_table_name, previous_data)
                 except Exception:
-                    logger.exception("Could not persist previous-month dashboard card columns")
+                    pass
             except Exception as e:
                 previous_data = []
                 print("Previous data error:", str(e))
@@ -2055,7 +2508,7 @@ def get_table_data(file_name):
     else:
         range_ = "monthly"
 
-    
+
     def _month_str_to_int(m):
         if m is None:
             return None
@@ -2086,6 +2539,22 @@ def get_table_data(file_name):
         return None
 
     try:
+        cached_expense_table = _load_expense_reconciliation_table(
+            user_id=user_id,
+            country=country,
+            month=month,
+            year=year,
+            range_=range_,
+            quarter=quarter,
+        )
+        if cached_expense_table is not None:
+            expense_table_name, expense_rows = cached_expense_table
+            return jsonify(_expense_reconciliation_api_response(
+                table_name=expense_table_name,
+                rows=expense_rows,
+                range_=range_,
+            ))
+
         engine = user_engine
         conn = engine.connect()
         inspector = inspect(engine)
@@ -2131,20 +2600,43 @@ def get_table_data(file_name):
             return float(pd.to_numeric(detail_rows[column], errors="coerce").fillna(0.0).sum())
 
         def _load_sku_monthly_context():
-            if range_ != "monthly" or not country or not month or not year:
+            if not country or not year:
                 return {}, [], None
 
-            month_token = _clean_ident_part(month)
             country_token = _clean_ident_part(country)
             candidates = []
 
-            if country_token == "global":
-                candidates.append(f"skuwisemonthly_{user_id}_global_{month_token}{year}_table")
+            if range_ == "monthly":
+                if not month:
+                    return {}, [], None
+                month_token = _clean_ident_part(month)
+                if country_token == "global":
+                    candidates.append(f"skuwisemonthly_{user_id}_global_{month_token}{year}_table")
+                else:
+                    candidates.extend([
+                        f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}",
+                        f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}_table",
+                    ])
+            elif range_ == "quarterly":
+                period_token = _clean_ident_part(quarter or month)
+                quarter_match = re.search(r"[1-4]", period_token)
+                if not quarter_match:
+                    month_number = _month_str_to_int(month)
+                    if month_number:
+                        quarter_number = ((month_number - 1) // 3) + 1
+                    else:
+                        return {}, [], None
+                else:
+                    quarter_number = int(quarter_match.group(0))
+                candidates.append(
+                    f"quarter{quarter_number}_{user_id}_{country_token}_{year}_table"
+                )
+            elif range_ == "yearly":
+                candidates.append(
+                    f"skuwiseyearly_{user_id}_{country_token}_{year}_table"
+                )
             else:
-                candidates.extend([
-                    f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}",
-                    f"skuwisemonthly_{user_id}_{country_token}_{month_token}{year}_table",
-                ])
+                return {}, [], None
 
             table_names = set(inspector.get_table_names())
             matched_table = next((t for t in candidates if t in table_names), None)
@@ -2543,6 +3035,24 @@ def get_table_data(file_name):
         over_df     = over_df.replace({np.nan: 0})
         ref_df      = ref_df.replace({np.nan: 0})
 
+        try:
+            expense_reconciliation_result = _materialize_expense_reconciliation_table(
+                user_id=user_id,
+                country=country,
+                month=month,
+                year=year,
+                range_=range_,
+                quarter=quarter,
+                final_df=final_df,
+                sku_monthly_rows=sku_monthly_rows,
+                sku_monthly_summary=sku_monthly_summary,
+            )
+        except Exception as e:
+            expense_reconciliation_result = {
+                "success": False,
+                "message": str(e),
+            }
+
         return jsonify({
             "success": True,
             "message": "SKU wise table generated successfully.",
@@ -2562,6 +3072,7 @@ def get_table_data(file_name):
             "sku_monthly_summary": sku_monthly_summary,
             "sku_monthly_rows": sku_monthly_rows,
             "sku_monthly_table": sku_monthly_table,
+            "expense_reconciliation": expense_reconciliation_result,
 
         })
 
