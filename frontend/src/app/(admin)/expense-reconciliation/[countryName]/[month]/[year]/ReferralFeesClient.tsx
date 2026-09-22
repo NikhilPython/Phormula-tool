@@ -532,7 +532,7 @@ function ReconciliationStatusCard({
           {valueFmt(Math.abs(amount))}
         </span>
         <span className="text-[9.5px] font-semibold leading-none sm:text-[10px] 2xl:text-xs">
-          {Math.round(units).toLocaleString()} Units · {share.toFixed(2)}%
+          {Math.round(units).toLocaleString()} Units
         </span>
       </div>
     </div>
@@ -2120,7 +2120,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
               <div
                 id="referral-overview-panel"
                 role="tabpanel"
-                className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch"
+                className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)] lg:items-stretch"
               >
                 <SkuAgeingDonutChart
                   title="Reconciliation Distribution"
@@ -2129,7 +2129,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   totalUnits={reconciliationTotalUnits}
                 />
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3">
                   {reconciliationStatuses.map((status) => (
                     <ReconciliationStatusCard
                       key={status.key}
