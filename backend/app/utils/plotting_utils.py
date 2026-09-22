@@ -248,30 +248,15 @@ def apply_modifications(df, country):
             # ✅ Country-wise calculations
             if country.lower() == 'uk':
                 product_sales_tax = float(row.get('product_sales_tax', 0) or 0)
-                postage_credits = float(row.get('postage_credits', 0) or 0)
+                shipping_credits = float(row.get('shipping_credits', 0) or 0)
                 promotional_rebates = float(row.get('promotional_rebates', 0) or 0)
-                promotional_rebates_tax = float(row.get('promotional_rebates_tax', 0) or 0)
-                
-
-                if postage_credits > 0:
-                    postage_shipping_total = postage_credits + shipping_credits_tax
-                else:
-                    postage_shipping_total = 0.0
-                
-
-                    # NEW LOGIC: final_postage_shipping_total
-                promo_total = promotional_rebates + promotional_rebates_tax
-
-                if promo_total == -postage_shipping_total:
-                    final_postage_shipping_total = 0
-                else:
-                    final_postage_shipping_total = postage_shipping_total
-
-                df.at[index, "final_postage_shipping_total"] = final_postage_shipping_total
-
-
-                additions = product_sales + product_sales_tax + postage_credits + promotional_rebates + promotional_rebates_tax + shipping_credits_tax
-                deductions = final_postage_shipping_total
+                additions = (
+                    product_sales
+                    + product_sales_tax
+                    + shipping_credits
+                    + promotional_rebates
+                )
+                deductions = 0.0
                
 
             elif country.lower() == 'us':
@@ -478,18 +463,15 @@ def apply_modifications_fatch(df, country):
             # ✅ Country-wise calculations
             if country.lower() == 'uk':
                 product_sales_tax = float(row.get('product_sales_tax', 0) or 0)
-                postage_credits = float(row.get('postage_credits', 0) or 0)
+                shipping_credits = float(row.get('shipping_credits', 0) or 0)
                 promotional_rebates = float(row.get('promotional_rebates', 0) or 0)
-                promotional_rebates_tax = float(row.get('promotional_rebates_tax', 0) or 0)
-          
-
-                if postage_credits > 0:
-                    postage_shipping_total = postage_credits + shipping_credits_tax
-                else:
-                    postage_shipping_total = 0.0
-
-                additions = product_sales + product_sales_tax + postage_credits + promotional_rebates + promotional_rebates_tax + shipping_credits_tax
-                deductions = postage_shipping_total
+                additions = (
+                    product_sales
+                    + product_sales_tax
+                    + shipping_credits
+                    + promotional_rebates
+                )
+                deductions = 0.0
                 
 
             elif country.lower() == 'us':

@@ -67,7 +67,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v10_exclude_refund_transactions"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v12_uk_applicable_formula"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -3329,14 +3329,15 @@ def get_table_data(file_name):
             df["total_quantity"] = df.get("quantity", 0) - df["return_quantity"]
         df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0).clip(lower=0)
 
-        if str(country or "").strip().lower() == "us":
+        reconciliation_country = str(country or "").strip().lower()
+        if reconciliation_country in {"us", "uk"}:
             pre_group_net_sales = pd.Series(0.0, index=df.index)
-            for column in (
-                "product_sales",
-                "shipping_credits",
-                "gift_wrap_credits",
-                "promotional_rebates",
-            ):
+            net_sales_columns = (
+                ("product_sales", "shipping_credits", "gift_wrap_credits", "promotional_rebates")
+                if reconciliation_country == "us"
+                else ("product_sales", "promotional_rebates", "other")
+            )
+            for column in net_sales_columns:
                 if column not in df.columns:
                     df[column] = 0
                 df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
@@ -3352,7 +3353,7 @@ def get_table_data(file_name):
             refund_rows = transaction_types.eq("refund") | descriptions.eq("refund")
             df = df.loc[(pre_group_net_sales >= 0) & ~refund_rows].copy()
 
-        if str(country or "").strip().lower() == "us" and "order_id" in df.columns:
+        if reconciliation_country in {"us", "uk"} and "order_id" in df.columns:
             order_ids = df["order_id"].fillna("").astype(str).str.strip()
             valid_order_ids = ~order_ids.str.lower().isin({"", "nan", "none", "<na>"})
             row_fallbacks = pd.Series(
@@ -3366,6 +3367,7 @@ def get_table_data(file_name):
 
             order_sum_columns = {
                 "product_sales",
+                "product_sales_tax",
                 "shipping_credits",
                 "gift_wrap_credits",
                 "promotional_rebates",
@@ -3378,6 +3380,7 @@ def get_table_data(file_name):
                 "fbaanswer",
                 "platform_fee",
                 "advertising_total",
+                "answer",
             }
             aggregation_rules = {
                 column: "sum" if column in order_sum_columns else "first"
@@ -3459,6 +3462,74 @@ def get_table_data(file_name):
                 df.get("promotional_rebates", 0) +
                 df.get("other", 0)
             )
+
+            if reconciliation_country == "uk":
+                for column in (
+                    "product_sales",
+                    "product_sales_tax",
+                    "shipping_credits",
+                    "promotional_rebates",
+                    "referral_fee",
+                ):
+                    if column not in df.columns:
+                        df[column] = 0
+                    df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
+
+                qty_for_calc = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
+                qty_for_calc = qty_for_calc.where(qty_for_calc != 0, 1)
+                applicable_base = (
+                    df["product_sales"]
+                    + df["product_sales_tax"]
+                    + df["shipping_credits"]
+                    + df["promotional_rebates"]
+                )
+                df["total_value"] = [
+                    _round_half_up(base / quantity)
+                    for base, quantity in zip(applicable_base, qty_for_calc)
+                ]
+                applicable_per_unit = [
+                    _round_half_up(total_value * (rate / 100.0))
+                    for total_value, rate in zip(df["total_value"], df["referral_fee"])
+                ]
+                df["answer"] = [
+                    fee * quantity if product_sales != 0 else 0.0
+                    for fee, quantity, product_sales in zip(
+                        applicable_per_unit,
+                        qty_for_calc,
+                        df["product_sales"],
+                    )
+                ]
+                charged_for_diff = pd.to_numeric(
+                    df["selling_fees"],
+                    errors="coerce",
+                ).fillna(0).abs()
+                df["difference"] = [
+                    _round_half_up(charged - answer)
+                    for charged, answer in zip(charged_for_diff, df["answer"])
+                ]
+                df["errorstatus"] = "OK"
+                df.loc[df["difference"] < 0, "errorstatus"] = "undercharged"
+                df.loc[df["difference"] > 0, "errorstatus"] = "overcharged"
+
+                desc_str = df.get(
+                    "description",
+                    pd.Series("", index=df.index),
+                ).astype(str).str.strip().str.lower()
+                txn_type = df.get(
+                    "type",
+                    pd.Series("", index=df.index),
+                ).astype(str).str.strip().str.lower()
+                referral_fee_values = pd.to_numeric(
+                    df.get("referral_fee", pd.Series(0, index=df.index)),
+                    errors="coerce",
+                ).fillna(0)
+                no_fee_mask = (
+                    (referral_fee_values == 0)
+                    & (desc_str != "tax")
+                    & (txn_type != "other-transaction")
+                )
+                df.loc[no_fee_mask, "errorstatus"] = "NoReferralFee"
+                df.loc[txn_type == "adjustment", "errorstatus"] = "NoReferralFee"
 
         net_sales_values = pd.to_numeric(
             df["net_sales_total_value"],
