@@ -26,7 +26,6 @@ import SkuAgeingDonutChart, {
   type DonutChartItem,
 } from "@/components/common/inventory/SkuAgeingDonutChart";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
-import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -491,54 +490,6 @@ function FeeCard({
   );
 }
 
-function ReconciliationStatusCard({
-  title,
-  units,
-  amount,
-  totalUnits,
-  valueFmt,
-  borderColor,
-  amountLabel,
-}: {
-  title: string;
-  units: number;
-  amount: number;
-  totalUnits: number;
-  valueFmt: (n: number) => string;
-  borderColor: string;
-  amountLabel: string;
-}) {
-  const share = totalUnits > 0 ? (units / totalUnits) * 100 : 0;
-
-  return (
-    <div
-      className="rounded-lg border border-t-4 p-2.5 text-center sm:p-3"
-      style={{
-        backgroundColor: "#ffffff",
-        borderColor,
-        borderTopColor: borderColor,
-      }}
-    >
-      <h4 className="truncate text-[10px] font-medium text-charcoal-500 sm:text-[10px] 2xl:text-xs">
-        {title}
-      </h4>
-
-      <p className="mx-auto mt-1 h-4 max-w-[210px] overflow-hidden text-[10px] leading-4 text-charcoal-500 sm:text-[10px] 2xl:text-xs">
-        {amountLabel}
-      </p>
-
-      <div className="mt-2 flex flex-col items-center justify-center gap-2 text-charcoal-500">
-        <span className="text-sm font-semibold leading-none 2xl:text-lg">
-          {valueFmt(Math.abs(amount))}
-        </span>
-        <span className="text-[9.5px] font-semibold leading-none sm:text-[10px] 2xl:text-xs">
-          {Math.round(units).toLocaleString()} Units
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function PreviewLockedSection({
   enabled,
   children,
@@ -628,23 +579,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [range, setRange] = useState<Range>("monthly");
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>("");
-  const [activeView, setActiveView] =
-    useState<"overview" | "products">("overview");
-
-  const viewOptions = [
-    {
-      value: "overview",
-      label: "Reconciliation Overview",
-    },
-    {
-      value: "products",
-      label: "Product-wise Breakdown",
-    },
-  ] satisfies {
-    value: "overview" | "products";
-    label: string;
-  }[];
-
 
   const isPreviewMode =
     routeMonth.toUpperCase() === "NA" ||
@@ -1930,41 +1864,26 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const accurate = findStatus("Charge - Accurate");
     const overcharged = findStatus("Charge - Overcharged");
     const undercharged = findStatus("Charge - Undercharged");
-    const noReferralFee = findStatus("Charge - noreferallfee");
 
     return [
       {
         key: "accurate",
         title: "Accurate",
         units: Math.max(0, toNumberSafe(accurate?.units)),
-        amount: Math.abs(toNumberSafe(accurate?.refFeesCharged)),
-        amountLabel: "Referral fees charged",
         color: "#7B9A6D",
       },
       {
         key: "overcharged",
         title: "Overcharged",
         units: Math.max(0, toNumberSafe(overcharged?.units)),
-        amount: Math.abs(toNumberSafe(overcharged?.overcharged)),
-        amountLabel: "Potential overcharge",
         color: "#B75A5A",
       },
       {
         key: "undercharged",
         title: "Undercharged",
         units: Math.max(0, toNumberSafe(undercharged?.units)),
-        amount: Math.abs(toNumberSafe(undercharged?.overcharged)),
-        amountLabel: "Difference below applicable",
         color: "#ED9F50",
       },
-      // {
-      //   key: "no-referral-fee",
-      //   title: "No referral fee",
-      //   units: Math.max(0, toNumberSafe(noReferralFee?.units)),
-      //   amount: Math.abs(toNumberSafe(noReferralFee?.overcharged)),
-      //   amountLabel: "Unclassified difference",
-      //   color: "#C49466",
-      // },
     ];
   }, [feeSummaryRows]);
 
@@ -2105,46 +2024,74 @@ export default function ReferralFeesDashboard(): JSX.Element {
           onAction={handlePreviewAction}
         >
           <>
-            <div className="mt-4 flex w-full items-center">
-              <SegmentedToggle<"overview" | "products">
-                value={activeView}
-                options={viewOptions}
-                onChange={setActiveView}
-                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                className="w-full"
-                compact
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+              <SkuAgeingDonutChart
+                title="Reconciliation Distribution"
+                subtitle="Referral fee status across all units"
+                data={reconciliationDonutData}
+                totalUnits={reconciliationTotalUnits}
               />
-            </div>
 
-            {activeView === "overview" && (
-              <div
-                id="referral-overview-panel"
-                role="tabpanel"
-                className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)] lg:items-stretch"
-              >
-                <SkuAgeingDonutChart
-                  title="Reconciliation Distribution"
-                  subtitle="Referral fee status across all units"
-                  data={reconciliationDonutData}
-                  totalUnits={reconciliationTotalUnits}
+              <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <PageBreadcrumb
+                  pageTitle="Fee Type Breakdown"
+                  variant="page"
+                  align="left"
+                  className="mb-3"
                 />
 
-                <div className="grid grid-cols-1 gap-3">
-                  {reconciliationStatuses.map((status) => (
-                    <ReconciliationStatusCard
-                      key={status.key}
-                      title={status.title}
-                      units={status.units}
-                      amount={status.amount}
-                      totalUnits={reconciliationTotalUnits}
-                      valueFmt={fmtCurrencyRounded}
-                      borderColor={status.color}
-                      amountLabel={status.amountLabel}
-                    />
-                  ))}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <AmazonStatCard
+                    label="Referral Fees"
+                    current={card6.refFeesApplied}
+                    previous={card6.refFeesApplicable}
+                    deltaPct={pctDelta(card6.refFeesApplied, card6.refFeesApplicable)}
+                    inverseDelta
+                    loading={false}
+                    formatter={fmtCurrencyRounded}
+                    previousFormatter={fmtCurrencyRounded}
+                    bottomLabel="Applicable"
+                    className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                  />
+                  <AmazonStatCard
+                    label="FBA Fees"
+                    current={card6.fbaFees}
+                    previous={card6.fbaFeesApplicable}
+                    deltaPct={pctDelta(card6.fbaFees, card6.fbaFeesApplicable)}
+                    inverseDelta
+                    loading={false}
+                    formatter={fmtCurrencyRounded}
+                    previousFormatter={fmtCurrencyRounded}
+                    bottomLabel="Applicable"
+                    className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                  />
+                  <AmazonStatCard
+                    label="Platform Fees"
+                    current={card6.platformFees}
+                    previous={card6.platformFeesApplicable}
+                    deltaPct={pctDelta(card6.platformFees, card6.platformFeesApplicable)}
+                    inverseDelta
+                    loading={false}
+                    formatter={fmtCurrencyRounded}
+                    previousFormatter={fmtCurrencyRounded}
+                    bottomLabel="Applicable"
+                    className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+                  />
+                  <AmazonStatCard
+                    label="Other Fees"
+                    current={card6.otherFees}
+                    previous={card6.otherFeesApplicable}
+                    deltaPct={pctDelta(card6.otherFees, card6.otherFeesApplicable)}
+                    inverseDelta
+                    loading={false}
+                    formatter={fmtCurrencyRounded}
+                    previousFormatter={fmtCurrencyRounded}
+                    bottomLabel="Applicable"
+                    className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+                  />
                 </div>
-              </div>
-            )}
+              </section>
+            </div>
 
             {/* ===================== 6 CARDS (UPDATED) ===================== */}
 
@@ -2612,76 +2559,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                 </div>
               );
             })()}
-
-
-
-            {activeView === "products" && (
-              <div
-                id="referral-products-panel"
-                role="tabpanel"
-                className="mt-4 space-y-4"
-              >
-                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <PageBreadcrumb
-                    pageTitle="Fee Type Breakdown"
-                    variant="page"
-                    align="left"
-                    className="mb-3"
-                  />
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <AmazonStatCard
-                      label="Referral Fees"
-                      current={card6.refFeesApplied}
-                      previous={card6.refFeesApplicable}
-                      deltaPct={pctDelta(card6.refFeesApplied, card6.refFeesApplicable)}
-                      inverseDelta
-                      loading={false}
-                      formatter={fmtCurrencyRounded}
-                      previousFormatter={fmtCurrencyRounded}
-                      bottomLabel="Applicable"
-                      className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                    />
-                    <AmazonStatCard
-                      label="FBA Fees"
-                      current={card6.fbaFees}
-                      previous={card6.fbaFeesApplicable}
-                      deltaPct={pctDelta(card6.fbaFees, card6.fbaFeesApplicable)}
-                      inverseDelta
-                      loading={false}
-                      formatter={fmtCurrencyRounded}
-                      previousFormatter={fmtCurrencyRounded}
-                      bottomLabel="Applicable"
-                      className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                    />
-                    <AmazonStatCard
-                      label="Platform Fees"
-                      current={card6.platformFees}
-                      previous={card6.platformFeesApplicable}
-                      deltaPct={pctDelta(card6.platformFees, card6.platformFeesApplicable)}
-                      inverseDelta
-                      loading={false}
-                      formatter={fmtCurrencyRounded}
-                      previousFormatter={fmtCurrencyRounded}
-                      bottomLabel="Applicable"
-                      className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                    />
-                    <AmazonStatCard
-                      label="Other Fees"
-                      current={card6.otherFees}
-                      previous={card6.otherFeesApplicable}
-                      deltaPct={pctDelta(card6.otherFees, card6.otherFeesApplicable)}
-                      inverseDelta
-                      loading={false}
-                      formatter={fmtCurrencyRounded}
-                      previousFormatter={fmtCurrencyRounded}
-                      bottomLabel="Applicable"
-                      className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                    />
-                  </div>
-                </section>
-
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
+            <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
                   <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
                     <PageBreadcrumb
                       pageTitle="Product-wise breakdown"
@@ -2792,8 +2670,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
                   </div>
                 </div>
-              </div>
-            )}
           </>
         </PreviewLockedSection>
       )}
