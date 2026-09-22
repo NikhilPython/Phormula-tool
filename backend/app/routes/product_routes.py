@@ -67,7 +67,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v7_exclude_negative_sales"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v10_exclude_refund_transactions"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -3328,6 +3328,72 @@ def get_table_data(file_name):
         if "total_quantity" not in df.columns:
             df["total_quantity"] = df.get("quantity", 0) - df["return_quantity"]
         df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0).clip(lower=0)
+
+        if str(country or "").strip().lower() == "us":
+            pre_group_net_sales = pd.Series(0.0, index=df.index)
+            for column in (
+                "product_sales",
+                "shipping_credits",
+                "gift_wrap_credits",
+                "promotional_rebates",
+            ):
+                if column not in df.columns:
+                    df[column] = 0
+                df[column] = pd.to_numeric(df[column], errors="coerce").fillna(0)
+                pre_group_net_sales = pre_group_net_sales.add(df[column], fill_value=0)
+            transaction_types = df.get(
+                "type",
+                pd.Series("", index=df.index),
+            ).fillna("").astype(str).str.strip().str.lower()
+            descriptions = df.get(
+                "description",
+                pd.Series("", index=df.index),
+            ).fillna("").astype(str).str.strip().str.lower()
+            refund_rows = transaction_types.eq("refund") | descriptions.eq("refund")
+            df = df.loc[(pre_group_net_sales >= 0) & ~refund_rows].copy()
+
+        if str(country or "").strip().lower() == "us" and "order_id" in df.columns:
+            order_ids = df["order_id"].fillna("").astype(str).str.strip()
+            valid_order_ids = ~order_ids.str.lower().isin({"", "nan", "none", "<na>"})
+            row_fallbacks = pd.Series(
+                [f"__row_{index}" for index in range(len(df))],
+                index=df.index,
+            )
+            df["_reconciliation_order_key"] = order_ids.where(
+                valid_order_ids,
+                row_fallbacks,
+            )
+
+            order_sum_columns = {
+                "product_sales",
+                "shipping_credits",
+                "gift_wrap_credits",
+                "promotional_rebates",
+                "other",
+                "selling_fees",
+                "quantity",
+                "return_quantity",
+                "total_quantity",
+                "fba_fees",
+                "fbaanswer",
+                "platform_fee",
+                "advertising_total",
+            }
+            aggregation_rules = {
+                column: "sum" if column in order_sum_columns else "first"
+                for column in df.columns
+                if column not in {"_reconciliation_order_key", "sku"}
+            }
+            df = (
+                df.groupby(
+                    ["_reconciliation_order_key", "sku"],
+                    as_index=False,
+                    sort=False,
+                    dropna=False,
+                )
+                .agg(aggregation_rules)
+                .drop(columns=["_reconciliation_order_key"], errors="ignore")
+            )
 
         if "fbaanswer" not in df.columns:
             df["fbaanswer"] = df.get("fba_fees", 0)
