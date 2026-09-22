@@ -972,7 +972,6 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
       const accurate = Array.isArray(json?.accurate_data) ? json.accurate_data : [];
       const overcharged = Array.isArray(json?.overcharged_data) ? json.overcharged_data : [];
       const undercharged = Array.isArray(json?.undercharged_data) ? json.undercharged_data : [];
-      const noRef = Array.isArray(json?.no_ref_fee_data) ? json.no_ref_fee_data : [];
 
       const mergedAll = [
         { Category: "Overcharged" },
@@ -980,9 +979,6 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
         {},
         { Category: "Undercharged" },
         ...undercharged.map((r: any) => ({ Category: "Undercharged", ...r })),
-        {},
-        { Category: "No Ref Fees" },
-        ...noRef.map((r: any) => ({ Category: "No Ref Fees", ...r })),
         {},
         { Category: "Accurate" },
         ...accurate.map((r: any) => ({ Category: "Accurate", ...r })),
@@ -1727,26 +1723,59 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
 
     /* ---------------- Sheet 3: Orders by Status (CLEANED) ---------------- */
-    const cleanedOrdersByStatus = (allOrdersByStatus || []).map((r: any) => {
+    const exportedStatuses = ["Accurate", "Undercharged", "Overcharged"];
+    const targetUnitsByStatus = new Map<string, number>(
+      exportedStatuses.map((status): [string, number] => {
+        const summaryRow = feeSummaryRows.find(
+          (row) => row.label === `Charge - ${status}`
+        );
+        return [status, Math.round(toNumberSafe(summaryRow?.units))];
+      })
+    );
+    const scaledUnitsByStatus = new Map<string, number[]>(
+      exportedStatuses.map((status): [string, number[]] => {
+        const statusRows = (allOrdersByStatus || []).filter(
+          (row: any) => row?.Category === status && Object.keys(row).length > 1
+        );
+        return [
+          status,
+          scaleIntegerBreakdown(
+            statusRows.map((row: any) => getDisplayUnits(row)),
+            targetUnitsByStatus.get(status) ?? 0
+          ),
+        ];
+      })
+    );
+    const statusRowIndexes = new Map<string, number>(
+      exportedStatuses.map((status): [string, number] => [status, 0])
+    );
+
+    const cleanedOrdersByStatus: any[] = (allOrdersByStatus || []).flatMap((r: any) => {
       // keep separators / headers as-is
       const isSeparatorRow =
         !r || Object.keys(r).length === 0 || (r.Category && Object.keys(r).length === 1);
 
-      if (isSeparatorRow) return r;
+      if (isSeparatorRow) return [r];
 
-      return {
+      const status = String(r.Category ?? "");
+      const statusIndex = statusRowIndexes.get(status) ?? 0;
+      const quantity = scaledUnitsByStatus.get(status)?.[statusIndex] ?? getDisplayUnits(r);
+      statusRowIndexes.set(status, statusIndex + 1);
+
+      if (quantity <= 0) return [];
+
+      return [{
         Category: r.Category ?? "",
         "Order ID": r.order_id ?? "",
         SKU: r.sku ?? "",
         "Product Name": r.product_name ?? "",
-        Quantity: getDisplayUnits(r),
-        "Gross Sales": getGrossSales(r),
+        Quantity: quantity,
         "Net Sales": getNetSales(r), // ✅ net sales
         "Referral Fees Applicable": toNumberSafe(r.answer),
         "Referral Fees Charged": getChargedReferralFees(r),
         Overcharged: toNumberSafe(r.difference ?? r.overcharged),
         Status: r.errorstatus ?? "",
-      };
+      }];
     });
 
     const orderStatusSummaryRows = [
@@ -1758,7 +1787,6 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
         SKU: "",
         "Product Name": "Grand Total",
         Quantity: Math.round(toNumberSafe(card6.units)),
-        "Gross Sales": Number(toNumberSafe(card6.productSales).toFixed(2)),
         "Net Sales": Number(toNumberSafe(card6.sales).toFixed(2)),
         "Referral Fees Applicable": Number(toNumberSafe(card6.refFeesApplicable).toFixed(2)),
         "Referral Fees Charged": Number(toNumberSafe(card6.refFeesApplied).toFixed(2)),
@@ -1767,19 +1795,24 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
       },
       {},
       { Category: "Status Summary" },
-      ...feeSummaryRows.map((r) => ({
-        Category: "Status Summary",
-        "Order ID": "",
-        SKU: "",
-        "Product Name": r.label,
-        Quantity: Math.round(toNumberSafe(r.units)),
-        "Gross Sales": "",
-        "Net Sales": Number(toNumberSafe(r.sales).toFixed(2)),
-        "Referral Fees Applicable": Number(toNumberSafe(r.refFeesApplicable).toFixed(2)),
-        "Referral Fees Charged": Number(toNumberSafe(r.refFeesCharged).toFixed(2)),
-        Overcharged: Number(toNumberSafe(r.overcharged).toFixed(2)),
-        Status: isGrandTotalLabel(r.label) ? "total" : "",
-      })),
+      ...feeSummaryRows
+        .filter((r) => [
+          "Charge - Accurate",
+          "Charge - Undercharged",
+          "Charge - Overcharged",
+        ].includes(r.label))
+        .map((r) => ({
+          Category: "Status Summary",
+          "Order ID": "",
+          SKU: "",
+          "Product Name": r.label,
+          Quantity: Math.round(toNumberSafe(r.units)),
+          "Net Sales": Number(toNumberSafe(r.sales).toFixed(2)),
+          "Referral Fees Applicable": Number(toNumberSafe(r.refFeesApplicable).toFixed(2)),
+          "Referral Fees Charged": Number(toNumberSafe(r.refFeesCharged).toFixed(2)),
+          Overcharged: Number(toNumberSafe(r.overcharged).toFixed(2)),
+          Status: isGrandTotalLabel(r.label) ? "total" : "",
+        })),
     ];
 
     XLSX.utils.book_append_sheet(

@@ -2,6 +2,7 @@
 
 import React, { useId, useMemo, useState } from "react";
 import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import Loader from "@/components/loader/Loader";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 
@@ -1572,7 +1573,82 @@ function ActionItemsView({
 }: {
   items: DashboardActionItem[];
 }) {
+  const router = useRouter();
+  const params = useParams();
   const [category, setCategory] = useState<"All" | Category | "Completed">("All");
+
+  const getRouteParam = (value: string | string[] | undefined) =>
+    Array.isArray(value) ? value[0] ?? "" : value ?? "";
+
+  const countryName = getRouteParam(params?.countryName as string | string[] | undefined);
+  const month = getRouteParam(params?.month as string | string[] | undefined);
+  const year = getRouteParam(params?.year as string | string[] | undefined);
+
+  const getActionHref = (item: DashboardActionItem) => {
+    if (!countryName || !month || !year) return null;
+
+    const countryPath = encodeURIComponent(countryName);
+    const monthPath = encodeURIComponent(month);
+    const yearPath = encodeURIComponent(year);
+
+    // Dispatch opens Dispatch Planning.
+    if (item.id === "dispatch-required") {
+      return `/inventory-forecast/${countryPath}/${monthPath}/${yearPath}#dispatch`;
+    }
+
+    // All other inventory actions open Inventory Insights.
+    if (item.category === "Inventory & Dispatch") {
+      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}#inventory-insights`;
+    }
+
+    // Returns, Ads and Finance actions (including Negative CM2 / Promotions)
+    // are investigated in the P&L Breakdown tab.
+    if (["Returns", "Ads", "Finance"].includes(item.category)) {
+      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}#pnl-mtd`;
+    }
+
+    return null;
+  };
+
+  const handleActionClick = (item: DashboardActionItem) => {
+    const href = getActionHref(item);
+    if (!href) return;
+
+    if (typeof window === "undefined") {
+      router.push(href);
+      return;
+    }
+
+    const targetUrl = new URL(href, window.location.origin);
+    const targetHash = targetUrl.hash.replace("#", "");
+
+    // If we are already on the same Live Dashboard route, update the hash
+    // and notify the dashboard's existing hash-navigation listener.
+    if (targetUrl.pathname === window.location.pathname) {
+      window.history.pushState(
+        null,
+        "",
+        `${targetUrl.pathname}${targetUrl.hash}`
+      );
+
+      if (targetHash) {
+        window.dispatchEvent(
+          new CustomEvent("page-hash-navigate", {
+            detail: { hash: targetHash },
+          })
+        );
+
+        document.getElementById(targetHash)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+
+      return;
+    }
+
+    router.push(href);
+  };
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const actionItems = useMemo(
     () => items.filter((item) => item.id !== "amazon-fee-pressure"),
@@ -1638,16 +1714,14 @@ function ActionItemsView({
             </div>)}
           </div>
 
-          {item.actionHref ? (
-            <Link
-              href={item.actionHref}
-              className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C] transition hover:border-[#70B9A9] hover:bg-[#EDF8F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
-            >
-              {item.action}
-            </Link>
-          ) : (
-            <span className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C]">{item.action}</span>
-          )}
+          <button
+            type="button"
+            onClick={() => handleActionClick(item)}
+            className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C] transition hover:border-[#69B7A7] hover:bg-[#EDF8F5] focus:outline-none focus:ring-2 focus:ring-[#9FD1C6] focus:ring-offset-1"
+            title={`Open ${item.action}`}
+          >
+            {item.action}
+          </button>
 
           <input
             aria-label={`Complete ${item.title}`}
