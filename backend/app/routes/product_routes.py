@@ -67,7 +67,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v12_uk_applicable_formula"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v14_exclude_refund_applicable_fees"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -414,6 +414,16 @@ def _materialize_expense_reconciliation_table(
 
         if status_source_df is not None and not status_source_df.empty:
             raw_status = status_source_df.copy().reset_index(drop=True)
+            raw_transaction_types = raw_status.get(
+                "type",
+                pd.Series("", index=raw_status.index),
+            ).fillna("").astype(str).str.strip().str.lower()
+            raw_descriptions = raw_status.get(
+                "description",
+                pd.Series("", index=raw_status.index),
+            ).fillna("").astype(str).str.strip().str.lower()
+            raw_refund_rows = raw_transaction_types.eq("refund") | raw_descriptions.eq("refund")
+            raw_status = raw_status.loc[~raw_refund_rows].copy().reset_index(drop=True)
 
             def _raw_numeric(*columns):
                 result = pd.Series(0.0, index=raw_status.index)
@@ -531,15 +541,30 @@ def _materialize_expense_reconciliation_table(
                     "net_sales_total_value",
                     "product_sales",
                 )
+                monthly_df["_expense_referral_fees_charged"] = _monthly_numeric(
+                    "selling_fees",
+                    "referral_fees_charged",
+                ).abs()
 
                 monthly_totals = monthly_df.groupby("_sku_key", as_index=True)[
-                    ["_expense_units", "_expense_net_sales"]
+                    [
+                        "_expense_units",
+                        "_expense_net_sales",
+                        "_expense_referral_fees_charged",
+                    ]
                 ].sum()
                 row_sku_keys = rows["sku"].fillna("").astype(str).str.strip().str.lower()
                 mapped_units = row_sku_keys.map(monthly_totals["_expense_units"])
                 mapped_net_sales = row_sku_keys.map(monthly_totals["_expense_net_sales"])
+                mapped_charged_fees = row_sku_keys.map(
+                    monthly_totals["_expense_referral_fees_charged"]
+                )
                 rows.loc[mapped_units.notna(), "units"] = mapped_units[mapped_units.notna()]
                 rows.loc[mapped_net_sales.notna(), "net_sales"] = mapped_net_sales[mapped_net_sales.notna()]
+                rows.loc[
+                    mapped_charged_fees.notna(),
+                    "referral_fees_charged",
+                ] = mapped_charged_fees[mapped_charged_fees.notna()]
 
         if not status_rows.empty and not rows.empty:
             status_rows["_sku_key"] = (
@@ -550,7 +575,7 @@ def _materialize_expense_reconciliation_table(
                 main_targets["sku"].fillna("").astype(str).str.strip().str.lower()
             )
             main_targets = main_targets.groupby("_sku_key", as_index=True)[
-                ["units", "net_sales"]
+                ["units", "net_sales", "referral_fees_charged"]
             ].sum()
 
             def _scale_status_values(indexes, column, target, integer=False):
@@ -589,6 +614,11 @@ def _materialize_expense_reconciliation_table(
                     "net_sales",
                     main_targets.at[sku_key, "net_sales"],
                 )
+                _scale_status_values(
+                    list(indexes),
+                    "referral_fees_charged",
+                    main_targets.at[sku_key, "referral_fees_charged"],
+                )
 
             status_rows = status_rows.drop(columns=["_sku_key"])
 
@@ -616,10 +646,15 @@ def _materialize_expense_reconciliation_table(
                     sku_monthly_summary.get("quantity"),
                 )
                 summary_net_sales = sku_monthly_summary.get("net_sales")
+                summary_charged_fees = sku_monthly_summary.get("selling_fees")
                 if summary_units is not None:
                     total["units"] = float(summary_units or 0)
                 if summary_net_sales is not None:
                     total["net_sales"] = float(summary_net_sales or 0)
+                if summary_charged_fees is not None:
+                    total["referral_fees_charged"] = abs(
+                        float(summary_charged_fees or 0)
+                    )
 
             rows = pd.concat([rows, pd.DataFrame([total])], ignore_index=True)
 
@@ -3351,6 +3386,8 @@ def get_table_data(file_name):
                 pd.Series("", index=df.index),
             ).fillna("").astype(str).str.strip().str.lower()
             refund_rows = transaction_types.eq("refund") | descriptions.eq("refund")
+            if "answer" in df.columns:
+                df.loc[refund_rows, "answer"] = 0
             df = df.loc[(pre_group_net_sales >= 0) & ~refund_rows].copy()
 
         if reconciliation_country in {"us", "uk"} and "order_id" in df.columns:
