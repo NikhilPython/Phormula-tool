@@ -1585,6 +1585,10 @@ function ActionItemsView({
   const year = getRouteParam(params?.year as string | string[] | undefined);
 
   const getActionHref = (item: DashboardActionItem) => {
+    // Explicit item destinations take precedence over category fallbacks.
+    // Referral Fees uses this to open Expense Reconciliation.
+    if (item.actionHref) return item.actionHref;
+
     if (!countryName || !month || !year) return null;
 
     const countryPath = encodeURIComponent(countryName);
@@ -1648,6 +1652,23 @@ function ActionItemsView({
     }
 
     router.push(href);
+  };
+
+  const handleActionLinkClick = (
+    event: React.MouseEvent<HTMLAnchorElement>,
+    item: DashboardActionItem,
+    href: string
+  ) => {
+    if (typeof window === "undefined") return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+    const targetUrl = new URL(href, window.location.origin);
+    if (targetUrl.pathname !== window.location.pathname) return;
+
+    // Keep the dashboard's custom same-page hash navigation behavior while
+    // retaining a real link for accessibility and browser link actions.
+    event.preventDefault();
+    handleActionClick(item);
   };
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const actionItems = useMemo(
@@ -1714,14 +1735,24 @@ function ActionItemsView({
             </div>)}
           </div>
 
-          <button
-            type="button"
-            onClick={() => handleActionClick(item)}
-            className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C] transition hover:border-[#69B7A7] hover:bg-[#EDF8F5] focus:outline-none focus:ring-2 focus:ring-[#9FD1C6] focus:ring-offset-1"
-            title={`Open ${item.action}`}
-          >
-            {item.action}
-          </button>
+          {(() => {
+            const href = getActionHref(item);
+
+            return href ? (
+              <Link
+                href={href}
+                onClick={(event) => handleActionLinkClick(event, item, href)}
+                className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C] transition hover:border-[#69B7A7] hover:bg-[#EDF8F5] focus:outline-none focus:ring-2 focus:ring-[#9FD1C6] focus:ring-offset-1"
+                title={`Open ${item.action}`}
+              >
+                {item.action}
+              </Link>
+            ) : (
+              <span className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#DDE5E8] bg-[#FAFBFC] px-2 text-center text-[10px] font-semibold text-[#74839A]">
+                {item.action}
+              </span>
+            );
+          })()}
 
           <input
             aria-label={`Complete ${item.title}`}
