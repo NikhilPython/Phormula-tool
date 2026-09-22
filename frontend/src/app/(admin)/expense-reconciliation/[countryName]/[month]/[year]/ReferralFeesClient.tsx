@@ -12,7 +12,6 @@ import { useParams } from "next/navigation";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { jwtDecode } from "jwt-decode";
-import * as XLSX from "xlsx";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import DataTable, { ColumnDef, Row } from "@/components/ui/table/DataTable";
 import Loader from "@/components/loader/Loader";
@@ -26,6 +25,7 @@ import SkuAgeingDonutChart, {
   type DonutChartItem,
 } from "@/components/common/inventory/SkuAgeingDonutChart";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
+import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -1390,84 +1390,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
     });
   }, [skuwiseRows, skuMonthlyRows, skuMonthlySummary]);
 
-  const skuTableDistinctAll: Row[] = useMemo(() => {
-    if (!skuTableAll.length) return [];
-
-    const nonTotal = skuTableAll.filter((row) => !(row as any)._isTotal);
-    const totalRow = skuTableAll.find((row) => (row as any)._isTotal) || null;
-
-    // Aggregate by distinct productName (case-insensitive)
-    const map = new Map<string, any>();
-
-    for (const r of nonTotal as any[]) {
-      const nameRaw = String(r.productName ?? "").trim();
-      if (!nameRaw) continue;
-
-      const key = nameRaw.toLowerCase();
-
-      if (!map.has(key)) {
-        map.set(key, {
-          sno: "",
-          productName: nameRaw,
-          sku: "",
-
-          units: 0,
-          sales: 0,
-          grossSales: 0,
-
-          // referral
-          ref_applicable: 0,
-          ref_charged: 0,
-
-          // for your export columns that currently use applicable/charged
-          applicable: 0,
-          charged: 0,
-
-          overcharged: 0,
-
-          _skus: new Set<string>(),
-        });
-      }
-
-      const acc = map.get(key);
-
-      acc.units += Math.round(toNumberSafe(r.units));
-      acc.sales += toNumberSafe(r.sales);
-      acc.grossSales += toNumberSafe(r.grossSales);
-
-      acc.ref_applicable += toNumberSafe(r.ref_applicable ?? r.applicable);
-      acc.ref_charged += toNumberSafe(r.ref_charged ?? r.charged);
-
-      // keep these for compatibility with current export headers
-      acc.applicable += toNumberSafe(r.ref_applicable ?? r.applicable);
-      acc.charged += toNumberSafe(r.ref_charged ?? r.charged);
-
-      acc.overcharged += toNumberSafe(r.overcharged);
-
-      const skuStr = String(r.sku ?? "").trim();
-      if (skuStr) acc._skus.add(skuStr);
-    }
-
-    const aggregated = Array.from(map.values()).map((x) => {
-      const skus = Array.from(x._skus);
-      return {
-        ...x,
-        sku: skus.length === 1 ? skus[0] : skus.length > 1 ? "Multiple" : "",
-      };
-    });
-
-    // Sort by sales desc (optional)
-    aggregated.sort((a, b) => toNumberSafe(b.sales) - toNumberSafe(a.sales));
-
-    // Add serial numbers (optional)
-    let counter = 1;
-    const withSno = aggregated.map((row: any) => ({ ...row, sno: counter++ }));
-
-    // Add Grand Total at bottom (same as UI)
-    if (totalRow) withSno.push({ ...(totalRow as any), sno: "" });
-
-    return withSno as Row[];
-  }, [skuTableAll]);
 
   const skuColumns: ColumnDef<Row>[] = [
     { key: "sku", header: "SKU" },
@@ -1676,173 +1598,33 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
   const handleDownloadExcel = useCallback(() => {
-    if (!feeSummaryRows.length && !skuTableAll.length && !rows.length) return;
-
-    const wb = XLSX.utils.book_new();
-
-    /* ---------------- Sheet 1: Summary ---------------- */
-    const summaryData = feeSummaryRows.map((r) => {
-      const isGrandTotal = String(r.label ?? "").trim().toLowerCase() === "grand total";
-      const units = isGrandTotal && card6.units
-        ? Math.round(toNumberSafe(card6.units))
-        : Math.round(toNumberSafe(r.units));
-      const sales = toNumberSafe(r.sales);
-      const applicable = toNumberSafe(r.refFeesApplicable);
-      const charged = toNumberSafe(r.refFeesCharged);
-      const overcharged = toNumberSafe(r.overcharged);
-
-      return {
-        "Ref Fees": r.label,
-        Units: units,
-        "Net Sales": Number(sales.toFixed(2)),
-        "Ref Fees Applicable": Number(applicable.toFixed(2)),
-        "Ref Fees Charged": Number(charged.toFixed(2)),
-        Overcharged: Number(overcharged.toFixed(2)),
-      };
+    exportReferralFeesExcel({
+      filename: `Referral-Fees-${country}-${month}-${year}.xlsx`,
+      countryName: country,
+      periodLabel:
+        range === "yearly"
+          ? year
+          : range === "quarterly"
+            ? `${selectedQuarter || "Quarter"} ${year}`
+            : `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`,
+      currencyCode: displayCurrencyCode,
+      feeSummaryRows,
+      productRows: skuTableAll as Record<string, any>[],
+      ordersByStatus: allOrdersByStatus as Record<string, any>[],
+      cardSummary: card6,
+      totalFeeRow,
     });
-
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "Summary");
-
-    /* ---------------- Sheet 2: Overcharged Ref Fees (DISTINCT Product Names) ---------------- */
-    const overData = skuTableDistinctAll.map((r: any) => {
-      const units = Math.round(toNumberSafe(r.units));
-      const sales = toNumberSafe(r.sales);
-      const grossSales = toNumberSafe(r.grossSales);
-      const applicable = toNumberSafe(r.applicable ?? r.ref_applicable);
-      const charged = toNumberSafe(r.charged ?? r.ref_charged);
-      const overcharged = toNumberSafe(r.overcharged);
-      const isTotal = String(r.productName ?? "").trim().toLowerCase() === "grand total" || Boolean(r._isTotal);
-
-      return {
-        SKU: String(r.sku ?? ""),
-        "Product Name": String(r.productName ?? ""),
-        Units: isTotal && card6.units ? Math.round(toNumberSafe(card6.units)) : units,
-        "Gross Sales": Number((isTotal && card6.productSales ? card6.productSales : grossSales).toFixed(2)),
-        "Net Sales": Number((isTotal && card6.sales ? card6.sales : sales).toFixed(2)),
-        "Ref Fees Applicable": Number(applicable.toFixed(2)),
-        "Ref Fees Charged": Number(charged.toFixed(2)),
-        Overcharged: Number(overcharged.toFixed(2)),
-      };
-    });
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(overData),
-      "Overcharged Ref Fees"
-    );
-
-
-    /* ---------------- Sheet 3: Orders by Status (CLEANED) ---------------- */
-    const exportedStatuses = ["Accurate", "Undercharged", "Overcharged"];
-    const targetUnitsByStatus = new Map<string, number>(
-      exportedStatuses.map((status): [string, number] => {
-        const summaryRow = feeSummaryRows.find(
-          (row) => row.label === `Charge - ${status}`
-        );
-        return [status, Math.round(toNumberSafe(summaryRow?.units))];
-      })
-    );
-    const scaledUnitsByStatus = new Map<string, number[]>(
-      exportedStatuses.map((status): [string, number[]] => {
-        const statusRows = (allOrdersByStatus || []).filter(
-          (row: any) => row?.Category === status && Object.keys(row).length > 1
-        );
-        return [
-          status,
-          scaleIntegerBreakdown(
-            statusRows.map((row: any) => getDisplayUnits(row)),
-            targetUnitsByStatus.get(status) ?? 0
-          ),
-        ];
-      })
-    );
-    const statusRowIndexes = new Map<string, number>(
-      exportedStatuses.map((status): [string, number] => [status, 0])
-    );
-
-    const cleanedOrdersByStatus: any[] = (allOrdersByStatus || []).flatMap((r: any) => {
-      // keep separators / headers as-is
-      const isSeparatorRow =
-        !r || Object.keys(r).length === 0 || (r.Category && Object.keys(r).length === 1);
-
-      if (isSeparatorRow) return [r];
-
-      const status = String(r.Category ?? "");
-      const statusIndex = statusRowIndexes.get(status) ?? 0;
-      const quantity = scaledUnitsByStatus.get(status)?.[statusIndex] ?? getDisplayUnits(r);
-      statusRowIndexes.set(status, statusIndex + 1);
-
-      if (quantity <= 0) return [];
-
-      return [{
-        Category: r.Category ?? "",
-        "Order ID": r.order_id ?? "",
-        SKU: r.sku ?? "",
-        "Product Name": r.product_name ?? "",
-        Quantity: quantity,
-        "Net Sales": getNetSales(r), // ✅ net sales
-        "Referral Fees Applicable": toNumberSafe(r.answer),
-        "Referral Fees Charged": getChargedReferralFees(r),
-        Overcharged: toNumberSafe(r.difference ?? r.overcharged),
-        Status: r.errorstatus ?? "",
-      }];
-    });
-
-    const orderStatusSummaryRows = [
-      {},
-      { Category: "Reconciled Monthly Total" },
-      {
-        Category: "Reconciled Monthly Total",
-        "Order ID": "",
-        SKU: "",
-        "Product Name": "Grand Total",
-        Quantity: Math.round(toNumberSafe(card6.units)),
-        "Net Sales": Number(toNumberSafe(card6.sales).toFixed(2)),
-        "Referral Fees Applicable": Number(toNumberSafe(card6.refFeesApplicable).toFixed(2)),
-        "Referral Fees Charged": Number(toNumberSafe(card6.refFeesApplied).toFixed(2)),
-        Overcharged: Number(toNumberSafe(totalFeeRow?.overcharged).toFixed(2)),
-        Status: "total",
-      },
-      {},
-      { Category: "Status Summary" },
-      ...feeSummaryRows
-        .filter((r) => [
-          "Charge - Accurate",
-          "Charge - Undercharged",
-          "Charge - Overcharged",
-        ].includes(r.label))
-        .map((r) => ({
-          Category: "Status Summary",
-          "Order ID": "",
-          SKU: "",
-          "Product Name": r.label,
-          Quantity: Math.round(toNumberSafe(r.units)),
-          "Net Sales": Number(toNumberSafe(r.sales).toFixed(2)),
-          "Referral Fees Applicable": Number(toNumberSafe(r.refFeesApplicable).toFixed(2)),
-          "Referral Fees Charged": Number(toNumberSafe(r.refFeesCharged).toFixed(2)),
-          Overcharged: Number(toNumberSafe(r.overcharged).toFixed(2)),
-          Status: isGrandTotalLabel(r.label) ? "total" : "",
-        })),
-    ];
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet([...cleanedOrdersByStatus, ...orderStatusSummaryRows]),
-      "Orders by Status"
-    );
-
-    /* ---------------- Save ---------------- */
-    XLSX.writeFile(wb, `Referral-Fees-${country}-${month}-${year}.xlsx`);
   }, [
-    feeSummaryRows,
-    card6,
-    skuTableAll,
-    skuTableDistinctAll,
-    rows,
     allOrdersByStatus,
-    totalFeeRow,
+    card6,
     country,
+    displayCurrencyCode,
+    feeSummaryRows,
     month,
+    range,
+    selectedQuarter,
+    skuTableAll,
+    totalFeeRow,
     year,
   ]);
 
@@ -2582,7 +2364,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
                   {/* <AiButton /> */}
 
-                  <div className="[&_table]:w-full ">
+                  <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
                     <GroupedCollapsibleTable<any>
                       rows={groupedSkuTableDisplay}
                       getRowKey={(row, index) =>

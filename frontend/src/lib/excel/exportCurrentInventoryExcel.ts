@@ -1323,6 +1323,725 @@ for (let r = groupHeaderRowIndex; r <= totalRowIndex; r++) {
   XLSX.writeFile(wb, filename);
 }
 
+/* =========================
+   Referral fees export
+========================= */
+type ReferralFeeSummaryExportRow = {
+  label?: string;
+  units?: number | string;
+  sales?: number | string;
+  refFeesApplicable?: number | string;
+  refFeesCharged?: number | string;
+  overcharged?: number | string;
+};
+
+type ReferralFeeCardExportData = {
+  sales?: number | string;
+  units?: number | string;
+  productSales?: number | string;
+  refFeesApplied?: number | string;
+  refFeesApplicable?: number | string;
+};
+
+type ReferralFeesExcelParams = {
+  filename: string;
+  countryName: string;
+  periodLabel: string;
+  currencyCode?: string;
+  feeSummaryRows: ReferralFeeSummaryExportRow[];
+  productRows: Record<string, any>[];
+  ordersByStatus: Record<string, any>[];
+  cardSummary: ReferralFeeCardExportData;
+  totalFeeRow?: ReferralFeeSummaryExportRow | null;
+};
+
+const REFERRAL_TABLE_BORDER = {
+  top: { style: "thin", color: { rgb: "D6DEE8" } },
+  bottom: { style: "thin", color: { rgb: "D6DEE8" } },
+  left: { style: "thin", color: { rgb: "D6DEE8" } },
+  right: { style: "thin", color: { rgb: "D6DEE8" } },
+};
+
+const referralNumber = (value: any) => toNumberLoose(value) ?? 0;
+
+const isReferralTotalLabel = (value: any) => {
+  const label = String(value ?? "").trim().toLowerCase();
+  return label === "total" || label === "grand total";
+};
+
+const hasReferralNumericValue = (value: any) => {
+  if (value === null || value === undefined || value === "") return false;
+  return toNumberLoose(value) !== null;
+};
+
+const getReferralDisplayUnits = (row: Record<string, any>) => {
+  if (hasReferralNumericValue(row?.total_quantity)) {
+    return referralNumber(row.total_quantity);
+  }
+
+  const quantity = referralNumber(row?.quantity);
+  if (hasReferralNumericValue(row?.return_quantity)) {
+    return Math.max(quantity - referralNumber(row.return_quantity), 0);
+  }
+
+  return quantity;
+};
+
+const getReferralNetSales = (row: Record<string, any>) => {
+  const netSalesTotal = referralNumber(row?.net_sales_total_value);
+  if (netSalesTotal) return netSalesTotal;
+
+  const netSales = referralNumber(row?.net_sales);
+  if (netSales) return netSales;
+
+  return referralNumber(row?.product_sales ?? row?.sales);
+};
+
+const getReferralChargedFees = (row: Record<string, any>) =>
+  Math.abs(referralNumber(row?.selling_fees));
+
+const scaleReferralIntegerBreakdown = (values: number[], target: number) => {
+  const roundedTarget = Math.round(referralNumber(target));
+  const sourceTotal = values.reduce(
+    (sum, value) => sum + referralNumber(value),
+    0
+  );
+
+  if (!roundedTarget || !sourceTotal || Math.round(sourceTotal) === roundedTarget) {
+    return values.map((value) => Math.round(referralNumber(value)));
+  }
+
+  const scaled = values.map(
+    (value) => (referralNumber(value) * roundedTarget) / sourceTotal
+  );
+  const floors = scaled.map((value) => Math.floor(value));
+  let remainder = roundedTarget - floors.reduce((sum, value) => sum + value, 0);
+
+  const allocationOrder = scaled
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const item of allocationOrder) {
+    if (remainder <= 0) break;
+    floors[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return floors;
+};
+
+const ensureReferralCell = (ws: XLSX.WorkSheet, row: number, column: number) => {
+  const address = XLSX.utils.encode_cell({ r: row, c: column });
+  if (!ws[address]) ws[address] = { t: "s", v: "" };
+  return ws[address];
+};
+
+const applyReferralSheetTitle = ({
+  ws,
+  columnCount,
+}: {
+  ws: XLSX.WorkSheet;
+  columnCount: number;
+}) => {
+  const titleCell = ensureReferralCell(ws, 0, 0);
+  titleCell.s = {
+    font: { name: "Arial", bold: true, sz: 14, color: { rgb: "243447" } },
+    alignment: { horizontal: "left", vertical: "center" },
+  };
+
+  const currencyCell = ensureReferralCell(ws, 0, columnCount - 1);
+  currencyCell.s = {
+    font: { name: "Arial", bold: true, sz: 11, color: { rgb: "5EAA93" } },
+    alignment: { horizontal: "right", vertical: "center" },
+  };
+
+  for (const column of [0, columnCount - 1]) {
+    const contextCell = ensureReferralCell(ws, 1, column);
+    contextCell.s = {
+      font: { name: "Arial", italic: true, sz: 10, color: { rgb: "667085" } },
+      alignment: {
+        horizontal: column === 0 ? "left" : "right",
+        vertical: "center",
+      },
+    };
+  }
+
+  ws["!rows"] = ws["!rows"] || [];
+  ws["!rows"][0] = { hpt: 24 };
+  ws["!rows"][1] = { hpt: 18 };
+};
+
+const applyReferralTableStyles = ({
+  ws,
+  headerStartRow,
+  headerRowCount,
+  dataRowCount,
+  columnCount,
+  leftAlignedColumns,
+  numericColumns,
+  accentTextColumns = new Set<number>(),
+  totalDataRows = [],
+  sectionDataRows = [],
+}: {
+  ws: XLSX.WorkSheet;
+  headerStartRow: number;
+  headerRowCount: number;
+  dataRowCount: number;
+  columnCount: number;
+  leftAlignedColumns: Set<number>;
+  numericColumns: Set<number>;
+  accentTextColumns?: Set<number>;
+  totalDataRows?: number[];
+  sectionDataRows?: number[];
+}) => {
+  const firstDataRow = headerStartRow + headerRowCount;
+  const lastDataRow = firstDataRow + dataRowCount - 1;
+  const totalRows = new Set(totalDataRows);
+  const sectionRows = new Set(sectionDataRows);
+
+  for (let row = headerStartRow; row < firstDataRow; row++) {
+    for (let column = 0; column < columnCount; column++) {
+      const cell = ensureReferralCell(ws, row, column);
+      cell.s = {
+        font: { name: "Arial", bold: true, sz: 10, color: { rgb: "FFFFFF" } },
+        fill: { fgColor: { rgb: "5EAA93" } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border: REFERRAL_TABLE_BORDER,
+      };
+    }
+  }
+
+  for (let row = firstDataRow; row <= lastDataRow; row++) {
+    const dataIndex = row - firstDataRow;
+    const isTotal = totalRows.has(dataIndex);
+    const isSection = sectionRows.has(dataIndex);
+
+    for (let column = 0; column < columnCount; column++) {
+      const cell = ensureReferralCell(ws, row, column);
+      const isNumeric = numericColumns.has(column) && cell.v !== "";
+
+      if (isNumeric) {
+        const numericValue = toNumberLoose(cell.v);
+        if (numericValue !== null) {
+          cell.v = numericValue;
+          cell.t = "n";
+          cell.z = "#,##0;[Red]-#,##0;-";
+        }
+      }
+
+      cell.s = {
+        ...(cell.s || {}),
+        font: {
+          name: "Arial",
+          bold: isTotal || isSection,
+          sz: 10,
+          color: {
+            rgb: isSection
+              ? "243447"
+              : accentTextColumns.has(column) && !isTotal
+                ? "38967E"
+                : "243447",
+          },
+        },
+        fill: {
+          fgColor: {
+            rgb: isTotal ? "EEF2F6" : isSection ? "E8F3EF" : "FFFFFF",
+          },
+        },
+        alignment: {
+          horizontal: leftAlignedColumns.has(column)
+            ? "left"
+            : isNumeric
+              ? "right"
+              : "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: REFERRAL_TABLE_BORDER,
+      };
+    }
+  }
+
+  ws["!freeze"] = { xSplit: 0, ySplit: firstDataRow };
+};
+
+const buildReferralTopRows = ({
+  title,
+  countryName,
+  periodLabel,
+  currencyCode,
+  columnCount,
+}: {
+  title: string;
+  countryName: string;
+  periodLabel: string;
+  currencyCode: string;
+  columnCount: number;
+}) => {
+  const titleRow = new Array(columnCount).fill("");
+  titleRow[0] = title;
+  titleRow[columnCount - 1] = currencyCode ? `Currency: ${currencyCode}` : "";
+
+  const contextRow = new Array(columnCount).fill("");
+  contextRow[0] = `Amazon ${String(countryName || "").toUpperCase()}`;
+  contextRow[columnCount - 1] = `Period: ${periodLabel}`;
+
+  return [titleRow, contextRow, new Array(columnCount).fill("")];
+};
+
+const aggregateReferralProductRows = (
+  productRows: Record<string, any>[],
+  cardSummary: ReferralFeeCardExportData
+) => {
+  const nonTotalRows = (productRows || []).filter(
+    (row) => !row?._isTotal && !isReferralTotalLabel(row?.productName)
+  );
+  const providedTotal = (productRows || []).find(
+    (row) => row?._isTotal || isReferralTotalLabel(row?.productName)
+  );
+  const grouped = new Map<string, Record<string, any>>();
+
+  for (const row of nonTotalRows) {
+    const productName = String(row?.productName ?? row?.product_name ?? "").trim();
+    if (!productName) continue;
+
+    const key = productName.toLowerCase();
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        productName,
+        skus: new Set<string>(),
+        units: 0,
+        sales: 0,
+        refApplicable: 0,
+        refCharged: 0,
+        fbaApplicable: 0,
+        fbaCharged: 0,
+        otherApplicable: 0,
+        otherCharged: 0,
+        totalApplicable: 0,
+        totalCharged: 0,
+      });
+    }
+
+    const aggregate = grouped.get(key)!;
+    const sku = String(row?.sku ?? "").trim();
+    if (sku) aggregate.skus.add(sku);
+
+    aggregate.units += referralNumber(row?.units);
+    aggregate.sales += referralNumber(row?.sales);
+    aggregate.refApplicable += referralNumber(
+      row?.ref_applicable ?? row?.applicable
+    );
+    aggregate.refCharged += referralNumber(row?.ref_charged ?? row?.charged);
+    aggregate.fbaApplicable += referralNumber(row?.fba_applicable);
+    aggregate.fbaCharged += referralNumber(row?.fba_charged);
+    aggregate.otherApplicable += referralNumber(row?.other_applicable);
+    aggregate.otherCharged += referralNumber(row?.other_charged);
+    aggregate.totalApplicable += referralNumber(row?.total_applicable);
+    aggregate.totalCharged += referralNumber(row?.total_charged);
+  }
+
+  const dataRows = Array.from(grouped.values())
+    .sort((a, b) => referralNumber(b.sales) - referralNumber(a.sales))
+    .map((row, index) => {
+      const skus = Array.from(row.skus as Set<string>);
+      return [
+        index + 1,
+        row.productName,
+        skus.length === 1 ? skus[0] : skus.length > 1 ? "Multiple" : "",
+        Math.round(referralNumber(row.units)),
+        referralNumber(row.sales),
+        referralNumber(row.refApplicable),
+        referralNumber(row.refCharged),
+        referralNumber(row.fbaApplicable),
+        referralNumber(row.fbaCharged),
+        referralNumber(row.otherApplicable),
+        referralNumber(row.otherCharged),
+        referralNumber(row.totalApplicable),
+        referralNumber(row.totalCharged),
+      ];
+    });
+
+  const totalSource = providedTotal || {};
+  dataRows.push([
+    "",
+    "Total",
+    "",
+    Math.round(referralNumber(cardSummary.units ?? totalSource.units)),
+    referralNumber(cardSummary.sales ?? totalSource.sales),
+    referralNumber(totalSource.ref_applicable ?? totalSource.applicable),
+    referralNumber(totalSource.ref_charged ?? totalSource.charged),
+    referralNumber(totalSource.fba_applicable),
+    referralNumber(totalSource.fba_charged),
+    referralNumber(totalSource.other_applicable),
+    referralNumber(totalSource.other_charged),
+    referralNumber(totalSource.total_applicable),
+    referralNumber(totalSource.total_charged),
+  ]);
+
+  return dataRows;
+};
+
+export function exportReferralFeesExcel({
+  filename,
+  countryName,
+  periodLabel,
+  currencyCode = "",
+  feeSummaryRows,
+  productRows,
+  ordersByStatus,
+  cardSummary,
+  totalFeeRow,
+}: ReferralFeesExcelParams) {
+  if (!feeSummaryRows.length && !productRows.length && !ordersByStatus.length) {
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+
+  /* ---------------- Sheet 1: Summary ---------------- */
+  const summaryHeaders = [
+    "Referral Fee Status",
+    "Units",
+    "Net Sales",
+    "Referral Fees Applicable",
+    "Referral Fees Charged",
+    "Difference",
+  ];
+  const summaryRows = feeSummaryRows.map((row) => {
+    const isTotal = isReferralTotalLabel(row.label);
+    return [
+      row.label ?? "",
+      Math.round(
+        referralNumber(isTotal ? cardSummary.units ?? row.units : row.units)
+      ),
+      referralNumber(isTotal ? cardSummary.sales ?? row.sales : row.sales),
+      referralNumber(
+        isTotal
+          ? cardSummary.refFeesApplicable ?? row.refFeesApplicable
+          : row.refFeesApplicable
+      ),
+      referralNumber(
+        isTotal
+          ? cardSummary.refFeesApplied ?? row.refFeesCharged
+          : row.refFeesCharged
+      ),
+      referralNumber(isTotal ? totalFeeRow?.overcharged ?? row.overcharged : row.overcharged),
+    ];
+  });
+  const summaryHeaderRow = 3;
+  const summaryWorksheet = XLSX.utils.aoa_to_sheet([
+    ...buildReferralTopRows({
+      title: "Referral Fees Reconciliation Summary",
+      countryName,
+      periodLabel,
+      currencyCode,
+      columnCount: summaryHeaders.length,
+    }),
+    summaryHeaders,
+    ...summaryRows,
+  ]);
+  summaryWorksheet["!cols"] = [
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 21 },
+    { wch: 16 },
+  ];
+  summaryWorksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: summaryHeaderRow, c: 0 },
+      e: { r: summaryHeaderRow + summaryRows.length, c: summaryHeaders.length - 1 },
+    }),
+  };
+  applyReferralSheetTitle({
+    ws: summaryWorksheet,
+    columnCount: summaryHeaders.length,
+  });
+  applyReferralTableStyles({
+    ws: summaryWorksheet,
+    headerStartRow: summaryHeaderRow,
+    headerRowCount: 1,
+    dataRowCount: summaryRows.length,
+    columnCount: summaryHeaders.length,
+    leftAlignedColumns: new Set([0]),
+    numericColumns: new Set([1, 2, 3, 4, 5]),
+    totalDataRows: summaryRows
+      .map((_, index) => (isReferralTotalLabel(feeSummaryRows[index]?.label) ? index : -1))
+      .filter((index) => index >= 0),
+  });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    summaryWorksheet,
+    safeSheetName("Summary")
+  );
+
+  /* ---------------- Sheet 2: Product-wise breakdown ---------------- */
+  const productColumnCount = 13;
+  const productHeaderTop = [
+    "S.No.",
+    "Product Name",
+    "SKU",
+    "Units",
+    "Net Sales",
+    "Referral Fees",
+    "",
+    "FBA Fees",
+    "",
+    "Other Fees",
+    "",
+    "Total Fees",
+    "",
+  ];
+  const productHeaderSub = [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Applicable",
+    "Charged",
+    "Applicable",
+    "Charged",
+    "Applicable",
+    "Charged",
+    "Applicable",
+    "Charged",
+  ];
+  const productDataRows = aggregateReferralProductRows(productRows, cardSummary);
+  const productHeaderRow = 3;
+  const productWorksheet = XLSX.utils.aoa_to_sheet([
+    ...buildReferralTopRows({
+      title: `Product-wise Breakdown${currencyCode ? ` (${currencyCode})` : ""}`,
+      countryName,
+      periodLabel,
+      currencyCode,
+      columnCount: productColumnCount,
+    }),
+    productHeaderTop,
+    productHeaderSub,
+    ...productDataRows,
+  ]);
+  productWorksheet["!merges"] = [
+    ...Array.from({ length: 5 }, (_, column) => ({
+      s: { r: productHeaderRow, c: column },
+      e: { r: productHeaderRow + 1, c: column },
+    })),
+    ...[
+      [5, 6],
+      [7, 8],
+      [9, 10],
+      [11, 12],
+    ].map(([start, end]) => ({
+      s: { r: productHeaderRow, c: start },
+      e: { r: productHeaderRow, c: end },
+    })),
+  ];
+  productWorksheet["!cols"] = [
+    { wch: 8 },
+    { wch: 28 },
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 16 },
+    ...Array.from({ length: 8 }, () => ({ wch: 17 })),
+  ];
+  applyReferralSheetTitle({
+    ws: productWorksheet,
+    columnCount: productColumnCount,
+  });
+  applyReferralTableStyles({
+    ws: productWorksheet,
+    headerStartRow: productHeaderRow,
+    headerRowCount: 2,
+    dataRowCount: productDataRows.length,
+    columnCount: productColumnCount,
+    leftAlignedColumns: new Set([1, 2]),
+    numericColumns: new Set([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+    accentTextColumns: new Set([1]),
+    totalDataRows: productDataRows.length ? [productDataRows.length - 1] : [],
+  });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    productWorksheet,
+    safeSheetName("Product Breakdown")
+  );
+
+  /* ---------------- Sheet 3: Orders by status ---------------- */
+  const orderHeaders = [
+    "Category",
+    "Order ID",
+    "SKU",
+    "Product Name",
+    "Quantity",
+    "Net Sales",
+    "Referral Fees Applicable",
+    "Referral Fees Charged",
+    "Difference",
+    "Status",
+  ];
+  const exportedStatuses = ["Accurate", "Undercharged", "Overcharged"];
+  const targetUnitsByStatus = new Map(
+    exportedStatuses.map((status) => {
+      const summaryRow = feeSummaryRows.find(
+        (row) => row.label === `Charge - ${status}`
+      );
+      return [status, Math.round(referralNumber(summaryRow?.units))] as const;
+    })
+  );
+  const scaledUnitsByStatus = new Map(
+    exportedStatuses.map((status) => {
+      const matchingRows = (ordersByStatus || []).filter(
+        (row) => row?.Category === status && Object.keys(row).length > 1
+      );
+      return [
+        status,
+        scaleReferralIntegerBreakdown(
+          matchingRows.map((row) => getReferralDisplayUnits(row)),
+          targetUnitsByStatus.get(status) ?? 0
+        ),
+      ] as const;
+    })
+  );
+  const statusIndexes = new Map<string, number>(
+    exportedStatuses.map((status) => [status, 0] as const)
+  );
+  const orderRows: any[][] = [];
+  const sectionRows: number[] = [];
+
+  for (const row of ordersByStatus || []) {
+    const isSeparator =
+      !row ||
+      Object.keys(row).length === 0 ||
+      (row.Category && Object.keys(row).length === 1);
+
+    if (isSeparator) {
+      if (row?.Category) {
+        sectionRows.push(orderRows.length);
+        orderRows.push([row.Category, "", "", "", "", "", "", "", "", ""]);
+      } else {
+        orderRows.push(new Array(orderHeaders.length).fill(""));
+      }
+      continue;
+    }
+
+    const status = String(row.Category ?? "");
+    const statusIndex = statusIndexes.get(status) ?? 0;
+    const quantity =
+      scaledUnitsByStatus.get(status)?.[statusIndex] ??
+      getReferralDisplayUnits(row);
+    statusIndexes.set(status, statusIndex + 1);
+
+    if (quantity <= 0) continue;
+
+    orderRows.push([
+      status,
+      row.order_id ?? "",
+      row.sku ?? "",
+      row.product_name ?? "",
+      Math.round(quantity),
+      getReferralNetSales(row),
+      referralNumber(row.answer),
+      getReferralChargedFees(row),
+      referralNumber(row.difference ?? row.overcharged),
+      row.errorstatus ?? "",
+    ]);
+  }
+
+  orderRows.push(new Array(orderHeaders.length).fill(""));
+  sectionRows.push(orderRows.length);
+  orderRows.push(["Reconciled Monthly Total", "", "", "", "", "", "", "", "", ""]);
+  const reconciledTotalIndex = orderRows.length;
+  orderRows.push([
+    "Reconciled Monthly Total",
+    "",
+    "",
+    "Total",
+    Math.round(referralNumber(cardSummary.units)),
+    referralNumber(cardSummary.sales),
+    referralNumber(cardSummary.refFeesApplicable),
+    referralNumber(cardSummary.refFeesApplied),
+    referralNumber(totalFeeRow?.overcharged),
+    "total",
+  ]);
+  orderRows.push(new Array(orderHeaders.length).fill(""));
+  sectionRows.push(orderRows.length);
+  orderRows.push(["Status Summary", "", "", "", "", "", "", "", "", ""]);
+
+  for (const row of feeSummaryRows.filter((summaryRow) =>
+    ["Charge - Accurate", "Charge - Undercharged", "Charge - Overcharged"].includes(
+      String(summaryRow.label)
+    )
+  )) {
+    orderRows.push([
+      "Status Summary",
+      "",
+      "",
+      row.label ?? "",
+      Math.round(referralNumber(row.units)),
+      referralNumber(row.sales),
+      referralNumber(row.refFeesApplicable),
+      referralNumber(row.refFeesCharged),
+      referralNumber(row.overcharged),
+      "",
+    ]);
+  }
+
+  const orderHeaderRow = 3;
+  const ordersWorksheet = XLSX.utils.aoa_to_sheet([
+    ...buildReferralTopRows({
+      title: "Referral Fee Orders by Status",
+      countryName,
+      periodLabel,
+      currencyCode,
+      columnCount: orderHeaders.length,
+    }),
+    orderHeaders,
+    ...orderRows,
+  ]);
+  ordersWorksheet["!cols"] = [
+    { wch: 24 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 24 },
+    { wch: 21 },
+    { wch: 16 },
+    { wch: 16 },
+  ];
+  ordersWorksheet["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: { r: orderHeaderRow, c: 0 },
+      e: { r: orderHeaderRow + orderRows.length, c: orderHeaders.length - 1 },
+    }),
+  };
+  applyReferralSheetTitle({
+    ws: ordersWorksheet,
+    columnCount: orderHeaders.length,
+  });
+  applyReferralTableStyles({
+    ws: ordersWorksheet,
+    headerStartRow: orderHeaderRow,
+    headerRowCount: 1,
+    dataRowCount: orderRows.length,
+    columnCount: orderHeaders.length,
+    leftAlignedColumns: new Set([0, 1, 2, 3, 9]),
+    numericColumns: new Set([4, 5, 6, 7, 8]),
+    accentTextColumns: new Set([3]),
+    totalDataRows: [reconciledTotalIndex],
+    sectionDataRows: sectionRows,
+  });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    ordersWorksheet,
+    safeSheetName("Orders by Status")
+  );
+
+  XLSX.writeFile(workbook, filename);
+}
+
 
 
 /** Accepts "data:image/png;base64,...." or raw base64 */
