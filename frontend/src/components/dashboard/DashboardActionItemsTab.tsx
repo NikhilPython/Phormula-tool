@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useId, useMemo, useState } from "react";
+import Link from "next/link";
 import Loader from "@/components/loader/Loader";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 
@@ -15,6 +16,7 @@ export type DashboardActionItem = {
   reason: string;
   metrics: { value: string; label: string }[];
   action: string;
+  actionHref?: string;
   affected_skus?: string[];
 };
 
@@ -1636,7 +1638,16 @@ function ActionItemsView({
             </div>)}
           </div>
 
-          <span className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C]">{item.action}</span>
+          {item.actionHref ? (
+            <Link
+              href={item.actionHref}
+              className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C] transition hover:border-[#70B9A9] hover:bg-[#EDF8F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
+            >
+              {item.action}
+            </Link>
+          ) : (
+            <span className="inline-flex min-h-8 items-center justify-center rounded-md border border-[#9FD1C6] bg-[#F8FCFB] px-2 text-center text-[10px] font-semibold text-[#07836C]">{item.action}</span>
+          )}
 
           <input
             aria-label={`Complete ${item.title}`}

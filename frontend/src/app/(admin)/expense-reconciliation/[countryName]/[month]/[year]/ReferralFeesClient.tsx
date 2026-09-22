@@ -231,7 +231,9 @@ const getDisplayUnits = (r: any): number => {
 };
 
 const getChargedReferralFees = (r: any): number => {
-  return toNumberSafe(r?.selling_fees);
+  // Amazon stores selling/referral fees as negative ledger entries. The UI
+  // compares fee magnitudes, matching the backend reconciliation calculation.
+  return Math.abs(toNumberSafe(r?.selling_fees));
 };
 
 const isGrandTotalLabel = (label: any): boolean =>
@@ -562,14 +564,17 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const routeMonth = (routeParams?.month as string | undefined) ?? "";
   const routeYear = (routeParams?.year as string | undefined) ?? "";
 
-  const [month, setMonth] = useState<string>(() =>
-    new Date().toLocaleString("en-US", { month: "long" }).toLowerCase()
-  );
-  const [year, setYear] = useState<string>(() =>
-    String(new Date().getFullYear())
-  );
-  const [range, setRange] = useState<Range>("yearly");
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+const [month, setMonth] = useState<string>(() => {
+  return getLastCompletedMonth().month;
+});
+
+const [year, setYear] = useState<string>(() => {
+  return getLastCompletedMonth().year;
+});
+
+const [range, setRange] = useState<Range>("monthly");
+
+const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
   const isPreviewMode =
     routeMonth.toUpperCase() === "NA" ||

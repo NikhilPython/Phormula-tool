@@ -847,6 +847,92 @@ const decodeJwtUserId = (jwt: string): string | null => {
     }
 };
 
+const hasPositiveReferralFeeDifference = (item: DashboardActionItem) => {
+    const differenceMetric = item.metrics.find(
+        (metric) => metric.label.trim().toLowerCase() === "difference"
+    );
+    const varianceMetric = item.metrics.find(
+        (metric) => metric.label.trim().toLowerCase() === "fee variance"
+    );
+    const parseMetric = (value?: string) => {
+        const parsed = Number(String(value ?? "").replace(/[^0-9+.-]/g, ""));
+        return Number.isFinite(parsed) ? parsed : null;
+    };
+    const difference = parseMetric(differenceMetric?.value);
+
+    if (difference !== null) return difference > 0.005;
+
+    const variance = parseMetric(varianceMetric?.value);
+    return variance !== null && variance > 0;
+};
+
+const buildReferralFeeActionItem = ({
+    payload,
+    actionHref,
+    month,
+    year,
+    currencySymbol,
+}: {
+    payload: unknown;
+    actionHref: string;
+    month: string;
+    year: string;
+    currencySymbol: string;
+}): DashboardActionItem | null => {
+    const table = (payload as { table?: unknown } | null)?.table;
+    const rows = Array.isArray(table)
+        ? table as Array<Record<string, unknown>>
+        : [];
+
+    const detailRows = rows.filter((row) => {
+        const sku = String(row?.sku ?? "").trim().toLowerCase();
+        return sku !== "grand total" && !sku.startsWith("charge -");
+    });
+
+    if (!detailRows.length) return null;
+
+    const charged = detailRows.reduce(
+        (total, row) => total + Math.abs(toNumberSafe(row?.selling_fees)),
+        0
+    );
+    const expected = detailRows.reduce(
+        (total, row) => total + toNumberSafe(row?.answer),
+        0
+    );
+    const difference = charged - expected;
+
+    if (charged <= 0 || expected <= 0 || difference <= 0.005) {
+        return null;
+    }
+
+    const variance = (difference / expected) * 100;
+    const money = (value: number) => `${value < 0 ? "-" : ""}${currencySymbol}${Math.abs(value).toLocaleString("en-GB", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+    const monthLabel = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+    const direction = difference > 0 ? "above" : "below";
+
+    return {
+        id: "referral-fee-variance",
+        category: "Finance",
+        priority: "Medium",
+        title: "Review referral fee variance",
+        reason: `${monthLabel} ${year} referral fees are ${money(Math.abs(difference))} ${direction} the expected calculation.`,
+        metrics: [
+            {
+                value: `${variance > 0 ? "+" : ""}${variance.toFixed(1)}%`,
+                label: "Fee variance",
+            },
+            { value: money(difference), label: "Difference" },
+            { value: money(charged), label: "Charged" },
+        ],
+        action: "Review fees",
+        actionHref,
+        affected_skus: [],
+    };
+};
+
 // const getBackendCountryDate = useCallback(() => {
 //     const dt = countryTime?.selected_country?.datetime;
 
@@ -3091,9 +3177,83 @@ export default function DashboardPage() {
                     );
                 }
 
-                setDashboardActionItems(
-                    Array.isArray(payload?.items) ? payload.items : []
+                const baseActionItems: DashboardActionItem[] = Array.isArray(payload?.items)
+                    ? payload.items
+                    : [];
+                const responsePeriod = payload?.period;
+                const routeCountry = String(responsePeriod?.country || inventoryCountry);
+                const routeMonth = String(responsePeriod?.month || invMonthYear.month);
+                const routeYear = String(responsePeriod?.year || invMonthYear.year);
+                const referralPageHref = `/expense-reconciliation/${encodeURIComponent(routeCountry)}/${encodeURIComponent(routeMonth)}/${encodeURIComponent(routeYear)}`;
+                const apiReferralFeeActionItem = baseActionItems.find(
+                    (item) => item.id === "referral-fee-variance"
                 );
+                let referralFeeActionItem: DashboardActionItem | null =
+                    apiReferralFeeActionItem && hasPositiveReferralFeeDifference(apiReferralFeeActionItem)
+                    ? { ...apiReferralFeeActionItem, actionHref: referralPageHref }
+                    : null;
+
+                if (!referralFeeActionItem) {
+                    const userId = decodeJwtUserId(token);
+                    if (userId) {
+                        const previousPeriod = getPrevBackendCountryYearMonth();
+                        const previousMonth = previousPeriod.monthName.toLowerCase();
+                        const previousYear = String(previousPeriod.year);
+                        const referralParams = new URLSearchParams({
+                            country: inventoryCountry,
+                            month: previousMonth,
+                            year: previousYear,
+                        });
+
+                        if (inventoryCountry === "global") {
+                            referralParams.set("homeCurrency", profileHomeCurrency.toLowerCase());
+                        }
+
+                        const referralFileName = (
+                            `user_${userId}_${inventoryCountry}_${previousMonth}${previousYear}_data`
+                        ).toLowerCase();
+
+                        try {
+                            const referralResponse = await fetch(
+                                `${baseURL}/get_table_data/${referralFileName}?${referralParams.toString()}`,
+                                {
+                                    method: "GET",
+                                    headers: {
+                                        Accept: "application/json",
+                                        Authorization: `Bearer ${token}`,
+                                    },
+                                    cache: "no-store",
+                                    signal: controller.signal,
+                                }
+                            );
+
+                            if (referralResponse.ok) {
+                                const referralPayload = await referralResponse.json().catch(() => null);
+                                referralFeeActionItem = buildReferralFeeActionItem({
+                                    payload: referralPayload,
+                                    actionHref: referralPageHref,
+                                    month: previousMonth,
+                                    year: previousYear,
+                                    currencySymbol: String(payload?.currency?.symbol || "$"),
+                                });
+                            }
+                        } catch (referralError: unknown) {
+                            if (
+                                referralError instanceof DOMException &&
+                                referralError.name === "AbortError"
+                            ) {
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                setDashboardActionItems([
+                    ...(referralFeeActionItem ? [referralFeeActionItem] : []),
+                    ...baseActionItems.filter(
+                        (item) => item.id !== "referral-fee-variance"
+                    ),
+                ]);
 
                 const sourceMetrics = payload?.source_metrics;
                 setDashboardActionSourceMetrics(
@@ -3135,6 +3295,8 @@ export default function DashboardPage() {
         inventoryInsightsRequestKey,
         dashboardActionSourcesReadyKey,
         dashboardActionItemsRefreshKey,
+        getPrevBackendCountryYearMonth,
+        profileHomeCurrency,
     ]);
 
     const inventoryInsightsReportCountry =
