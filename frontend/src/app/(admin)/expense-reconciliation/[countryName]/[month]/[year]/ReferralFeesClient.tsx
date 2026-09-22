@@ -26,6 +26,7 @@ import SkuAgeingDonutChart, {
 } from "@/components/common/inventory/SkuAgeingDonutChart";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
 import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import { useAppSelector } from "@/lib/store";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -562,6 +563,12 @@ function PreviewLockedSection({
 /* ===================== MAIN DASHBOARD PAGE ===================== */
 export default function ReferralFeesDashboard(): JSX.Element {
   const routeParams = useParams();
+  const companyName = useAppSelector(
+    (state) => state.auth.user?.company_name || ""
+  );
+  const brandName = useAppSelector(
+    (state) => state.auth.user?.brand_name || ""
+  );
   // ✅ IMPORTANT: pick platform/country from URL
   const country = ((routeParams?.countryName as string) || "global").toLowerCase();
 
@@ -1608,6 +1615,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
             ? `${selectedQuarter || "Quarter"} ${year}`
             : `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`,
       currencyCode: displayCurrencyCode,
+      titleCountry: country === "global" ? "Global" : country.toUpperCase(),
+      platformLabel: "Phormula",
+      companyName,
+      brandName,
       feeSummaryRows,
       productRows: skuTableAll as Record<string, any>[],
       ordersByStatus: allOrdersByStatus as Record<string, any>[],
@@ -1617,6 +1628,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
   }, [
     allOrdersByStatus,
     card6,
+    brandName,
+    companyName,
     country,
     displayCurrencyCode,
     feeSummaryRows,
