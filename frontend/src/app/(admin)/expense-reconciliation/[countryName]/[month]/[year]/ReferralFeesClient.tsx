@@ -22,6 +22,10 @@ import { AiButton } from "@/components/ui/button/AiButton";
 import PeriodFiltersTable, { type Range } from "@/components/filters/PeriodFiltersTable";
 import GroupedDataTable from "@/components/ui/table/GroupedDataTable";
 import { IoMdLock } from "react-icons/io";
+import SkuAgeingDonutChart, {
+  type DonutChartItem,
+} from "@/components/common/inventory/SkuAgeingDonutChart";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -486,6 +490,53 @@ function FeeCard({
   );
 }
 
+function ReconciliationStatusCard({
+  title,
+  units,
+  amount,
+  totalUnits,
+  valueFmt,
+  borderColor,
+  bgColor,
+  amountLabel,
+}: {
+  title: string;
+  units: number;
+  amount: number;
+  totalUnits: number;
+  valueFmt: (n: number) => string;
+  borderColor: string;
+  bgColor: string;
+  amountLabel: string;
+}) {
+  const share = totalUnits > 0 ? (units / totalUnits) * 100 : 0;
+
+  return (
+    <div
+      className="flex min-h-[110px] flex-col rounded-2xl border px-4 py-3 shadow-sm"
+      style={{ borderColor, backgroundColor: bgColor }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: borderColor }}
+        />
+        <p className="text-xs font-semibold text-charcoal-500">{title}</p>
+      </div>
+
+      <p className="mt-3 text-lg font-semibold text-charcoal-500">
+        {valueFmt(Math.abs(amount))}
+      </p>
+      <p className="text-[10px] text-slate-500">{amountLabel}</p>
+
+      <div className="mt-auto flex items-center justify-between pt-3 text-[11px] text-slate-600">
+        <span>{Math.round(units).toLocaleString()} units</span>
+        <span className="font-semibold text-charcoal-500">{share.toFixed(2)}%</span>
+      </div>
+    </div>
+  );
+}
+
 function PreviewLockedSection({
   enabled,
   children,
@@ -564,17 +615,34 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const routeMonth = (routeParams?.month as string | undefined) ?? "";
   const routeYear = (routeParams?.year as string | undefined) ?? "";
 
-const [month, setMonth] = useState<string>(() => {
-  return getLastCompletedMonth().month;
-});
+  const [month, setMonth] = useState<string>(() => {
+    return getLastCompletedMonth().month;
+  });
 
-const [year, setYear] = useState<string>(() => {
-  return getLastCompletedMonth().year;
-});
+  const [year, setYear] = useState<string>(() => {
+    return getLastCompletedMonth().year;
+  });
 
-const [range, setRange] = useState<Range>("monthly");
+  const [range, setRange] = useState<Range>("monthly");
 
-const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [activeView, setActiveView] =
+    useState<"overview" | "products">("overview");
+
+  const viewOptions = [
+    {
+      value: "overview",
+      label: "Reconciliation Overview",
+    },
+    {
+      value: "products",
+      label: "Product-wise Breakdown",
+    },
+  ] satisfies {
+    value: "overview" | "products";
+    label: string;
+  }[];
+
 
   const isPreviewMode =
     routeMonth.toUpperCase() === "NA" ||
@@ -1852,6 +1920,71 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
     });
   }, []);
 
+  const reconciliationStatuses = useMemo(() => {
+    const findStatus = (label: string) =>
+      feeSummaryRows.find(
+        (row) => row.label.trim().toLowerCase() === label.toLowerCase()
+      );
+    const accurate = findStatus("Charge - Accurate");
+    const overcharged = findStatus("Charge - Overcharged");
+    const undercharged = findStatus("Charge - Undercharged");
+    const noReferralFee = findStatus("Charge - noreferallfee");
+
+    return [
+      {
+        key: "accurate",
+        title: "Accurate",
+        units: Math.max(0, toNumberSafe(accurate?.units)),
+        amount: Math.abs(toNumberSafe(accurate?.refFeesCharged)),
+        amountLabel: "Referral fees charged",
+        color: "#7B9A6D",
+        background: "#F0FDF4",
+      },
+      {
+        key: "overcharged",
+        title: "Overcharged",
+        units: Math.max(0, toNumberSafe(overcharged?.units)),
+        amount: Math.abs(toNumberSafe(overcharged?.overcharged)),
+        amountLabel: "Potential overcharge",
+        color: "#B75A5A",
+        background: "#FEF2F2",
+      },
+      {
+        key: "undercharged",
+        title: "Undercharged",
+        units: Math.max(0, toNumberSafe(undercharged?.units)),
+        amount: Math.abs(toNumberSafe(undercharged?.overcharged)),
+        amountLabel: "Difference below applicable",
+        color: "#ED9F50",
+        background: "#FFFBEB",
+      },
+      {
+        key: "no-referral-fee",
+        title: "No referral fee",
+        units: Math.max(0, toNumberSafe(noReferralFee?.units)),
+        amount: Math.abs(toNumberSafe(noReferralFee?.overcharged)),
+        amountLabel: "Unclassified difference",
+        color: "#C49466",
+        background: "#F8FAFC",
+      },
+    ];
+  }, [feeSummaryRows]);
+
+  const reconciliationTotalUnits = useMemo(
+    () => reconciliationStatuses.reduce((sum, status) => sum + status.units, 0),
+    [reconciliationStatuses]
+  );
+
+  const reconciliationDonutData = useMemo<DonutChartItem[]>(
+    () =>
+      reconciliationStatuses.map((status) => ({
+        bucket: status.title,
+        units: status.units,
+        color: status.color,
+      })),
+    [reconciliationStatuses]
+  );
+
 
   return (
     <div className="space-y-1.5 font-sans text-charcoal-500">
@@ -1865,7 +1998,7 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
         {/* LEFT: Title */}
         <div className="flex flex-col leading-tight w-full md:w-auto">
-          <div className="flex items-baseline gap-2">
+          {/* <div className="flex items-baseline gap-2">
             <PageBreadcrumb
               pageTitle="Expense Reconciliation - Amazon"
               variant="page"
@@ -1875,6 +2008,15 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
             />
             <span className="text-[#5EA68E] font-bold text-lg sm:text-2xl md:text-2xl">
               {effectiveCountry.toUpperCase()}
+            </span>
+          </div> */}
+          <div className="flex items-baseline gap-2">
+            <PageBreadcrumb pageTitle="Expense Reconciliation - Amazon" variant="page" align="left" textSize="2xl" />
+            <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
+              {/* Amazon{" "} */}
+              {effectiveCountry?.toLowerCase() === "global"
+                ? "Global"
+                : effectiveCountry?.toUpperCase()}
             </span>
           </div>
         </div>
@@ -1965,9 +2107,51 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
           onAction={handlePreviewAction}
         >
           <>
+            <div className="mt-4 flex w-full items-center">
+              <SegmentedToggle<"overview" | "products">
+                value={activeView}
+                options={viewOptions}
+                onChange={setActiveView}
+                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                className="w-full"
+                compact
+              />
+            </div>
+
+            {activeView === "overview" && (
+              <div
+                id="referral-overview-panel"
+                role="tabpanel"
+                className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch"
+              >
+                <SkuAgeingDonutChart
+                  title="Reconciliation Distribution"
+                  subtitle="Referral fee status across all units"
+                  data={reconciliationDonutData}
+                  totalUnits={reconciliationTotalUnits}
+                />
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {reconciliationStatuses.map((status) => (
+                    <ReconciliationStatusCard
+                      key={status.key}
+                      title={status.title}
+                      units={status.units}
+                      amount={status.amount}
+                      totalUnits={reconciliationTotalUnits}
+                      valueFmt={fmtCurrencyRounded}
+                      borderColor={status.color}
+                      bgColor={status.background}
+                      amountLabel={status.amountLabel}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* ===================== 6 CARDS (UPDATED) ===================== */}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
+            {false && <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
               <SalesCard
                 title="Sales"
                 sales={card6.sales}
@@ -2028,11 +2212,11 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
                 borderColor="#3A8EA4"
                 bgColor="#3A8EA44D"
               />
-            </div>
+            </div>}
 
 
             {/* ===================== BREAKDOWN SECTION (NEW) ===================== */}
-            {(() => {
+            {false && (() => {
               /* =========================
                  1) Pull Charge rows + Grand Total
               ========================= */
@@ -2434,114 +2618,173 @@ const [selectedQuarter, setSelectedQuarter] = useState<string>("");
 
 
 
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto mt-4">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-                <PageBreadcrumb
-                  pageTitle="Product-wise breakdown"
-                  variant="page"
-                  align="left"
-                  className="mt-4 mb-0 md:mb-4 text-center"
-                />
-                {/* <DownloadButton onClick={handleDownloadExcel} /> */}
+            {activeView === "products" && (
+              <div
+                id="referral-products-panel"
+                role="tabpanel"
+                className="mt-4 space-y-4"
+              >
+                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <PageBreadcrumb
+                    pageTitle="Fee Type Breakdown"
+                    variant="page"
+                    align="left"
+                    className="mb-3"
+                  />
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <FeeCard
+                      title="Referral Fees"
+                      sales={card6.sales}
+                      charged={card6.refFeesApplied}
+                      applicable={card6.refFeesApplicable}
+                      fmtCurrency={fmtCurrencyRounded}
+                      borderColor="#7B9A6D"
+                      bgColor="#7B9A6D24"
+                    />
+                    <FeeCard
+                      title="FBA Fees"
+                      sales={card6.sales}
+                      charged={card6.fbaFees}
+                      applicable={card6.fbaFeesApplicable}
+                      fmtCurrency={fmtCurrencyRounded}
+                      borderColor="#F1B94A"
+                      bgColor="#FDD36F33"
+                    />
+                    <FeeCard
+                      title="Platform Fees"
+                      sales={card6.sales}
+                      charged={card6.platformFees}
+                      applicable={card6.platformFeesApplicable}
+                      fmtCurrency={fmtCurrencyRounded}
+                      borderColor="#ED9F50"
+                      bgColor="#ED9F5033"
+                    />
+                    <FeeCard
+                      title="Other Fees"
+                      sales={card6.sales}
+                      charged={card6.otherFees}
+                      applicable={card6.otherFeesApplicable}
+                      fmtCurrency={fmtCurrencyRounded}
+                      borderColor="#3A8EA4"
+                      bgColor="#3A8EA433"
+                    />
+                  </div>
+                </section>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                    <PageBreadcrumb
+                      pageTitle="Product-wise breakdown"
+                      variant="page"
+                      align="left"
+                      className="mt-4 mb-0 md:mb-4 text-center"
+                    />
+                    <DownloadButton
+                      onClick={handleDownloadExcel}
+                      disabled={isPreviewMode}
+                    />
+                  </div>
+
+                  {/* <AiButton /> */}
+
+                  <div className="[&_table]:w-full ">
+                    <GroupedDataTable
+                      data={groupedSkuTableDisplay}
+                      rowClassName={(row) =>
+                        (row as any)._isTotal ? "bg-[#EFEFEF] font-semibold" : ""
+                      }
+                      baseColumns={[
+                        { key: "sno", header: "S.No.", width: "60px" },
+                        {
+                          key: "productName", header: "Product Name", width: "180px", headerClassName: "text-left",
+                          cellClassName: "text-left"
+                        },
+                        { key: "sku", header: "SKU", width: "110px" },
+                        { key: "units", header: "Units", width: "70px" },
+                        {
+                          key: "sales",
+                          header: `Net Sales (${currencySymbol})`,
+                          width: "110px",
+                          render: (_, v) => fmtMoneyNoSymbol(v),
+                        },
+                      ]}
+                      groupedColumns={[
+                        {
+                          groupHeader: "Referral Fees",
+                          columns: [
+                            {
+                              key: "ref_applicable",
+                              header: `Applicable (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                            {
+                              key: "ref_charged",
+                              header: `Charged (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                          ],
+                        },
+                        {
+                          groupHeader: "FBA Fees",
+                          columns: [
+                            {
+                              key: "fba_applicable",
+                              header: `Applicable (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                            {
+                              key: "fba_charged",
+                              header: `Charged (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                          ],
+                        },
+                        {
+                          groupHeader: "Other Fees",
+                          columns: [
+                            {
+                              key: "other_applicable",
+                              header: `Applicable (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                            {
+                              key: "other_charged",
+                              header: `Charged (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                          ],
+                        },
+                        {
+                          groupHeader: "Total Fees",
+                          columns: [
+                            {
+                              key: "total_applicable",
+                              header: `Applicable (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                            {
+                              key: "total_charged",
+                              header: `Charged (${currencySymbol})`,
+                              width: "110px",
+                              render: (_, v) => fmtMoneyNoSymbol(v),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
+
+                  </div>
+                </div>
               </div>
-
-              {/* <AiButton /> */}
-
-              <div className="[&_table]:w-full ">
-                <GroupedDataTable
-                  data={groupedSkuTableDisplay}
-                  rowClassName={(row) =>
-                    (row as any)._isTotal ? "bg-[#EFEFEF] font-semibold" : ""
-                  }
-                  baseColumns={[
-                    { key: "sno", header: "S.No.", width: "60px" },
-                    {
-                      key: "productName", header: "Product Name", width: "180px", headerClassName: "text-left",
-                      cellClassName: "text-left"
-                    },
-                    { key: "sku", header: "SKU", width: "110px" },
-                    { key: "units", header: "Units", width: "70px" },
-                    {
-                      key: "sales",
-                      header: `Net Sales (${currencySymbol})`,
-                      width: "110px",
-                      render: (_, v) => fmtMoneyNoSymbol(v),
-                    },
-                  ]}
-                  groupedColumns={[
-                    {
-                      groupHeader: "Referral Fees",
-                      columns: [
-                        {
-                          key: "ref_applicable",
-                          header: `Applicable (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                        {
-                          key: "ref_charged",
-                          header: `Charged (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                      ],
-                    },
-                    {
-                      groupHeader: "FBA Fees",
-                      columns: [
-                        {
-                          key: "fba_applicable",
-                          header: `Applicable (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                        {
-                          key: "fba_charged",
-                          header: `Charged (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                      ],
-                    },
-                    {
-                      groupHeader: "Other Fees",
-                      columns: [
-                        {
-                          key: "other_applicable",
-                          header: `Applicable (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                        {
-                          key: "other_charged",
-                          header: `Charged (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                      ],
-                    },
-                    {
-                      groupHeader: "Total Fees",
-                      columns: [
-                        {
-                          key: "total_applicable",
-                          header: `Applicable (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                        {
-                          key: "total_charged",
-                          header: `Charged (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
-                      ],
-                    },
-                  ]}
-                />
-
-              </div>
-            </div>
+            )}
           </>
         </PreviewLockedSection>
       )}
