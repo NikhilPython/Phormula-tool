@@ -25,6 +25,7 @@ import { IoMdLock } from "react-icons/io";
 import SkuAgeingDonutChart, {
   type DonutChartItem,
 } from "@/components/common/inventory/SkuAgeingDonutChart";
+import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 /* ===================== Overlap Plugin ===================== */
@@ -497,7 +498,6 @@ function ReconciliationStatusCard({
   totalUnits,
   valueFmt,
   borderColor,
-  bgColor,
   amountLabel,
 }: {
   title: string;
@@ -506,32 +506,34 @@ function ReconciliationStatusCard({
   totalUnits: number;
   valueFmt: (n: number) => string;
   borderColor: string;
-  bgColor: string;
   amountLabel: string;
 }) {
   const share = totalUnits > 0 ? (units / totalUnits) * 100 : 0;
 
   return (
     <div
-      className="flex min-h-[110px] flex-col rounded-2xl border px-4 py-3 shadow-sm"
-      style={{ borderColor, backgroundColor: bgColor }}
+      className="rounded-lg border border-t-4 p-2.5 text-center sm:p-3"
+      style={{
+        backgroundColor: "#ffffff",
+        borderColor,
+        borderTopColor: borderColor,
+      }}
     >
-      <div className="flex items-center gap-2">
-        <span
-          className="h-2.5 w-2.5 rounded-full"
-          style={{ backgroundColor: borderColor }}
-        />
-        <p className="text-xs font-semibold text-charcoal-500">{title}</p>
-      </div>
+      <h4 className="truncate text-[10px] font-medium text-charcoal-500 sm:text-[10px] 2xl:text-xs">
+        {title}
+      </h4>
 
-      <p className="mt-3 text-lg font-semibold text-charcoal-500">
-        {valueFmt(Math.abs(amount))}
+      <p className="mx-auto mt-1 h-4 max-w-[210px] overflow-hidden text-[10px] leading-4 text-charcoal-500 sm:text-[10px] 2xl:text-xs">
+        {amountLabel}
       </p>
-      <p className="text-[10px] text-slate-500">{amountLabel}</p>
 
-      <div className="mt-auto flex items-center justify-between pt-3 text-[11px] text-slate-600">
-        <span>{Math.round(units).toLocaleString()} units</span>
-        <span className="font-semibold text-charcoal-500">{share.toFixed(2)}%</span>
+      <div className="mt-2 flex flex-col items-center justify-center gap-2 text-charcoal-500">
+        <span className="text-sm font-semibold leading-none 2xl:text-lg">
+          {valueFmt(Math.abs(amount))}
+        </span>
+        <span className="text-[9.5px] font-semibold leading-none sm:text-[10px] 2xl:text-xs">
+          {Math.round(units).toLocaleString()} Units · {share.toFixed(2)}%
+        </span>
       </div>
     </div>
   );
@@ -1938,7 +1940,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
         amount: Math.abs(toNumberSafe(accurate?.refFeesCharged)),
         amountLabel: "Referral fees charged",
         color: "#7B9A6D",
-        background: "#F0FDF4",
       },
       {
         key: "overcharged",
@@ -1947,7 +1948,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
         amount: Math.abs(toNumberSafe(overcharged?.overcharged)),
         amountLabel: "Potential overcharge",
         color: "#B75A5A",
-        background: "#FEF2F2",
       },
       {
         key: "undercharged",
@@ -1956,17 +1956,15 @@ export default function ReferralFeesDashboard(): JSX.Element {
         amount: Math.abs(toNumberSafe(undercharged?.overcharged)),
         amountLabel: "Difference below applicable",
         color: "#ED9F50",
-        background: "#FFFBEB",
       },
-      {
-        key: "no-referral-fee",
-        title: "No referral fee",
-        units: Math.max(0, toNumberSafe(noReferralFee?.units)),
-        amount: Math.abs(toNumberSafe(noReferralFee?.overcharged)),
-        amountLabel: "Unclassified difference",
-        color: "#C49466",
-        background: "#F8FAFC",
-      },
+      // {
+      //   key: "no-referral-fee",
+      //   title: "No referral fee",
+      //   units: Math.max(0, toNumberSafe(noReferralFee?.units)),
+      //   amount: Math.abs(toNumberSafe(noReferralFee?.overcharged)),
+      //   amountLabel: "Unclassified difference",
+      //   color: "#C49466",
+      // },
     ];
   }, [feeSummaryRows]);
 
@@ -2141,7 +2139,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
                       totalUnits={reconciliationTotalUnits}
                       valueFmt={fmtCurrencyRounded}
                       borderColor={status.color}
-                      bgColor={status.background}
                       amountLabel={status.amountLabel}
                     />
                   ))}
@@ -2633,41 +2630,53 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   />
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <FeeCard
-                      title="Referral Fees"
-                      sales={card6.sales}
-                      charged={card6.refFeesApplied}
-                      applicable={card6.refFeesApplicable}
-                      fmtCurrency={fmtCurrencyRounded}
-                      borderColor="#7B9A6D"
-                      bgColor="#7B9A6D24"
+                    <AmazonStatCard
+                      label="Referral Fees"
+                      current={card6.refFeesApplied}
+                      previous={card6.refFeesApplicable}
+                      deltaPct={pctDelta(card6.refFeesApplied, card6.refFeesApplicable)}
+                      inverseDelta
+                      loading={false}
+                      formatter={fmtCurrencyRounded}
+                      previousFormatter={fmtCurrencyRounded}
+                      bottomLabel="Applicable"
+                      className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                     />
-                    <FeeCard
-                      title="FBA Fees"
-                      sales={card6.sales}
-                      charged={card6.fbaFees}
-                      applicable={card6.fbaFeesApplicable}
-                      fmtCurrency={fmtCurrencyRounded}
-                      borderColor="#F1B94A"
-                      bgColor="#FDD36F33"
+                    <AmazonStatCard
+                      label="FBA Fees"
+                      current={card6.fbaFees}
+                      previous={card6.fbaFeesApplicable}
+                      deltaPct={pctDelta(card6.fbaFees, card6.fbaFeesApplicable)}
+                      inverseDelta
+                      loading={false}
+                      formatter={fmtCurrencyRounded}
+                      previousFormatter={fmtCurrencyRounded}
+                      bottomLabel="Applicable"
+                      className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                     />
-                    <FeeCard
-                      title="Platform Fees"
-                      sales={card6.sales}
-                      charged={card6.platformFees}
-                      applicable={card6.platformFeesApplicable}
-                      fmtCurrency={fmtCurrencyRounded}
-                      borderColor="#ED9F50"
-                      bgColor="#ED9F5033"
+                    <AmazonStatCard
+                      label="Platform Fees"
+                      current={card6.platformFees}
+                      previous={card6.platformFeesApplicable}
+                      deltaPct={pctDelta(card6.platformFees, card6.platformFeesApplicable)}
+                      inverseDelta
+                      loading={false}
+                      formatter={fmtCurrencyRounded}
+                      previousFormatter={fmtCurrencyRounded}
+                      bottomLabel="Applicable"
+                      className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                     />
-                    <FeeCard
-                      title="Other Fees"
-                      sales={card6.sales}
-                      charged={card6.otherFees}
-                      applicable={card6.otherFeesApplicable}
-                      fmtCurrency={fmtCurrencyRounded}
-                      borderColor="#3A8EA4"
-                      bgColor="#3A8EA433"
+                    <AmazonStatCard
+                      label="Other Fees"
+                      current={card6.otherFees}
+                      previous={card6.otherFeesApplicable}
+                      deltaPct={pctDelta(card6.otherFees, card6.otherFeesApplicable)}
+                      inverseDelta
+                      loading={false}
+                      formatter={fmtCurrencyRounded}
+                      previousFormatter={fmtCurrencyRounded}
+                      bottomLabel="Applicable"
+                      className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                     />
                   </div>
                 </section>
