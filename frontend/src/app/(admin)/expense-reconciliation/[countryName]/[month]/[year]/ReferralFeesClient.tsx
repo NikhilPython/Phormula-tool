@@ -20,7 +20,7 @@ import DownloadButton from "@/components/ui/button/DownloadIconButton";
 import { useHomeCurrencyContext } from "@/lib/hooks/useHomeCurrencyContext";
 import { AiButton } from "@/components/ui/button/AiButton";
 import PeriodFiltersTable, { type Range } from "@/components/filters/PeriodFiltersTable";
-import GroupedDataTable from "@/components/ui/table/GroupedDataTable";
+import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
 import { IoMdLock } from "react-icons/io";
 import SkuAgeingDonutChart, {
   type DonutChartItem,
@@ -579,6 +579,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [range, setRange] = useState<Range>("monthly");
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [showAllProductRows, setShowAllProductRows] = useState(false);
+
+  useEffect(() => {
+    setShowAllProductRows(false);
+  }, [country, month, range, selectedQuarter, year]);
 
   const isPreviewMode =
     routeMonth.toUpperCase() === "NA" ||
@@ -1558,13 +1563,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
     if (!aggregated.length) return totalRow ? [totalRow] : [];
 
-    // ✅ 3) Sort + Top5 + Others based on DISTINCT products
+    // Show the top nine products, with all remaining products aggregated as Others.
     const sorted = [...aggregated].sort(
       (a, b) => toNumberSafe(b.sales) - toNumberSafe(a.sales)
     );
 
-    const top5 = sorted.slice(0, 5);
-    const remaining = sorted.slice(5);
+    const top9 = sorted.slice(0, 9);
+    const remaining = sorted.slice(9);
 
     let othersRow: Row | null = null;
     if (remaining.length) {
@@ -1632,8 +1637,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
     }
 
     // ✅ 4) Final rows + serial numbers (not for Grand Total)
-    const finalRows: any[] = [...top5];
-    if (othersRow) finalRows.push(othersRow);
+    const finalRows: any[] = showAllProductRows ? [...sorted] : [...top9];
+    if (!showAllProductRows && othersRow) finalRows.push(othersRow);
     if (totalRow) finalRows.push(totalRow);
 
     let counter = 1;
@@ -1641,7 +1646,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       if (row._isTotal) return { ...row, sno: "" };
       return { ...row, sno: counter++ };
     });
-  }, [skuTableAll]);
+  }, [showAllProductRows, skuTableAll]);
 
   const groupedSkuTableDisplay: any[] = useMemo(() => {
     return skuTableDisplay.map((row: any) => ({
@@ -1665,6 +1670,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       // ✅ keep total-row styling working
       _isTotal: row._isTotal,
+      _isOthers: row._isOthers,
     }));
   }, [skuTableDisplay]);
 
@@ -1849,11 +1855,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
   );
 
   const fmtMoneyNoSymbol = useCallback((n: any) => {
-    const val = toNumberSafe(n);
-    return val.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    return Math.round(toNumberSafe(n)).toLocaleString();
   }, []);
 
   const reconciliationStatuses = useMemo(() => {
@@ -2562,7 +2564,12 @@ export default function ReferralFeesDashboard(): JSX.Element {
             <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
                   <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
                     <PageBreadcrumb
-                      pageTitle="Product-wise breakdown"
+                      pageTitle={(
+                        <span>
+                          Product-wise breakdown{" "}
+                          <span className="text-green-500">({currencySymbol})</span>
+                        </span>
+                      )}
                       variant="page"
                       align="left"
                       className="mt-4 mb-0 md:mb-4 text-center"
@@ -2576,96 +2583,149 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   {/* <AiButton /> */}
 
                   <div className="[&_table]:w-full ">
-                    <GroupedDataTable
-                      data={groupedSkuTableDisplay}
-                      rowClassName={(row) =>
-                        (row as any)._isTotal ? "bg-[#EFEFEF] font-semibold" : ""
+                    <GroupedCollapsibleTable<any>
+                      rows={groupedSkuTableDisplay}
+                      getRowKey={(row, index) =>
+                        row._isTotal
+                          ? "TOTAL"
+                          : row._isOthers
+                            ? "OTHERS"
+                            : row.sku || `${row.productName}-${index}`
                       }
-                      baseColumns={[
-                        { key: "sno", header: "S.No.", width: "60px" },
-                        {
-                          key: "productName", header: "Product Name", width: "180px", headerClassName: "text-left",
-                          cellClassName: "text-left"
-                        },
-                        { key: "sku", header: "SKU", width: "110px" },
-                        { key: "units", header: "Units", width: "70px" },
-                        {
-                          key: "sales",
-                          header: `Net Sales (${currencySymbol})`,
-                          width: "110px",
-                          render: (_, v) => fmtMoneyNoSymbol(v),
-                        },
+                      leftCols={[
+                        { key: "sno", label: "S.No.", align: "center", width: 60 },
+                        { key: "productName", label: "Product Name", align: "left", width: 190 },
                       ]}
-                      groupedColumns={[
+                      singleCols={[
+                        { key: "sku", label: "SKU", align: "center", width: 120 },
+                        { key: "units", label: "Units", align: "center", width: 90 },
+                        { key: "sales", label: "Net Sales", align: "center", width: 110 },
+                      ]}
+                      groups={[
                         {
-                          groupHeader: "Referral Fees",
-                          columns: [
-                            {
-                              key: "ref_applicable",
-                              header: `Applicable (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
-                            {
-                              key: "ref_charged",
-                              header: `Charged (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
+                          id: "referralFees",
+                          label: "Referral Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "ref_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
                           ],
                         },
                         {
-                          groupHeader: "FBA Fees",
-                          columns: [
-                            {
-                              key: "fba_applicable",
-                              header: `Applicable (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
-                            {
-                              key: "fba_charged",
-                              header: `Charged (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
+                          id: "fbaFees",
+                          label: "FBA Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "fba_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
                           ],
                         },
                         {
-                          groupHeader: "Other Fees",
-                          columns: [
-                            {
-                              key: "other_applicable",
-                              header: `Applicable (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
-                            {
-                              key: "other_charged",
-                              header: `Charged (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
+                          id: "otherFees",
+                          label: "Other Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "other_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
                           ],
                         },
                         {
-                          groupHeader: "Total Fees",
-                          columns: [
-                            {
-                              key: "total_applicable",
-                              header: `Applicable (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
-                            {
-                              key: "total_charged",
-                              header: `Charged (${currencySymbol})`,
-                              width: "110px",
-                              render: (_, v) => fmtMoneyNoSymbol(v),
-                            },
+                          id: "totalFees",
+                          label: "Total Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "total_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
                           ],
                         },
                       ]}
+                      layout={[
+                        { type: "single", key: "sku" },
+                        { type: "single", key: "units" },
+                        { type: "single", key: "sales" },
+                        { type: "group", id: "referralFees" },
+                        { type: "group", id: "fbaFees" },
+                        { type: "group", id: "otherFees" },
+                        { type: "group", id: "totalFees" },
+                      ]}
+                      initialCollapsed={{
+                        referralFees: false,
+                        fbaFees: false,
+                        otherFees: false,
+                        totalFees: false,
+                      }}
+                      preserveColumnWidths="responsive"
+                      tableClassName="w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]"
+                      isTotalRow={(row) => Boolean(row._isTotal)}
+                      getRowClassName={(row, index) => {
+                        if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
+                        if (row._isOthers) return "bg-white cursor-pointer";
+                        return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                      }}
+                      onRowClick={(row) => {
+                        if (row._isOthers) setShowAllProductRows(true);
+                      }}
+                      getValue={(row, columnKey) => {
+                        if (columnKey === "sno") return row._isTotal ? "" : row.sno ?? "";
+
+                        if (columnKey === "productName") {
+                          if (row._isTotal) {
+                            return <span className="font-semibold text-charcoal-500">Total</span>;
+                          }
+
+                          if (row._isOthers) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setShowAllProductRows(true);
+                                }}
+                                className="w-full text-left font-medium text-green-500"
+                                title="Expand all products"
+                              >
+                                Others
+                              </button>
+                            );
+                          }
+
+                          return <span className="font-medium text-green-500">{row.productName}</span>;
+                        }
+
+                        if (columnKey === "sku") {
+                          return row._isOthers || row._isTotal ? "-" : row.sku || "-";
+                        }
+
+                        if (columnKey === "units") return fmtInteger(Number(row.units));
+
+                        if (
+                          columnKey === "sales" ||
+                          columnKey === "ref_applicable" ||
+                          columnKey === "ref_charged" ||
+                          columnKey === "fba_applicable" ||
+                          columnKey === "fba_charged" ||
+                          columnKey === "other_applicable" ||
+                          columnKey === "other_charged" ||
+                          columnKey === "total_applicable" ||
+                          columnKey === "total_charged"
+                        ) {
+                          return fmtMoneyNoSymbol(row[columnKey]);
+                        }
+
+                        return row[columnKey] ?? "";
+                      }}
                     />
 
                   </div>
