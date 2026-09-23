@@ -67,7 +67,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v14_exclude_refund_applicable_fees"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v16_status_sales_breakdown"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -318,6 +318,10 @@ def _materialize_expense_reconciliation_table(
         "units",
         "gross_sales",
         "net_sales",
+        "product_sales",
+        "shipping_credits",
+        "promotional_rebates",
+        "referral_fee_per",
         "referral_fees_applicable",
         "referral_fees_charged",
         "fba_fees_applicable",
@@ -465,6 +469,10 @@ def _materialize_expense_reconciliation_table(
                     "net_sales",
                     "product_sales",
                 ),
+                "product_sales": _raw_numeric("product_sales"),
+                "shipping_credits": _raw_numeric("shipping_credits"),
+                "promotional_rebates": _raw_numeric("promotional_rebates"),
+                "referral_fee_per": _raw_numeric("referral_fee"),
                 "referral_fees_applicable": _raw_numeric("answer"),
                 "referral_fees_charged": _raw_numeric("selling_fees"),
                 "fba_fees_applicable": _raw_numeric("fbaanswer", "fba_fees").abs(),
@@ -737,6 +745,10 @@ def _materialize_expense_reconciliation_table(
         for column in [
             "gross_sales",
             "net_sales",
+            "product_sales",
+            "shipping_credits",
+            "promotional_rebates",
+            "referral_fee_per",
             "referral_fees_applicable",
             "referral_fees_charged",
             "fba_fees_applicable",
@@ -926,6 +938,10 @@ def _expense_reconciliation_api_response(
         "units",
         "gross_sales",
         "net_sales",
+        "product_sales",
+        "shipping_credits",
+        "promotional_rebates",
+        "referral_fee_per",
         "referral_fees_applicable",
         "referral_fees_charged",
         "fba_fees_applicable",
@@ -970,7 +986,10 @@ def _expense_reconciliation_api_response(
             "return_quantity": 0,
             "total_quantity": float(row.get("units", 0) or 0),
             "gross_sales": float(row.get("gross_sales", 0) or 0),
-            "product_sales": float(row.get("gross_sales", 0) or 0),
+            "product_sales": float(row.get("product_sales", row.get("gross_sales", 0)) or 0),
+            "shipping_credits": float(row.get("shipping_credits", 0) or 0),
+            "promotional_rebates": float(row.get("promotional_rebates", 0) or 0),
+            "referral_fee_per": float(row.get("referral_fee_per", 0) or 0),
             "net_sales": float(row.get("net_sales", 0) or 0),
             "net_sales_total_value": float(row.get("net_sales", 0) or 0),
             "answer": applicable,
@@ -3410,20 +3429,23 @@ def get_table_data(file_name):
                 "promotional_rebates",
                 "other",
                 "selling_fees",
-                "quantity",
-                "return_quantity",
-                "total_quantity",
                 "fba_fees",
                 "fbaanswer",
                 "platform_fee",
                 "advertising_total",
                 "answer",
             }
-            aggregation_rules = {
-                column: "sum" if column in order_sum_columns else "first"
-                for column in df.columns
-                if column not in {"_reconciliation_order_key", "sku"}
-            }
+            order_quantity_columns = {"quantity", "return_quantity", "total_quantity"}
+            aggregation_rules = {}
+            for column in df.columns:
+                if column in {"_reconciliation_order_key", "sku"}:
+                    continue
+                if column in order_sum_columns:
+                    aggregation_rules[column] = "sum"
+                elif column in order_quantity_columns:
+                    aggregation_rules[column] = "max"
+                else:
+                    aggregation_rules[column] = "first"
             df = (
                 df.groupby(
                     ["_reconciliation_order_key", "sku"],

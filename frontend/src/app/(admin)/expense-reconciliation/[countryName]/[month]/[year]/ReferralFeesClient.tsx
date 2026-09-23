@@ -106,6 +106,10 @@ type ReferralRow = Partial<{
   total_quantity: number | string;
   sales: number | string;
   product_sales: number | string;
+  shipping_credits: number | string;
+  promotional_rebates: number | string;
+  referral_fee_per: number | string;
+  referral_fee: number | string;
   gross_sales: number | string;
   refRate: number | string;
   refFeesApplicable: number | string;
