@@ -67,7 +67,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v16_status_sales_breakdown"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v17_sum_row_applicable_fees"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -3384,6 +3384,7 @@ def get_table_data(file_name):
         df["total_quantity"] = pd.to_numeric(df["total_quantity"], errors="coerce").fillna(0).clip(lower=0)
 
         reconciliation_country = str(country or "").strip().lower()
+        source_answer_available = "answer" in df.columns
         if reconciliation_country in {"us", "uk"}:
             pre_group_net_sales = pd.Series(0.0, index=df.index)
             net_sales_columns = (
@@ -3483,17 +3484,26 @@ def get_table_data(file_name):
                     _round_half_up(base / qty)
                     for base, qty in zip(df["net_sales_total_value"], qty_for_calc)
                 ]
-                df = _apply_us_referral_fee_price_bands(df)
-
-                per_unit_fee = [
-                    _round_half_up(total_value * (rate / 100.0))
-                    for total_value, rate in zip(df["total_value"], df["referral_fee"])
-                ]
-                product_sales_for_calc = pd.to_numeric(df["product_sales"], errors="coerce").fillna(0)
-                df["answer"] = [
-                    fee * qty if product_sales != 0 else 0.0
-                    for fee, qty, product_sales in zip(per_unit_fee, qty_for_calc, product_sales_for_calc)
-                ]
+                if source_answer_available:
+                    df["answer"] = pd.to_numeric(df["answer"], errors="coerce").fillna(0)
+                else:
+                    df = _apply_us_referral_fee_price_bands(df)
+                    per_unit_fee = [
+                        _round_half_up(total_value * (rate / 100.0))
+                        for total_value, rate in zip(df["total_value"], df["referral_fee"])
+                    ]
+                    product_sales_for_calc = pd.to_numeric(
+                        df["product_sales"],
+                        errors="coerce",
+                    ).fillna(0)
+                    df["answer"] = [
+                        fee * qty if product_sales != 0 else 0.0
+                        for fee, qty, product_sales in zip(
+                            per_unit_fee,
+                            qty_for_calc,
+                            product_sales_for_calc,
+                        )
+                    ]
 
                 charged_for_diff = pd.to_numeric(df["selling_fees"], errors="coerce").fillna(0).abs()
                 df["difference"] = [
@@ -3546,18 +3556,21 @@ def get_table_data(file_name):
                     _round_half_up(base / quantity)
                     for base, quantity in zip(applicable_base, qty_for_calc)
                 ]
-                applicable_per_unit = [
-                    _round_half_up(total_value * (rate / 100.0))
-                    for total_value, rate in zip(df["total_value"], df["referral_fee"])
-                ]
-                df["answer"] = [
-                    fee * quantity if product_sales != 0 else 0.0
-                    for fee, quantity, product_sales in zip(
-                        applicable_per_unit,
-                        qty_for_calc,
-                        df["product_sales"],
-                    )
-                ]
+                if source_answer_available:
+                    df["answer"] = pd.to_numeric(df["answer"], errors="coerce").fillna(0)
+                else:
+                    applicable_per_unit = [
+                        _round_half_up(total_value * (rate / 100.0))
+                        for total_value, rate in zip(df["total_value"], df["referral_fee"])
+                    ]
+                    df["answer"] = [
+                        fee * quantity if product_sales != 0 else 0.0
+                        for fee, quantity, product_sales in zip(
+                            applicable_per_unit,
+                            qty_for_calc,
+                            df["product_sales"],
+                        )
+                    ]
                 charged_for_diff = pd.to_numeric(
                     df["selling_fees"],
                     errors="coerce",

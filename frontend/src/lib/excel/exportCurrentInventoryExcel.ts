@@ -2102,7 +2102,7 @@ export function exportReferralFeesExcel({
         Math.round(quantity),
         referralNumber(row.product_sales),
         referralNumber(row.shipping_credits),
-        referralNumber(row.promotional_rebates),
+        Math.abs(referralNumber(row.promotional_rebates)),
         getReferralNetSales(row),
         referralNumber(row.referral_fee_per),
         referralNumber(row.answer),
