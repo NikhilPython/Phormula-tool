@@ -262,6 +262,95 @@ const getChargedReferralFees = (r: any): number => {
 const isGrandTotalLabel = (label: any): boolean =>
   String(label ?? "").trim().toLowerCase() === "grand total";
 
+const roundReferralMoney = (value: any): number =>
+  Math.round(toNumberSafe(value) * 100) / 100;
+
+const correctReferralSummaryRows = (rows: FeeSummaryRow[]): FeeSummaryRow[] => {
+  const correctedDetails = rows
+    .filter((row) => !isGrandTotalLabel(row.label))
+    .map((row) => {
+      const label = row.label.trim().toLowerCase();
+      const applicable = roundReferralMoney(row.refFeesApplicable);
+      const charged = roundReferralMoney(
+        label === "charge - accurate" ? applicable : row.refFeesCharged
+      );
+      const absoluteDifference = roundReferralMoney(
+        Math.abs(applicable - charged)
+      );
+
+      return {
+        ...row,
+        refFeesApplicable: applicable,
+        refFeesCharged: charged,
+        overcharged:
+          label === "charge - undercharged"
+            ? -absoluteDifference
+            : label === "charge - overcharged"
+              ? absoluteDifference
+              : 0,
+      };
+    });
+
+  const correctedByLabel = new Map(
+    correctedDetails.map((row) => [row.label.trim().toLowerCase(), row])
+  );
+  const totalCharged = roundReferralMoney(
+    correctedDetails.reduce((sum, row) => sum + row.refFeesCharged, 0)
+  );
+  const totalDifference = roundReferralMoney(
+    correctedDetails.reduce((sum, row) => sum + row.overcharged, 0)
+  );
+
+  return rows.map((row) => {
+    if (isGrandTotalLabel(row.label)) {
+      return {
+        ...row,
+        refFeesCharged: totalCharged,
+        overcharged: totalDifference,
+      };
+    }
+
+    return correctedByLabel.get(row.label.trim().toLowerCase()) ?? row;
+  });
+};
+
+const scaleReferralMoneyBreakdown = (
+  values: number[],
+  target: number
+): number[] => {
+  const targetCents = Math.round(toNumberSafe(target) * 100);
+  const normalizedValues = values.map((value) =>
+    Math.max(toNumberSafe(value), 0)
+  );
+  const sourceTotal = normalizedValues.reduce((sum, value) => sum + value, 0);
+
+  if (!targetCents) return normalizedValues.map(() => 0);
+  if (!sourceTotal) {
+    return normalizedValues.map((_, index) =>
+      index === 0 ? targetCents / 100 : 0
+    );
+  }
+
+  const scaledCents = normalizedValues.map(
+    (value) => (value * targetCents) / sourceTotal
+  );
+  const allocatedCents = scaledCents.map((value) => Math.floor(value));
+  let remainder =
+    targetCents - allocatedCents.reduce((sum, value) => sum + value, 0);
+
+  const allocationOrder = scaledCents
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const item of allocationOrder) {
+    if (remainder <= 0) break;
+    allocatedCents[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return allocatedCents.map((value) => value / 100);
+};
+
 const scaleIntegerBreakdown = (values: number[], target: number): number[] => {
   const roundedTarget = Math.round(toNumberSafe(target));
   const sourceTotal = values.reduce((sum, value) => sum + toNumberSafe(value), 0);
@@ -1110,6 +1199,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
           return adjusted;
         });
       })();
+      const correctedSummary = correctReferralSummaryRows(mappedSummary);
+      const correctedGrandSummary = correctedSummary.find((row) =>
+        isGrandTotalLabel(row.label)
+      );
 
       // use only actual SKU/product lines (exclude Charge-/Grand Total lines)
       const lineItems = arr.filter((r) => {
@@ -1163,8 +1256,12 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
       // Referral
-      const refFeesApplicable = lineItems.reduce((acc, r) => acc + toNumberSafe(r.answer), 0);
-      const refFeesApplied = lineItems.reduce((acc, r) => acc + getChargedReferralFees(r), 0); // charged
+      const refFeesApplicable = correctedGrandSummary
+        ? correctedGrandSummary.refFeesApplicable
+        : lineItems.reduce((acc, r) => acc + toNumberSafe(r.answer), 0);
+      const refFeesApplied = correctedGrandSummary
+        ? correctedGrandSummary.refFeesCharged
+        : lineItems.reduce((acc, r) => acc + getChargedReferralFees(r), 0);
 
       const fbaFees = monthlySummary
         ? Math.abs(toNumberSafe((monthlySummary as any).fba_fees))
@@ -1220,7 +1317,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
 
-      setFeeSummaryRows(mappedSummary);
+      setFeeSummaryRows(correctedSummary);
 
       let totalUnits = 0;
       let totalSales = 0;
@@ -1281,6 +1378,45 @@ export default function ReferralFeesDashboard(): JSX.Element {
       _isTotal: index === feeSummaryRows.length - 1,
     })) as Row[];
   }, [feeSummaryRows]);
+
+  const correctedRefChargedBySku = useMemo(() => {
+    const corrected = new Map<string, number>();
+
+    for (const status of ["Accurate", "Undercharged", "Overcharged"] as const) {
+      const matchingRows = allOrdersByStatus.filter(
+        (row) => row?.Category === status && Object.keys(row).length > 1
+      );
+      const summaryRow = feeSummaryRows.find(
+        (row) => row.label === `Charge - ${status}`
+      );
+      const chargedValues = matchingRows.map((row) =>
+        getChargedReferralFees(row)
+      );
+      const correctedValues =
+        status === "Accurate"
+          ? matchingRows.map((row) => roundReferralMoney(row.answer))
+          : summaryRow
+            ? scaleReferralMoneyBreakdown(
+                chargedValues,
+                summaryRow.refFeesCharged
+              )
+            : chargedValues;
+
+      matchingRows.forEach((row, index) => {
+        const skuKey = String(row?.sku ?? "").trim().toLowerCase();
+        if (!skuKey) return;
+        corrected.set(
+          skuKey,
+          roundReferralMoney(
+            (corrected.get(skuKey) ?? 0) +
+              toNumberSafe(correctedValues[index])
+          )
+        );
+      });
+    }
+
+    return corrected;
+  }, [allOrdersByStatus, feeSummaryRows]);
 
   // const skuTableAll: Row[] = useMemo(() => {
   //   if (!skuwiseRows.length) return [];
@@ -1363,7 +1499,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const grossSales = useMonthlyValues ? getGrossSales(monthlyMatch) : getGrossSales(r);
 
       const ref_applicable = toNumberSafe(r.answer);
-      const ref_charged = getChargedReferralFees(r);
+      const correctedGrandTotal = feeSummaryRows.find((row) =>
+        isGrandTotalLabel(row.label)
+      );
+      const correctedSkuCharged = correctedRefChargedBySku.get(skuLookupKey);
+      const ref_charged = isTotal
+        ? correctedGrandTotal?.refFeesCharged ?? getChargedReferralFees(r)
+        : correctedSkuCharged ?? getChargedReferralFees(r);
       const overcharged = toNumberSafe(r.overcharged ?? r.difference);
 
       const fba_charged = Math.abs(
@@ -1413,7 +1555,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
         _isTotal: isTotal,
       };
     });
-  }, [skuwiseRows, skuMonthlyRows, skuMonthlySummary]);
+  }, [
+    correctedRefChargedBySku,
+    feeSummaryRows,
+    skuwiseRows,
+    skuMonthlyRows,
+    skuMonthlySummary,
+  ]);
 
 
   const skuColumns: ColumnDef<Row>[] = [
