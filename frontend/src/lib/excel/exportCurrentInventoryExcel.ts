@@ -1871,6 +1871,20 @@ export function exportReferralFeesExcel({
   const correctedSummaryChargedTotal = feeSummaryRows
     .filter((row) => !isReferralTotalLabel(row.label))
     .reduce((total, row) => total + getSummaryCharged(row), 0);
+  const getSummaryDifference = (row: ReferralFeeSummaryExportRow) => {
+    const label = String(row.label ?? "").trim().toLowerCase();
+    const applicable = referralNumber(row.refFeesApplicable);
+    const charged = getSummaryCharged(row);
+    const absoluteDifference =
+      Math.round(Math.abs(applicable - charged) * 100) / 100;
+
+    if (label === "charge - undercharged") return -absoluteDifference;
+    if (label === "charge - overcharged") return absoluteDifference;
+    return 0;
+  };
+  const correctedSummaryDifferenceTotal = feeSummaryRows
+    .filter((row) => !isReferralTotalLabel(row.label))
+    .reduce((total, row) => total + getSummaryDifference(row), 0);
   const summaryRows = feeSummaryRows.map((row) => {
     const isTotal = isReferralTotalLabel(row.label);
     const applicable = referralNumber(
@@ -1881,7 +1895,9 @@ export function exportReferralFeesExcel({
     const charged = referralNumber(
       isTotal ? correctedSummaryChargedTotal : getSummaryCharged(row)
     );
-    const difference = Math.round((applicable - charged) * 100) / 100;
+    const difference = isTotal
+      ? Math.round(correctedSummaryDifferenceTotal * 100) / 100
+      : getSummaryDifference(row);
     return [
       row.label ?? "",
       Math.round(
