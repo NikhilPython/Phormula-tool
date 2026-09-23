@@ -2012,7 +2012,11 @@ export function exportReferralFeesExcel({
     "SKU",
     "Product Name",
     "Quantity",
-    "Net Sales",
+    "Product Sales",
+    "",
+    "",
+    "",
+    "Referral Fee %",
     "Referral Fees",
     "",
     "",
@@ -2024,6 +2028,10 @@ export function exportReferralFeesExcel({
     "",
     "",
     "",
+    "Net Sales",
+    "Shipping Credits",
+    "Promotional Rebates",
+    "Total",
     "",
     "Applicable",
     "Charged",
@@ -2037,6 +2045,10 @@ export function exportReferralFeesExcel({
     "",
     "(+)",
     "(+)",
+    "(+)",
+    "(-)",
+    "(+)",
+    "(%)",
     "(-)",
     "(-)",
     "(+/-)",
@@ -2089,6 +2101,10 @@ export function exportReferralFeesExcel({
         row.product_name ?? "",
         Math.round(quantity),
         getReferralNetSales(row),
+        referralNumber(row.shipping_credits),
+        referralNumber(row.promotional_rebates),
+        referralNumber(row.product_sales),
+        referralNumber(row.referral_fee_per),
         referralNumber(row.answer),
         getReferralChargedFees(row),
         referralNumber(row.difference ?? row.overcharged),
@@ -2106,7 +2122,7 @@ export function exportReferralFeesExcel({
       companyName,
       brandName,
       columnCount: orderColumnCount,
-      anchorCol1Based: 7,
+      anchorCol1Based: 11,
     });
     const orderHeaderRow = orderTopRows.length;
     const ordersWorksheet = XLSX.utils.aoa_to_sheet([
@@ -2117,17 +2133,25 @@ export function exportReferralFeesExcel({
       ...orderRows,
     ]);
     ordersWorksheet["!merges"] = [
-      ...Array.from({ length: 6 }, (_, column) => ({
+      ...Array.from({ length: 5 }, (_, column) => ({
         s: { r: orderHeaderRow, c: column },
         e: { r: orderHeaderRow + 1, c: column },
       })),
       {
-        s: { r: orderHeaderRow, c: 6 },
+        s: { r: orderHeaderRow, c: 5 },
         e: { r: orderHeaderRow, c: 8 },
       },
       {
         s: { r: orderHeaderRow, c: 9 },
         e: { r: orderHeaderRow + 1, c: 9 },
+      },
+      {
+        s: { r: orderHeaderRow, c: 10 },
+        e: { r: orderHeaderRow, c: 12 },
+      },
+      {
+        s: { r: orderHeaderRow, c: 13 },
+        e: { r: orderHeaderRow + 1, c: 13 },
       },
     ];
     ordersWorksheet["!cols"] = [
@@ -2137,6 +2161,10 @@ export function exportReferralFeesExcel({
       { wch: 28 },
       { wch: 12 },
       { wch: 16 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 16 },
       { wch: 24 },
       { wch: 21 },
       { wch: 16 },
@@ -2145,7 +2173,7 @@ export function exportReferralFeesExcel({
     applyReferralSheetTitle({
       ws: ordersWorksheet,
       columnCount: orderColumnCount,
-      anchorCol1Based: 7,
+      anchorCol1Based: 11,
     });
     applyReferralTableStyles({
       ws: ordersWorksheet,
@@ -2154,9 +2182,16 @@ export function exportReferralFeesExcel({
       dataRowCount: orderRows.length,
       columnCount: orderColumnCount,
       leftAlignedColumns: new Set([1, 2, 3]),
-      numericColumns: new Set([0, 4, 5, 6, 7, 8]),
+      numericColumns: new Set([0, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
       integerColumns: new Set([0, 4]),
     });
+    for (
+      let row = orderHeaderRow + 3;
+      row < orderHeaderRow + 3 + orderRows.length;
+      row++
+    ) {
+      ensureReferralCell(ordersWorksheet, row, 9).z = '0.00"%"';
+    }
     XLSX.utils.book_append_sheet(
       workbook,
       ordersWorksheet,
