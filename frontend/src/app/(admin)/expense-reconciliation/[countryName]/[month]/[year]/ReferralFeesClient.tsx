@@ -217,6 +217,15 @@ const getLastCompletedMonth = () => {
   };
 };
 
+const getQuarterFromMonth = (month: string) => {
+  const monthIndex = new Date(`${month} 1, 2000`).getMonth();
+
+  if (monthIndex <= 2) return "Q1";
+  if (monthIndex <= 5) return "Q2";
+  if (monthIndex <= 8) return "Q3";
+  return "Q4";
+};
+
 const toNumberSafe = (v: any): number => {
   if (v === null || v === undefined) return 0;
   if (typeof v === "number") return v;
@@ -692,7 +701,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const [range, setRange] = useState<Range>("monthly");
 
-  const [selectedQuarter, setSelectedQuarter] = useState<string>("");
+  const [selectedQuarter, setSelectedQuarter] = useState<string>(() => {
+    const lastCompletedMonth = getLastCompletedMonth();
+    return getQuarterFromMonth(lastCompletedMonth.month);
+  });
+
   const [showAllProductRows, setShowAllProductRows] = useState(false);
 
   useEffect(() => {
@@ -1397,9 +1410,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
           ? matchingRows.map((row) => roundReferralMoney(row.answer))
           : summaryRow
             ? scaleReferralMoneyBreakdown(
-                chargedValues,
-                summaryRow.refFeesCharged
-              )
+              chargedValues,
+              summaryRow.refFeesCharged
+            )
             : chargedValues;
 
       matchingRows.forEach((row, index) => {
@@ -1409,7 +1422,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
           skuKey,
           roundReferralMoney(
             (corrected.get(skuKey) ?? 0) +
-              toNumberSafe(correctedValues[index])
+            toNumberSafe(correctedValues[index])
           )
         );
       });
@@ -1772,7 +1785,12 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const handleDownloadExcel = useCallback(() => {
     exportReferralFeesExcel({
-      filename: `Referral Fees ${country.toUpperCase()} ${formatMonthYear(month, year)}.xlsx`,
+      filename:
+        range === "yearly"
+          ? `Referral Fees ${country.toUpperCase()} ${year}.xlsx`
+          : range === "quarterly"
+            ? `Referral Fees ${country.toUpperCase()} ${selectedQuarter}'${year.slice(-2)}.xlsx`
+            : `Referral Fees ${country.toUpperCase()} ${formatMonthYear(month, year)}.xlsx`,
       countryName: country,
       periodLabel:
         range === "yearly"
@@ -1920,7 +1938,17 @@ export default function ReferralFeesDashboard(): JSX.Element {
               }
 
               if (v === "quarterly") {
-                const m = quarterToMonth(selectedQuarter || "Q1");
+                const lastCompletedMonth = getLastCompletedMonth();
+
+                const defaultQuarter = getQuarterFromMonth(
+                  lastCompletedMonth.month
+                );
+
+                setSelectedQuarter(defaultQuarter);
+
+                nextYear = lastCompletedMonth.year;
+
+                const m = quarterToMonth(defaultQuarter);
                 if (m) nextMonth = m;
               }
 
