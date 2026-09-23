@@ -1453,6 +1453,40 @@ const scaleReferralIntegerBreakdown = (values: number[], target: number) => {
   return floors;
 };
 
+const scaleReferralMoneyBreakdown = (values: number[], target: number) => {
+  const targetCents = Math.round(referralNumber(target) * 100);
+  const normalizedValues = values.map((value) =>
+    Math.max(referralNumber(value), 0)
+  );
+  const sourceTotal = normalizedValues.reduce((sum, value) => sum + value, 0);
+
+  if (!targetCents) return normalizedValues.map(() => 0);
+  if (!sourceTotal) {
+    return normalizedValues.map((_, index) =>
+      index === 0 ? targetCents / 100 : 0
+    );
+  }
+
+  const scaledCents = normalizedValues.map(
+    (value) => (value * targetCents) / sourceTotal
+  );
+  const allocatedCents = scaledCents.map((value) => Math.floor(value));
+  let remainder =
+    targetCents - allocatedCents.reduce((sum, value) => sum + value, 0);
+
+  const allocationOrder = scaledCents
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const item of allocationOrder) {
+    if (remainder <= 0) break;
+    allocatedCents[item.index] += 1;
+    remainder -= 1;
+  }
+
+  return allocatedCents.map((value) => value / 100);
+};
+
 const ensureReferralCell = (ws: XLSX.WorkSheet, row: number, column: number) => {
   const address = XLSX.utils.encode_cell({ r: row, c: column });
   if (!ws[address]) ws[address] = { t: "s", v: "" };
@@ -1610,7 +1644,8 @@ const buildReferralTopRows = ({
 
 const aggregateReferralProductRows = (
   productRows: Record<string, any>[],
-  cardSummary: ReferralFeeCardExportData
+  cardSummary: ReferralFeeCardExportData,
+  correctedRefChargedBySku: Map<string, number> = new Map()
 ) => {
   const nonTotalRows = (productRows || []).filter(
     (row) => !row?._isTotal && !isReferralTotalLabel(row?.productName)
@@ -1658,6 +1693,21 @@ const aggregateReferralProductRows = (
     aggregate.otherCharged += referralNumber(row?.other_charged);
     aggregate.totalApplicable += referralNumber(row?.total_applicable);
     aggregate.totalCharged += referralNumber(row?.total_charged);
+  }
+
+  for (const aggregate of grouped.values()) {
+    const correctedValues = Array.from(aggregate.skus as Set<string>)
+      .map((sku) => correctedRefChargedBySku.get(sku.trim().toLowerCase()))
+      .filter((value): value is number => value !== undefined);
+    if (!correctedValues.length) continue;
+
+    const originalRefCharged = referralNumber(aggregate.refCharged);
+    const correctedRefCharged = correctedValues.reduce(
+      (total, value) => total + value,
+      0
+    );
+    aggregate.refCharged = correctedRefCharged;
+    aggregate.totalCharged += correctedRefCharged - originalRefCharged;
   }
 
   const dataRows = Array.from(grouped.values())
@@ -1722,12 +1772,14 @@ const aggregateReferralProductRows = (
       totalSource.applicable,
       computedTotals.refApplicable
     ),
-    firstReferralNumber(
-      cardSummary.refFeesApplied,
-      totalSource.ref_charged,
-      totalSource.charged,
-      computedTotals.refCharged
-    ),
+    correctedRefChargedBySku.size
+      ? computedTotals.refCharged
+      : firstReferralNumber(
+          cardSummary.refFeesApplied,
+          totalSource.ref_charged,
+          totalSource.charged,
+          computedTotals.refCharged
+        ),
     firstReferralNumber(
       cardSummary.fbaFeesApplicable,
       totalSource.fba_applicable,
@@ -1753,11 +1805,13 @@ const aggregateReferralProductRows = (
       totalSource.total_applicable,
       computedTotals.totalApplicable
     ),
-    firstReferralNumber(
-      cardSummary.totalFees,
-      totalSource.total_charged,
-      computedTotals.totalCharged
-    ),
+    correctedRefChargedBySku.size
+      ? computedTotals.totalCharged
+      : firstReferralNumber(
+          cardSummary.totalFees,
+          totalSource.total_charged,
+          computedTotals.totalCharged
+        ),
   ]);
 
   return dataRows;
@@ -1776,7 +1830,6 @@ export function exportReferralFeesExcel({
   productRows,
   ordersByStatus,
   cardSummary,
-  totalFeeRow,
 }: ReferralFeesExcelParams) {
   if (!feeSummaryRows.length && !productRows.length && !ordersByStatus.length) {
     return;
@@ -1811,25 +1864,33 @@ export function exportReferralFeesExcel({
     "(-)",
     "(+/-)",
   ];
+  const getSummaryCharged = (row: ReferralFeeSummaryExportRow) =>
+    String(row.label ?? "").trim().toLowerCase() === "charge - accurate"
+      ? referralNumber(row.refFeesApplicable)
+      : referralNumber(row.refFeesCharged);
+  const correctedSummaryChargedTotal = feeSummaryRows
+    .filter((row) => !isReferralTotalLabel(row.label))
+    .reduce((total, row) => total + getSummaryCharged(row), 0);
   const summaryRows = feeSummaryRows.map((row) => {
     const isTotal = isReferralTotalLabel(row.label);
+    const applicable = referralNumber(
+      isTotal
+        ? cardSummary.refFeesApplicable ?? row.refFeesApplicable
+        : row.refFeesApplicable
+    );
+    const charged = referralNumber(
+      isTotal ? correctedSummaryChargedTotal : getSummaryCharged(row)
+    );
+    const difference = Math.round((applicable - charged) * 100) / 100;
     return [
       row.label ?? "",
       Math.round(
         referralNumber(isTotal ? cardSummary.units ?? row.units : row.units)
       ),
       referralNumber(isTotal ? cardSummary.sales ?? row.sales : row.sales),
-      referralNumber(
-        isTotal
-          ? cardSummary.refFeesApplicable ?? row.refFeesApplicable
-          : row.refFeesApplicable
-      ),
-      referralNumber(
-        isTotal
-          ? cardSummary.refFeesApplied ?? row.refFeesCharged
-          : row.refFeesCharged
-      ),
-      referralNumber(isTotal ? totalFeeRow?.overcharged ?? row.overcharged : row.overcharged),
+      applicable,
+      charged,
+      difference,
     ];
   });
   const summaryTopRows = buildReferralTopRows({
@@ -1939,7 +2000,42 @@ export function exportReferralFeesExcel({
     "(-)",
     "(-)",
   ];
-  const productDataRows = aggregateReferralProductRows(productRows, cardSummary);
+  const correctedRefChargedBySku = new Map<string, number>();
+  for (const status of ["Accurate", "Undercharged", "Overcharged"] as const) {
+    const matchingRows = (ordersByStatus || []).filter(
+      (row) => row?.Category === status && Object.keys(row).length > 1
+    );
+    const summaryRow = feeSummaryRows.find(
+      (row) => row.label === `Charge - ${status}`
+    );
+    const chargedValues = matchingRows.map((row) =>
+      getReferralChargedFees(row)
+    );
+    const correctedValues =
+      status === "Accurate"
+        ? matchingRows.map((row) => referralNumber(row.answer))
+        : summaryRow
+          ? scaleReferralMoneyBreakdown(
+              chargedValues,
+              referralNumber(summaryRow.refFeesCharged)
+            )
+          : chargedValues;
+
+    matchingRows.forEach((row, index) => {
+      const skuKey = String(row?.sku ?? "").trim().toLowerCase();
+      if (!skuKey) return;
+      correctedRefChargedBySku.set(
+        skuKey,
+        (correctedRefChargedBySku.get(skuKey) ?? 0) +
+          referralNumber(correctedValues[index])
+      );
+    });
+  }
+  const productDataRows = aggregateReferralProductRows(
+    productRows,
+    cardSummary,
+    correctedRefChargedBySku
+  );
   const productTopRows = buildReferralTopRows({
     title: `Amazon ${reportCountry} - Referral Fees Productwise Breakdown - ${periodLabel}`,
     countryName,
@@ -2068,6 +2164,21 @@ export function exportReferralFeesExcel({
       return [status, Math.round(referralNumber(summaryRow?.units))] as const;
     })
   );
+  const targetChargedByStatus = new Map<string, number | null>(
+    orderSheetConfigs.map(({ status }) => {
+      const summaryRow = feeSummaryRows.find(
+        (row) => row.label === `Charge - ${status}`
+      );
+      return [
+        status,
+        summaryRow
+          ? status === "Accurate"
+            ? referralNumber(summaryRow.refFeesApplicable)
+            : referralNumber(summaryRow.refFeesCharged)
+          : null,
+      ] as const;
+    })
+  );
   const scaledUnitsByStatus = new Map<string, number[]>(
     orderSheetConfigs.map(({ status }) => {
       const matchingRows = (ordersByStatus || []).filter(
@@ -2082,6 +2193,25 @@ export function exportReferralFeesExcel({
       ] as const;
     })
   );
+  const scaledChargedByStatus = new Map<string, number[]>(
+    orderSheetConfigs.map(({ status }) => {
+      const matchingRows = (ordersByStatus || []).filter(
+        (row) => row?.Category === status && Object.keys(row).length > 1
+      );
+      const targetCharged = targetChargedByStatus.get(status);
+      const chargedValues = matchingRows.map((row) =>
+        getReferralChargedFees(row)
+      );
+      return [
+        status,
+        status === "Accurate"
+          ? matchingRows.map((row) => referralNumber(row.answer))
+          : targetCharged === null || targetCharged === undefined
+          ? chargedValues
+          : scaleReferralMoneyBreakdown(chargedValues, targetCharged),
+      ] as const;
+    })
+  );
   for (const { status, sheetName } of orderSheetConfigs) {
     const matchingRows = (ordersByStatus || []).filter(
       (row) => row?.Category === status && Object.keys(row).length > 1
@@ -2091,6 +2221,11 @@ export function exportReferralFeesExcel({
     matchingRows.forEach((row, index) => {
       const quantity =
         scaledUnitsByStatus.get(status)?.[index] ?? getReferralDisplayUnits(row);
+      const applicable = referralNumber(row.answer);
+      const charged =
+        scaledChargedByStatus.get(status)?.[index] ??
+        getReferralChargedFees(row);
+      const difference = Math.round((charged - applicable) * 100) / 100;
 
       if (quantity <= 0) return;
 
@@ -2105,9 +2240,9 @@ export function exportReferralFeesExcel({
         Math.abs(referralNumber(row.promotional_rebates)),
         getReferralNetSales(row),
         referralNumber(row.referral_fee_per),
-        referralNumber(row.answer),
-        getReferralChargedFees(row),
-        referralNumber(row.difference ?? row.overcharged),
+        applicable,
+        charged,
+        difference,
         formatReferralStatus(row.errorstatus),
       ]);
     });
