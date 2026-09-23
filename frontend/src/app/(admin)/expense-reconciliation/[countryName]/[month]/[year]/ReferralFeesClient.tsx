@@ -183,6 +183,20 @@ type RefFeesBreakdown = {
 
 
 /* ===================== Helpers ===================== */
+const formatMonthYear = (month: string, year: string) => {
+  const date = new Date(`${month} 1, ${year}`);
+
+  if (Number.isNaN(date.getTime())) {
+    return `${month} '${year.slice(-2)}`;
+  }
+
+  const shortMonth = date.toLocaleString("en-US", {
+    month: "short",
+  });
+
+  return `${shortMonth}'${year.slice(-2)}`;
+};
+
 const fmtInteger = (n: number): string =>
   typeof n === "number"
     ? n.toLocaleString(undefined, {
@@ -1610,7 +1624,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const handleDownloadExcel = useCallback(() => {
     exportReferralFeesExcel({
-      filename: `Referral-Fees-${country}-${month}-${year}.xlsx`,
+      filename: `Referral Fees ${country.toUpperCase()} ${formatMonthYear(month, year)}.xlsx`,
       countryName: country,
       periodLabel:
         range === "yearly"
@@ -2361,174 +2375,174 @@ export default function ReferralFeesDashboard(): JSX.Element {
               );
             })()}
             <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
-                  <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-                    <PageBreadcrumb
-                      pageTitle={(
-                        <span>
-                          Product-wise breakdown{" "}
-                          <span className="text-green-500">({currencySymbol})</span>
-                        </span>
-                      )}
-                      variant="page"
-                      align="left"
-                      className="mt-4 mb-0 md:mb-4 text-center"
-                    />
-                    <DownloadButton
-                      onClick={handleDownloadExcel}
-                      disabled={isPreviewMode}
-                    />
-                  </div>
+              <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                <PageBreadcrumb
+                  pageTitle={(
+                    <span>
+                      Product-wise breakdown{" "}
+                      <span className="text-green-500">({currencySymbol})</span>
+                    </span>
+                  )}
+                  variant="page"
+                  align="left"
+                  className="mt-4 mb-0 md:mb-4 text-center"
+                />
+                <DownloadButton
+                  onClick={handleDownloadExcel}
+                  disabled={isPreviewMode}
+                />
+              </div>
 
-                  {/* <AiButton /> */}
+              {/* <AiButton /> */}
 
-                  <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
-                    <GroupedCollapsibleTable<any>
-                      rows={groupedSkuTableDisplay}
-                      getRowKey={(row, index) =>
-                        row._isTotal
-                          ? "TOTAL"
-                          : row._isOthers
-                            ? "OTHERS"
-                            : row.sku || `${row.productName}-${index}`
+              <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
+                <GroupedCollapsibleTable<any>
+                  rows={groupedSkuTableDisplay}
+                  getRowKey={(row, index) =>
+                    row._isTotal
+                      ? "TOTAL"
+                      : row._isOthers
+                        ? "OTHERS"
+                        : row.sku || `${row.productName}-${index}`
+                  }
+                  leftCols={[
+                    { key: "sno", label: "S.No.", align: "center", width: 60 },
+                    { key: "productName", label: "Product Name", align: "left", width: 190 },
+                  ]}
+                  singleCols={[
+                    { key: "sku", label: "SKU", align: "center", width: 120 },
+                    { key: "units", label: "Units", align: "center", width: 90 },
+                    { key: "sales", label: "Net Sales", align: "center", width: 110 },
+                  ]}
+                  groups={[
+                    {
+                      id: "referralFees",
+                      label: "Referral Fees",
+                      expandable: true,
+                      collapsedCols: [
+                        { key: "ref_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                      expandedCols: [
+                        { key: "ref_applicable", label: "Applicable", align: "center", width: 110 },
+                        { key: "ref_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                    },
+                    {
+                      id: "fbaFees",
+                      label: "FBA Fees",
+                      expandable: true,
+                      collapsedCols: [
+                        { key: "fba_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                      expandedCols: [
+                        { key: "fba_applicable", label: "Applicable", align: "center", width: 110 },
+                        { key: "fba_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                    },
+                    {
+                      id: "otherFees",
+                      label: "Other Fees",
+                      expandable: true,
+                      collapsedCols: [
+                        { key: "other_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                      expandedCols: [
+                        { key: "other_applicable", label: "Applicable", align: "center", width: 110 },
+                        { key: "other_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                    },
+                    {
+                      id: "totalFees",
+                      label: "Total Fees",
+                      expandable: true,
+                      collapsedCols: [
+                        { key: "total_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                      expandedCols: [
+                        { key: "total_applicable", label: "Applicable", align: "center", width: 110 },
+                        { key: "total_charged", label: "Charged", align: "center", width: 110 },
+                      ],
+                    },
+                  ]}
+                  layout={[
+                    { type: "single", key: "sku" },
+                    { type: "single", key: "units" },
+                    { type: "single", key: "sales" },
+                    { type: "group", id: "referralFees" },
+                    { type: "group", id: "fbaFees" },
+                    { type: "group", id: "otherFees" },
+                    { type: "group", id: "totalFees" },
+                  ]}
+                  initialCollapsed={{
+                    referralFees: false,
+                    fbaFees: false,
+                    otherFees: false,
+                    totalFees: false,
+                  }}
+                  preserveColumnWidths="responsive"
+                  tableClassName="w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]"
+                  isTotalRow={(row) => Boolean(row._isTotal)}
+                  getRowClassName={(row, index) => {
+                    if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
+                    if (row._isOthers) return "bg-white cursor-pointer";
+                    return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                  }}
+                  onRowClick={(row) => {
+                    if (row._isOthers) setShowAllProductRows(true);
+                  }}
+                  getValue={(row, columnKey) => {
+                    if (columnKey === "sno") return row._isTotal ? "" : row.sno ?? "";
+
+                    if (columnKey === "productName") {
+                      if (row._isTotal) {
+                        return <span className="font-semibold text-charcoal-500">Total</span>;
                       }
-                      leftCols={[
-                        { key: "sno", label: "S.No.", align: "center", width: 60 },
-                        { key: "productName", label: "Product Name", align: "left", width: 190 },
-                      ]}
-                      singleCols={[
-                        { key: "sku", label: "SKU", align: "center", width: 120 },
-                        { key: "units", label: "Units", align: "center", width: 90 },
-                        { key: "sales", label: "Net Sales", align: "center", width: 110 },
-                      ]}
-                      groups={[
-                        {
-                          id: "referralFees",
-                          label: "Referral Fees",
-                          expandable: true,
-                          collapsedCols: [
-                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                          expandedCols: [
-                            { key: "ref_applicable", label: "Applicable", align: "center", width: 110 },
-                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                        },
-                        {
-                          id: "fbaFees",
-                          label: "FBA Fees",
-                          expandable: true,
-                          collapsedCols: [
-                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                          expandedCols: [
-                            { key: "fba_applicable", label: "Applicable", align: "center", width: 110 },
-                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                        },
-                        {
-                          id: "otherFees",
-                          label: "Other Fees",
-                          expandable: true,
-                          collapsedCols: [
-                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                          expandedCols: [
-                            { key: "other_applicable", label: "Applicable", align: "center", width: 110 },
-                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                        },
-                        {
-                          id: "totalFees",
-                          label: "Total Fees",
-                          expandable: true,
-                          collapsedCols: [
-                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                          expandedCols: [
-                            { key: "total_applicable", label: "Applicable", align: "center", width: 110 },
-                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
-                          ],
-                        },
-                      ]}
-                      layout={[
-                        { type: "single", key: "sku" },
-                        { type: "single", key: "units" },
-                        { type: "single", key: "sales" },
-                        { type: "group", id: "referralFees" },
-                        { type: "group", id: "fbaFees" },
-                        { type: "group", id: "otherFees" },
-                        { type: "group", id: "totalFees" },
-                      ]}
-                      initialCollapsed={{
-                        referralFees: false,
-                        fbaFees: false,
-                        otherFees: false,
-                        totalFees: false,
-                      }}
-                      preserveColumnWidths="responsive"
-                      tableClassName="w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]"
-                      isTotalRow={(row) => Boolean(row._isTotal)}
-                      getRowClassName={(row, index) => {
-                        if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
-                        if (row._isOthers) return "bg-white cursor-pointer";
-                        return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-                      }}
-                      onRowClick={(row) => {
-                        if (row._isOthers) setShowAllProductRows(true);
-                      }}
-                      getValue={(row, columnKey) => {
-                        if (columnKey === "sno") return row._isTotal ? "" : row.sno ?? "";
 
-                        if (columnKey === "productName") {
-                          if (row._isTotal) {
-                            return <span className="font-semibold text-charcoal-500">Total</span>;
-                          }
+                      if (row._isOthers) {
+                        return (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setShowAllProductRows(true);
+                            }}
+                            className="w-full text-left font-medium text-green-500"
+                            title="Expand all products"
+                          >
+                            Others
+                          </button>
+                        );
+                      }
 
-                          if (row._isOthers) {
-                            return (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setShowAllProductRows(true);
-                                }}
-                                className="w-full text-left font-medium text-green-500"
-                                title="Expand all products"
-                              >
-                                Others
-                              </button>
-                            );
-                          }
+                      return <span className="font-medium text-green-500">{row.productName}</span>;
+                    }
 
-                          return <span className="font-medium text-green-500">{row.productName}</span>;
-                        }
+                    if (columnKey === "sku") {
+                      return row._isOthers || row._isTotal ? "-" : row.sku || "-";
+                    }
 
-                        if (columnKey === "sku") {
-                          return row._isOthers || row._isTotal ? "-" : row.sku || "-";
-                        }
+                    if (columnKey === "units") return fmtInteger(Number(row.units));
 
-                        if (columnKey === "units") return fmtInteger(Number(row.units));
+                    if (
+                      columnKey === "sales" ||
+                      columnKey === "ref_applicable" ||
+                      columnKey === "ref_charged" ||
+                      columnKey === "fba_applicable" ||
+                      columnKey === "fba_charged" ||
+                      columnKey === "other_applicable" ||
+                      columnKey === "other_charged" ||
+                      columnKey === "total_applicable" ||
+                      columnKey === "total_charged"
+                    ) {
+                      return fmtMoneyNoSymbol(row[columnKey]);
+                    }
 
-                        if (
-                          columnKey === "sales" ||
-                          columnKey === "ref_applicable" ||
-                          columnKey === "ref_charged" ||
-                          columnKey === "fba_applicable" ||
-                          columnKey === "fba_charged" ||
-                          columnKey === "other_applicable" ||
-                          columnKey === "other_charged" ||
-                          columnKey === "total_applicable" ||
-                          columnKey === "total_charged"
-                        ) {
-                          return fmtMoneyNoSymbol(row[columnKey]);
-                        }
+                    return row[columnKey] ?? "";
+                  }}
+                />
 
-                        return row[columnKey] ?? "";
-                      }}
-                    />
-
-                  </div>
-                </div>
+              </div>
+            </div>
           </>
         </PreviewLockedSection>
       )}
