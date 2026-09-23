@@ -1417,6 +1417,12 @@ const getReferralNetSales = (row: Record<string, any>) => {
 const getReferralChargedFees = (row: Record<string, any>) =>
   Math.abs(referralNumber(row?.selling_fees));
 
+const formatReferralStatus = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
 const scaleReferralIntegerBreakdown = (values: number[], target: number) => {
   const roundedTarget = Math.round(referralNumber(target));
   const sourceTotal = values.reduce(
@@ -1999,9 +2005,9 @@ export function exportReferralFeesExcel({
     safeSheetName("Product Breakdown")
   );
 
-  /* ---------------- Sheet 3: Orders by status ---------------- */
+  /* ---------------- Sheets 3-5: Orders split by status ---------------- */
   const orderHeaderTop = [
-    "Category",
+    "S. No",
     "Order ID",
     "SKU",
     "Product Name",
@@ -2037,17 +2043,21 @@ export function exportReferralFeesExcel({
     "",
   ];
   const orderColumnCount = orderHeaderTop.length;
-  const exportedStatuses = ["Accurate", "Undercharged", "Overcharged"];
-  const targetUnitsByStatus = new Map(
-    exportedStatuses.map((status) => {
+  const orderSheetConfigs = [
+    { status: "Overcharged", sheetName: "Overcharged" },
+    { status: "Undercharged", sheetName: "Undercharged" },
+    { status: "Accurate", sheetName: "Accurately Charged" },
+  ] as const;
+  const targetUnitsByStatus = new Map<string, number>(
+    orderSheetConfigs.map(({ status }) => {
       const summaryRow = feeSummaryRows.find(
         (row) => row.label === `Charge - ${status}`
       );
       return [status, Math.round(referralNumber(summaryRow?.units))] as const;
     })
   );
-  const scaledUnitsByStatus = new Map(
-    exportedStatuses.map((status) => {
+  const scaledUnitsByStatus = new Map<string, number[]>(
+    orderSheetConfigs.map(({ status }) => {
       const matchingRows = (ordersByStatus || []).filter(
         (row) => row?.Category === status && Object.keys(row).length > 1
       );
@@ -2060,158 +2070,99 @@ export function exportReferralFeesExcel({
       ] as const;
     })
   );
-  const statusIndexes = new Map<string, number>(
-    exportedStatuses.map((status) => [status, 0] as const)
-  );
-  const orderRows: any[][] = [];
-  const sectionRows: number[] = [];
+  for (const { status, sheetName } of orderSheetConfigs) {
+    const matchingRows = (ordersByStatus || []).filter(
+      (row) => row?.Category === status && Object.keys(row).length > 1
+    );
+    const orderRows: any[][] = [];
 
-  for (const row of ordersByStatus || []) {
-    const isSeparator =
-      !row ||
-      Object.keys(row).length === 0 ||
-      (row.Category && Object.keys(row).length === 1);
+    matchingRows.forEach((row, index) => {
+      const quantity =
+        scaledUnitsByStatus.get(status)?.[index] ?? getReferralDisplayUnits(row);
 
-    if (isSeparator) {
-      if (row?.Category) {
-        sectionRows.push(orderRows.length);
-        orderRows.push([row.Category, "", "", "", "", "", "", "", "", ""]);
-      } else {
-        orderRows.push(new Array(orderColumnCount).fill(""));
-      }
-      continue;
-    }
+      if (quantity <= 0) return;
 
-    const status = String(row.Category ?? "");
-    const statusIndex = statusIndexes.get(status) ?? 0;
-    const quantity =
-      scaledUnitsByStatus.get(status)?.[statusIndex] ??
-      getReferralDisplayUnits(row);
-    statusIndexes.set(status, statusIndex + 1);
+      orderRows.push([
+        orderRows.length + 1,
+        row.order_id ?? "",
+        row.sku ?? "",
+        row.product_name ?? "",
+        Math.round(quantity),
+        getReferralNetSales(row),
+        referralNumber(row.answer),
+        getReferralChargedFees(row),
+        referralNumber(row.difference ?? row.overcharged),
+        formatReferralStatus(row.errorstatus),
+      ]);
+    });
 
-    if (quantity <= 0) continue;
-
-    orderRows.push([
-      status,
-      row.order_id ?? "",
-      row.sku ?? "",
-      row.product_name ?? "",
-      Math.round(quantity),
-      getReferralNetSales(row),
-      referralNumber(row.answer),
-      getReferralChargedFees(row),
-      referralNumber(row.difference ?? row.overcharged),
-      row.errorstatus ?? "",
+    const orderTopRows = buildReferralTopRows({
+      title: `Amazon ${reportCountry} - Referral Fee ${sheetName} Orders - ${periodLabel}`,
+      countryName,
+      titleCountry: reportCountry,
+      periodLabel,
+      currencyCode,
+      platformLabel,
+      companyName,
+      brandName,
+      columnCount: orderColumnCount,
+      anchorCol1Based: 7,
+    });
+    const orderHeaderRow = orderTopRows.length;
+    const ordersWorksheet = XLSX.utils.aoa_to_sheet([
+      ...orderTopRows,
+      orderHeaderTop,
+      orderHeaderSub,
+      orderHeaderSigns,
+      ...orderRows,
     ]);
+    ordersWorksheet["!merges"] = [
+      ...Array.from({ length: 6 }, (_, column) => ({
+        s: { r: orderHeaderRow, c: column },
+        e: { r: orderHeaderRow + 1, c: column },
+      })),
+      {
+        s: { r: orderHeaderRow, c: 6 },
+        e: { r: orderHeaderRow, c: 8 },
+      },
+      {
+        s: { r: orderHeaderRow, c: 9 },
+        e: { r: orderHeaderRow + 1, c: 9 },
+      },
+    ];
+    ordersWorksheet["!cols"] = [
+      { wch: 8 },
+      { wch: 22 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 24 },
+      { wch: 21 },
+      { wch: 16 },
+      { wch: 16 },
+    ];
+    applyReferralSheetTitle({
+      ws: ordersWorksheet,
+      columnCount: orderColumnCount,
+      anchorCol1Based: 7,
+    });
+    applyReferralTableStyles({
+      ws: ordersWorksheet,
+      headerStartRow: orderHeaderRow,
+      headerRowCount: 3,
+      dataRowCount: orderRows.length,
+      columnCount: orderColumnCount,
+      leftAlignedColumns: new Set([1, 2, 3]),
+      numericColumns: new Set([0, 4, 5, 6, 7, 8]),
+      integerColumns: new Set([0, 4]),
+    });
+    XLSX.utils.book_append_sheet(
+      workbook,
+      ordersWorksheet,
+      safeSheetName(sheetName)
+    );
   }
-
-  orderRows.push(new Array(orderColumnCount).fill(""));
-  sectionRows.push(orderRows.length);
-  orderRows.push(["Reconciled Monthly Total", "", "", "", "", "", "", "", "", ""]);
-  const reconciledTotalIndex = orderRows.length;
-  orderRows.push([
-    "Reconciled Monthly Total",
-    "",
-    "",
-    "Total",
-    Math.round(referralNumber(cardSummary.units)),
-    referralNumber(cardSummary.sales),
-    referralNumber(cardSummary.refFeesApplicable),
-    referralNumber(cardSummary.refFeesApplied),
-    referralNumber(totalFeeRow?.overcharged),
-    "total",
-  ]);
-  orderRows.push(new Array(orderColumnCount).fill(""));
-  sectionRows.push(orderRows.length);
-  orderRows.push(["Status Summary", "", "", "", "", "", "", "", "", ""]);
-
-  for (const row of feeSummaryRows.filter((summaryRow) =>
-    ["Charge - Accurate", "Charge - Undercharged", "Charge - Overcharged"].includes(
-      String(summaryRow.label)
-    )
-  )) {
-    orderRows.push([
-      "Status Summary",
-      "",
-      "",
-      row.label ?? "",
-      Math.round(referralNumber(row.units)),
-      referralNumber(row.sales),
-      referralNumber(row.refFeesApplicable),
-      referralNumber(row.refFeesCharged),
-      referralNumber(row.overcharged),
-      "",
-    ]);
-  }
-
-  const orderTopRows = buildReferralTopRows({
-    title: `Amazon ${reportCountry} - Referral Fee Orders by Status - ${periodLabel}`,
-    countryName,
-    titleCountry: reportCountry,
-    periodLabel,
-    currencyCode,
-    platformLabel,
-    companyName,
-    brandName,
-    columnCount: orderColumnCount,
-    anchorCol1Based: 7,
-  });
-  const orderHeaderRow = orderTopRows.length;
-  const ordersWorksheet = XLSX.utils.aoa_to_sheet([
-    ...orderTopRows,
-    orderHeaderTop,
-    orderHeaderSub,
-    orderHeaderSigns,
-    ...orderRows,
-  ]);
-  ordersWorksheet["!merges"] = [
-    ...Array.from({ length: 6 }, (_, column) => ({
-      s: { r: orderHeaderRow, c: column },
-      e: { r: orderHeaderRow + 1, c: column },
-    })),
-    {
-      s: { r: orderHeaderRow, c: 6 },
-      e: { r: orderHeaderRow, c: 8 },
-    },
-    {
-      s: { r: orderHeaderRow, c: 9 },
-      e: { r: orderHeaderRow + 1, c: 9 },
-    },
-  ];
-  ordersWorksheet["!cols"] = [
-    { wch: 24 },
-    { wch: 22 },
-    { wch: 18 },
-    { wch: 28 },
-    { wch: 12 },
-    { wch: 16 },
-    { wch: 24 },
-    { wch: 21 },
-    { wch: 16 },
-    { wch: 16 },
-  ];
-  applyReferralSheetTitle({
-    ws: ordersWorksheet,
-    columnCount: orderColumnCount,
-    anchorCol1Based: 7,
-  });
-  applyReferralTableStyles({
-    ws: ordersWorksheet,
-    headerStartRow: orderHeaderRow,
-    headerRowCount: 3,
-    dataRowCount: orderRows.length,
-    columnCount: orderColumnCount,
-    leftAlignedColumns: new Set([0, 1, 2, 3, 9]),
-    numericColumns: new Set([4, 5, 6, 7, 8]),
-    integerColumns: new Set([4]),
-    totalDataRows: [reconciledTotalIndex],
-    sectionDataRows: sectionRows,
-  });
-  XLSX.utils.book_append_sheet(
-    workbook,
-    ordersWorksheet,
-    safeSheetName("Orders by Status")
-  );
 
   XLSX.writeFile(workbook, filename);
 }
