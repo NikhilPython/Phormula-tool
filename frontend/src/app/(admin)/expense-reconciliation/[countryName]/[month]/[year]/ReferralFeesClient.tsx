@@ -183,6 +183,20 @@ type RefFeesBreakdown = {
 
 
 /* ===================== Helpers ===================== */
+const formatMonthYear = (month: string, year: string) => {
+  const date = new Date(`${month} 1, ${year}`);
+
+  if (Number.isNaN(date.getTime())) {
+    return `${month} '${year.slice(-2)}`;
+  }
+
+  const shortMonth = date.toLocaleString("en-US", {
+    month: "short",
+  });
+
+  return `${shortMonth}'${year.slice(-2)}`;
+};
+
 const fmtInteger = (n: number): string =>
   typeof n === "number"
     ? n.toLocaleString(undefined, {
@@ -1610,7 +1624,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const handleDownloadExcel = useCallback(() => {
     exportReferralFeesExcel({
-      filename: `Referral-Fees-${country}-${month}-${year}.xlsx`,
+    filename: `Referral Fees ${country.toUpperCase()} ${formatMonthYear(month, year)}.xlsx`,
       countryName: country,
       periodLabel:
         range === "yearly"
