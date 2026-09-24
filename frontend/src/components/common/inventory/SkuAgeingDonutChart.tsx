@@ -16,6 +16,7 @@ export type DonutChartItem = {
     units: number;
     color: string;
     percentageShare?: number;
+    amount?: number;
 };
 
 type SkuAgeingDonutChartProps = {
@@ -24,6 +25,8 @@ type SkuAgeingDonutChartProps = {
     sku?: string;
     data: DonutChartItem[];
     totalUnits?: number;
+    amountLabel?: string;
+    amountFormatter?: (value: number) => string;
 };
 
 const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
@@ -31,12 +34,22 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
     subtitle = "",
     data,
     totalUnits,
+    amountLabel = "Amount",
+    amountFormatter = (value) => value.toLocaleString(),
 }) => {
     const calculatedTotal = React.useMemo(() => {
         return data.reduce((sum, item) => sum + item.units, 0);
     }, [data]);
 
     const finalTotal = totalUnits ?? calculatedTotal;
+    const showAmount = React.useMemo(
+        () => data.some((item) => typeof item.amount === "number"),
+        [data]
+    );
+    const totalAmount = React.useMemo(
+        () => data.reduce((sum, item) => sum + (item.amount ?? 0), 0),
+        [data]
+    );
 
     const chartData = React.useMemo(() => {
         return data.map((item, index) => ({
@@ -173,13 +186,18 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                     <table className="w-full table-fixed border-separate border-spacing-0 text-[11px] xl:text-xs">
                         <thead>
                             <tr className="text-charcoal-500">
-                                <th className="w-[48%] px-2 py-1.5 text-left font-semibold">
+                                <th className={`${showAmount ? "w-[34%]" : "w-[48%]"} px-2 py-1.5 text-left font-semibold`}>
                                     Metric
                                 </th>
-                                <th className="w-[24%] px-2 py-1.5 text-center font-semibold">
+                                <th className={`${showAmount ? "w-[18%]" : "w-[24%]"} px-2 py-1.5 text-center font-semibold`}>
                                     Units
                                 </th>
-                                <th className="w-[28%] px-2 py-1.5 text-center font-semibold">
+                                {showAmount && (
+                                    <th className="w-[28%] px-2 py-1.5 text-center font-semibold">
+                                        {amountLabel}
+                                    </th>
+                                )}
+                                <th className={`${showAmount ? "w-[20%]" : "w-[28%]"} px-2 py-1.5 text-center font-semibold`}>
                                     % of Total
                                 </th>
                             </tr>
@@ -203,6 +221,12 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                         {item.units.toLocaleString()}
                                     </td>
 
+                                    {showAmount && (
+                                        <td className="border-t border-slate-200 px-2 py-1.5 text-center text-charcoal-500">
+                                            {amountFormatter(item.amount ?? 0)}
+                                        </td>
+                                    )}
+
                                     <td className="border-t border-slate-200 px-2 py-1.5 text-center text-charcoal-500">
                                         {item.percentage.toFixed(2)}%
                                     </td>
@@ -216,6 +240,11 @@ const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
                                 <td className="border-t border-slate-300 px-2 py-1.5 text-center">
                                     {finalTotal.toLocaleString()}
                                 </td>
+                                {showAmount && (
+                                    <td className="border-t border-slate-300 px-2 py-1.5 text-center">
+                                        {amountFormatter(totalAmount)}
+                                    </td>
+                                )}
                                 <td className="border-t border-slate-300 px-2 py-1.5 text-center">
                                     {finalTotal > 0 ? "100%" : "0.00%"}
                                 </td>

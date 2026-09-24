@@ -1851,18 +1851,21 @@ export default function ReferralFeesDashboard(): JSX.Element {
         key: "accurate",
         title: "Accurate",
         units: Math.max(0, toNumberSafe(accurate?.units)),
+        amount: toNumberSafe(accurate?.overcharged),
         color: "#7B9A6D",
       },
       {
         key: "overcharged",
         title: "Overcharged",
         units: Math.max(0, toNumberSafe(overcharged?.units)),
+        amount: toNumberSafe(overcharged?.overcharged),
         color: "#B75A5A",
       },
       {
         key: "undercharged",
         title: "Undercharged",
         units: Math.max(0, toNumberSafe(undercharged?.units)),
+        amount: toNumberSafe(undercharged?.overcharged),
         color: "#ED9F50",
       },
     ];
@@ -1878,6 +1881,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       reconciliationStatuses.map((status) => ({
         bucket: status.title,
         units: status.units,
+        amount: status.amount,
         color: status.color,
       })),
     [reconciliationStatuses]
@@ -2015,12 +2019,14 @@ export default function ReferralFeesDashboard(): JSX.Element {
           onAction={handlePreviewAction}
         >
           <>
-            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-stretch 2xl:grid-cols-2">
               <SkuAgeingDonutChart
                 title="Reconciliation Distribution"
                 subtitle="Referral fee status across all units"
                 data={reconciliationDonutData}
                 totalUnits={reconciliationTotalUnits}
+                amountLabel="Fee Variance"
+                amountFormatter={fmtCurrency}
               />
 
               <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
