@@ -12,6 +12,7 @@ import {
   Tooltip,
   Legend,
   Filler,
+  type TooltipItem,
 } from "chart.js";
 import zoomPlugin from "chartjs-plugin-zoom";
 
@@ -854,6 +855,7 @@ const ProductJourneyInlineGraph: React.FC<ProductJourneyInlineGraphProps> = ({
           enabled: true,
           mode: "index",
           intersect: false,
+          filter: (context: TooltipItem<"line">) => Number(context.parsed.y) !== 0,
           backgroundColor: "#ffffff",
           titleColor: "#414042",
           bodyColor: "#414042",

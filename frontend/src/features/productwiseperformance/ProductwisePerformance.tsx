@@ -1896,7 +1896,9 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     };
 
     const selectedPeriodLabel =
-      sharedInsightData?.drawerPeriodText || getHeadingPeriod();
+      range === "quarterly"
+        ? getQuarterComparisonPeriod()
+        : sharedInsightData?.drawerPeriodText || getHeadingPeriod();
 
     const sharedCatalogItems = (sharedInsightData?.blocks || []).reduce<
       Array<ProductInsightBlockForDrawer & { imageMeta: ProductImageMeta | null }>
@@ -2102,12 +2104,6 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                       align="left"
                       textSize="2xl"
                     />
-
-                    {selectedPeriodLabel ? (
-                      <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-xs font-semibold text-[#3e806b]">
-                        {selectedPeriodLabel}
-                      </span>
-                    ) : null}
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
@@ -2129,13 +2125,20 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
 
             {sortedMetrics.length > 0 ? (
               <div className="mt-4 border-t border-gray-100 pt-4">
-                <PageBreadcrumb
-                  pageTitle="Metrics"
-                  variant="page"
-                  align="left"
-                  textSize="xl"
-                  className="mb-2"
-                />
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <PageBreadcrumb
+                    pageTitle="Metrics"
+                    variant="page"
+                    align="left"
+                    textSize="xl"
+                  />
+
+                  {selectedPeriodLabel ? (
+                    <span className="rounded-md bg-[#5EA68E]/10 px-2 py-1 text-xs font-semibold text-[#3e806b]">
+                      {selectedPeriodLabel}
+                    </span>
+                  ) : null}
+                </div>
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                   {sortedMetrics.map((m, i) => {
@@ -2857,6 +2860,23 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       return `${cap(selectedMonth)}'${yearShort}`;
     }
     return "";
+  };
+
+  const getQuarterComparisonPeriod = () => {
+    const quarterMatch = String(selectedQuarter || "").match(/Q([1-4])/i);
+    const currentYear = Number(selectedYear);
+
+    if (!quarterMatch || selectedYear === "" || !Number.isInteger(currentYear)) {
+      return getHeadingPeriod();
+    }
+
+    const currentQuarter = Number(quarterMatch[1]);
+    const previousQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
+    const previousYear = currentQuarter === 1 ? currentYear - 1 : currentYear;
+    const formatQuarter = (quarter: number, year: number) =>
+      `Q${quarter}'${String(year).slice(-2)}`;
+
+    return `${formatQuarter(currentQuarter, currentYear)} vs ${formatQuarter(previousQuarter, previousYear)}`;
   };
 
   useEffect(() => {
