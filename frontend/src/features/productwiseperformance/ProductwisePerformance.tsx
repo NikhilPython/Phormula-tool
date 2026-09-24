@@ -2200,7 +2200,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
                           </span>
                         </div>
 
-                        <div className="flex items-end leading-tight tabular-nums">
+                        <div className="flex items-baseline leading-tight tabular-nums">
                           <span className="text-sm font-semibold text-charcoal-500 2xl:text-lg">
                             {displayMain}
                           </span>
