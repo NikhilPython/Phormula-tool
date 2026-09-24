@@ -25,9 +25,6 @@ from app.utils.dashboard_card_metrics import (
     build_pnl_card_metrics,
     persist_per_unit_fields,
 )
-
-
-
 load_dotenv()
 db_url = os.getenv('DATABASE_URL')
 db_url1 = os.getenv('DATABASE_ADMIN_URL')
@@ -70,6 +67,40 @@ MONTHS = [
 EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v18_backend_fee_percentages"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
+
+
+def _calculate_us_referral_fee_applicable(
+    product_sales,
+    promotional_rebates,
+    referral_fee_percent,
+):
+    sales = Decimal(str(product_sales or 0))
+    rebates = abs(Decimal(str(promotional_rebates or 0)))
+    rate = Decimal(str(referral_fee_percent or 0))
+    applicable_base = max(sales - rebates, Decimal("0"))
+    return float(
+        (applicable_base * rate / Decimal("100")).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+    )
+
+
+def _resolve_us_referral_fee_applicable(
+    source_answer,
+    source_status,
+    product_sales,
+    promotional_rebates,
+    referral_fee_percent,
+):
+    if str(source_status or "").strip().lower() != "undercharged":
+        return float(source_answer or 0)
+
+    return _calculate_us_referral_fee_applicable(
+        product_sales,
+        promotional_rebates,
+        referral_fee_percent,
+    )
 
 US_BEAUTY_REFERRAL_FEE_BANDS = [
     {
@@ -581,6 +612,30 @@ def _materialize_expense_reconciliation_table(
                 ] = mapped_charged_fees[mapped_charged_fees.notna()]
 
         if not status_rows.empty and not rows.empty:
+            status_names = (
+                status_rows["status"].fillna("").astype(str).str.strip().str.lower()
+            )
+            status_rows["referral_fees_applicable"] = pd.to_numeric(
+                status_rows["referral_fees_applicable"],
+                errors="coerce",
+            ).fillna(0)
+            status_rows["referral_fees_charged"] = pd.to_numeric(
+                status_rows["referral_fees_charged"],
+                errors="coerce",
+            ).fillna(0).abs()
+            accurate_status = status_names.eq("accurate")
+            status_rows.loc[
+                accurate_status,
+                "referral_fees_charged",
+            ] = status_rows.loc[
+                accurate_status,
+                "referral_fees_applicable",
+            ]
+            status_rows["difference"] = (
+                status_rows["referral_fees_charged"]
+                - status_rows["referral_fees_applicable"]
+            ).round(2)
+
             status_rows["_sku_key"] = (
                 status_rows["sku"].fillna("").astype(str).str.strip().str.lower()
             )
@@ -589,7 +644,7 @@ def _materialize_expense_reconciliation_table(
                 main_targets["sku"].fillna("").astype(str).str.strip().str.lower()
             )
             main_targets = main_targets.groupby("_sku_key", as_index=True)[
-                ["units", "net_sales", "referral_fees_charged"]
+                ["units", "net_sales"]
             ].sum()
 
             def _scale_status_values(indexes, column, target, integer=False):
@@ -628,11 +683,17 @@ def _materialize_expense_reconciliation_table(
                     "net_sales",
                     main_targets.at[sku_key, "net_sales"],
                 )
-                _scale_status_values(
-                    list(indexes),
-                    "referral_fees_charged",
-                    main_targets.at[sku_key, "referral_fees_charged"],
-                )
+
+            corrected_charged_by_sku = status_rows.groupby(
+                "_sku_key",
+                as_index=True,
+            )["referral_fees_charged"].sum()
+            row_sku_keys = rows["sku"].fillna("").astype(str).str.strip().str.lower()
+            mapped_corrected_charged = row_sku_keys.map(corrected_charged_by_sku)
+            rows.loc[
+                mapped_corrected_charged.notna(),
+                "referral_fees_charged",
+            ] = mapped_corrected_charged[mapped_corrected_charged.notna()]
 
             status_rows = status_rows.drop(columns=["_sku_key"])
 
@@ -665,15 +726,10 @@ def _materialize_expense_reconciliation_table(
                     sku_monthly_summary.get("quantity"),
                 )
                 summary_net_sales = sku_monthly_summary.get("net_sales")
-                summary_charged_fees = sku_monthly_summary.get("selling_fees")
                 if summary_units is not None:
                     total["units"] = float(summary_units or 0)
                 if summary_net_sales is not None:
                     total["net_sales"] = float(summary_net_sales or 0)
-                if summary_charged_fees is not None:
-                    total["referral_fees_charged"] = abs(
-                        float(summary_charged_fees or 0)
-                    )
 
             rows = pd.concat([rows, pd.DataFrame([total])], ignore_index=True)
 
@@ -3577,30 +3633,55 @@ def get_table_data(file_name):
             )
 
             if "referral_fee" in df.columns:
-                qty_for_calc = pd.to_numeric(df["quantity"], errors="coerce").fillna(0)
-                qty_for_calc = qty_for_calc.where(qty_for_calc != 0, 1)
-                df["total_value"] = [
-                    _round_half_up(base / qty)
-                    for base, qty in zip(df["net_sales_total_value"], qty_for_calc)
-                ]
                 if source_answer_available:
-                    df["answer"] = pd.to_numeric(df["answer"], errors="coerce").fillna(0)
-                else:
-                    df = _apply_us_referral_fee_price_bands(df)
-                    per_unit_fee = [
-                        _round_half_up(total_value * (rate / 100.0))
-                        for total_value, rate in zip(df["total_value"], df["referral_fee"])
-                    ]
-                    product_sales_for_calc = pd.to_numeric(
-                        df["product_sales"],
+                    df["answer"] = pd.to_numeric(
+                        df["answer"],
                         errors="coerce",
                     ).fillna(0)
+                    source_status = df.get(
+                        "errorstatus",
+                        pd.Series("", index=df.index),
+                    ).fillna("").astype(str).str.strip().str.lower()
                     df["answer"] = [
-                        fee * qty if product_sales != 0 else 0.0
-                        for fee, qty, product_sales in zip(
-                            per_unit_fee,
-                            qty_for_calc,
-                            product_sales_for_calc,
+                        _resolve_us_referral_fee_applicable(
+                            source_answer,
+                            status,
+                            product_sales,
+                            promotional_rebates,
+                            rate,
+                        )
+                        for source_answer, status, product_sales, promotional_rebates, rate in zip(
+                            df["answer"],
+                            source_status,
+                            df["product_sales"],
+                            df["promotional_rebates"],
+                            df["referral_fee"],
+                        )
+                    ]
+                else:
+                    qty_for_calc = pd.to_numeric(
+                        df["quantity"],
+                        errors="coerce",
+                    ).fillna(0)
+                    qty_for_calc = qty_for_calc.where(qty_for_calc != 0, 1)
+                    applicable_base = (
+                        df["product_sales"] - df["promotional_rebates"].abs()
+                    ).clip(lower=0)
+                    df["total_value"] = [
+                        _round_half_up(base / qty)
+                        for base, qty in zip(applicable_base, qty_for_calc)
+                    ]
+                    df = _apply_us_referral_fee_price_bands(df)
+                    df["answer"] = [
+                        _calculate_us_referral_fee_applicable(
+                            product_sales,
+                            promotional_rebates,
+                            rate,
+                        )
+                        for product_sales, promotional_rebates, rate in zip(
+                            df["product_sales"],
+                            df["promotional_rebates"],
+                            df["referral_fee"],
                         )
                     ]
 
@@ -3770,7 +3851,13 @@ def get_table_data(file_name):
                 "status": label
             }
             for c in agg_cols:
-                row[c] = float(_df[c].sum())
+                if c == "selling_fees":
+                    if label == "Accurate":
+                        row[c] = float(_df["answer"].sum())
+                    else:
+                        row[c] = float(_df[c].abs().sum())
+                else:
+                    row[c] = float(_df[c].sum())
             return pd.DataFrame([row])
 
         acc_total   = create_total_row(accurate_df, "Accurate")
@@ -3785,7 +3872,15 @@ def get_table_data(file_name):
             "status": "Total"
         }
         for c in agg_cols:
-            grand_row[c] = float(final_df[c].sum())
+            if c == "selling_fees":
+                grand_row[c] = float(
+                    acc_total.iloc[0][c]
+                    + under_total.iloc[0][c]
+                    + over_total.iloc[0][c]
+                    + ref_total.iloc[0][c]
+                )
+            else:
+                grand_row[c] = float(final_df[c].sum())
         grand_total = pd.DataFrame([grand_row])
 
         final_display_df = pd.concat(

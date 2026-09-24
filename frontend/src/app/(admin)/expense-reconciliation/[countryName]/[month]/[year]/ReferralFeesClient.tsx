@@ -1358,8 +1358,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
           return adjusted;
         });
       })();
-      const correctedSummary = correctReferralSummaryRows(mappedSummary);
-      const correctedGrandSummary = correctedSummary.find((row) =>
+      const grandSummary = mappedSummary.find((row) =>
         isGrandTotalLabel(row.label)
       );
 
@@ -1415,11 +1414,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
       // Referral
-      const refFeesApplicable = correctedGrandSummary
-        ? correctedGrandSummary.refFeesApplicable
+      const refFeesApplicable = grandSummary
+        ? grandSummary.refFeesApplicable
         : lineItems.reduce((acc, r) => acc + toNumberSafe(r.answer), 0);
-      const refFeesApplied = correctedGrandSummary
-        ? correctedGrandSummary.refFeesCharged
+      const refFeesApplied = grandSummary
+        ? grandSummary.refFeesCharged
         : lineItems.reduce((acc, r) => acc + getChargedReferralFees(r), 0);
 
       const fbaFees = monthlySummary
@@ -1476,7 +1475,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
 
 
-      setFeeSummaryRows(correctedSummary);
+      setFeeSummaryRows(mappedSummary);
 
       let totalUnits = 0;
       let totalSales = 0;
@@ -1659,13 +1658,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const grossSales = useMonthlyValues ? getGrossSales(monthlyMatch) : getGrossSales(r);
 
       const ref_applicable = toNumberSafe(r.answer);
-      const correctedGrandTotal = feeSummaryRows.find((row) =>
-        isGrandTotalLabel(row.label)
-      );
-      const correctedSkuCharged = correctedRefChargedBySku.get(skuLookupKey);
-      const ref_charged = isTotal
-        ? correctedGrandTotal?.refFeesCharged ?? getChargedReferralFees(r)
-        : correctedSkuCharged ?? getChargedReferralFees(r);
+      const ref_charged = getChargedReferralFees(r);
       const overcharged = toNumberSafe(r.overcharged ?? r.difference);
 
       const fba_charged = Math.abs(
@@ -1715,13 +1708,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         _isTotal: isTotal,
       };
     });
-  }, [
-    correctedRefChargedBySku,
-    feeSummaryRows,
-    skuwiseRows,
-    skuMonthlyRows,
-    skuMonthlySummary,
-  ]);
+  }, [skuwiseRows, skuMonthlyRows, skuMonthlySummary]);
 
 
   const skuColumns: ColumnDef<Row>[] = [
