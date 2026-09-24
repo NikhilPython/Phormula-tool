@@ -64,7 +64,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v18_backend_fee_percentages"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v19_fee_status_breakdown"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -337,6 +337,8 @@ def _materialize_expense_reconciliation_table(
         "referral_fees_charged",
         "fba_fees_applicable",
         "fba_fees_charged",
+        "platform_fees_charged",
+        "other_fees_charged",
         "difference",
     ]
     status_rows = pd.DataFrame(columns=status_columns)
@@ -359,6 +361,8 @@ def _materialize_expense_reconciliation_table(
         "referral_fees_charged",
         "fba_fees_applicable",
         "fba_fees_charged",
+        "platform_fees_charged",
+        "other_fees_charged",
         "difference",
     ])
     if source.empty:
@@ -514,6 +518,10 @@ def _materialize_expense_reconciliation_table(
                 "referral_fees_charged": _raw_numeric("selling_fees"),
                 "fba_fees_applicable": _raw_numeric("fbaanswer", "fba_fees").abs(),
                 "fba_fees_charged": _raw_numeric("fba_fees").abs(),
+                "platform_fees_charged": _raw_numeric("platform_fee"),
+                "other_fees_charged": (
+                    _raw_numeric("other") - _raw_numeric("advertising_total")
+                ),
                 "difference": _raw_numeric("difference"),
             })
 
@@ -824,6 +832,8 @@ def _materialize_expense_reconciliation_table(
             "referral_fees_charged",
             "fba_fees_applicable",
             "fba_fees_charged",
+            "platform_fees_charged",
+            "other_fees_charged",
             "difference",
         ]:
             status_detail_rows[column] = (
@@ -1082,6 +1092,8 @@ def _expense_reconciliation_api_response(
         "referral_fees_charged",
         "fba_fees_applicable",
         "fba_fees_charged",
+        "platform_fees_charged",
+        "other_fees_charged",
         "difference",
     ]:
         if column not in cached_status.columns:
@@ -1132,6 +1144,18 @@ def _expense_reconciliation_api_response(
             "selling_fees": float(row.get("referral_fees_charged", 0) or 0),
             "fbaanswer": float(row.get("fba_fees_applicable", 0) or 0),
             "fba_fees": float(row.get("fba_fees_charged", 0) or 0),
+            "platform_fees_applicable": float(
+                row.get("platform_fees_charged", 0) or 0
+            ),
+            "platform_fees_charged": float(
+                row.get("platform_fees_charged", 0) or 0
+            ),
+            "other_fees_applicable": float(
+                row.get("other_fees_charged", 0) or 0
+            ),
+            "other_fees_charged": float(
+                row.get("other_fees_charged", 0) or 0
+            ),
             "difference": difference,
             "overcharged": max(difference, 0),
             "referral_fees_accurate": applicable if resolved_status == "Accurate" else 0,
@@ -1213,6 +1237,27 @@ def _expense_reconciliation_api_response(
         other_charged=other_fee_total,
         other_applicable=grand_record.get("other_fees_applicable", 0),
     )
+
+    def _status_fee_amounts(field, *, magnitude=False):
+        def _total(status):
+            value = sum(
+                float(record.get(field, 0) or 0)
+                for record in status_records[status]
+            )
+            return round(abs(value) if magnitude else value, 2)
+
+        return {
+            "accurately_charged": _total("Accurate"),
+            "overcharged": _total("Overcharged"),
+            "undercharged": _total("Undercharged"),
+        }
+
+    fee_status_breakdown = {
+        "referral_fees": _status_fee_amounts("selling_fees", magnitude=True),
+        "fba_fees": _status_fee_amounts("fba_fees", magnitude=True),
+        "platform_fees": _status_fee_amounts("platform_fees_charged"),
+        "other_fees": _status_fee_amounts("other_fees_charged"),
+    }
     return {
         "success": True,
         "message": "Expense reconciliation table loaded successfully.",
@@ -1228,6 +1273,7 @@ def _expense_reconciliation_api_response(
         "platform_fee_total": platform_fee_total,
         "other_total": other_fee_total,
         "fee_percentages": fee_percentages,
+        "fee_status_breakdown": fee_status_breakdown,
         "advertising_total": 0,
         "sku_monthly_summary": grand_record if range_ == "monthly" else {},
         "sku_monthly_rows": detail_records if range_ == "monthly" else [],
@@ -4045,6 +4091,50 @@ def get_table_data(file_name):
             other_applicable=other_total_adjusted,
         )
 
+        fallback_status_frames = {
+            "accurately_charged": raw_ok_df,
+            "overcharged": raw_over_df,
+            "undercharged": raw_under_df,
+        }
+
+        def _fallback_status_fee_amounts(field, *, magnitude=False, subtract=None):
+            amounts = {}
+            for status_key, status_frame in fallback_status_frames.items():
+                if field in status_frame.columns:
+                    value = float(
+                        pd.to_numeric(
+                            status_frame[field],
+                            errors="coerce",
+                        ).fillna(0).sum()
+                    )
+                else:
+                    value = 0.0
+                if subtract and subtract in status_frame.columns:
+                    value -= float(
+                        pd.to_numeric(
+                            status_frame[subtract],
+                            errors="coerce",
+                        ).fillna(0).sum()
+                    )
+                amounts[status_key] = round(abs(value) if magnitude else value, 2)
+            return amounts
+
+        fee_status_breakdown = {
+            "referral_fees": _fallback_status_fee_amounts(
+                "selling_fees",
+                magnitude=True,
+            ),
+            "fba_fees": _fallback_status_fee_amounts(
+                "fba_fees",
+                magnitude=True,
+            ),
+            "platform_fees": _fallback_status_fee_amounts("platform_fee"),
+            "other_fees": _fallback_status_fee_amounts(
+                "other",
+                subtract="advertising_total",
+            ),
+        }
+
         return jsonify({
             "success": True,
             "message": "SKU wise table generated successfully.",
@@ -4062,6 +4152,7 @@ def get_table_data(file_name):
             "other_total": other_total_adjusted,
             "advertising_total": advertising_total_sum,
             "fee_percentages": fee_percentages,
+            "fee_status_breakdown": fee_status_breakdown,
             "sku_monthly_summary": sku_monthly_summary,
             "sku_monthly_rows": sku_monthly_rows,
             "sku_monthly_table": sku_monthly_table,
