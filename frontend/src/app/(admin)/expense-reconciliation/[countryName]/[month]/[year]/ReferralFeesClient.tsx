@@ -24,9 +24,10 @@ import { IoMdLock } from "react-icons/io";
 import SkuAgeingDonutChart, {
   type DonutChartItem,
 } from "@/components/common/inventory/SkuAgeingDonutChart";
-import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
+
 import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useAppSelector } from "@/lib/store";
+import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -162,6 +163,42 @@ type Card6Summary = {
 
   otherFees: number;            // charged
   otherFeesApplicable: number;  // applicable
+};
+
+type FeePercentageMetric = {
+  charged_net_sales_pct: number;
+  applicable_net_sales_pct: number;
+  charged_vs_applicable_pct: number;
+};
+
+type FeePercentages = {
+  referral_fees: FeePercentageMetric;
+  fba_fees: FeePercentageMetric;
+  platform_fees: FeePercentageMetric;
+  other_fees: FeePercentageMetric;
+};
+
+const EMPTY_FEE_PERCENTAGES: FeePercentages = {
+  referral_fees: {
+    charged_net_sales_pct: 0,
+    applicable_net_sales_pct: 0,
+    charged_vs_applicable_pct: 0,
+  },
+  fba_fees: {
+    charged_net_sales_pct: 0,
+    applicable_net_sales_pct: 0,
+    charged_vs_applicable_pct: 0,
+  },
+  platform_fees: {
+    charged_net_sales_pct: 0,
+    applicable_net_sales_pct: 0,
+    charged_vs_applicable_pct: 0,
+  },
+  other_fees: {
+    charged_net_sales_pct: 0,
+    applicable_net_sales_pct: 0,
+    charged_vs_applicable_pct: 0,
+  },
 };
 
 
@@ -414,12 +451,6 @@ const currencyFromCountryName = (countryName: string) => {
   if (c === "us") return "USD";
   // add more mappings later if needed
   return "USD";
-};
-
-const pctDelta = (current: number, previous: number) => {
-  const prev = toNumberSafe(previous);
-  if (prev === 0) return 0;
-  return ((toNumberSafe(current) - prev) / prev) * 100;
 };
 
 const fmtPct = (p: number) => `${Math.abs(p).toFixed(2)}%`;
@@ -757,6 +788,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
     otherFees: 0,
     otherFeesApplicable: 0,
   });
+  const [feePercentages, setFeePercentages] = useState<FeePercentages>(
+    EMPTY_FEE_PERCENTAGES
+  );
 
   const fmtCurrency = useCallback(
     (n: number): string => {
@@ -783,6 +817,68 @@ export default function ReferralFeesDashboard(): JSX.Element {
     },
     [displayCurrencyCode]
   );
+
+  const renderFeeCurrentValue = (
+    amount: number,
+    percentage: number
+  ): React.ReactNode => {
+    return (
+      <div className="flex items-baseline gap-1 leading-tight">
+        <span className="text-sm 2xl:text-lg font-semibold">
+          {fmtCurrencyRounded(amount)}
+        </span>
+
+        <span className="text-[10px] 2xl:text-xs text-charcoal-400 font-medium">
+          ({toNumberSafe(percentage).toFixed(2)}%)
+        </span>
+      </div>
+    );
+  };
+
+  const buildFeeComparison = (
+    applicableAmount: number,
+    applicablePct: number,
+    deltaPct: number | null
+  ) => {
+    const delta =
+      deltaPct == null || !Number.isFinite(Number(deltaPct))
+        ? null
+        : Number(deltaPct);
+
+    // For fees, reduction is good, increase is bad.
+    const deltaClassName =
+      delta == null || delta === 0
+        ? "text-gray-400"
+        : delta < 0
+          ? "text-emerald-600"
+          : "text-red-600";
+
+    return [
+      {
+        label: "Applicable",
+        valueText: `${fmtCurrencyRounded(applicableAmount)} (${toNumberSafe(
+          applicablePct
+        ).toFixed(2)}%)`,
+        deltaText:
+          delta == null
+            ? "-"
+            : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(2)}%`,
+        deltaClassName,
+      },
+    ];
+  };
+
+  // const fmtFeeWithBackendPct = useCallback(
+  //   (n: number, percentage: number): React.ReactNode => (
+  //     <>
+  //       <span>{fmtCurrencyRounded(n)}</span>
+  //       <span className="text-[11px] 2xl:text-sm ml-1">
+  //         ({toNumberSafe(percentage).toFixed(2)}%)
+  //       </span>
+  //     </>
+  //   ),
+  //   [fmtCurrencyRounded]
+  // );
 
   const DUMMY_CARD6: Card6Summary = {
     sales: 0,
@@ -1013,6 +1109,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setAllOrdersByStatus([]);
 
       setCard6(DUMMY_CARD6);
+      setFeePercentages(EMPTY_FEE_PERCENTAGES);
 
       return;
     }
@@ -1024,6 +1121,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
+      setFeePercentages(EMPTY_FEE_PERCENTAGES);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
       return;
     }
@@ -1065,6 +1163,54 @@ export default function ReferralFeesDashboard(): JSX.Element {
       if (!res.ok) throw new Error(`Failed to fetch referral data (${res.status})`);
 
       const json: any = await res.json();
+
+      const apiFeePercentages = json?.fee_percentages ?? {};
+      setFeePercentages({
+        referral_fees: {
+          charged_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.referral_fees?.charged_net_sales_pct
+          ),
+          applicable_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.referral_fees?.applicable_net_sales_pct
+          ),
+          charged_vs_applicable_pct: toNumberSafe(
+            apiFeePercentages?.referral_fees?.charged_vs_applicable_pct
+          ),
+        },
+        fba_fees: {
+          charged_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.fba_fees?.charged_net_sales_pct
+          ),
+          applicable_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.fba_fees?.applicable_net_sales_pct
+          ),
+          charged_vs_applicable_pct: toNumberSafe(
+            apiFeePercentages?.fba_fees?.charged_vs_applicable_pct
+          ),
+        },
+        platform_fees: {
+          charged_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.platform_fees?.charged_net_sales_pct
+          ),
+          applicable_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.platform_fees?.applicable_net_sales_pct
+          ),
+          charged_vs_applicable_pct: toNumberSafe(
+            apiFeePercentages?.platform_fees?.charged_vs_applicable_pct
+          ),
+        },
+        other_fees: {
+          charged_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.other_fees?.charged_net_sales_pct
+          ),
+          applicable_net_sales_pct: toNumberSafe(
+            apiFeePercentages?.other_fees?.applicable_net_sales_pct
+          ),
+          charged_vs_applicable_pct: toNumberSafe(
+            apiFeePercentages?.other_fees?.charged_vs_applicable_pct
+          ),
+        },
+      });
 
       const platformFeeTotalFromApi = toNumberSafe(json?.platform_fee_total);
       const otherTotalFromApi = toNumberSafe(json?.other_total);
@@ -1351,6 +1497,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
+      setFeePercentages(EMPTY_FEE_PERCENTAGES);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
     } finally {
       setLoading(false);
@@ -2037,16 +2184,22 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   className="mb-3"
                 />
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <AmazonStatCard
                     label="Referral Fees"
                     current={card6.refFeesApplied}
                     previous={card6.refFeesApplicable}
-                    deltaPct={pctDelta(card6.refFeesApplied, card6.refFeesApplicable)}
+                    deltaPct={feePercentages.referral_fees.charged_vs_applicable_pct}
                     inverseDelta
                     loading={false}
-                    formatter={fmtCurrencyRounded}
-                    previousFormatter={fmtCurrencyRounded}
+                    formatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.referral_fees.charged_net_sales_pct
+                    )}
+                    previousFormatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.referral_fees.applicable_net_sales_pct
+                    )}
                     bottomLabel="Applicable"
                     className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                   />
@@ -2054,11 +2207,17 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     label="FBA Fees"
                     current={card6.fbaFees}
                     previous={card6.fbaFeesApplicable}
-                    deltaPct={pctDelta(card6.fbaFees, card6.fbaFeesApplicable)}
+                    deltaPct={feePercentages.fba_fees.charged_vs_applicable_pct}
                     inverseDelta
                     loading={false}
-                    formatter={fmtCurrencyRounded}
-                    previousFormatter={fmtCurrencyRounded}
+                    formatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.fba_fees.charged_net_sales_pct
+                    )}
+                    previousFormatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.fba_fees.applicable_net_sales_pct
+                    )}
                     bottomLabel="Applicable"
                     className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                   />
@@ -2066,11 +2225,17 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     label="Platform Fees"
                     current={card6.platformFees}
                     previous={card6.platformFeesApplicable}
-                    deltaPct={pctDelta(card6.platformFees, card6.platformFeesApplicable)}
+                    deltaPct={feePercentages.platform_fees.charged_vs_applicable_pct}
                     inverseDelta
                     loading={false}
-                    formatter={fmtCurrencyRounded}
-                    previousFormatter={fmtCurrencyRounded}
+                    formatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.platform_fees.charged_net_sales_pct
+                    )}
+                    previousFormatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.platform_fees.applicable_net_sales_pct
+                    )}
                     bottomLabel="Applicable"
                     className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                   />
@@ -2078,13 +2243,77 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     label="Other Fees"
                     current={card6.otherFees}
                     previous={card6.otherFeesApplicable}
-                    deltaPct={pctDelta(card6.otherFees, card6.otherFeesApplicable)}
+                    deltaPct={feePercentages.other_fees.charged_vs_applicable_pct}
                     inverseDelta
                     loading={false}
-                    formatter={fmtCurrencyRounded}
-                    previousFormatter={fmtCurrencyRounded}
+                    formatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.other_fees.charged_net_sales_pct
+                    )}
+                    previousFormatter={(value) => fmtFeeWithBackendPct(
+                      value,
+                      feePercentages.other_fees.applicable_net_sales_pct
+                    )}
                     bottomLabel="Applicable"
                     className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
+                  />
+                </div> */}
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <SummaryMetricCard
+                    title="Referral Fees"
+                    value={renderFeeCurrentValue(
+                      card6.refFeesApplied,
+                      feePercentages.referral_fees.charged_net_sales_pct
+                    )}
+                    comparisons={buildFeeComparison(
+                      card6.refFeesApplicable,
+                      feePercentages.referral_fees.applicable_net_sales_pct,
+                      feePercentages.referral_fees.charged_vs_applicable_pct
+                    )}
+                    className="bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                  />
+
+                  <SummaryMetricCard
+                    title="FBA Fees"
+                    value={renderFeeCurrentValue(
+                      card6.fbaFees,
+                      feePercentages.fba_fees.charged_net_sales_pct
+                    )}
+                    comparisons={buildFeeComparison(
+                      card6.fbaFeesApplicable,
+                      feePercentages.fba_fees.applicable_net_sales_pct,
+                      feePercentages.fba_fees.charged_vs_applicable_pct
+                    )}
+                    className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                  />
+
+                  <SummaryMetricCard
+                    title="Platform Fees"
+                    value={renderFeeCurrentValue(
+                      card6.platformFees,
+                      feePercentages.platform_fees.charged_net_sales_pct
+                    )}
+                    comparisons={buildFeeComparison(
+                      card6.platformFeesApplicable,
+                      feePercentages.platform_fees.applicable_net_sales_pct,
+                      feePercentages.platform_fees.charged_vs_applicable_pct
+                    )}
+                    className="bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+                  />
+
+                  <SummaryMetricCard
+                    title="Other Fees"
+                    value={renderFeeCurrentValue(
+                      card6.otherFees,
+                      feePercentages.other_fees.charged_net_sales_pct
+                    )}
+                    comparisons={buildFeeComparison(
+                      card6.otherFeesApplicable,
+                      feePercentages.other_fees.applicable_net_sales_pct,
+                      feePercentages.other_fees.charged_vs_applicable_pct
+                    )}
+                    className="bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                   />
                 </div>
               </section>
