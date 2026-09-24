@@ -32,9 +32,7 @@ import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import { PlatformId, platformToCountryName } from "@/lib/utils/platforms";
 import ProductJourneyInlineGraph from "@/components/businessInsight/ProductJourneyInlineGraph";
-import ProductSearchDropdown, {
-  ProductSearchProduct,
-} from "@/components/products/ProductSearchDropdown";
+import type { ProductSearchProduct } from "@/components/products/ProductSearchDropdown";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
@@ -434,6 +432,7 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
     useState(initialProductName);
   const [activeJourneyTab, setActiveJourneyTab] =
     useState<SkuJourneySectionTab>("overall");
+  const [catalogSearchQuery, setCatalogSearchQuery] = useState("");
   const [productCatalog, setProductCatalog] = useState<ProductImageMeta[]>([]);
   const [selectedProductMeta, setSelectedProductMeta] =
     useState<ProductImageMeta | null>(null);
@@ -1925,6 +1924,23 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
       ? periodSkuCatalogItems
       : sharedCatalogItems;
 
+    const normalizedCatalogSearch = normalizeTextKey(catalogSearchQuery);
+    const filteredCatalogItems = normalizedCatalogSearch
+      ? catalogItems.filter((item) =>
+        [
+          item.name,
+          item.skuKey,
+          item.imageMeta?.sku,
+          item.imageMeta?.sku_us,
+          item.imageMeta?.sku_uk,
+          item.imageMeta?.sku_canada,
+          item.imageMeta?.asin,
+        ]
+          .map((value) => normalizeTextKey(String(value || "")))
+          .some((value) => value.includes(normalizedCatalogSearch))
+      )
+      : catalogItems;
+
     const selectedCatalogItem = catalogItems.find((item) =>
       [item.name, item.skuKey]
         .map((value) => normalizeTextKey(String(value || "")))
@@ -1994,8 +2010,8 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
         );
 
     return (
-      <div className="grid w-full min-w-0 max-w-full items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-[140px] lg:flex lg:h-[calc(100dvh-250px)] lg:flex-col">
+      <div className="grid w-full min-w-0 max-w-full items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm lg:sticky lg:top-[140px] lg:order-2 lg:flex lg:h-[calc(100dvh-250px)] lg:flex-col">
           <div className="shrink-0">
             <div className="mb-3 flex items-center justify-between gap-3">
               <PageBreadcrumb
@@ -2012,22 +2028,33 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
               ) : null}
             </div>
 
-            <ProductSearchDropdown
-              authToken={authToken}
-              countryName={productCatalogCountry}
-              range={range}
-              selectedMonth={selectedMonth}
-              selectedQuarter={selectedQuarter}
-              selectedYear={selectedYear}
-              homeCurrency={productCatalogHomeCurrency}
-              dedupeBy="sku"
-              onProductSelect={handleInlineProductSelect}
-            />
+            <div className="relative">
+              <input
+                type="search"
+                value={catalogSearchQuery}
+                onChange={(event) => setCatalogSearchQuery(event.target.value)}
+                placeholder="Search products"
+                aria-label="Search product catalog"
+                className="w-full rounded-lg border border-[#C4C4C4] bg-[#FBFBFB] py-1.5 pl-8 pr-3 text-xs text-charcoal-500 shadow-sm outline-none focus:border-[#C4C4C4] focus:ring-0 sm:py-2 sm:pl-9 sm:pr-4 sm:text-sm"
+              />
+
+              <svg
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#C2C2C2]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </div>
           </div>
 
           <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {catalogItems.length > 0 ? (
-              catalogItems.map((block) => {
+            {filteredCatalogItems.length > 0 ? (
+              filteredCatalogItems.map((block) => {
                 const active = isCatalogItemActive(block);
                 const skuText = String(block.skuKey || block.imageMeta?.sku || "").trim();
 
@@ -2080,13 +2107,15 @@ const ProductwisePerformance: React.FC<ProductwisePerformanceProps> = ({
               })
             ) : (
               <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-500">
-                Search for a product to load SKU journey insights.
+                {normalizedCatalogSearch
+                  ? `No products found for "${catalogSearchQuery.trim()}".`
+                  : "Search for a product to load SKU journey insights."}
               </div>
             )}
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-col gap-4">
+        <main className="flex min-w-0 flex-col gap-4 lg:order-1">
           <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <ProductImageThumb
