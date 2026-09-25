@@ -2208,9 +2208,33 @@ export function exportReferralFeesExcel({
         ? belongsToVarianceOrder
         : rowStatus === "Accurate" && !belongsToVarianceOrder;
     });
+    const rowsByOrderId = new Map<string, typeof matchingRows>();
+    const orderedRowGroups: Array<typeof matchingRows> = [];
+
+    if (includeVarianceOrders) {
+      matchingRows.forEach((row) => {
+        const orderId = String(row?.order_id ?? "").trim();
+        if (!orderId) {
+          orderedRowGroups.push([row]);
+          return;
+        }
+
+        let orderRows = rowsByOrderId.get(orderId);
+        if (!orderRows) {
+          orderRows = [];
+          rowsByOrderId.set(orderId, orderRows);
+          orderedRowGroups.push(orderRows);
+        }
+        orderRows.push(row);
+      });
+    }
+
+    const orderedMatchingRows = includeVarianceOrders
+      ? orderedRowGroups.flat()
+      : matchingRows;
     const orderRows: any[][] = [];
 
-    matchingRows.forEach((row) => {
+    orderedMatchingRows.forEach((row) => {
       const rowStatus = getReferralOrderStatus(row);
       if (!rowStatus) return;
       const quantity =
