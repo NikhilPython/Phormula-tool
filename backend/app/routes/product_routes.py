@@ -965,6 +965,58 @@ def _fee_percentage_metrics(
     }
 
 
+def _referral_fee_insight_metrics(
+    *,
+    overcharged_amount,
+    overcharged_units,
+    accurate_units,
+    total_units,
+    applicable_fees,
+    net_variance,
+):
+    def _number(value):
+        try:
+            number = float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        return 0.0 if pd.isna(number) else number
+
+    overcharge = max(0.0, _number(overcharged_amount))
+    affected_units = max(0.0, _number(overcharged_units))
+    accurate = max(0.0, _number(accurate_units))
+    units = max(0.0, _number(total_units))
+    applicable = max(0.0, _number(applicable_fees))
+
+    if applicable > 0:
+        overcharge_rate = round((overcharge / applicable) * 100, 2)
+    elif overcharge > 0:
+        overcharge_rate = 100.0
+    else:
+        overcharge_rate = 0.0
+
+    affected_units_rate = round((affected_units / units) * 100, 2) if units > 0 else 0.0
+    accurate_units_rate = round((accurate / units) * 100, 2) if units > 0 else 0.0
+
+    if overcharge <= 0.01:
+        status = "clear"
+    elif overcharge_rate <= 2:
+        status = "low"
+    elif overcharge_rate <= 5:
+        status = "review"
+    else:
+        status = "action"
+
+    return {
+        "status": status,
+        "overcharged_amount": round(overcharge, 2),
+        "overcharged_units": round(affected_units),
+        "overcharge_rate_pct": overcharge_rate,
+        "affected_units_pct": affected_units_rate,
+        "accurate_units_pct": accurate_units_rate,
+        "net_variance": round(_number(net_variance), 2),
+    }
+
+
 def _expense_reconciliation_api_response(
     *,
     table_name,
@@ -1181,8 +1233,13 @@ def _expense_reconciliation_api_response(
             summary[field] = float(sum(float(record.get(field, 0) or 0) for record in records))
         return summary
 
+    status_summaries = {}
     for status in status_order:
-        display_records.append(_summary_record(status, summary_status_records[status]))
+        status_summaries[status] = _summary_record(
+            status,
+            summary_status_records[status],
+        )
+        display_records.append(status_summaries[status])
 
     display_records.extend(detail_records)
 
@@ -1213,6 +1270,17 @@ def _expense_reconciliation_api_response(
         other_charged=other_fee_total,
         other_applicable=grand_record.get("other_fees_applicable", 0),
     )
+    referral_fee_insight = _referral_fee_insight_metrics(
+        overcharged_amount=status_summaries["Overcharged"].get("difference", 0),
+        overcharged_units=status_summaries["Overcharged"].get("quantity", 0),
+        accurate_units=status_summaries["Accurate"].get("quantity", 0),
+        total_units=sum(
+            status_summaries[status].get("quantity", 0)
+            for status in ("Accurate", "Undercharged", "Overcharged")
+        ),
+        applicable_fees=grand_record.get("answer", 0),
+        net_variance=grand_record.get("difference", 0),
+    )
 
     return {
         "success": True,
@@ -1229,6 +1297,7 @@ def _expense_reconciliation_api_response(
         "platform_fee_total": platform_fee_total,
         "other_total": other_fee_total,
         "fee_percentages": fee_percentages,
+        "referral_fee_insight": referral_fee_insight,
         "advertising_total": 0,
         "sku_monthly_summary": grand_record if range_ == "monthly" else {},
         "sku_monthly_rows": detail_records if range_ == "monthly" else [],
@@ -4045,6 +4114,24 @@ def get_table_data(file_name):
             other_charged=other_total_adjusted,
             other_applicable=other_total_adjusted,
         )
+        fallback_overcharged = over_total.iloc[-1].to_dict() if not over_total.empty else {}
+        fallback_accurate = acc_total.iloc[-1].to_dict() if not acc_total.empty else {}
+        fallback_undercharged = under_total.iloc[-1].to_dict() if not under_total.empty else {}
+        referral_fee_insight = _referral_fee_insight_metrics(
+            overcharged_amount=fallback_overcharged.get("difference", 0),
+            overcharged_units=fallback_overcharged.get("quantity", 0),
+            accurate_units=fallback_accurate.get("quantity", 0),
+            total_units=sum(
+                row.get("quantity", 0)
+                for row in (
+                    fallback_accurate,
+                    fallback_undercharged,
+                    fallback_overcharged,
+                )
+            ),
+            applicable_fees=fallback_grand.get("answer", 0),
+            net_variance=fallback_grand.get("difference", 0),
+        )
 
         return jsonify({
             "success": True,
@@ -4063,6 +4150,7 @@ def get_table_data(file_name):
             "other_total": other_total_adjusted,
             "advertising_total": advertising_total_sum,
             "fee_percentages": fee_percentages,
+            "referral_fee_insight": referral_fee_insight,
             "sku_monthly_summary": sku_monthly_summary,
             "sku_monthly_rows": sku_monthly_rows,
             "sku_monthly_table": sku_monthly_table,

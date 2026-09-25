@@ -178,6 +178,16 @@ type FeePercentages = {
   other_fees: FeePercentageMetric;
 };
 
+type ReferralFeeInsight = {
+  status: "clear" | "low" | "review" | "action";
+  overcharged_amount: number;
+  overcharged_units: number;
+  overcharge_rate_pct: number;
+  affected_units_pct: number;
+  accurate_units_pct: number;
+  net_variance: number;
+};
+
 const EMPTY_FEE_PERCENTAGES: FeePercentages = {
   referral_fees: {
     charged_net_sales_pct: 0,
@@ -199,6 +209,16 @@ const EMPTY_FEE_PERCENTAGES: FeePercentages = {
     applicable_net_sales_pct: 0,
     charged_vs_applicable_pct: 0,
   },
+};
+
+const EMPTY_REFERRAL_FEE_INSIGHT: ReferralFeeInsight = {
+  status: "clear",
+  overcharged_amount: 0,
+  overcharged_units: 0,
+  overcharge_rate_pct: 0,
+  affected_units_pct: 0,
+  accurate_units_pct: 0,
+  net_variance: 0,
 };
 
 
@@ -738,9 +758,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
   });
 
   const [showAllProductRows, setShowAllProductRows] = useState(false);
+  const [showDeepDive, setShowDeepDive] = useState(false);
 
   useEffect(() => {
     setShowAllProductRows(false);
+    setShowDeepDive(false);
   }, [country, month, range, selectedQuarter, year]);
 
   const isPreviewMode =
@@ -791,6 +813,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [feePercentages, setFeePercentages] = useState<FeePercentages>(
     EMPTY_FEE_PERCENTAGES
   );
+  const [referralFeeInsight, setReferralFeeInsight] =
+    useState<ReferralFeeInsight>(EMPTY_REFERRAL_FEE_INSIGHT);
 
   const fmtCurrency = useCallback(
     (n: number): string => {
@@ -1110,6 +1134,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       setCard6(DUMMY_CARD6);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
+      setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
 
       return;
     }
@@ -1122,6 +1147,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
+      setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
       return;
     }
@@ -1210,6 +1236,22 @@ export default function ReferralFeesDashboard(): JSX.Element {
             apiFeePercentages?.other_fees?.charged_vs_applicable_pct
           ),
         },
+      });
+
+      const apiReferralFeeInsight = json?.referral_fee_insight ?? {};
+      const insightStatus = ["clear", "low", "review", "action"].includes(
+        apiReferralFeeInsight?.status
+      )
+        ? apiReferralFeeInsight.status
+        : "clear";
+      setReferralFeeInsight({
+        status: insightStatus,
+        overcharged_amount: toNumberSafe(apiReferralFeeInsight?.overcharged_amount),
+        overcharged_units: toNumberSafe(apiReferralFeeInsight?.overcharged_units),
+        overcharge_rate_pct: toNumberSafe(apiReferralFeeInsight?.overcharge_rate_pct),
+        affected_units_pct: toNumberSafe(apiReferralFeeInsight?.affected_units_pct),
+        accurate_units_pct: toNumberSafe(apiReferralFeeInsight?.accurate_units_pct),
+        net_variance: toNumberSafe(apiReferralFeeInsight?.net_variance),
       });
 
       const platformFeeTotalFromApi = toNumberSafe(json?.platform_fee_total);
@@ -1497,6 +1539,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
+      setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
     } finally {
       setLoading(false);
@@ -2021,6 +2064,84 @@ export default function ReferralFeesDashboard(): JSX.Element {
     [reconciliationStatuses]
   );
 
+  const reconciliationInsight = useMemo(() => {
+    const overchargedAmount = referralFeeInsight.overcharged_amount;
+    const overchargedUnits = referralFeeInsight.overcharged_units;
+    const overchargeRate = referralFeeInsight.overcharge_rate_pct;
+    const affectedUnitsRate = referralFeeInsight.affected_units_pct;
+    const accurateUnitsRate = referralFeeInsight.accurate_units_pct;
+    const netVariance = referralFeeInsight.net_variance;
+
+    if (referralFeeInsight.status === "clear") {
+      return {
+        label: "No action needed",
+        title: "Your referral fees are reconciled",
+        message:
+          "We found no referral fee overcharges for this period. Fees charged align with our calculated applicable fees, so there is nothing you need to action right now.",
+        accent: "#5EA68E",
+        surface: "#EEF8F4",
+        overchargedAmount,
+        overchargedUnits,
+        overchargeRate,
+        affectedUnitsRate,
+        accurateUnitsRate,
+        netVariance,
+      };
+    }
+
+    if (referralFeeInsight.status === "low") {
+      return {
+        label: "No immediate action needed",
+        title: "Your referral fees are broadly on track",
+        message: `We found ${fmtCurrency(overchargedAmount)} in potential overcharges, equal to ${overchargeRate.toFixed(2)}% of applicable referral fees. The value is within a low-variance range, so no immediate action is required.`,
+        accent: "#5EA68E",
+        surface: "#EEF8F4",
+        overchargedAmount,
+        overchargedUnits,
+        overchargeRate,
+        affectedUnitsRate,
+        accurateUnitsRate,
+        netVariance,
+      };
+    }
+
+    if (referralFeeInsight.status === "review") {
+      return {
+        label: "Review recommended",
+        title: "A referral fee variance is worth reviewing",
+        message: `Potential overcharges total ${fmtCurrency(overchargedAmount)}, or ${overchargeRate.toFixed(2)}% of applicable referral fees. Review the affected products and orders to confirm whether follow-up is needed.`,
+        accent: "#ED9F50",
+        surface: "#FFF7ED",
+        overchargedAmount,
+        overchargedUnits,
+        overchargeRate,
+        affectedUnitsRate,
+        accurateUnitsRate,
+        netVariance,
+      };
+    }
+
+    return {
+      label: "Action recommended",
+      title: "Referral fee overcharges need attention",
+      message: `Fees charged are materially above our calculated applicable fees. We found ${fmtCurrency(overchargedAmount)} in potential overcharges across ${fmtInteger(overchargedUnits)} units. Open the detailed analysis to identify the affected products and orders.`,
+      accent: "#B75A5A",
+      surface: "#FEF2F2",
+      overchargedAmount,
+      overchargedUnits,
+      overchargeRate,
+      affectedUnitsRate,
+      accurateUnitsRate,
+      netVariance,
+    };
+  }, [fmtCurrency, referralFeeInsight]);
+
+  const selectedPeriodLabel = useMemo(() => {
+    if (range === "yearly") return year;
+    if (range === "quarterly") return `${selectedQuarter} ${year}`;
+    return `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`;
+  }, [month, range, selectedQuarter, year]);
+
 
   return (
     <div className="space-y-1.5 font-sans text-charcoal-500">
@@ -2153,6 +2274,103 @@ export default function ReferralFeesDashboard(): JSX.Element {
           onAction={handlePreviewAction}
         >
           <>
+            {!showDeepDive ? (
+              <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div
+                  className="h-1.5 w-full"
+                  style={{ backgroundColor: reconciliationInsight.accent }}
+                />
+
+                <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
+                  <div className="mx-auto max-w-5xl">
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="max-w-3xl">
+                        <div
+                          className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
+                          style={{
+                            backgroundColor: reconciliationInsight.surface,
+                            color: reconciliationInsight.accent,
+                          }}
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: reconciliationInsight.accent }}
+                          />
+                          {reconciliationInsight.label}
+                        </div>
+
+                        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                          Referral fee review · {selectedPeriodLabel}
+                        </p>
+                        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#414042] sm:text-3xl">
+                          {reconciliationInsight.title}
+                        </h2>
+                        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+                          {reconciliationInsight.message}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowDeepDive(true)}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#37455F] px-5 py-3 text-sm font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2"
+                      >
+                        Explore detailed analysis
+                        <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+
+                    <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-xs font-medium text-slate-500">Potential overcharge</p>
+                        <p className="mt-1 text-xl font-semibold text-[#414042]">
+                          {fmtCurrency(reconciliationInsight.overchargedAmount)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {reconciliationInsight.overchargeRate.toFixed(2)}% of applicable referral fees
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-xs font-medium text-slate-500">Units to review</p>
+                        <p className="mt-1 text-xl font-semibold text-[#414042]">
+                          {fmtInteger(reconciliationInsight.overchargedUnits)}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {reconciliationInsight.affectedUnitsRate.toFixed(2)}% of reconciled units
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                        <p className="text-xs font-medium text-slate-500">Accurately charged units</p>
+                        <p className="mt-1 text-xl font-semibold text-[#414042]">
+                          {reconciliationInsight.accurateUnitsRate.toFixed(2)}%
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Net fee variance: {fmtCurrency(reconciliationInsight.netVariance)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              <>
+                <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div>
+                    <p className="text-sm font-semibold text-[#414042]">Detailed referral fee analysis</p>
+                    <p className="text-xs text-slate-500">Product, fee type, and order-level reconciliation</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeepDive(false)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#37455F] bg-white px-4 py-2 text-sm font-semibold text-[#37455F] transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2"
+                  >
+                    <span aria-hidden="true">←</span>
+                    Back to overview
+                  </button>
+                </div>
+
             <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-stretch 2xl:grid-cols-2">
               <SkuAgeingDonutChart
                 title="Reconciliation Distribution"
@@ -2941,6 +3159,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
               </div>
             </div>
+              </>
+            )}
           </>
         </PreviewLockedSection>
       )}
