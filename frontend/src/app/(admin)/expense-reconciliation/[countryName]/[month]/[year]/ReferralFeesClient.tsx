@@ -2280,7 +2280,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                 {/* Soft background decoration */}
                 <div
                   className="pointer-events-none absolute inset-0 opacity-90"
-                  
+
                 />
 
                 {/* Decorative wave */}
@@ -2407,41 +2407,59 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   {/* =====================================================
           METRIC CARDS
       ====================================================== */}
-                  <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-3 2xl:gap-3">
-                    <SummaryMetricCard
-                      title="Potential overcharge"
-                      value={fmtCurrency(reconciliationInsight.overchargedAmount)}
-                      comparisons={[{
-                        label: "Share of applicable fees",
-                        valueText: `${reconciliationInsight.overchargeRate.toFixed(2)}%`,
-                        deltaText: "",
-                      }]}
-                      className="bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
-                    />
+                    <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <SummaryMetricCard
+                        title="Potential overcharge"
+                        value={(
+                          <div>
+                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                              {fmtCurrency(reconciliationInsight.overchargedAmount)}
+                            </div>
+                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
+                              {reconciliationInsight.overchargeRate.toFixed(2)}% of applicable referral fees
+                            </div>
+                          </div>
+                        )}
+                        className="border border-[#B75A5A] border-t-4 border-t-[#B75A5A] bg-white/90 px-5 py-5 backdrop-blur"
+                        titleClassName="text-xs text-[#52617C] sm:text-sm"
+                        valueClassName="mt-2"
+                      />
 
-                    <SummaryMetricCard
-                      title="Units to review"
-                      value={fmtInteger(reconciliationInsight.overchargedUnits)}
-                      comparisons={[{
-                        label: "Share of reconciled units",
-                        valueText: `${reconciliationInsight.affectedUnitsRate.toFixed(2)}%`,
-                        deltaText: "",
-                      }]}
-                      className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                    />
+                      <SummaryMetricCard
+                        title="Units to review"
+                        value={(
+                          <div>
+                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                              {fmtInteger(reconciliationInsight.overchargedUnits)}
+                            </div>
+                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
+                              {reconciliationInsight.affectedUnitsRate.toFixed(2)}% of reconciled units
+                            </div>
+                          </div>
+                        )}
+                        className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white/90 px-5 py-5 backdrop-blur"
+                        titleClassName="text-xs text-[#52617C] sm:text-sm"
+                        valueClassName="mt-2"
+                      />
 
-                    <SummaryMetricCard
-                      title="Accurately charged units"
-                      value={`${reconciliationInsight.accurateUnitsRate.toFixed(2)}%`}
-                      comparisons={[{
-                        label: "Net fee variance",
-                        valueText: fmtCurrency(reconciliationInsight.netVariance),
-                        deltaText: "",
-                      }]}
-                      className="bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
-                    />
+                      <SummaryMetricCard
+                        title="Accurately charged units"
+                        value={(
+                          <div>
+                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                              {reconciliationInsight.accurateUnitsRate.toFixed(2)}%
+                            </div>
+                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
+                              Net fee variance: {fmtCurrency(reconciliationInsight.netVariance)}
+                            </div>
+                          </div>
+                        )}
+                        className="border border-[#75BBDA] border-t-4 border-t-[#75BBDA] bg-white/90 px-5 py-5 backdrop-blur"
+                        titleClassName="text-xs text-[#52617C] sm:text-sm"
+                        valueClassName="mt-2"
+                      />
+                    </div>
                   </div>
-                </div>
               </section>
             ) : (
               <>
