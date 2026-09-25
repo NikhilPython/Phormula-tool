@@ -18,7 +18,7 @@ from app.routes.amazon_sales_api_routes import _normalize_sku_row
 from app.utils.token_utils import create_database_if_not_exists, get_effective_user_id_from_token
 from sqlalchemy import text
 import pandas as pd
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from datetime import date
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
@@ -64,7 +64,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v18_backend_fee_percentages"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v19_total_amount"
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -82,6 +82,20 @@ def _calculate_us_referral_fee_applicable(
         (applicable_base * rate / Decimal("100")).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
+        )
+    )
+
+
+def _calculate_total_amount(total, quantity):
+    total_value = Decimal(str(total or 0))
+    units = Decimal(str(quantity or 0))
+    if units <= 0:
+        return 0.0
+
+    return float(
+        (total_value / units).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN,
         )
     )
 
@@ -351,6 +365,7 @@ def _materialize_expense_reconciliation_table(
         "units",
         "gross_sales",
         "net_sales",
+        "total_amount",
         "product_sales",
         "shipping_credits",
         "promotional_rebates",
@@ -488,6 +503,21 @@ def _materialize_expense_reconciliation_table(
                     "overcharged": "Overcharged",
                 }).fillna("noreferallfee")
 
+            raw_units = _raw_numeric("total_quantity", "quantity")
+            raw_net_sales = _raw_numeric(
+                "net_sales_total_value",
+                "net_sales",
+                "product_sales",
+            )
+            raw_total_amount = pd.Series(
+                [
+                    _calculate_total_amount(total, units)
+                    for total, units in zip(raw_net_sales, raw_units)
+                ],
+                index=raw_status.index,
+                dtype="float64",
+            )
+
             status_detail_rows = pd.DataFrame({
                 "record_type": "detail",
                 "source_order": range(len(raw_status)),
@@ -499,13 +529,10 @@ def _materialize_expense_reconciliation_table(
                 ),
                 "status": raw_status_name,
                 "errorstatus": raw_errorstatus,
-                "units": _raw_numeric("total_quantity", "quantity"),
+                "units": raw_units,
                 "gross_sales": _raw_numeric("gross_sales", "product_sales"),
-                "net_sales": _raw_numeric(
-                    "net_sales_total_value",
-                    "net_sales",
-                    "product_sales",
-                ),
+                "net_sales": raw_net_sales,
+                "total_amount": raw_total_amount,
                 "product_sales": _raw_numeric("product_sales"),
                 "shipping_credits": _raw_numeric("shipping_credits"),
                 "promotional_rebates": _raw_numeric("promotional_rebates"),
@@ -816,6 +843,7 @@ def _materialize_expense_reconciliation_table(
         for column in [
             "gross_sales",
             "net_sales",
+            "total_amount",
             "product_sales",
             "shipping_credits",
             "promotional_rebates",
@@ -1091,6 +1119,7 @@ def _expense_reconciliation_api_response(
             "product_sales": net_sales,
             "net_sales": net_sales,
             "net_sales_total_value": net_sales,
+            "total_amount": _calculate_total_amount(net_sales, units),
             "answer": applicable,
             "selling_fees": charged,
             "fbaanswer": fba_applicable,
@@ -1126,6 +1155,7 @@ def _expense_reconciliation_api_response(
         "units",
         "gross_sales",
         "net_sales",
+        "total_amount",
         "product_sales",
         "shipping_credits",
         "promotional_rebates",
@@ -1163,6 +1193,11 @@ def _expense_reconciliation_api_response(
         )
         difference = float(row.get("difference", 0) or 0)
         applicable = float(row.get("referral_fees_applicable", 0) or 0)
+        units = float(row.get("units", 0) or 0)
+        net_sales = float(row.get("net_sales", 0) or 0)
+        total_amount = float(
+            row.get("total_amount", _calculate_total_amount(net_sales, units)) or 0
+        )
         errorstatus = str(row.get("errorstatus", "") or "").strip()
         if not errorstatus:
             errorstatus = "OK" if resolved_status == "Accurate" else resolved_status.lower()
@@ -1170,16 +1205,17 @@ def _expense_reconciliation_api_response(
             "order_id": str(row.get("order_id", "") or ""),
             "sku": str(row.get("sku", "") or ""),
             "product_name": str(row.get("product_name", "") or ""),
-            "quantity": float(row.get("units", 0) or 0),
+            "quantity": units,
             "return_quantity": 0,
-            "total_quantity": float(row.get("units", 0) or 0),
+            "total_quantity": units,
             "gross_sales": float(row.get("gross_sales", 0) or 0),
             "product_sales": float(row.get("product_sales", row.get("gross_sales", 0)) or 0),
             "shipping_credits": float(row.get("shipping_credits", 0) or 0),
             "promotional_rebates": float(row.get("promotional_rebates", 0) or 0),
             "referral_fee_per": float(row.get("referral_fee_per", 0) or 0),
-            "net_sales": float(row.get("net_sales", 0) or 0),
-            "net_sales_total_value": float(row.get("net_sales", 0) or 0),
+            "net_sales": net_sales,
+            "net_sales_total_value": net_sales,
+            "total_amount": total_amount,
             "answer": applicable,
             "selling_fees": float(row.get("referral_fees_charged", 0) or 0),
             "fbaanswer": float(row.get("fba_fees_applicable", 0) or 0),
@@ -3859,6 +3895,20 @@ def get_table_data(file_name):
         ).fillna(0)
         df = df.loc[net_sales_values >= 0].copy()
 
+        total_amount_units = pd.to_numeric(
+            df.get("total_quantity", pd.Series(0, index=df.index)),
+            errors="coerce",
+        ).fillna(0)
+        fallback_quantity = pd.to_numeric(
+            df.get("quantity", pd.Series(0, index=df.index)),
+            errors="coerce",
+        ).fillna(0)
+        total_amount_units = total_amount_units.where(total_amount_units > 0, fallback_quantity)
+        df["total_amount"] = [
+            _calculate_total_amount(total, units)
+            for total, units in zip(df["net_sales_total_value"], total_amount_units)
+        ]
+
         def status_row(row):
             es = str(row.get("errorstatus", "")).lower()
             if es == "ok":
@@ -3880,7 +3930,7 @@ def get_table_data(file_name):
 
         req_cols = [
             "sku", "product_name", "product_sales",
-            "net_sales_total_value", "selling_fees", "fba_fees",
+            "net_sales_total_value", "total_amount", "selling_fees", "fba_fees",
             "fbaanswer", "answer", "errorstatus", "difference", "status",
             "quantity", "return_quantity", "total_quantity", "total_value"
         ]
@@ -3907,6 +3957,13 @@ def get_table_data(file_name):
         
 
         final_df = final_df.groupby(["sku", "product_name", "status"], as_index=False)[agg_cols].sum()
+        final_df["total_amount"] = [
+            _calculate_total_amount(total, units)
+            for total, units in zip(
+                final_df["net_sales_total_value"],
+                final_df["total_quantity"],
+            )
+        ]
 
         accurate_df = final_df[final_df["status"] == "Accurate"]
         under_df    = final_df[final_df["status"] == "Undercharged"]
@@ -3928,6 +3985,10 @@ def get_table_data(file_name):
                         row[c] = float(_df[c].abs().sum())
                 else:
                     row[c] = float(_df[c].sum())
+            row["total_amount"] = _calculate_total_amount(
+                row.get("net_sales_total_value", 0),
+                row.get("total_quantity", 0),
+            )
             return pd.DataFrame([row])
 
         acc_total   = create_total_row(accurate_df, "Accurate")
@@ -3951,6 +4012,10 @@ def get_table_data(file_name):
                 )
             else:
                 grand_row[c] = float(final_df[c].sum())
+        grand_row["total_amount"] = _calculate_total_amount(
+            grand_row.get("net_sales_total_value", 0),
+            grand_row.get("total_quantity", 0),
+        )
         grand_total = pd.DataFrame([grand_row])
 
         final_display_df = pd.concat(
