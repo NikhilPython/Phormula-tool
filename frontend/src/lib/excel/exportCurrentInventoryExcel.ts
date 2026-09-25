@@ -2075,7 +2075,6 @@ export function exportReferralFeesExcel({
     "",
     "",
     "",
-    "Total Amount",
     "Referral Fee %",
     "Referral Fees",
     "",
@@ -2093,7 +2092,6 @@ export function exportReferralFeesExcel({
     "Promotional Rebates",
     "Total",
     "",
-    "",
     "Applicable",
     "Charged",
     "Difference",
@@ -2108,7 +2106,6 @@ export function exportReferralFeesExcel({
     "(+)",
     "(+)",
     "(-)",
-    "(+)",
     "(+)",
     "(%)",
     "(-)",
@@ -2154,7 +2151,7 @@ export function exportReferralFeesExcel({
       const quantity =
         scaledUnitsByStatus.get(status)?.[index] ?? getReferralDisplayUnits(row);
       const displayQuantity = Math.round(quantity);
-      const total = getReferralNetSales(row);
+      const total = referralNumber(row.total_amount);
       const applicable = referralNumber(row.answer);
       const charged =
         status === "Accurate" ? applicable : getReferralChargedFees(row);
@@ -2171,10 +2168,6 @@ export function exportReferralFeesExcel({
       );
       const promotionalRebatesByUnit = allocateReferralAmountByUnits(
         Math.abs(referralNumber(row.promotional_rebates)),
-        displayQuantity
-      );
-      const totalsByUnit = allocateReferralAmountByUnits(
-        total,
         displayQuantity
       );
       const applicableByUnit = allocateReferralAmountByUnits(
@@ -2201,8 +2194,7 @@ export function exportReferralFeesExcel({
           productSalesByUnit[unitIndex] ?? 0,
           shippingCreditsByUnit[unitIndex] ?? 0,
           promotionalRebatesByUnit[unitIndex] ?? 0,
-          totalsByUnit[unitIndex] ?? 0,
-          totalsByUnit[unitIndex] ?? 0,
+          total,
           referralNumber(row.referral_fee_per),
           unitApplicable,
           unitCharged,
@@ -2247,15 +2239,11 @@ export function exportReferralFeesExcel({
       },
       {
         s: { r: orderHeaderRow, c: 10 },
-        e: { r: orderHeaderRow + 1, c: 10 },
+        e: { r: orderHeaderRow, c: 12 },
       },
       {
-        s: { r: orderHeaderRow, c: 11 },
-        e: { r: orderHeaderRow, c: 13 },
-      },
-      {
-        s: { r: orderHeaderRow, c: 14 },
-        e: { r: orderHeaderRow + 1, c: 14 },
+        s: { r: orderHeaderRow, c: 13 },
+        e: { r: orderHeaderRow + 1, c: 13 },
       },
     ];
     ordersWorksheet["!cols"] = [
@@ -2268,7 +2256,6 @@ export function exportReferralFeesExcel({
       { wch: 16 },
       { wch: 18 },
       { wch: 22 },
-      { wch: 16 },
       { wch: 16 },
       { wch: 24 },
       { wch: 21 },
@@ -2287,7 +2274,7 @@ export function exportReferralFeesExcel({
       dataRowCount: orderRows.length,
       columnCount: orderColumnCount,
       leftAlignedColumns: new Set([1, 2, 3]),
-      numericColumns: new Set([0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
+      numericColumns: new Set([0, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
       integerColumns: new Set([0, 4]),
     });
     for (
@@ -2295,7 +2282,7 @@ export function exportReferralFeesExcel({
       row < orderHeaderRow + 3 + orderRows.length;
       row++
     ) {
-      ensureReferralCell(ordersWorksheet, row, 10).z = '0.00"%"';
+      ensureReferralCell(ordersWorksheet, row, 9).z = '0.00"%"';
     }
     XLSX.utils.book_append_sheet(
       workbook,
