@@ -1453,6 +1453,21 @@ const scaleReferralIntegerBreakdown = (values: number[], target: number) => {
   return floors;
 };
 
+const allocateReferralAmountByUnits = (value: number, units: number) => {
+  const count = Math.max(Math.round(referralNumber(units)), 0);
+  if (!count) return [];
+
+  const totalCents = Math.round(referralNumber(value) * 100);
+  const sign = totalCents < 0 ? -1 : 1;
+  const absoluteCents = Math.abs(totalCents);
+  const baseCents = Math.floor(absoluteCents / count);
+  const remainder = absoluteCents % count;
+
+  return Array.from({ length: count }, (_, index) =>
+    (sign * (baseCents + (index < remainder ? 1 : 0))) / 100
+  );
+};
+
 const ensureReferralCell = (ws: XLSX.WorkSheet, row: number, column: number) => {
   const address = XLSX.utils.encode_cell({ r: row, c: column });
   if (!ws[address]) ws[address] = { t: "s", v: "" };
@@ -2060,6 +2075,7 @@ export function exportReferralFeesExcel({
     "",
     "",
     "",
+    "Total Amount",
     "Referral Fee %",
     "Referral Fees",
     "",
@@ -2077,6 +2093,7 @@ export function exportReferralFeesExcel({
     "Promotional Rebates",
     "Total",
     "",
+    "",
     "Applicable",
     "Charged",
     "Difference",
@@ -2091,6 +2108,7 @@ export function exportReferralFeesExcel({
     "(+)",
     "(+)",
     "(-)",
+    "(+)",
     "(+)",
     "(%)",
     "(-)",
@@ -2135,29 +2153,63 @@ export function exportReferralFeesExcel({
     matchingRows.forEach((row, index) => {
       const quantity =
         scaledUnitsByStatus.get(status)?.[index] ?? getReferralDisplayUnits(row);
+      const displayQuantity = Math.round(quantity);
+      const total = getReferralNetSales(row);
       const applicable = referralNumber(row.answer);
       const charged =
         status === "Accurate" ? applicable : getReferralChargedFees(row);
-      const difference = Math.round((charged - applicable) * 100) / 100;
 
-      if (quantity <= 0) return;
+      if (displayQuantity <= 0) return;
 
-      orderRows.push([
-        orderRows.length + 1,
-        row.order_id ?? "",
-        row.sku ?? "",
-        row.product_name ?? "",
-        Math.round(quantity),
+      const productSalesByUnit = allocateReferralAmountByUnits(
         referralNumber(row.product_sales),
+        displayQuantity
+      );
+      const shippingCreditsByUnit = allocateReferralAmountByUnits(
         referralNumber(row.shipping_credits),
+        displayQuantity
+      );
+      const promotionalRebatesByUnit = allocateReferralAmountByUnits(
         Math.abs(referralNumber(row.promotional_rebates)),
-        getReferralNetSales(row),
-        referralNumber(row.referral_fee_per),
+        displayQuantity
+      );
+      const totalsByUnit = allocateReferralAmountByUnits(
+        total,
+        displayQuantity
+      );
+      const applicableByUnit = allocateReferralAmountByUnits(
         applicable,
+        displayQuantity
+      );
+      const chargedByUnit = allocateReferralAmountByUnits(
         charged,
-        difference,
-        formatReferralStatus(row.errorstatus),
-      ]);
+        displayQuantity
+      );
+
+      for (let unitIndex = 0; unitIndex < displayQuantity; unitIndex++) {
+        const unitApplicable = applicableByUnit[unitIndex] ?? 0;
+        const unitCharged = chargedByUnit[unitIndex] ?? 0;
+        const unitDifference =
+          Math.round((unitCharged - unitApplicable) * 100) / 100;
+
+        orderRows.push([
+          orderRows.length + 1,
+          row.order_id ?? "",
+          row.sku ?? "",
+          row.product_name ?? "",
+          1,
+          productSalesByUnit[unitIndex] ?? 0,
+          shippingCreditsByUnit[unitIndex] ?? 0,
+          promotionalRebatesByUnit[unitIndex] ?? 0,
+          totalsByUnit[unitIndex] ?? 0,
+          totalsByUnit[unitIndex] ?? 0,
+          referralNumber(row.referral_fee_per),
+          unitApplicable,
+          unitCharged,
+          unitDifference,
+          formatReferralStatus(row.errorstatus),
+        ]);
+      }
     });
 
     const orderTopRows = buildReferralTopRows({
@@ -2170,7 +2222,7 @@ export function exportReferralFeesExcel({
       companyName,
       brandName,
       columnCount: orderColumnCount,
-      anchorCol1Based: 11,
+      anchorCol1Based: 12,
     });
     const orderHeaderRow = orderTopRows.length;
     const ordersWorksheet = XLSX.utils.aoa_to_sheet([
@@ -2195,11 +2247,15 @@ export function exportReferralFeesExcel({
       },
       {
         s: { r: orderHeaderRow, c: 10 },
-        e: { r: orderHeaderRow, c: 12 },
+        e: { r: orderHeaderRow + 1, c: 10 },
       },
       {
-        s: { r: orderHeaderRow, c: 13 },
-        e: { r: orderHeaderRow + 1, c: 13 },
+        s: { r: orderHeaderRow, c: 11 },
+        e: { r: orderHeaderRow, c: 13 },
+      },
+      {
+        s: { r: orderHeaderRow, c: 14 },
+        e: { r: orderHeaderRow + 1, c: 14 },
       },
     ];
     ordersWorksheet["!cols"] = [
@@ -2213,6 +2269,7 @@ export function exportReferralFeesExcel({
       { wch: 18 },
       { wch: 22 },
       { wch: 16 },
+      { wch: 16 },
       { wch: 24 },
       { wch: 21 },
       { wch: 16 },
@@ -2221,7 +2278,7 @@ export function exportReferralFeesExcel({
     applyReferralSheetTitle({
       ws: ordersWorksheet,
       columnCount: orderColumnCount,
-      anchorCol1Based: 11,
+      anchorCol1Based: 12,
     });
     applyReferralTableStyles({
       ws: ordersWorksheet,
@@ -2230,7 +2287,7 @@ export function exportReferralFeesExcel({
       dataRowCount: orderRows.length,
       columnCount: orderColumnCount,
       leftAlignedColumns: new Set([1, 2, 3]),
-      numericColumns: new Set([0, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+      numericColumns: new Set([0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
       integerColumns: new Set([0, 4]),
     });
     for (
@@ -2238,7 +2295,7 @@ export function exportReferralFeesExcel({
       row < orderHeaderRow + 3 + orderRows.length;
       row++
     ) {
-      ensureReferralCell(ordersWorksheet, row, 9).z = '0.00"%"';
+      ensureReferralCell(ordersWorksheet, row, 10).z = '0.00"%"';
     }
     XLSX.utils.book_append_sheet(
       workbook,
