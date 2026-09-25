@@ -1423,6 +1423,33 @@ const formatReferralStatus = (value: unknown) =>
     .toLowerCase()
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+type ReferralOrderStatus = "Overcharged" | "Undercharged" | "Accurate";
+
+const normalizeReferralOrderStatus = (
+  value: unknown
+): ReferralOrderStatus | "" => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized === "overcharged") return "Overcharged";
+  if (normalized === "undercharged") return "Undercharged";
+  if (
+    normalized === "ok" ||
+    normalized === "accurate" ||
+    normalized === "accurately charged"
+  ) {
+    return "Accurate";
+  }
+
+  return "";
+};
+
+const getReferralOrderStatus = (
+  row: Record<string, unknown>
+): ReferralOrderStatus | "" =>
+  normalizeReferralOrderStatus(row?.errorstatus) ||
+  normalizeReferralOrderStatus(row?.status) ||
+  normalizeReferralOrderStatus(row?.Category);
+
 const scaleReferralIntegerBreakdown = (values: number[], target: number) => {
   const roundedTarget = Math.round(referralNumber(target));
   const sourceTotal = values.reduce(
@@ -2114,19 +2141,32 @@ export function exportReferralFeesExcel({
     "",
   ];
   const orderColumnCount = orderHeaderTop.length;
-  const orderStatuses = ["Overcharged", "Undercharged", "Accurate"] as const;
+  const orderStatuses: ReferralOrderStatus[] = [
+    "Overcharged",
+    "Undercharged",
+    "Accurate",
+  ];
   const orderSheetConfigs = [
     {
-      statuses: ["Overcharged", "Undercharged"],
+      includeVarianceOrders: true,
       sheetName: "Fee Variances",
       titleLabel: "Variance",
     },
     {
-      statuses: ["Accurate"],
+      includeVarianceOrders: false,
       sheetName: "Accurately Charged",
       titleLabel: "Accurately Charged",
     },
   ] as const;
+  const referralOrderRows = (ordersByStatus || []).filter(
+    (row) => getReferralOrderStatus(row) && Object.keys(row).length > 1
+  );
+  const varianceOrderIds = new Set(
+    referralOrderRows
+      .filter((row) => getReferralOrderStatus(row) !== "Accurate")
+      .map((row) => String(row?.order_id ?? "").trim())
+      .filter(Boolean)
+  );
   const targetUnitsByStatus = new Map<string, number>(
     orderStatuses.map((status) => {
       const summaryRow = feeSummaryRows.find(
@@ -2135,36 +2175,70 @@ export function exportReferralFeesExcel({
       return [status, Math.round(referralNumber(summaryRow?.units))] as const;
     })
   );
-  const scaledUnitsByStatus = new Map<string, number[]>(
-    orderStatuses.map((status) => {
-      const matchingRows = (ordersByStatus || []).filter(
-        (row) => row?.Category === status && Object.keys(row).length > 1
-      );
-      return [
-        status,
-        scaleReferralIntegerBreakdown(
-          matchingRows.map((row) => getReferralDisplayUnits(row)),
-          targetUnitsByStatus.get(status) ?? 0
-        ),
-      ] as const;
-    })
-  );
-  for (const { statuses, sheetName, titleLabel } of orderSheetConfigs) {
-    const matchingRows = (ordersByStatus || []).filter(
-      (row) =>
-        (statuses as readonly string[]).includes(String(row?.Category ?? "")) &&
-        Object.keys(row).length > 1
+  const scaledUnitsByRow = new Map<Record<string, unknown>, number>();
+  orderStatuses.forEach((status) => {
+    const matchingRows = referralOrderRows.filter(
+      (row) => getReferralOrderStatus(row) === status
     );
+    const scaledUnits = scaleReferralIntegerBreakdown(
+      matchingRows.map((row) => getReferralDisplayUnits(row)),
+      targetUnitsByStatus.get(status) ?? 0
+    );
+    matchingRows.forEach((row, index) => {
+      scaledUnitsByRow.set(
+        row,
+        scaledUnits[index] ?? getReferralDisplayUnits(row)
+      );
+    });
+  });
+
+  for (const {
+    includeVarianceOrders,
+    sheetName,
+    titleLabel,
+  } of orderSheetConfigs) {
+    const matchingRows = referralOrderRows.filter((row) => {
+      const rowStatus = getReferralOrderStatus(row);
+      const orderId = String(row?.order_id ?? "").trim();
+      const belongsToVarianceOrder =
+        rowStatus !== "Accurate" ||
+        (Boolean(orderId) && varianceOrderIds.has(orderId));
+
+      return includeVarianceOrders
+        ? belongsToVarianceOrder
+        : rowStatus === "Accurate" && !belongsToVarianceOrder;
+    });
+    const rowsByOrderId = new Map<string, typeof matchingRows>();
+    const orderedRowGroups: Array<typeof matchingRows> = [];
+
+    if (includeVarianceOrders) {
+      matchingRows.forEach((row) => {
+        const orderId = String(row?.order_id ?? "").trim();
+        if (!orderId) {
+          orderedRowGroups.push([row]);
+          return;
+        }
+
+        let orderRows = rowsByOrderId.get(orderId);
+        if (!orderRows) {
+          orderRows = [];
+          rowsByOrderId.set(orderId, orderRows);
+          orderedRowGroups.push(orderRows);
+        }
+        orderRows.push(row);
+      });
+    }
+
+    const orderedMatchingRows = includeVarianceOrders
+      ? orderedRowGroups.flat()
+      : matchingRows;
     const orderRows: any[][] = [];
 
-    const statusRowIndexes = new Map<string, number>();
-    matchingRows.forEach((row) => {
-      const rowStatus = String(row?.Category ?? "");
-      const statusRowIndex = statusRowIndexes.get(rowStatus) ?? 0;
-      statusRowIndexes.set(rowStatus, statusRowIndex + 1);
+    orderedMatchingRows.forEach((row) => {
+      const rowStatus = getReferralOrderStatus(row);
+      if (!rowStatus) return;
       const quantity =
-        scaledUnitsByStatus.get(rowStatus)?.[statusRowIndex] ??
-        getReferralDisplayUnits(row);
+        scaledUnitsByRow.get(row) ?? getReferralDisplayUnits(row);
       const displayQuantity = Math.round(quantity);
       const total = referralNumber(row.total_amount);
       const applicable = referralNumber(row.answer);
