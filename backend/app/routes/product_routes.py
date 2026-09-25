@@ -64,22 +64,32 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v19_total_amount"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v21_minimum_referral_fee"
+US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
 
 def _calculate_us_referral_fee_applicable(
     product_sales,
+    gift_wrap_credits,
     promotional_rebates,
     referral_fee_percent,
+    quantity,
 ):
     sales = Decimal(str(product_sales or 0))
+    gift_wrap = Decimal(str(gift_wrap_credits or 0))
     rebates = abs(Decimal(str(promotional_rebates or 0)))
     rate = Decimal(str(referral_fee_percent or 0))
-    applicable_base = max(sales - rebates, Decimal("0"))
+    units = Decimal(str(quantity or 0))
+    applicable_base = max(sales + gift_wrap - rebates, Decimal("0"))
+    if applicable_base <= 0 or rate <= 0 or units <= 0:
+        return 0.0
+
+    percentage_fee = applicable_base * rate / Decimal("100")
+    minimum_fee = US_MINIMUM_REFERRAL_FEE_PER_UNIT * units
     return float(
-        (applicable_base * rate / Decimal("100")).quantize(
+        max(percentage_fee, minimum_fee).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
@@ -104,16 +114,20 @@ def _resolve_us_referral_fee_applicable(
     source_answer,
     source_status,
     product_sales,
+    gift_wrap_credits,
     promotional_rebates,
     referral_fee_percent,
+    quantity,
 ):
     if str(source_status or "").strip().lower() != "undercharged":
         return float(source_answer or 0)
 
     return _calculate_us_referral_fee_applicable(
         product_sales,
+        gift_wrap_credits,
         promotional_rebates,
         referral_fee_percent,
+        quantity,
     )
 
 US_BEAUTY_REFERRAL_FEE_BANDS = [
@@ -369,6 +383,7 @@ def _materialize_expense_reconciliation_table(
         "product_sales",
         "shipping_credits",
         "promotional_rebates",
+        "gift_wrap_credits",
         "referral_fee_per",
         "referral_fees_applicable",
         "referral_fees_charged",
@@ -536,6 +551,7 @@ def _materialize_expense_reconciliation_table(
                 "product_sales": _raw_numeric("product_sales"),
                 "shipping_credits": _raw_numeric("shipping_credits"),
                 "promotional_rebates": _raw_numeric("promotional_rebates"),
+                "gift_wrap_credits": _raw_numeric("gift_wrap_credits"),
                 "referral_fee_per": _raw_numeric("referral_fee"),
                 "referral_fees_applicable": _raw_numeric("answer"),
                 "referral_fees_charged": _raw_numeric("selling_fees"),
@@ -847,6 +863,7 @@ def _materialize_expense_reconciliation_table(
             "product_sales",
             "shipping_credits",
             "promotional_rebates",
+            "gift_wrap_credits",
             "referral_fee_per",
             "referral_fees_applicable",
             "referral_fees_charged",
@@ -1159,6 +1176,7 @@ def _expense_reconciliation_api_response(
         "product_sales",
         "shipping_credits",
         "promotional_rebates",
+        "gift_wrap_credits",
         "referral_fee_per",
         "referral_fees_applicable",
         "referral_fees_charged",
@@ -1212,6 +1230,7 @@ def _expense_reconciliation_api_response(
             "product_sales": float(row.get("product_sales", row.get("gross_sales", 0)) or 0),
             "shipping_credits": float(row.get("shipping_credits", 0) or 0),
             "promotional_rebates": float(row.get("promotional_rebates", 0) or 0),
+            "gift_wrap_credits": float(row.get("gift_wrap_credits", 0) or 0),
             "referral_fee_per": float(row.get("referral_fee_per", 0) or 0),
             "net_sales": net_sales,
             "net_sales_total_value": net_sales,
@@ -3739,6 +3758,17 @@ def get_table_data(file_name):
             )
 
             if "referral_fee" in df.columns:
+                fee_units = pd.to_numeric(
+                    df.get("total_quantity", pd.Series(0, index=df.index)),
+                    errors="coerce",
+                ).fillna(0)
+                fallback_fee_units = pd.to_numeric(
+                    df.get("quantity", pd.Series(0, index=df.index)),
+                    errors="coerce",
+                ).fillna(0)
+                fee_units = fee_units.where(fee_units > 0, fallback_fee_units)
+                fee_units = fee_units.where(fee_units > 0, 1)
+
                 if source_answer_available:
                     df["answer"] = pd.to_numeric(
                         df["answer"],
@@ -3753,25 +3783,35 @@ def get_table_data(file_name):
                             source_answer,
                             status,
                             product_sales,
+                            gift_wrap_credits,
                             promotional_rebates,
                             rate,
+                            quantity,
                         )
-                        for source_answer, status, product_sales, promotional_rebates, rate in zip(
+                        for (
+                            source_answer,
+                            status,
+                            product_sales,
+                            gift_wrap_credits,
+                            promotional_rebates,
+                            rate,
+                            quantity,
+                        ) in zip(
                             df["answer"],
                             source_status,
                             df["product_sales"],
+                            df["gift_wrap_credits"],
                             df["promotional_rebates"],
                             df["referral_fee"],
+                            fee_units,
                         )
                     ]
                 else:
-                    qty_for_calc = pd.to_numeric(
-                        df["quantity"],
-                        errors="coerce",
-                    ).fillna(0)
-                    qty_for_calc = qty_for_calc.where(qty_for_calc != 0, 1)
+                    qty_for_calc = fee_units
                     applicable_base = (
-                        df["product_sales"] - df["promotional_rebates"].abs()
+                        df["product_sales"]
+                        + df["gift_wrap_credits"]
+                        - df["promotional_rebates"].abs()
                     ).clip(lower=0)
                     df["total_value"] = [
                         _round_half_up(base / qty)
@@ -3781,13 +3821,23 @@ def get_table_data(file_name):
                     df["answer"] = [
                         _calculate_us_referral_fee_applicable(
                             product_sales,
+                            gift_wrap_credits,
                             promotional_rebates,
                             rate,
+                            quantity,
                         )
-                        for product_sales, promotional_rebates, rate in zip(
+                        for (
+                            product_sales,
+                            gift_wrap_credits,
+                            promotional_rebates,
+                            rate,
+                            quantity,
+                        ) in zip(
                             df["product_sales"],
+                            df["gift_wrap_credits"],
                             df["promotional_rebates"],
                             df["referral_fee"],
+                            fee_units,
                         )
                     ]
 
