@@ -1417,12 +1417,6 @@ const getReferralNetSales = (row: Record<string, any>) => {
 const getReferralChargedFees = (row: Record<string, any>) =>
   Math.abs(referralNumber(row?.selling_fees));
 
-const formatReferralStatus = (value: unknown) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-
 type ReferralOrderStatus = "Overcharged" | "Undercharged" | "Accurate";
 
 const normalizeReferralOrderStatus = (
@@ -2273,6 +2267,12 @@ export function exportReferralFeesExcel({
         const unitCharged = chargedByUnit[unitIndex] ?? 0;
         const unitDifference =
           Math.round((unitCharged - unitApplicable) * 100) / 100;
+        const unitStatus =
+          unitDifference > 0
+            ? "Overcharged"
+            : unitDifference < 0
+              ? "Undercharged"
+              : "Ok";
 
         orderRows.push([
           orderRows.length + 1,
@@ -2288,7 +2288,7 @@ export function exportReferralFeesExcel({
           unitApplicable,
           unitCharged,
           unitDifference,
-          formatReferralStatus(row.errorstatus),
+          unitStatus,
         ]);
       }
     });
