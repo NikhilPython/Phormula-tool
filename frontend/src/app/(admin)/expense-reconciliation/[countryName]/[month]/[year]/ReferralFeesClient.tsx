@@ -2110,8 +2110,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
         label: "Review recommended",
         title: "A referral fee variance is worth reviewing",
         message: `Potential overcharges total ${fmtCurrency(overchargedAmount)}, or ${overchargeRate.toFixed(2)}% of applicable referral fees. Review the affected products and orders to confirm whether follow-up is needed.`,
-        accent: "#ED9F50",
-        surface: "#FFF7ED",
+        accent: "#C58A16",
+        surface: "#FFF8E1",
         overchargedAmount,
         overchargedUnits,
         overchargeRate,
@@ -2275,82 +2275,171 @@ export default function ReferralFeesDashboard(): JSX.Element {
         >
           <>
             {!showDeepDive ? (
-              <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <section className="relative mt-4 overflow-hidden rounded-2xl border border-[#CFE8DF] bg-white shadow-sm">
+
+                {/* Soft background decoration */}
                 <div
-                  className="h-1.5 w-full"
-                  style={{ backgroundColor: reconciliationInsight.accent }}
+                  className="pointer-events-none absolute inset-0 opacity-90"
+                  
                 />
 
-                <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-10 lg:py-10">
-                  <div className="mx-auto max-w-5xl">
-                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-3xl">
+                {/* Decorative wave */}
+                <div
+                  className="pointer-events-none absolute -right-20 top-16 h-48 w-[55%] rounded-[50%] opacity-40 blur-3xl"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(94,166,142,0.05), rgba(94,166,142,0.18))",
+                  }}
+                />
+
+                <div className="relative z-10 px-5 py-6 sm:px-7 sm:py-7 lg:px-9 lg:py-8">
+
+                  {/* =====================================================
+          TOP AREA
+      ====================================================== */}
+                  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+
+                    {/* LEFT */}
+                    <div className="flex min-w-0 flex-1 gap-4 sm:gap-5">
+
+                      {/* Status icon */}
+                      {/* <div
+                        className="mt-1 flex h-16 w-16 shrink-0 items-center justify-center rounded-full sm:h-[76px] sm:w-[76px]"
+                        style={{
+                          backgroundColor: `${reconciliationInsight.accent}18`,
+                        }}
+                      >
                         <div
-                          className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold"
+                          className="flex h-11 w-11 items-center justify-center rounded-full shadow-sm sm:h-12 sm:w-12"
                           style={{
-                            backgroundColor: reconciliationInsight.surface,
+                            backgroundColor: reconciliationInsight.accent,
+                          }}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-6 w-6 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        </div>
+                      </div> */}
+
+                      {/* Summary copy */}
+                      <div className="min-w-0 max-w-3xl">
+
+                        {/* Status pill */}
+                        <div
+                          className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
+                          style={{
                             color: reconciliationInsight.accent,
+                            backgroundColor: reconciliationInsight.surface,
                           }}
                         >
                           <span
                             className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: reconciliationInsight.accent }}
+                            style={{
+                              backgroundColor: reconciliationInsight.accent,
+                            }}
                           />
                           {reconciliationInsight.label}
                         </div>
 
-                        <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                        {/* <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#667391] sm:text-xs">
                           Referral fee review · {selectedPeriodLabel}
-                        </p>
-                        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-[#414042] sm:text-3xl">
+                        </p> */}
+
+                        <h2
+                          className="mt-2 text-[24px] font-bold leading-tight tracking-[-0.025em] sm:text-[28px] lg:text-[31px]"
+                          style={{ color: reconciliationInsight.accent }}
+                        >
                           {reconciliationInsight.title}
                         </h2>
-                        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+
+                        <p className="mt-3 text-sm leading-6 text-[#52617C] sm:leading-7">
                           {reconciliationInsight.message}
                         </p>
                       </div>
+                    </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setShowDeepDive(true)}
-                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#37455F] px-5 py-3 text-sm font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2"
+                    {/* CTA */}
+                    <button
+                      type="button"
+                      onClick={() => setShowDeepDive(true)}
+                      className="
+            inline-flex shrink-0 items-center justify-center gap-3
+            self-start
+            rounded-xl
+            bg-[#37455F]
+            px-5 py-3
+            text-sm font-semibold text-[#F8EDCE]
+            shadow-[0_6px_14px_rgba(55,69,95,0.16)]
+            transition-all duration-200
+            hover:-translate-y-0.5
+            hover:bg-[#2F3B52]
+            hover:shadow-[0_10px_20px_rgba(55,69,95,0.20)]
+            focus:outline-none focus:ring-2 focus:ring-[#5EA68E]
+            focus:ring-offset-2
+            lg:mt-1
+          "
+                    >
+                      Explore detailed analysis
+
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                       >
-                        Explore detailed analysis
-                        <span aria-hidden="true">→</span>
-                      </button>
-                    </div>
+                        <path d="M5 12h14" />
+                        <path d="m13 6 6 6-6 6" />
+                      </svg>
+                    </button>
+                  </div>
 
-                    <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-medium text-slate-500">Potential overcharge</p>
-                        <p className="mt-1 text-xl font-semibold text-[#414042]">
-                          {fmtCurrency(reconciliationInsight.overchargedAmount)}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {reconciliationInsight.overchargeRate.toFixed(2)}% of applicable referral fees
-                        </p>
-                      </div>
+                  {/* =====================================================
+          METRIC CARDS
+      ====================================================== */}
+                  <div className="mt-7 grid grid-cols-1 gap-2 sm:grid-cols-3 2xl:gap-3">
+                    <SummaryMetricCard
+                      title="Potential overcharge"
+                      value={fmtCurrency(reconciliationInsight.overchargedAmount)}
+                      comparisons={[{
+                        label: "Share of applicable fees",
+                        valueText: `${reconciliationInsight.overchargeRate.toFixed(2)}%`,
+                        deltaText: "",
+                      }]}
+                      className="bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
+                    />
 
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-medium text-slate-500">Units to review</p>
-                        <p className="mt-1 text-xl font-semibold text-[#414042]">
-                          {fmtInteger(reconciliationInsight.overchargedUnits)}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {reconciliationInsight.affectedUnitsRate.toFixed(2)}% of reconciled units
-                        </p>
-                      </div>
+                    <SummaryMetricCard
+                      title="Units to review"
+                      value={fmtInteger(reconciliationInsight.overchargedUnits)}
+                      comparisons={[{
+                        label: "Share of reconciled units",
+                        valueText: `${reconciliationInsight.affectedUnitsRate.toFixed(2)}%`,
+                        deltaText: "",
+                      }]}
+                      className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                    />
 
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
-                        <p className="text-xs font-medium text-slate-500">Accurately charged units</p>
-                        <p className="mt-1 text-xl font-semibold text-[#414042]">
-                          {reconciliationInsight.accurateUnitsRate.toFixed(2)}%
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Net fee variance: {fmtCurrency(reconciliationInsight.netVariance)}
-                        </p>
-                      </div>
-                    </div>
+                    <SummaryMetricCard
+                      title="Accurately charged units"
+                      value={`${reconciliationInsight.accurateUnitsRate.toFixed(2)}%`}
+                      comparisons={[{
+                        label: "Net fee variance",
+                        valueText: fmtCurrency(reconciliationInsight.netVariance),
+                        deltaText: "",
+                      }]}
+                      className="bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
+                    />
                   </div>
                 </div>
               </section>
@@ -2371,25 +2460,25 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   </button>
                 </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-stretch 2xl:grid-cols-2">
-              <SkuAgeingDonutChart
-                title="Reconciliation Distribution"
-                subtitle="Referral fee status across all units"
-                data={reconciliationDonutData}
-                totalUnits={reconciliationTotalUnits}
-                amountLabel="Fee Variance"
-                amountFormatter={fmtCurrency}
-              />
+                <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-stretch 2xl:grid-cols-2">
+                  <SkuAgeingDonutChart
+                    title="Reconciliation Distribution"
+                    subtitle="Referral fee status across all units"
+                    data={reconciliationDonutData}
+                    totalUnits={reconciliationTotalUnits}
+                    amountLabel="Fee Variance"
+                    amountFormatter={fmtCurrency}
+                  />
 
-              <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <PageBreadcrumb
-                  pageTitle="Fee Type Breakdown"
-                  variant="page"
-                  align="left"
-                  className="mb-3"
-                />
+                  <section className="h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <PageBreadcrumb
+                      pageTitle="Fee Type Breakdown"
+                      variant="page"
+                      align="left"
+                      className="mb-3"
+                    />
 
-                {/* <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {/* <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <AmazonStatCard
                     label="Referral Fees"
                     current={card6.refFeesApplied}
@@ -2464,350 +2553,350 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   />
                 </div> */}
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <SummaryMetricCard
-                    title="Referral Fees"
-                    value={renderFeeCurrentValue(
-                      card6.refFeesApplied,
-                      feePercentages.referral_fees.charged_net_sales_pct
-                    )}
-                    comparisons={buildFeeComparison(
-                      card6.refFeesApplicable,
-                      feePercentages.referral_fees.applicable_net_sales_pct,
-                      feePercentages.referral_fees.charged_vs_applicable_pct
-                    )}
-                    className="bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
-                  />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <SummaryMetricCard
+                        title="Referral Fees"
+                        value={renderFeeCurrentValue(
+                          card6.refFeesApplied,
+                          feePercentages.referral_fees.charged_net_sales_pct
+                        )}
+                        comparisons={buildFeeComparison(
+                          card6.refFeesApplicable,
+                          feePercentages.referral_fees.applicable_net_sales_pct,
+                          feePercentages.referral_fees.charged_vs_applicable_pct
+                        )}
+                        className="bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
+                      />
 
-                  <SummaryMetricCard
-                    title="FBA Fees"
-                    value={renderFeeCurrentValue(
-                      card6.fbaFees,
-                      feePercentages.fba_fees.charged_net_sales_pct
-                    )}
-                    comparisons={buildFeeComparison(
-                      card6.fbaFeesApplicable,
-                      feePercentages.fba_fees.applicable_net_sales_pct,
-                      feePercentages.fba_fees.charged_vs_applicable_pct
-                    )}
-                    className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
-                  />
+                      <SummaryMetricCard
+                        title="FBA Fees"
+                        value={renderFeeCurrentValue(
+                          card6.fbaFees,
+                          feePercentages.fba_fees.charged_net_sales_pct
+                        )}
+                        comparisons={buildFeeComparison(
+                          card6.fbaFeesApplicable,
+                          feePercentages.fba_fees.applicable_net_sales_pct,
+                          feePercentages.fba_fees.charged_vs_applicable_pct
+                        )}
+                        className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
+                      />
 
-                  <SummaryMetricCard
-                    title="Platform Fees"
-                    value={renderFeeCurrentValue(
-                      card6.platformFees,
-                      feePercentages.platform_fees.charged_net_sales_pct
-                    )}
-                    comparisons={buildFeeComparison(
-                      card6.platformFeesApplicable,
-                      feePercentages.platform_fees.applicable_net_sales_pct,
-                      feePercentages.platform_fees.charged_vs_applicable_pct
-                    )}
-                    className="bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
-                  />
+                      <SummaryMetricCard
+                        title="Platform Fees"
+                        value={renderFeeCurrentValue(
+                          card6.platformFees,
+                          feePercentages.platform_fees.charged_net_sales_pct
+                        )}
+                        comparisons={buildFeeComparison(
+                          card6.platformFeesApplicable,
+                          feePercentages.platform_fees.applicable_net_sales_pct,
+                          feePercentages.platform_fees.charged_vs_applicable_pct
+                        )}
+                        className="bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
+                      />
 
-                  <SummaryMetricCard
-                    title="Other Fees"
-                    value={renderFeeCurrentValue(
-                      card6.otherFees,
-                      feePercentages.other_fees.charged_net_sales_pct
-                    )}
-                    comparisons={buildFeeComparison(
-                      card6.otherFeesApplicable,
-                      feePercentages.other_fees.applicable_net_sales_pct,
-                      feePercentages.other_fees.charged_vs_applicable_pct
-                    )}
-                    className="bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
-                  />
-                </div>
-              </section>
-            </div>
-
-            {/* ===================== 6 CARDS (UPDATED) ===================== */}
-
-            {false && <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
-              <SalesCard
-                title="Sales"
-                sales={card6.sales}
-                productSales={card6.productSales}
-                units={card6.units}
-                valueFmt={fmtCurrencyRounded}
-                borderColor="#75BBDA"
-                bgColor="#75BBDA4D"
-              />
-
-
-              <FeeCard
-                title="Total Amazon Fees"
-                sales={card6.sales}
-                charged={card6.totalFees}
-                applicable={card6.totalFeesApplicable}
-                fmtCurrency={fmtCurrencyRounded}
-                borderColor="#B75A5A"
-                bgColor="#B75A5A4D"
-              />
-
-              <FeeCard
-                title="Referral Fees"
-                sales={card6.sales}
-                charged={card6.refFeesApplied}
-                applicable={card6.refFeesApplicable}
-                fmtCurrency={fmtCurrencyRounded}
-                borderColor="#7B9A6D"
-                bgColor="#7B9A6D4D"
-              />
-
-              <FeeCard
-                title="FBA Fees"
-                sales={card6.sales}
-                charged={card6.fbaFees}
-                applicable={card6.fbaFeesApplicable}
-                fmtCurrency={fmtCurrencyRounded}
-                borderColor="#FDD36F"
-                bgColor="#FDD36F4D"
-              />
-
-              <FeeCard
-                title="Platform Fees"
-                sales={card6.sales}
-                charged={card6.platformFees}
-                applicable={card6.platformFeesApplicable}
-                fmtCurrency={fmtCurrencyRounded}
-                borderColor="#ED9F50"
-                bgColor="#ED9F504D"
-              />
-
-              <FeeCard
-                title="Other Fees"
-                sales={card6.sales}
-                charged={card6.otherFees}
-                applicable={card6.otherFeesApplicable}
-                fmtCurrency={fmtCurrencyRounded}
-                borderColor="#3A8EA4"
-                bgColor="#3A8EA44D"
-              />
-            </div>}
-
-
-            {/* ===================== BREAKDOWN SECTION (NEW) ===================== */}
-            {false && (() => {
-              /* =========================
-                 1) Pull Charge rows + Grand Total
-              ========================= */
-              const chargeAcc = rows.find(
-                (r) => String(r.sku ?? "").toLowerCase() === "charge - accurate"
-              );
-              const chargeOver = rows.find(
-                (r) => String(r.sku ?? "").toLowerCase() === "charge - overcharged"
-              );
-              const chargeUnder = rows.find(
-                (r) => String(r.sku ?? "").toLowerCase() === "charge - undercharged"
-              );
-              const chargeNoRef = rows.find(
-                (r) => String(r.sku ?? "").toLowerCase() === "charge - noreferallfee"
-              );
-              const grand = rows.find(
-                (r) => String(r.sku ?? "").toLowerCase() === "grand total"
-              );
-
-              const fmtPctSigned = (p: number) => {
-                const v = toNumberSafe(p);
-                const sign = v > 0 ? "+" : v < 0 ? "-" : "";
-                return `${sign}${Math.abs(v).toFixed(2)}%`;
-              };
-
-
-              const pctOf = (value: number, total: number) => {
-                const t = Math.max(1e-9, Math.abs(toNumberSafe(total)));
-                return (toNumberSafe(value) / t) * 100;
-              };
-
-              const totalSalesForPct = Math.max(1, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
-
-
-              /* =========================
-                 2) LEFT PANEL (Sales based): use net_sales_total_value from Charge lines
-                 Requirement: show net_sales_total_value for:
-                 Charge - Accurate, Charge - Undercharged, Charge - Overcharged, Charge - noreferallfee, Grand Total
-              ========================= */
-              // const leftList = [
-              //   {
-              //     label: "Total Sales",
-              //     value: toNumberSafe(grand?.net_sales_total_value),
-              //     color: "#F47A00",
-              //   },
-              //   {
-              //     label: "Accurately charged",
-              //     value: toNumberSafe(chargeAcc?.net_sales_total_value),
-              //     color: "#14B8A6",
-              //   },
-              //   {
-              //     label: "Over charged",
-              //     value: toNumberSafe(chargeOver?.net_sales_total_value),
-              //     color: "#EF4444",
-              //   },
-              //   {
-              //     label: "Undercharged",
-              //     value: toNumberSafe(chargeUnder?.net_sales_total_value),
-              //     color: "#F59E0B",
-              //   },
-              //   {
-              //     label: "No ref fee",
-              //     value: toNumberSafe(chargeNoRef?.net_sales_total_value),
-              //     color: "#94A3B8",
-              //   },
-              // ];
-
-              const totalSalesForLeft = Math.max(1e-9, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
-
-              const leftList = [
-                {
-                  label: "Total Sales",
-                  value: toNumberSafe(grand?.net_sales_total_value),
-                  pct: pctOf(toNumberSafe(grand?.net_sales_total_value), totalSalesForLeft),
-                  color: "#75BBDA",
-                },
-                {
-                  label: "Accurately charged",
-                  value: toNumberSafe(chargeAcc?.net_sales_total_value),
-                  pct: pctOf(toNumberSafe(chargeAcc?.net_sales_total_value), totalSalesForLeft),
-                  color: "#C49466",
-                },
-                {
-                  label: "Over charged",
-                  value: toNumberSafe(chargeOver?.net_sales_total_value),
-                  pct: pctOf(toNumberSafe(chargeOver?.net_sales_total_value), totalSalesForLeft),
-                  color: "#B75A5A",
-                },
-                {
-                  label: "Undercharged",
-                  value: toNumberSafe(chargeUnder?.net_sales_total_value),
-                  pct: pctOf(toNumberSafe(chargeUnder?.net_sales_total_value), totalSalesForLeft),
-                  color: "#FDD36F",
-                },
-                {
-                  label: "No ref fee",
-                  value: toNumberSafe(chargeNoRef?.net_sales_total_value),
-                  pct: pctOf(toNumberSafe(chargeNoRef?.net_sales_total_value), totalSalesForLeft),
-                  color: "#ED9F50",
-                },
-              ];
-
-
-              /* =========================
-                 3) RIGHT PANEL (Ref fee breakdown): use charged referral fee magnitudes
-                 Also show difference in brackets next to value
-              ========================= */
-              const rightList = [
-                {
-                  label: "Total Ref Fees",
-                  value: getChargedReferralFees(grand),
-                  diff: toNumberSafe(grand?.difference),
-                  pct: pctOf(toNumberSafe(grand?.difference), totalSalesForPct),
-                  color: "#7B9A6D",
-                },
-                {
-                  label: "Accurately charged",
-                  value: getChargedReferralFees(chargeAcc),
-                  diff: toNumberSafe(chargeAcc?.difference),
-                  pct: pctOf(toNumberSafe(chargeAcc?.difference), totalSalesForPct),
-                  color: "#C49466",
-                },
-                {
-                  label: "Over charged",
-                  value: getChargedReferralFees(chargeOver),
-                  diff: toNumberSafe(chargeOver?.difference),
-                  pct: pctOf(toNumberSafe(chargeOver?.difference), totalSalesForPct),
-                  color: "#B75A5A",
-                },
-                {
-                  label: "Undercharged",
-                  value: getChargedReferralFees(chargeUnder),
-                  diff: toNumberSafe(chargeUnder?.difference),
-                  pct: pctOf(toNumberSafe(chargeUnder?.difference), totalSalesForPct),
-                  color: "#FDD36F",
-                },
-                {
-                  label: "No ref fee",
-                  value: getChargedReferralFees(chargeNoRef),
-                  diff: toNumberSafe(chargeNoRef?.difference),
-                  pct: pctOf(toNumberSafe(chargeNoRef?.difference), totalSalesForPct),
-                  color: "#ED9F50",
-                },
-              ];
-
-
-              /* =========================
-                 4) Bar scaling totals
-                 - LEFT: scale by Grand Total sales (so bars are "out of total sales")
-                 - RIGHT: scale by Grand Total ref fees (so bars are "out of total ref fees")
-              ========================= */
-              const leftTotalForBars = Math.max(
-                1,
-                Math.abs(toNumberSafe(grand?.net_sales_total_value))
-              );
-
-              const rightTotalForBars = Math.max(
-                1,
-                Math.abs(getChargedReferralFees(grand))
-              );
-
-              /* =========================
-                 5) Row renderer
-                 - shows bar + value (and optional diff in brackets)
-              ========================= */
-              const BarRow = ({
-                label,
-                value,
-                total,
-                color,
-                deltaPct,
-                showDelta = false,
-                pctColor,
-              }: {
-                label: string;
-                value: number;
-                total: number;
-                color: string;
-                deltaPct?: number;
-                showDelta?: boolean;
-                pctColor?: string;
-              }) => {
-
-                const v = Math.abs(toNumberSafe(value));
-                const t = Math.max(1, Math.abs(toNumberSafe(total)));
-                const barPct = Math.min(100, (v / t) * 100);
-
-                const deltaCls =
-                  typeof deltaPct === "number"
-                    ? deltaPct > 0
-                      ? "text-emerald-600"
-                      : deltaPct < 0
-                        ? "text-red-600"
-                        : "text-slate-500"
-                    : "text-slate-500";
-
-                return (
-                  <div
-                    className={`grid items-center gap-3 ${showDelta
-                      ? "grid-cols-[180px_1fr_170px]"
-                      : "grid-cols-[180px_1fr_120px]"
-                      }`}
-                  >
-                    {/* Label */}
-                    <div className="text-sm text-slate-700">{label}</div>
-
-                    {/* Bar */}
-                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className="h-2 rounded-full"
-                        style={{ width: `${barPct}%`, backgroundColor: color }}
+                      <SummaryMetricCard
+                        title="Other Fees"
+                        value={renderFeeCurrentValue(
+                          card6.otherFees,
+                          feePercentages.other_fees.charged_net_sales_pct
+                        )}
+                        comparisons={buildFeeComparison(
+                          card6.otherFeesApplicable,
+                          feePercentages.other_fees.applicable_net_sales_pct,
+                          feePercentages.other_fees.charged_vs_applicable_pct
+                        )}
+                        className="bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                       />
                     </div>
+                  </section>
+                </div>
 
-                    {/* Value (+ optional %) */}
-                    {/* <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
+                {/* ===================== 6 CARDS (UPDATED) ===================== */}
+
+                {false && <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-3 mt-4">
+                  <SalesCard
+                    title="Sales"
+                    sales={card6.sales}
+                    productSales={card6.productSales}
+                    units={card6.units}
+                    valueFmt={fmtCurrencyRounded}
+                    borderColor="#75BBDA"
+                    bgColor="#75BBDA4D"
+                  />
+
+
+                  <FeeCard
+                    title="Total Amazon Fees"
+                    sales={card6.sales}
+                    charged={card6.totalFees}
+                    applicable={card6.totalFeesApplicable}
+                    fmtCurrency={fmtCurrencyRounded}
+                    borderColor="#B75A5A"
+                    bgColor="#B75A5A4D"
+                  />
+
+                  <FeeCard
+                    title="Referral Fees"
+                    sales={card6.sales}
+                    charged={card6.refFeesApplied}
+                    applicable={card6.refFeesApplicable}
+                    fmtCurrency={fmtCurrencyRounded}
+                    borderColor="#7B9A6D"
+                    bgColor="#7B9A6D4D"
+                  />
+
+                  <FeeCard
+                    title="FBA Fees"
+                    sales={card6.sales}
+                    charged={card6.fbaFees}
+                    applicable={card6.fbaFeesApplicable}
+                    fmtCurrency={fmtCurrencyRounded}
+                    borderColor="#FDD36F"
+                    bgColor="#FDD36F4D"
+                  />
+
+                  <FeeCard
+                    title="Platform Fees"
+                    sales={card6.sales}
+                    charged={card6.platformFees}
+                    applicable={card6.platformFeesApplicable}
+                    fmtCurrency={fmtCurrencyRounded}
+                    borderColor="#ED9F50"
+                    bgColor="#ED9F504D"
+                  />
+
+                  <FeeCard
+                    title="Other Fees"
+                    sales={card6.sales}
+                    charged={card6.otherFees}
+                    applicable={card6.otherFeesApplicable}
+                    fmtCurrency={fmtCurrencyRounded}
+                    borderColor="#3A8EA4"
+                    bgColor="#3A8EA44D"
+                  />
+                </div>}
+
+
+                {/* ===================== BREAKDOWN SECTION (NEW) ===================== */}
+                {false && (() => {
+                  /* =========================
+                     1) Pull Charge rows + Grand Total
+                  ========================= */
+                  const chargeAcc = rows.find(
+                    (r) => String(r.sku ?? "").toLowerCase() === "charge - accurate"
+                  );
+                  const chargeOver = rows.find(
+                    (r) => String(r.sku ?? "").toLowerCase() === "charge - overcharged"
+                  );
+                  const chargeUnder = rows.find(
+                    (r) => String(r.sku ?? "").toLowerCase() === "charge - undercharged"
+                  );
+                  const chargeNoRef = rows.find(
+                    (r) => String(r.sku ?? "").toLowerCase() === "charge - noreferallfee"
+                  );
+                  const grand = rows.find(
+                    (r) => String(r.sku ?? "").toLowerCase() === "grand total"
+                  );
+
+                  const fmtPctSigned = (p: number) => {
+                    const v = toNumberSafe(p);
+                    const sign = v > 0 ? "+" : v < 0 ? "-" : "";
+                    return `${sign}${Math.abs(v).toFixed(2)}%`;
+                  };
+
+
+                  const pctOf = (value: number, total: number) => {
+                    const t = Math.max(1e-9, Math.abs(toNumberSafe(total)));
+                    return (toNumberSafe(value) / t) * 100;
+                  };
+
+                  const totalSalesForPct = Math.max(1, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
+
+
+                  /* =========================
+                     2) LEFT PANEL (Sales based): use net_sales_total_value from Charge lines
+                     Requirement: show net_sales_total_value for:
+                     Charge - Accurate, Charge - Undercharged, Charge - Overcharged, Charge - noreferallfee, Grand Total
+                  ========================= */
+                  // const leftList = [
+                  //   {
+                  //     label: "Total Sales",
+                  //     value: toNumberSafe(grand?.net_sales_total_value),
+                  //     color: "#F47A00",
+                  //   },
+                  //   {
+                  //     label: "Accurately charged",
+                  //     value: toNumberSafe(chargeAcc?.net_sales_total_value),
+                  //     color: "#14B8A6",
+                  //   },
+                  //   {
+                  //     label: "Over charged",
+                  //     value: toNumberSafe(chargeOver?.net_sales_total_value),
+                  //     color: "#EF4444",
+                  //   },
+                  //   {
+                  //     label: "Undercharged",
+                  //     value: toNumberSafe(chargeUnder?.net_sales_total_value),
+                  //     color: "#F59E0B",
+                  //   },
+                  //   {
+                  //     label: "No ref fee",
+                  //     value: toNumberSafe(chargeNoRef?.net_sales_total_value),
+                  //     color: "#94A3B8",
+                  //   },
+                  // ];
+
+                  const totalSalesForLeft = Math.max(1e-9, Math.abs(toNumberSafe(grand?.net_sales_total_value)));
+
+                  const leftList = [
+                    {
+                      label: "Total Sales",
+                      value: toNumberSafe(grand?.net_sales_total_value),
+                      pct: pctOf(toNumberSafe(grand?.net_sales_total_value), totalSalesForLeft),
+                      color: "#75BBDA",
+                    },
+                    {
+                      label: "Accurately charged",
+                      value: toNumberSafe(chargeAcc?.net_sales_total_value),
+                      pct: pctOf(toNumberSafe(chargeAcc?.net_sales_total_value), totalSalesForLeft),
+                      color: "#C49466",
+                    },
+                    {
+                      label: "Over charged",
+                      value: toNumberSafe(chargeOver?.net_sales_total_value),
+                      pct: pctOf(toNumberSafe(chargeOver?.net_sales_total_value), totalSalesForLeft),
+                      color: "#B75A5A",
+                    },
+                    {
+                      label: "Undercharged",
+                      value: toNumberSafe(chargeUnder?.net_sales_total_value),
+                      pct: pctOf(toNumberSafe(chargeUnder?.net_sales_total_value), totalSalesForLeft),
+                      color: "#FDD36F",
+                    },
+                    {
+                      label: "No ref fee",
+                      value: toNumberSafe(chargeNoRef?.net_sales_total_value),
+                      pct: pctOf(toNumberSafe(chargeNoRef?.net_sales_total_value), totalSalesForLeft),
+                      color: "#ED9F50",
+                    },
+                  ];
+
+
+                  /* =========================
+                     3) RIGHT PANEL (Ref fee breakdown): use charged referral fee magnitudes
+                     Also show difference in brackets next to value
+                  ========================= */
+                  const rightList = [
+                    {
+                      label: "Total Ref Fees",
+                      value: getChargedReferralFees(grand),
+                      diff: toNumberSafe(grand?.difference),
+                      pct: pctOf(toNumberSafe(grand?.difference), totalSalesForPct),
+                      color: "#7B9A6D",
+                    },
+                    {
+                      label: "Accurately charged",
+                      value: getChargedReferralFees(chargeAcc),
+                      diff: toNumberSafe(chargeAcc?.difference),
+                      pct: pctOf(toNumberSafe(chargeAcc?.difference), totalSalesForPct),
+                      color: "#C49466",
+                    },
+                    {
+                      label: "Over charged",
+                      value: getChargedReferralFees(chargeOver),
+                      diff: toNumberSafe(chargeOver?.difference),
+                      pct: pctOf(toNumberSafe(chargeOver?.difference), totalSalesForPct),
+                      color: "#B75A5A",
+                    },
+                    {
+                      label: "Undercharged",
+                      value: getChargedReferralFees(chargeUnder),
+                      diff: toNumberSafe(chargeUnder?.difference),
+                      pct: pctOf(toNumberSafe(chargeUnder?.difference), totalSalesForPct),
+                      color: "#FDD36F",
+                    },
+                    {
+                      label: "No ref fee",
+                      value: getChargedReferralFees(chargeNoRef),
+                      diff: toNumberSafe(chargeNoRef?.difference),
+                      pct: pctOf(toNumberSafe(chargeNoRef?.difference), totalSalesForPct),
+                      color: "#ED9F50",
+                    },
+                  ];
+
+
+                  /* =========================
+                     4) Bar scaling totals
+                     - LEFT: scale by Grand Total sales (so bars are "out of total sales")
+                     - RIGHT: scale by Grand Total ref fees (so bars are "out of total ref fees")
+                  ========================= */
+                  const leftTotalForBars = Math.max(
+                    1,
+                    Math.abs(toNumberSafe(grand?.net_sales_total_value))
+                  );
+
+                  const rightTotalForBars = Math.max(
+                    1,
+                    Math.abs(getChargedReferralFees(grand))
+                  );
+
+                  /* =========================
+                     5) Row renderer
+                     - shows bar + value (and optional diff in brackets)
+                  ========================= */
+                  const BarRow = ({
+                    label,
+                    value,
+                    total,
+                    color,
+                    deltaPct,
+                    showDelta = false,
+                    pctColor,
+                  }: {
+                    label: string;
+                    value: number;
+                    total: number;
+                    color: string;
+                    deltaPct?: number;
+                    showDelta?: boolean;
+                    pctColor?: string;
+                  }) => {
+
+                    const v = Math.abs(toNumberSafe(value));
+                    const t = Math.max(1, Math.abs(toNumberSafe(total)));
+                    const barPct = Math.min(100, (v / t) * 100);
+
+                    const deltaCls =
+                      typeof deltaPct === "number"
+                        ? deltaPct > 0
+                          ? "text-emerald-600"
+                          : deltaPct < 0
+                            ? "text-red-600"
+                            : "text-slate-500"
+                        : "text-slate-500";
+
+                    return (
+                      <div
+                        className={`grid items-center gap-3 ${showDelta
+                          ? "grid-cols-[180px_1fr_170px]"
+                          : "grid-cols-[180px_1fr_120px]"
+                          }`}
+                      >
+                        {/* Label */}
+                        <div className="text-sm text-slate-700">{label}</div>
+
+                        {/* Bar */}
+                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                          <div
+                            className="h-2 rounded-full"
+                            style={{ width: `${barPct}%`, backgroundColor: color }}
+                          />
+                        </div>
+
+                        {/* Value (+ optional %) */}
+                        {/* <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
                     <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
                       {fmtNumber(value)}
                     </span>
@@ -2819,58 +2908,58 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     )}
                   </div> */}
 
-                    {/* Value / Right column */}
-                    <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
-                      <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
-                        {fmtNumber(value)}
-                      </span>
+                        {/* Value / Right column */}
+                        <div className="flex items-baseline justify-end whitespace-nowrap tabular-nums">
+                          <span className="text-sm font-semibold text-slate-800 min-w-[90px] text-right">
+                            {fmtNumber(value)}
+                          </span>
 
-                      {showDelta ? (
-                        <span className={`ml-1 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}>
-                          ({fmtPctSigned(deltaPct ?? 0)})
-                        </span>
-                      ) : (
-                        <span
-                          className={`ml-2 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}
-                        >
-                          ({fmtPctSigned(deltaPct ?? 0)})
-                        </span>
-                      )}
+                          {showDelta ? (
+                            <span className={`ml-1 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}>
+                              ({fmtPctSigned(deltaPct ?? 0)})
+                            </span>
+                          ) : (
+                            <span
+                              className={`ml-2 text-xs font-bold min-w-[55px] text-right ${deltaCls}`}
+                            >
+                              ({fmtPctSigned(deltaPct ?? 0)})
+                            </span>
+                          )}
 
-                    </div>
+                        </div>
 
-                  </div>
-                );
-              };
+                      </div>
+                    );
+                  };
 
-              const currencySymbol = fmtCurrency(0).replace(/[\d.,\s]/g, "");
-              const fmtNumber = (n: number) =>
-                toNumberSafe(n).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                });
+                  const currencySymbol = fmtCurrency(0).replace(/[\d.,\s]/g, "");
+                  const fmtNumber = (n: number) =>
+                    toNumberSafe(n).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    });
 
-              /* =========================
-                 6) UI (wrapped in bordered div with heading)
-              ========================= */
-              return (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
-                  <div className="flex flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-                    <PageBreadcrumb
-                      pageTitle="Referral Fee Recon"
-                      variant="page"
-                      align="left"
-                      className="mb-0 md:mb-4 text-center"
-                    />
-                    <DownloadButton
-                      onClick={handleDownloadExcel}
-                      disabled={isPreviewMode}
-                    />
-                  </div>
+                  /* =========================
+                     6) UI (wrapped in bordered div with heading)
+                  ========================= */
+                  return (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+                      <div className="flex flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                        <PageBreadcrumb
+                          pageTitle="Referral Fee Recon"
+                          variant="page"
+                          align="left"
+                          className="mb-0 md:mb-4 text-center"
+                        />
+                        <DownloadButton
+                          onClick={handleDownloadExcel}
+                          disabled={isPreviewMode}
+                        />
+                      </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* LEFT PANEL */}
-                    {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* LEFT PANEL */}
+                        {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
                     <div className="text-base font-semibold text-slate-800 mb-4">
                       Sales Summary <span className="text-slate-500">({currencySymbol})</span>
                     </div>
@@ -2891,43 +2980,43 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     </div>
                   </div> */}
 
-                    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                      <div className="text-base font-semibold text-slate-800 mb-2">
-                        Sales Summary <span className="text-slate-500">({currencySymbol})</span>
-                      </div>
+                        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                          <div className="text-base font-semibold text-slate-800 mb-2">
+                            Sales Summary <span className="text-slate-500">({currencySymbol})</span>
+                          </div>
 
-                      {/* LEFT headers */}
-                      {/* LEFT headers */}
-                      <div className="grid grid-cols-[180px_1fr_120px] items-center mb-2 text-[11px] text-slate-500 font-semibold">
-                        <div /> {/* label column */}
-                        <div /> {/* bar column */}
+                          {/* LEFT headers */}
+                          {/* LEFT headers */}
+                          <div className="grid grid-cols-[180px_1fr_120px] items-center mb-2 text-[11px] text-slate-500 font-semibold">
+                            <div /> {/* label column */}
+                            <div /> {/* bar column */}
 
-                        {/* single container for both headings (you control gap) */}
-                        <div className="flex justify-end gap-4 pr-2">
-                          <span>Net Sales</span>
-                          <span>% of Sales</span>
+                            {/* single container for both headings (you control gap) */}
+                            <div className="flex justify-end gap-4 pr-2">
+                              <span>Net Sales</span>
+                              <span>% of Sales</span>
+                            </div>
+                          </div>
+
+
+                          <div className="space-y-3">
+                            {leftList.map((x) => (
+                              <BarRow
+                                key={x.label}
+                                label={x.label}
+                                value={x.value}
+                                total={leftTotalForBars}
+                                color={x.color}
+                                deltaPct={x.pct}
+                                showDelta={false}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
 
 
-                      <div className="space-y-3">
-                        {leftList.map((x) => (
-                          <BarRow
-                            key={x.label}
-                            label={x.label}
-                            value={x.value}
-                            total={leftTotalForBars}
-                            color={x.color}
-                            deltaPct={x.pct}
-                            showDelta={false}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-
-                    {/* RIGHT PANEL */}
-                    {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                        {/* RIGHT PANEL */}
+                        {/* <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
                     <div className="text-base font-semibold text-slate-800 mb-4">
                       Referral Fees Breakdown <span className="text-slate-500">(£)</span>
                     </div>
@@ -2950,215 +3039,215 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     </div>
                   </div> */}
 
-                    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
-                      <div className="text-base font-semibold text-slate-800 mb-2">
-                        Referral Fees Breakdown <span className="text-slate-500">(£)</span>
-                      </div>
+                        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+                          <div className="text-base font-semibold text-slate-800 mb-2">
+                            Referral Fees Breakdown <span className="text-slate-500">(£)</span>
+                          </div>
 
-                      {/* RIGHT headers */}
-                      {/* Header row */}
-                      <div className="grid grid-cols-[180px_1fr_170px] items-center mb-2 text-[11px] font-semibold text-slate-500">
-                        {/* Empty label column */}
-                        <div />
+                          {/* RIGHT headers */}
+                          {/* Header row */}
+                          <div className="grid grid-cols-[180px_1fr_170px] items-center mb-2 text-[11px] font-semibold text-slate-500">
+                            {/* Empty label column */}
+                            <div />
 
-                        {/* Empty bar column */}
-                        <div />
+                            {/* Empty bar column */}
+                            <div />
 
-                        {/* Single container for both headings */}
-                        <div className="flex justify-end gap-4 pr-2">
-                          <span>Fees Charged</span>
-                          <span>Delta</span>
+                            {/* Single container for both headings */}
+                            <div className="flex justify-end gap-4 pr-2">
+                              <span>Fees Charged</span>
+                              <span>Delta</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            {rightList.map((x) => (
+                              <BarRow
+                                key={x.label}
+                                label={x.label}
+                                value={x.value}
+                                total={rightTotalForBars}
+                                color={x.color}
+                                deltaPct={x.pct}
+                                showDelta={true}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="space-y-3">
-                        {rightList.map((x) => (
-                          <BarRow
-                            key={x.label}
-                            label={x.label}
-                            value={x.value}
-                            total={rightTotalForBars}
-                            color={x.color}
-                            deltaPct={x.pct}
-                            showDelta={true}
-                          />
-                        ))}
                       </div>
                     </div>
+                  );
+                })()}
+                <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
+                    <PageBreadcrumb
+                      pageTitle={(
+                        <span>
+                          Product-wise breakdown{" "}
+                          <span className="text-green-500">({currencySymbol})</span>
+                        </span>
+                      )}
+                      variant="page"
+                      align="left"
+                      className="mt-4 mb-0 md:mb-4 text-center"
+                    />
+                    <DownloadButton
+                      onClick={handleDownloadExcel}
+                      disabled={isPreviewMode}
+                    />
+                  </div>
+
+                  {/* <AiButton /> */}
+
+                  <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
+                    <GroupedCollapsibleTable<any>
+                      rows={groupedSkuTableDisplay}
+                      getRowKey={(row, index) =>
+                        row._isTotal
+                          ? "TOTAL"
+                          : row._isOthers
+                            ? "OTHERS"
+                            : row.sku || `${row.productName}-${index}`
+                      }
+                      leftCols={[
+                        { key: "sno", label: "S.No.", align: "center", width: 60 },
+                        { key: "productName", label: "Product Name", align: "left", width: 190 },
+                      ]}
+                      singleCols={[
+                        { key: "sku", label: "SKU", align: "center", width: 120 },
+                        { key: "units", label: "Units", align: "center", width: 90 },
+                        { key: "sales", label: "Net Sales", align: "center", width: 110 },
+                      ]}
+                      groups={[
+                        {
+                          id: "referralFees",
+                          label: "Referral Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "ref_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "ref_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                        },
+                        {
+                          id: "fbaFees",
+                          label: "FBA Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "fba_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "fba_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                        },
+                        {
+                          id: "otherFees",
+                          label: "Other Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "other_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "other_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                        },
+                        {
+                          id: "totalFees",
+                          label: "Total Fees",
+                          expandable: true,
+                          collapsedCols: [
+                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                          expandedCols: [
+                            { key: "total_applicable", label: "Applicable", align: "center", width: 110 },
+                            { key: "total_charged", label: "Charged", align: "center", width: 110 },
+                          ],
+                        },
+                      ]}
+                      layout={[
+                        { type: "single", key: "sku" },
+                        { type: "single", key: "units" },
+                        { type: "single", key: "sales" },
+                        { type: "group", id: "referralFees" },
+                        { type: "group", id: "fbaFees" },
+                        { type: "group", id: "otherFees" },
+                        { type: "group", id: "totalFees" },
+                      ]}
+                      initialCollapsed={{
+                        referralFees: false,
+                        fbaFees: false,
+                        otherFees: false,
+                        totalFees: false,
+                      }}
+                      preserveColumnWidths="responsive"
+                      tableClassName="w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]"
+                      isTotalRow={(row) => Boolean(row._isTotal)}
+                      getRowClassName={(row, index) => {
+                        if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
+                        if (row._isOthers) return "bg-white cursor-pointer";
+                        return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+                      }}
+                      onRowClick={(row) => {
+                        if (row._isOthers) setShowAllProductRows(true);
+                      }}
+                      getValue={(row, columnKey) => {
+                        if (columnKey === "sno") return row._isTotal ? "" : row.sno ?? "";
+
+                        if (columnKey === "productName") {
+                          if (row._isTotal) {
+                            return <span className="font-semibold text-charcoal-500">Total</span>;
+                          }
+
+                          if (row._isOthers) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setShowAllProductRows(true);
+                                }}
+                                className="w-full text-left font-medium text-green-500"
+                                title="Expand all products"
+                              >
+                                Others
+                              </button>
+                            );
+                          }
+
+                          return <span className="font-medium text-green-500">{row.productName}</span>;
+                        }
+
+                        if (columnKey === "sku") {
+                          return row._isOthers || row._isTotal ? "-" : row.sku || "-";
+                        }
+
+                        if (columnKey === "units") return fmtInteger(Number(row.units));
+
+                        if (
+                          columnKey === "sales" ||
+                          columnKey === "ref_applicable" ||
+                          columnKey === "ref_charged" ||
+                          columnKey === "fba_applicable" ||
+                          columnKey === "fba_charged" ||
+                          columnKey === "other_applicable" ||
+                          columnKey === "other_charged" ||
+                          columnKey === "total_applicable" ||
+                          columnKey === "total_charged"
+                        ) {
+                          return fmtMoneyNoSymbol(row[columnKey]);
+                        }
+
+                        return row[columnKey] ?? "";
+                      }}
+                    />
 
                   </div>
                 </div>
-              );
-            })()}
-            <div className="mt-4 bg-white rounded-xl border border-slate-200 shadow-sm px-2 md:px-4 pb-2 md:pb-4 w-full overflow-x-auto">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-2 flex-wrap w-full mb-2 md:mb-0">
-                <PageBreadcrumb
-                  pageTitle={(
-                    <span>
-                      Product-wise breakdown{" "}
-                      <span className="text-green-500">({currencySymbol})</span>
-                    </span>
-                  )}
-                  variant="page"
-                  align="left"
-                  className="mt-4 mb-0 md:mb-4 text-center"
-                />
-                <DownloadButton
-                  onClick={handleDownloadExcel}
-                  disabled={isPreviewMode}
-                />
-              </div>
-
-              {/* <AiButton /> */}
-
-              <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
-                <GroupedCollapsibleTable<any>
-                  rows={groupedSkuTableDisplay}
-                  getRowKey={(row, index) =>
-                    row._isTotal
-                      ? "TOTAL"
-                      : row._isOthers
-                        ? "OTHERS"
-                        : row.sku || `${row.productName}-${index}`
-                  }
-                  leftCols={[
-                    { key: "sno", label: "S.No.", align: "center", width: 60 },
-                    { key: "productName", label: "Product Name", align: "left", width: 190 },
-                  ]}
-                  singleCols={[
-                    { key: "sku", label: "SKU", align: "center", width: 120 },
-                    { key: "units", label: "Units", align: "center", width: 90 },
-                    { key: "sales", label: "Net Sales", align: "center", width: 110 },
-                  ]}
-                  groups={[
-                    {
-                      id: "referralFees",
-                      label: "Referral Fees",
-                      expandable: true,
-                      collapsedCols: [
-                        { key: "ref_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                      expandedCols: [
-                        { key: "ref_applicable", label: "Applicable", align: "center", width: 110 },
-                        { key: "ref_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                    },
-                    {
-                      id: "fbaFees",
-                      label: "FBA Fees",
-                      expandable: true,
-                      collapsedCols: [
-                        { key: "fba_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                      expandedCols: [
-                        { key: "fba_applicable", label: "Applicable", align: "center", width: 110 },
-                        { key: "fba_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                    },
-                    {
-                      id: "otherFees",
-                      label: "Other Fees",
-                      expandable: true,
-                      collapsedCols: [
-                        { key: "other_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                      expandedCols: [
-                        { key: "other_applicable", label: "Applicable", align: "center", width: 110 },
-                        { key: "other_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                    },
-                    {
-                      id: "totalFees",
-                      label: "Total Fees",
-                      expandable: true,
-                      collapsedCols: [
-                        { key: "total_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                      expandedCols: [
-                        { key: "total_applicable", label: "Applicable", align: "center", width: 110 },
-                        { key: "total_charged", label: "Charged", align: "center", width: 110 },
-                      ],
-                    },
-                  ]}
-                  layout={[
-                    { type: "single", key: "sku" },
-                    { type: "single", key: "units" },
-                    { type: "single", key: "sales" },
-                    { type: "group", id: "referralFees" },
-                    { type: "group", id: "fbaFees" },
-                    { type: "group", id: "otherFees" },
-                    { type: "group", id: "totalFees" },
-                  ]}
-                  initialCollapsed={{
-                    referralFees: false,
-                    fbaFees: false,
-                    otherFees: false,
-                    totalFees: false,
-                  }}
-                  preserveColumnWidths="responsive"
-                  tableClassName="w-full table-fixed border-separate border-spacing-0 bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]"
-                  isTotalRow={(row) => Boolean(row._isTotal)}
-                  getRowClassName={(row, index) => {
-                    if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
-                    if (row._isOthers) return "bg-white cursor-pointer";
-                    return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-                  }}
-                  onRowClick={(row) => {
-                    if (row._isOthers) setShowAllProductRows(true);
-                  }}
-                  getValue={(row, columnKey) => {
-                    if (columnKey === "sno") return row._isTotal ? "" : row.sno ?? "";
-
-                    if (columnKey === "productName") {
-                      if (row._isTotal) {
-                        return <span className="font-semibold text-charcoal-500">Total</span>;
-                      }
-
-                      if (row._isOthers) {
-                        return (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setShowAllProductRows(true);
-                            }}
-                            className="w-full text-left font-medium text-green-500"
-                            title="Expand all products"
-                          >
-                            Others
-                          </button>
-                        );
-                      }
-
-                      return <span className="font-medium text-green-500">{row.productName}</span>;
-                    }
-
-                    if (columnKey === "sku") {
-                      return row._isOthers || row._isTotal ? "-" : row.sku || "-";
-                    }
-
-                    if (columnKey === "units") return fmtInteger(Number(row.units));
-
-                    if (
-                      columnKey === "sales" ||
-                      columnKey === "ref_applicable" ||
-                      columnKey === "ref_charged" ||
-                      columnKey === "fba_applicable" ||
-                      columnKey === "fba_charged" ||
-                      columnKey === "other_applicable" ||
-                      columnKey === "other_charged" ||
-                      columnKey === "total_applicable" ||
-                      columnKey === "total_charged"
-                    ) {
-                      return fmtMoneyNoSymbol(row[columnKey]);
-                    }
-
-                    return row[columnKey] ?? "";
-                  }}
-                />
-
-              </div>
-            </div>
               </>
             )}
           </>
