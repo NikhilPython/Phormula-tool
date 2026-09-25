@@ -1844,7 +1844,7 @@ export function exportReferralFeesExcel({
   const summaryColumnCount = 6;
   const summaryHeaderTop = [
     "Referral Fee Status",
-    "Units",
+    "Orders",
     "Net Sales",
     "Referral Fees",
     "",
@@ -2082,7 +2082,7 @@ export function exportReferralFeesExcel({
   XLSX.utils.book_append_sheet(
     workbook,
     productWorksheet,
-    safeSheetName("Product Breakdown")
+    safeSheetName("Product-wise Breakdown")
   );
 
   /* ---------------- Sheets 3-4: Variance orders + accurately charged ---------------- */
