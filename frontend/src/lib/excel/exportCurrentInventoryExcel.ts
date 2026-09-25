@@ -2064,7 +2064,7 @@ export function exportReferralFeesExcel({
     safeSheetName("Product Breakdown")
   );
 
-  /* ---------------- Sheets 3-5: Orders split by status ---------------- */
+  /* ---------------- Sheets 3-4: Variance orders + accurately charged ---------------- */
   const orderHeaderTop = [
     "S. No",
     "Order ID",
@@ -2114,13 +2114,21 @@ export function exportReferralFeesExcel({
     "",
   ];
   const orderColumnCount = orderHeaderTop.length;
+  const orderStatuses = ["Overcharged", "Undercharged", "Accurate"] as const;
   const orderSheetConfigs = [
-    { status: "Overcharged", sheetName: "Overcharged" },
-    { status: "Undercharged", sheetName: "Undercharged" },
-    { status: "Accurate", sheetName: "Accurately Charged" },
+    {
+      statuses: ["Overcharged", "Undercharged"],
+      sheetName: "Fee Variances",
+      titleLabel: "Variance",
+    },
+    {
+      statuses: ["Accurate"],
+      sheetName: "Accurately Charged",
+      titleLabel: "Accurately Charged",
+    },
   ] as const;
   const targetUnitsByStatus = new Map<string, number>(
-    orderSheetConfigs.map(({ status }) => {
+    orderStatuses.map((status) => {
       const summaryRow = feeSummaryRows.find(
         (row) => row.label === `Charge - ${status}`
       );
@@ -2128,7 +2136,7 @@ export function exportReferralFeesExcel({
     })
   );
   const scaledUnitsByStatus = new Map<string, number[]>(
-    orderSheetConfigs.map(({ status }) => {
+    orderStatuses.map((status) => {
       const matchingRows = (ordersByStatus || []).filter(
         (row) => row?.Category === status && Object.keys(row).length > 1
       );
@@ -2141,20 +2149,27 @@ export function exportReferralFeesExcel({
       ] as const;
     })
   );
-  for (const { status, sheetName } of orderSheetConfigs) {
+  for (const { statuses, sheetName, titleLabel } of orderSheetConfigs) {
     const matchingRows = (ordersByStatus || []).filter(
-      (row) => row?.Category === status && Object.keys(row).length > 1
+      (row) =>
+        (statuses as readonly string[]).includes(String(row?.Category ?? "")) &&
+        Object.keys(row).length > 1
     );
     const orderRows: any[][] = [];
 
-    matchingRows.forEach((row, index) => {
+    const statusRowIndexes = new Map<string, number>();
+    matchingRows.forEach((row) => {
+      const rowStatus = String(row?.Category ?? "");
+      const statusRowIndex = statusRowIndexes.get(rowStatus) ?? 0;
+      statusRowIndexes.set(rowStatus, statusRowIndex + 1);
       const quantity =
-        scaledUnitsByStatus.get(status)?.[index] ?? getReferralDisplayUnits(row);
+        scaledUnitsByStatus.get(rowStatus)?.[statusRowIndex] ??
+        getReferralDisplayUnits(row);
       const displayQuantity = Math.round(quantity);
       const total = referralNumber(row.total_amount);
       const applicable = referralNumber(row.answer);
       const charged =
-        status === "Accurate" ? applicable : getReferralChargedFees(row);
+        rowStatus === "Accurate" ? applicable : getReferralChargedFees(row);
 
       if (displayQuantity <= 0) return;
 
@@ -2205,7 +2220,7 @@ export function exportReferralFeesExcel({
     });
 
     const orderTopRows = buildReferralTopRows({
-      title: `Amazon ${reportCountry} - Referral Fee ${sheetName} Orders - ${periodLabel}`,
+      title: `Amazon ${reportCountry} - Referral Fee ${titleLabel} Orders - ${periodLabel}`,
       countryName,
       titleCountry: reportCountry,
       periodLabel,
