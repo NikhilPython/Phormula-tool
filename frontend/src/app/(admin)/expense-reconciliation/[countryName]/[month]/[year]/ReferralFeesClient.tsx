@@ -178,19 +178,6 @@ type FeePercentages = {
   other_fees: FeePercentageMetric;
 };
 
-type FeeStatusAmounts = {
-  accurately_charged: number;
-  overcharged: number;
-  undercharged: number;
-};
-
-type FeeStatusBreakdown = {
-  referral_fees: FeeStatusAmounts;
-  fba_fees: FeeStatusAmounts;
-  platform_fees: FeeStatusAmounts;
-  other_fees: FeeStatusAmounts;
-};
-
 const EMPTY_FEE_PERCENTAGES: FeePercentages = {
   referral_fees: {
     charged_net_sales_pct: 0,
@@ -211,29 +198,6 @@ const EMPTY_FEE_PERCENTAGES: FeePercentages = {
     charged_net_sales_pct: 0,
     applicable_net_sales_pct: 0,
     charged_vs_applicable_pct: 0,
-  },
-};
-
-const EMPTY_FEE_STATUS_BREAKDOWN: FeeStatusBreakdown = {
-  referral_fees: {
-    accurately_charged: 0,
-    overcharged: 0,
-    undercharged: 0,
-  },
-  fba_fees: {
-    accurately_charged: 0,
-    overcharged: 0,
-    undercharged: 0,
-  },
-  platform_fees: {
-    accurately_charged: 0,
-    overcharged: 0,
-    undercharged: 0,
-  },
-  other_fees: {
-    accurately_charged: 0,
-    overcharged: 0,
-    undercharged: 0,
   },
 };
 
@@ -674,80 +638,6 @@ function FeeCard({
   );
 }
 
-type FeeBreakdownFlipCardProps = React.ComponentProps<typeof SummaryMetricCard> & {
-  statusAmounts: FeeStatusAmounts;
-  amountFormatter: (value: number) => React.ReactNode;
-};
-
-function FeeBreakdownFlipCard({
-  statusAmounts,
-  amountFormatter,
-  className,
-  ...frontCardProps
-}: FeeBreakdownFlipCardProps) {
-  const statusRows = [
-    {
-      label: "Accurately Charged",
-      value: statusAmounts.accurately_charged,
-      color: "#7B9A6D",
-    },
-    {
-      label: "Overcharged",
-      value: statusAmounts.overcharged,
-      color: "#B75A5A",
-    },
-    {
-      label: "Undercharged",
-      value: statusAmounts.undercharged,
-      color: "#ED9F50",
-    },
-  ];
-
-  return (
-    <div
-      className="group h-[116px] w-full [perspective:1000px] outline-none 2xl:h-[132px]"
-      tabIndex={0}
-      aria-label={`${frontCardProps.title} charged amount breakdown. Hover or focus to view.`}
-    >
-      <div className="relative h-full w-full transition-transform duration-500 ease-in-out [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)] group-focus:[transform:rotateY(180deg)]">
-        <div className="absolute inset-0 [backface-visibility:hidden]">
-          <SummaryMetricCard
-            {...frontCardProps}
-            className={`${className ?? ""} h-full`}
-          />
-        </div>
-
-        <div
-          className={`absolute inset-0 flex h-full w-full flex-col rounded-xl bg-white p-3 shadow-sm [backface-visibility:hidden] [transform:rotateY(180deg)] ${className ?? ""}`}
-        >
-          <div className="mb-1 text-[10px] font-semibold leading-tight text-charcoal-500 2xl:text-xs">
-            {frontCardProps.title} — Charged by Status
-          </div>
-          <div className="flex flex-1 flex-col justify-center gap-1">
-            {statusRows.map((row) => (
-              <div
-                key={row.label}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[9.5px] leading-tight text-charcoal-500 2xl:text-xs"
-              >
-                <span className="min-w-0 truncate">
-                  <span
-                    className="mr-1.5 inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: row.color }}
-                  />
-                  {row.label}
-                </span>
-                <span className="font-semibold tabular-nums">
-                  {amountFormatter(row.value)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function PreviewLockedSection({
   enabled,
   children,
@@ -901,8 +791,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [feePercentages, setFeePercentages] = useState<FeePercentages>(
     EMPTY_FEE_PERCENTAGES
   );
-  const [feeStatusBreakdown, setFeeStatusBreakdown] =
-    useState<FeeStatusBreakdown>(EMPTY_FEE_STATUS_BREAKDOWN);
 
   const fmtCurrency = useCallback(
     (n: number): string => {
@@ -1222,7 +1110,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       setCard6(DUMMY_CARD6);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
-      setFeeStatusBreakdown(EMPTY_FEE_STATUS_BREAKDOWN);
 
       return;
     }
@@ -1235,7 +1122,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
-      setFeeStatusBreakdown(EMPTY_FEE_STATUS_BREAKDOWN);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
       return;
     }
@@ -1324,25 +1210,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
             apiFeePercentages?.other_fees?.charged_vs_applicable_pct
           ),
         },
-      });
-
-      const apiFeeStatusBreakdown = json?.fee_status_breakdown ?? {};
-      const readStatusAmounts = (feeKey: keyof FeeStatusBreakdown): FeeStatusAmounts => ({
-        accurately_charged: toNumberSafe(
-          apiFeeStatusBreakdown?.[feeKey]?.accurately_charged
-        ),
-        overcharged: toNumberSafe(
-          apiFeeStatusBreakdown?.[feeKey]?.overcharged
-        ),
-        undercharged: toNumberSafe(
-          apiFeeStatusBreakdown?.[feeKey]?.undercharged
-        ),
-      });
-      setFeeStatusBreakdown({
-        referral_fees: readStatusAmounts("referral_fees"),
-        fba_fees: readStatusAmounts("fba_fees"),
-        platform_fees: readStatusAmounts("platform_fees"),
-        other_fees: readStatusAmounts("other_fees"),
       });
 
       const platformFeeTotalFromApi = toNumberSafe(json?.platform_fee_total);
@@ -1630,7 +1497,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
-      setFeeStatusBreakdown(EMPTY_FEE_STATUS_BREAKDOWN);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
     } finally {
       setLoading(false);
@@ -2381,10 +2247,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
                 </div> */}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <FeeBreakdownFlipCard
+                  <SummaryMetricCard
                     title="Referral Fees"
-                    statusAmounts={feeStatusBreakdown.referral_fees}
-                    amountFormatter={fmtCurrencyRounded}
                     value={renderFeeCurrentValue(
                       card6.refFeesApplied,
                       feePercentages.referral_fees.charged_net_sales_pct
@@ -2397,10 +2261,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     className="bg-white border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                   />
 
-                  <FeeBreakdownFlipCard
+                  <SummaryMetricCard
                     title="FBA Fees"
-                    statusAmounts={feeStatusBreakdown.fba_fees}
-                    amountFormatter={fmtCurrencyRounded}
                     value={renderFeeCurrentValue(
                       card6.fbaFees,
                       feePercentages.fba_fees.charged_net_sales_pct
@@ -2413,10 +2275,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     className="bg-white border border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                   />
 
-                  <FeeBreakdownFlipCard
+                  <SummaryMetricCard
                     title="Platform Fees"
-                    statusAmounts={feeStatusBreakdown.platform_fees}
-                    amountFormatter={fmtCurrencyRounded}
                     value={renderFeeCurrentValue(
                       card6.platformFees,
                       feePercentages.platform_fees.charged_net_sales_pct
@@ -2429,10 +2289,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
                     className="bg-white border border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                   />
 
-                  <FeeBreakdownFlipCard
+                  <SummaryMetricCard
                     title="Other Fees"
-                    statusAmounts={feeStatusBreakdown.other_fees}
-                    amountFormatter={fmtCurrencyRounded}
                     value={renderFeeCurrentValue(
                       card6.otherFees,
                       feePercentages.other_fees.charged_net_sales_pct
