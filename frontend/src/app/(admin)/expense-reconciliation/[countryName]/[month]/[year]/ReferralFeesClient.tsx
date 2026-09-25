@@ -2476,7 +2476,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                   <div>
                     {/* <p className="text-sm font-semibold text-charcoal-500">Detailed referral fee analysis</p> */}
                    <PageBreadcrumb
-                      pageTitle="Detailed referral fee analysis"
+                      pageTitle="Detailed Referral Fee Analysis"
                       textSize="lg"
                       variant="page"/>
                   </div>
