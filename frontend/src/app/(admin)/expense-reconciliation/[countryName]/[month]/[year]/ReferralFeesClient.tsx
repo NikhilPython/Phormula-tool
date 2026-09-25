@@ -20,11 +20,11 @@ import { useHomeCurrencyContext } from "@/lib/hooks/useHomeCurrencyContext";
 import { AiButton } from "@/components/ui/button/AiButton";
 import PeriodFiltersTable, { type Range } from "@/components/filters/PeriodFiltersTable";
 import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
-import { IoMdLock } from "react-icons/io";
+import { IoMdLock, IoMdArrowBack } from "react-icons/io";
 import SkuAgeingDonutChart, {
   type DonutChartItem,
 } from "@/components/common/inventory/SkuAgeingDonutChart";
-
+import Button from "@/components/ui/button/Button";
 import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useAppSelector } from "@/lib/store";
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
@@ -2295,42 +2295,15 @@ export default function ReferralFeesDashboard(): JSX.Element {
                 <div className="relative z-10 px-5 py-6 sm:px-7 sm:py-7 lg:px-9 lg:py-8">
 
                   {/* =====================================================
-          TOP AREA
-      ====================================================== */}
-                  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+    TOP AREA
+====================================================== */}
+                  <div className="relative">
 
-                    {/* LEFT */}
-                    <div className="flex min-w-0 flex-1 gap-4 sm:gap-5">
-
-                      {/* Status icon */}
-                      {/* <div
-                        className="mt-1 flex h-16 w-16 shrink-0 items-center justify-center rounded-full sm:h-[76px] sm:w-[76px]"
-                        style={{
-                          backgroundColor: `${reconciliationInsight.accent}18`,
-                        }}
-                      >
-                        <div
-                          className="flex h-11 w-11 items-center justify-center rounded-full shadow-sm sm:h-12 sm:w-12"
-                          style={{
-                            backgroundColor: reconciliationInsight.accent,
-                          }}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-6 w-6 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.6"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M20 6 9 17l-5-5" />
-                          </svg>
-                        </div>
-                      </div> */}
+                    {/* LEFT CONTENT */}
+                    <div className="min-w-0 w-full">
 
                       {/* Summary copy */}
-                      <div className="min-w-0 max-w-3xl">
+                      <div className="min-w-0 w-full">
 
                         {/* Status pill */}
                         <div
@@ -2346,21 +2319,40 @@ export default function ReferralFeesDashboard(): JSX.Element {
                               backgroundColor: reconciliationInsight.accent,
                             }}
                           />
+
                           {reconciliationInsight.label}
                         </div>
 
-                        {/* <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#667391] sm:text-xs">
-                          Referral fee review · {selectedPeriodLabel}
-                        </p> */}
-
+                        {/* Heading */}
                         <h2
-                          className="mt-2 text-[24px] font-bold leading-tight tracking-[-0.025em] sm:text-[28px] lg:text-[31px]"
+                          className="
+          mt-2
+          text-[24px]
+          font-bold
+          leading-tight
+          tracking-[-0.025em]
+          sm:text-[28px]
+          lg:text-[31px]
+          lg:pr-[250px]
+        "
                           style={{ color: reconciliationInsight.accent }}
                         >
                           {reconciliationInsight.title}
                         </h2>
 
-                        <p className="mt-3 text-sm leading-6 text-[#52617C] sm:leading-7">
+                        {/* Description */}
+                        <p
+                          className="
+          mt-3
+          w-full
+          max-w-none
+          whitespace-normal
+          text-sm
+          leading-6
+          text-charcoal-500
+          sm:leading-7
+        "
+                        >
                           {reconciliationInsight.message}
                         </p>
                       </div>
@@ -2371,21 +2363,36 @@ export default function ReferralFeesDashboard(): JSX.Element {
                       type="button"
                       onClick={() => setShowDeepDive(true)}
                       className="
-            inline-flex shrink-0 items-center justify-center gap-3
-            self-start
-            rounded-xl
-            bg-[#37455F]
-            px-5 py-3
-            text-sm font-semibold text-[#F8EDCE]
-            shadow-[0_6px_14px_rgba(55,69,95,0.16)]
-            transition-all duration-200
-            hover:-translate-y-0.5
-            hover:bg-[#2F3B52]
-            hover:shadow-[0_10px_20px_rgba(55,69,95,0.20)]
-            focus:outline-none focus:ring-2 focus:ring-[#5EA68E]
-            focus:ring-offset-2
-            lg:mt-1
-          "
+      mt-5
+      inline-flex
+      items-center
+      justify-center
+      gap-3
+      rounded-xl
+      bg-[#37455F]
+      px-5
+      py-3
+      text-sm
+      font-semibold
+      text-[#F8EDCE]
+      shadow-[0_6px_14px_rgba(55,69,95,0.16)]
+      transition-all
+      duration-200
+
+      hover:-translate-y-0.5
+      hover:bg-[#2F3B52]
+      hover:shadow-[0_10px_20px_rgba(55,69,95,0.20)]
+
+      focus:outline-none
+      focus:ring-2
+      focus:ring-[#5EA68E]
+      focus:ring-offset-2
+
+      lg:absolute
+      lg:right-0
+      lg:top-0
+      lg:mt-0
+    "
                     >
                       Explore detailed analysis
 
@@ -2402,80 +2409,94 @@ export default function ReferralFeesDashboard(): JSX.Element {
                         <path d="m13 6 6 6-6 6" />
                       </svg>
                     </button>
+
                   </div>
+
 
                   {/* =====================================================
           METRIC CARDS
       ====================================================== */}
-                    <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <SummaryMetricCard
-                        title="Potential overcharge"
-                        value={(
-                          <div>
-                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
-                              {fmtCurrency(reconciliationInsight.overchargedAmount)}
-                            </div>
-                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
-                              {reconciliationInsight.overchargeRate.toFixed(2)}% of applicable referral fees
-                            </div>
+                  <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <SummaryMetricCard
+                      title="Potential overcharge"
+                      value={(
+                        <div>
+                          <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                            {fmtCurrency(reconciliationInsight.overchargedAmount)}
                           </div>
-                        )}
-                        className="border border-[#B75A5A] border-t-4 border-t-[#B75A5A] bg-white/90 px-5 py-5 backdrop-blur"
-                        titleClassName="text-xs text-[#52617C] sm:text-sm"
-                        valueClassName="mt-2"
-                      />
+                          <div className="mt-2 text-xs font-medium text-charcoal-500 sm:text-sm">
+                            {reconciliationInsight.overchargeRate.toFixed(2)}% of applicable referral fees
+                          </div>
+                        </div>
+                      )}
+                      className="border border-[#B75A5A] border-t-4 border-t-[#B75A5A] bg-white/90 px-5 py-5 backdrop-blur"
+                      titleClassName="text-xs text-charcoal-500 sm:text-sm"
+                      valueClassName="mt-2"
+                    />
 
-                      <SummaryMetricCard
-                        title="Units to review"
-                        value={(
-                          <div>
-                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
-                              {fmtInteger(reconciliationInsight.overchargedUnits)}
-                            </div>
-                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
-                              {reconciliationInsight.affectedUnitsRate.toFixed(2)}% of reconciled units
-                            </div>
+                    <SummaryMetricCard
+                      title="Units to review"
+                      value={(
+                        <div>
+                          <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                            {fmtInteger(reconciliationInsight.overchargedUnits)}
                           </div>
-                        )}
-                        className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white/90 px-5 py-5 backdrop-blur"
-                        titleClassName="text-xs text-[#52617C] sm:text-sm"
-                        valueClassName="mt-2"
-                      />
+                          <div className="mt-2 text-xs font-medium text-charcoal-500 sm:text-sm">
+                            {reconciliationInsight.affectedUnitsRate.toFixed(2)}% of reconciled units
+                          </div>
+                        </div>
+                      )}
+                      className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white/90 px-5 py-5 backdrop-blur"
+                      titleClassName="text-xs text-charcoal-500 sm:text-sm"
+                      valueClassName="mt-2"
+                    />
 
-                      <SummaryMetricCard
-                        title="Accurately charged units"
-                        value={(
-                          <div>
-                            <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
-                              {reconciliationInsight.accurateUnitsRate.toFixed(2)}%
-                            </div>
-                            <div className="mt-2 text-xs font-semibold text-[#60708E] sm:text-sm">
-                              Net fee variance: {fmtCurrency(reconciliationInsight.netVariance)}
-                            </div>
+                    <SummaryMetricCard
+                      title="Accurately charged units"
+                      value={(
+                        <div>
+                          <div className="text-base font-semibold leading-none text-charcoal-500 sm:text-md">
+                            {reconciliationInsight.accurateUnitsRate.toFixed(2)}%
                           </div>
-                        )}
-                        className="border border-[#75BBDA] border-t-4 border-t-[#75BBDA] bg-white/90 px-5 py-5 backdrop-blur"
-                        titleClassName="text-xs text-[#52617C] sm:text-sm"
-                        valueClassName="mt-2"
-                      />
-                    </div>
+                          <div className="mt-2 text-xs font-medium text-charcoal-500 sm:text-sm">
+                            Net fee variance: {fmtCurrency(reconciliationInsight.netVariance)}
+                          </div>
+                        </div>
+                      )}
+                      className="border border-[#75BBDA] border-t-4 border-t-[#75BBDA] bg-white/90 px-5 py-5 backdrop-blur"
+                      titleClassName="text-xs text-charcoal-500 sm:text-sm"
+                      valueClassName="mt-2"
+                    />
                   </div>
+                </div>
               </section>
             ) : (
               <>
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                   <div>
-                    <p className="text-sm font-semibold text-[#414042]">Detailed referral fee analysis</p>
-                    <p className="text-xs text-slate-500">Product, fee type, and order-level reconciliation</p>
+                    {/* <p className="text-sm font-semibold text-charcoal-500">Detailed referral fee analysis</p> */}
+                   <PageBreadcrumb
+                      pageTitle="Detailed referral fee analysis"
+                      textSize="lg"
+                      variant="page"/>
                   </div>
-                  <button
+                  {/* <button
                     type="button"
                     onClick={() => setShowDeepDive(false)}
                     className="inline-flex items-center gap-2 rounded-lg border border-[#37455F] bg-white px-4 py-2 text-sm font-semibold text-[#37455F] transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2"
                   >
                     <span aria-hidden="true">←</span>
                     Back to overview
-                  </button>
+                  </button> */}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setShowDeepDive(false)}
+                    startIcon={<IoMdArrowBack className="text-sm" />}
+                  >
+                    Back to overview
+                  </Button>
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:items-stretch 2xl:grid-cols-2">
