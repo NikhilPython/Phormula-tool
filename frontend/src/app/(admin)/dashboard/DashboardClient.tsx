@@ -2037,7 +2037,6 @@ export default function DashboardPage() {
         setCacheSaveTick((x) => x + 1);
     }, []);
 
-    const [pendingHash, setPendingHash] = useState<string>("");
 
     const inventoryAlertList = useMemo<UiAlert[]>(() => {
         return Object.entries(inventoryAlerts || {})
@@ -2657,12 +2656,6 @@ export default function DashboardPage() {
         platform,
         activeDateRegion,
     ]);
-
-    useEffect(() => {
-        if (!pendingHash) return;
-
-        setPendingHash("");
-    }, [pendingHash]);
 
     useEffect(() => {
         if (activeTab === "summary") {
@@ -8682,7 +8675,9 @@ export default function DashboardPage() {
         const targetTab = HASH_TO_TAB[hash];
         if (!targetTab) return;
 
-        setPendingHash(hash);
+        // Hash-based navigation (including Action Items) should only switch
+        // the dashboard tab. The destination section itself handles focused
+        // scrolling after it has rendered, so we do not reset the page to top.
         setActiveTab(targetTab);
     }, []);
 

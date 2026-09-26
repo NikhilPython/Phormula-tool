@@ -79,52 +79,28 @@ const AppSidebar: React.FC = () => {
   const [currentHash, setCurrentHash] = useState("");
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     const updateHash = () => {
-      if (typeof window === "undefined") return;
-
-      const hash = window.location.hash || "";
-      setCurrentHash(hash);
+      setCurrentHash(window.location.hash || "");
     };
 
-    const originalPushState = window.history.pushState;
-    const originalReplaceState = window.history.replaceState;
-
-    const patchedPushState: History["pushState"] = function (
-      data,
-      unused,
-      url
-    ) {
-      originalPushState.call(window.history, data, unused, url);
-      updateHash();
-    };
-
-    const patchedReplaceState: History["replaceState"] = function (
-      data,
-      unused,
-      url
-    ) {
-      originalReplaceState.call(window.history, data, unused, url);
-      updateHash();
-    };
-
-    window.history.pushState = patchedPushState;
-    window.history.replaceState = patchedReplaceState;
-
+    // Set initial hash
     updateHash();
 
+    // Listen for normal hash changes
     window.addEventListener("hashchange", updateHash);
+
+    // Listen for browser back / forward
     window.addEventListener("popstate", updateHash);
-    window.addEventListener("page-hash-navigate", updateHash as EventListener);
+
+    // Listen for our sidebar hash navigation
+    window.addEventListener(
+      "page-hash-navigate",
+      updateHash as EventListener
+    );
 
     return () => {
-      if (window.history.pushState === patchedPushState) {
-        window.history.pushState = originalPushState;
-      }
-
-      if (window.history.replaceState === patchedReplaceState) {
-        window.history.replaceState = originalReplaceState;
-      }
-
       window.removeEventListener("hashchange", updateHash);
       window.removeEventListener("popstate", updateHash);
       window.removeEventListener(
@@ -1140,31 +1116,31 @@ const AppSidebar: React.FC = () => {
       ],
     },
     {
-  key: "business-intelligence",
-  name: "INVENTORY PLANNING",
-  icon: (
-    <Image
-      src="/images/brand/business.png"
-      alt="Logo"
-      width={18}
-      height={18}
-      className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px] lg:w-[20px] lg:h-[20px]"
-    />
-  ),
-  subItems: [
-    // {
-    //   name: "AI Insights",
-    //   path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-    // },
-    {
-      name: "Inventory Forecast",
-      path: ({ countryName, month, year }) =>
-        `/inventory-forecast/${encodeURIComponent(
-          countryName
-        )}/${encodeURIComponent(month)}/${encodeURIComponent(
-          year
-        )}#inventory-forecast`,
-    },
+      key: "business-intelligence",
+      name: "INVENTORY PLANNING",
+      icon: (
+        <Image
+          src="/images/brand/business.png"
+          alt="Logo"
+          width={18}
+          height={18}
+          className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px] lg:w-[20px] lg:h-[20px]"
+        />
+      ),
+      subItems: [
+        // {
+        //   name: "AI Insights",
+        //   path: `/ai-insight/${currentParams.ranged}/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        // },
+        {
+          name: "Inventory Forecast",
+          path: ({ countryName, month, year }) =>
+            `/inventory-forecast/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(
+              year
+            )}#inventory-forecast`,
+        },
         {
           name: "Dispatch Planning",
           path: ({ countryName, month, year }) =>
@@ -1195,8 +1171,8 @@ const AppSidebar: React.FC = () => {
       ],
     },
     {
-  key: "inventory-planning",
-  name: "CURRENT INVENTORY",
+      key: "inventory-planning",
+      name: "CURRENT INVENTORY",
       icon: (
         <Image
           src="/images/brand/inventory.png"
@@ -1207,41 +1183,41 @@ const AppSidebar: React.FC = () => {
         />
       ),
       subItems: [
-  {
-    name: "Inventory Insights",
-    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-insights`,
-  },
-  {
-    name: "SKU Information",
-    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#sku-info`,
-  },
-   {
-    name: "Upload Warehouse Data",
-    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#extra`,
-  },
-  {
-    name: "Recon Table",
-    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#recon-table`,
-  },
-  {
-    name: "Lost vs Compensation",
-    path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#lost-compensation`,
-  },
- 
+        {
+          name: "Inventory Insights",
+          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#inventory-insights`,
+        },
+        {
+          name: "SKU Information",
+          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#sku-info`,
+        },
+        {
+          name: "Upload Warehouse Data",
+          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#extra`,
+        },
+        {
+          name: "Recon Table",
+          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#recon-table`,
+        },
+        {
+          name: "Lost vs Compensation",
+          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#lost-compensation`,
+        },
 
-  // abhi ke liye comment
-  // {
-  //   name: "Inventory Reconciliation",
-  //   path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
-  // },
-  {
-    name: "Expense Reconciliation",
-    path: ({ countryName, month, year }) =>
-      `/expense-reconciliation/${encodeURIComponent(countryName)}/${encodeURIComponent(
-        month
-      )}/${encodeURIComponent(year)}`,
-  },
-],
+
+        // abhi ke liye comment
+        // {
+        //   name: "Inventory Reconciliation",
+        //   path: `/inventory-reconciliation/${currentParams.countryName}/${currentParams.month}/${currentParams.year}`,
+        // },
+        {
+          name: "Expense Reconciliation",
+          path: ({ countryName, month, year }) =>
+            `/expense-reconciliation/${encodeURIComponent(countryName)}/${encodeURIComponent(
+              month
+            )}/${encodeURIComponent(year)}`,
+        },
+      ],
     },
   ];
 
@@ -1272,21 +1248,21 @@ const AppSidebar: React.FC = () => {
   });
 
   const isActive = useCallback(
-  (path: string | ((params: typeof currentParams) => string)) => {
-    const resolvedPath =
-      typeof path === "function" ? path(currentParams) : path;
+    (path: string | ((params: typeof currentParams) => string)) => {
+      const resolvedPath =
+        typeof path === "function" ? path(currentParams) : path;
 
-    const [targetPath, targetHash = ""] = resolvedPath.split("#");
+      const [targetPath, targetHash = ""] = resolvedPath.split("#");
 
-    if (targetHash) {
-      return pathname === targetPath && currentHash === `#${targetHash}`;
-    }
+      if (targetHash) {
+        return pathname === targetPath && currentHash === `#${targetHash}`;
+      }
 
-    const [resolvedPathOnly] = resolvedPath.split("#");
-    return pathname === resolvedPathOnly && !currentHash;
-  },
-  [pathname, currentHash, currentParams]
-);
+      const [resolvedPathOnly] = resolvedPath.split("#");
+      return pathname === resolvedPathOnly && !currentHash;
+    },
+    [pathname, currentHash, currentParams]
+  );
 
   const showText = isExpanded || isMobileOpen;
 
@@ -1472,16 +1448,13 @@ const AppSidebar: React.FC = () => {
                                   `${targetPathOnly}${nextHash}`
                                 );
 
-                                setCurrentHash(nextHash);
-
                                 window.dispatchEvent(
                                   new CustomEvent("page-hash-navigate", {
                                     detail: { hash: targetHash },
                                   })
                                 );
 
-                                const el =
-                                  document.getElementById(targetHash);
+                                const el = document.getElementById(targetHash);
 
                                 if (el) {
                                   el.scrollIntoView({

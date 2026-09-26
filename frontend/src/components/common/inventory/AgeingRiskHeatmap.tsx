@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     RiCollapseDiagonalFill,
     RiExpandDiagonalFill,
@@ -65,6 +68,22 @@ export type AgeingRiskHeatmapRow = {
 };
 
 export type AgeingRiskUnitSalesDataKey = "salesLast30Days" | "unitsSold";
+
+const INVENTORY_ACTION_FILTER_IDS = new Set([
+    "inventory-coverage-risk",
+    "aged-inventory",
+]);
+
+const INVENTORY_ACTION_FILTER_LABELS: Record<string, string> = {
+    "inventory-coverage-risk": "Inventory Coverage",
+    "aged-inventory": "Aged Inventory",
+};
+
+const splitActionSkuValues = (value: unknown) =>
+    String(value ?? "")
+        .split(/[,;|/]+/g)
+        .map((sku) => sku.trim().toUpperCase())
+        .filter(Boolean);
 
 type AgeingRiskHeatmapProps = {
     title?: string;
@@ -593,6 +612,130 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     excelBrandName = "",
     inventoryAgeSummary,
 }) => {
+    const searchParams = useSearchParams();
+    const pathname = usePathname();
+    const router = useRouter();
+
+    const actionItemId = String(searchParams.get("actionItem") || "").trim();
+    const actionFilterSkus = useMemo(
+        () => Array.from(new Set(splitActionSkuValues(searchParams.get("skus")))),
+        [searchParams]
+    );
+    const actionFilterSkuSet = useMemo(
+        () => new Set(actionFilterSkus),
+        [actionFilterSkus]
+    );
+    const isActionSkuFilterActive =
+        INVENTORY_ACTION_FILTER_IDS.has(actionItemId) && actionFilterSkus.length > 0;
+
+    React.useEffect(() => {
+        if (!isActionSkuFilterActive || typeof window === "undefined") return;
+
+        let raf1 = 0;
+        let raf2 = 0;
+        const timers: number[] = [];
+
+        const findScrollableParent = (element: HTMLElement) => {
+            let parent = element.parentElement;
+
+            while (parent) {
+                const style = window.getComputedStyle(parent);
+                const canScroll =
+                    ["auto", "scroll", "overlay"].includes(style.overflowY) &&
+                    parent.scrollHeight > parent.clientHeight + 1;
+
+                if (canScroll) return parent;
+                parent = parent.parentElement;
+            }
+
+            return null;
+        };
+
+        const getDesiredTop = () => {
+            // Keep the dashboard heading/tabs visible and place the focused
+            // inventory table immediately under the Inventory Insights tab.
+            const tabButton = Array.from(
+                document.querySelectorAll<HTMLButtonElement>("button")
+            ).find((button) => {
+                const label = String(button.textContent || "")
+                    .replace(/\s+/g, " ")
+                    .trim();
+
+                return label === "Inventory Insights" && button.offsetParent !== null;
+            });
+
+            if (tabButton) {
+                return tabButton.getBoundingClientRect().bottom + 16;
+            }
+
+            return window.innerWidth >= 1024 ? 175 : 120;
+        };
+
+        const scrollFocusedInventoryIntoView = () => {
+            const target = document.getElementById("inventory-action-focus");
+            if (!target) return;
+
+            const desiredTop = getDesiredTop();
+            const currentTop = target.getBoundingClientRect().top;
+            const delta = currentTop - desiredTop;
+
+            if (Math.abs(delta) <= 2) return;
+
+            const scrollParent = findScrollableParent(target);
+
+            if (scrollParent) {
+                scrollParent.scrollTo({
+                    top: Math.max(0, scrollParent.scrollTop + delta),
+                    behavior: "auto",
+                });
+                return;
+            }
+
+            window.scrollTo({
+                top: Math.max(0, window.scrollY + delta),
+                left: 0,
+                behavior: "auto",
+            });
+        };
+
+        // Inventory content/charts can settle after the tab is mounted.
+        // Retry briefly so the focused heatmap remains aligned below the tabs.
+        raf1 = window.requestAnimationFrame(() => {
+            raf2 = window.requestAnimationFrame(scrollFocusedInventoryIntoView);
+        });
+
+        timers.push(
+            window.setTimeout(scrollFocusedInventoryIntoView, 80),
+            window.setTimeout(scrollFocusedInventoryIntoView, 180),
+            window.setTimeout(scrollFocusedInventoryIntoView, 350),
+            window.setTimeout(scrollFocusedInventoryIntoView, 550)
+        );
+
+        return () => {
+            window.cancelAnimationFrame(raf1);
+            window.cancelAnimationFrame(raf2);
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [isActionSkuFilterActive, actionItemId, actionFilterSkus]);
+
+    const tableSourceData = useMemo(() => {
+        if (!isActionSkuFilterActive) return data;
+
+        return data.filter((row) => {
+            if (isSummaryHeatmapRow(row)) return false;
+            return splitActionSkuValues(row.sku).some((sku) => actionFilterSkuSet.has(sku));
+        });
+    }, [data, isActionSkuFilterActive, actionFilterSkuSet]);
+
+    const clearActionSkuFilter = () => {
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete("actionItem");
+        nextParams.delete("skus");
+
+        const query = nextParams.toString();
+        router.replace(`${pathname}${query ? `?${query}` : ""}#inventory-insights`, { scroll: false });
+    };
+
     const [isExpanded, setIsExpanded] = useState(false);
     const [isInventoryDetailsExpanded, setIsInventoryDetailsExpanded] =
         useState(false);
@@ -610,7 +753,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     };
 
     const showSellableBreakdown = useMemo(() => {
-        return data.some((row) => {
+        return tableSourceData.some((row) => {
             if (isSummaryHeatmapRow(row)) return false;
 
             const available = Number(row.available || 0);
@@ -618,19 +761,19 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
             return available > 0 || fcTransfer > 0;
         });
-    }, [data]);
+    }, [tableSourceData]);
 
     const displayableRowCount = useMemo(() => {
         const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
         };
 
-        return data.filter(
+        return tableSourceData.filter(
             (row) =>
                 !isSummaryHeatmapRow(row) &&
                 (row.isDummyRow === true || hasAnyDisplayBucketValue(row))
         ).length;
-    }, [data, buckets]);
+    }, [tableSourceData, buckets]);
 
     const canCollapse = displayableRowCount > defaultVisibleRows;
 
@@ -639,7 +782,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return buckets.some((bucket) => Number(row[bucket.key] || 0) > 0);
         };
 
-        const productRows = data.filter((row) => {
+        const productRows = tableSourceData.filter((row) => {
             return (
                 !isSummaryHeatmapRow(row) &&
                 (row.isDummyRow === true || hasAnyDisplayBucketValue(row))
@@ -654,6 +797,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
             return bUnitSales - aUnitSales;
         });
+
+        if (isActionSkuFilterActive) {
+            return sortedData as HeatmapTableRow[];
+        }
 
         const totalRow = buildTotalRow(
             sortedData,
@@ -679,7 +826,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         }, unitSalesDataKey);
 
         return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
-    }, [data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey]);
+    }, [tableSourceData, data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, isActionSkuFilterActive]);
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};
@@ -935,14 +1082,14 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     thClassName: heatmapHeaderClassName,
                     tdClassName: defaultTdClassName,
                 },
-            // {
-            //     key: "unitsSold",
-            //     label: "Units Sold",
-            //     width: "85px",
-            //     align: "center",
-            //     thClassName: heatmapHeaderClassName,
-            //     tdClassName: defaultTdClassName,
-            // },
+                // {
+                //     key: "unitsSold",
+                //     label: "Units Sold",
+                //     width: "85px",
+                //     align: "center",
+                //     thClassName: heatmapHeaderClassName,
+                //     tdClassName: defaultTdClassName,
+                // },
                 {
                     key: "salesLast30Days",
                     label: salesLast30DaysLabel,
@@ -1483,7 +1630,10 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     };
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div
+            id="inventory-action-focus"
+            className="scroll-mt-[165px] rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+        >
             <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                     <PageBreadcrumb
@@ -1555,68 +1705,169 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 </div>
             </div>
 
+            {isActionSkuFilterActive && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E7E2] bg-white px-3 py-2 shadow-xl">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+
+                        {/* Filters */}
+                        <button
+                            type="button"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#D7E3DE] bg-white px-3 text-[11px] font-medium text-[#425E57] transition hover:bg-[#F7FBF9]"
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                            >
+                                <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
+                            </svg>
+                        </button>
+
+                        {/* Focused view */}
+                        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#E1ECE8] bg-[#F8FBFA] px-3 text-[11px] font-medium text-[#617972]">
+                            <span>Focused View</span>
+
+                            <svg
+                                viewBox="0 0 20 20"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                className="h-3.5 w-3.5 text-[#91AAA2]"
+                                aria-hidden="true"
+                            >
+                                <circle cx="10" cy="10" r="6.5" />
+                                <path d="M10 7v3l2 2" />
+                            </svg>
+                        </div>
+
+                        {/* Selected action */}
+                        <button
+                            type="button"
+                            onClick={clearActionSkuFilter}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#CFE5DD] bg-[#EAF6F1] px-3 text-[11px] font-semibold text-[#2D6256] transition hover:bg-[#E2F2EC]"
+                        >
+                            <span className="max-w-[180px] truncate">
+                                {INVENTORY_ACTION_FILTER_LABELS[actionItemId] || "Inventory Action"}
+                            </span>
+
+                            <svg
+                                viewBox="0 0 20 20"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                className="h-3.5 w-3.5"
+                                aria-hidden="true"
+                            >
+                                <path d="M6 6l8 8M14 6l-8 8" />
+                            </svg>
+                        </button>
+
+                        {/* Count */}
+                        <span className="text-[11px] font-medium text-[#7B918B]">
+                            {displayRows.length} matching product
+                            {displayRows.length === 1 ? "" : "s"}
+                        </span>
+                    </div>
+
+                    {/* Reset */}
+                    <button
+                        type="button"
+                        onClick={clearActionSkuFilter}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#4E9A84] transition hover:text-[#2F7C67]"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-3.5 w-3.5"
+                            aria-hidden="true"
+                        >
+                            <path d="M3 12a9 9 0 1 0 3-6.7" />
+                            <path d="M3 4v5h5" />
+                        </svg>
+
+                        Reset filters
+                    </button>
+                </div>
+            )}
+
             <div className="rounded-xl w-full overflow-x-auto">
-                <GroupedCollapsibleTable<HeatmapTableRow>
-                    rows={displayRows}
-                    leftCols={tableConfig.leftCols}
-                    groups={tableConfig.groups}
-                    singleCols={tableConfig.singleCols}
-                    layout={tableConfig.layout}
-                    initialCollapsed={
-                        useCurrentInventoryTableLayout
-                            ? undefined
-                            : {
-                                sellable: true,
-                            }
-                    }
-                    collapsedState={
-                        useCurrentInventoryTableLayout
-                            ? currentInventoryCollapsedState
-                            : undefined
-                    }
-                    onCollapsedChange={
-                        useCurrentInventoryTableLayout
-                            ? handleCurrentInventoryCollapsedChange
-                            : undefined
-                    }
-                    getGroupToggleCollapsedState={
-                        useCurrentInventoryTableLayout
-                            ? (groupId, defaultIsCollapsed) =>
-                                groupId === "totalSellableInventory"
-                                    ? !isInventoryDetailsExpanded
-                                    : groupId === "salesCoverage"
-                                        ? !isSalesCoverageDetailsExpanded
-                                        : defaultIsCollapsed
-                            : undefined
-                    }
-                    getValue={tableConfig.getValue}
-                    getRowKey={(row, index) =>
-                        `${row.sku || row.productName || "row"}-${index}`
-                    }
-                    tableClassName="ageing-risk-heatmap-table w-full table-fixed border-collapse bg-white text-sm text-charcoal-500"
-                    headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
-                    headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
-                    getRowClassName={(row) =>
-                        row.isTotalRow
-                            ? "bg-[#EFEFEF] font-semibold"
-                            : row.isPercentageRow
-                                ? "bg-[#F8F8F8] font-semibold"
-                                : row.isOthersRow && !isExpanded
-                                    ? "cursor-pointer"
-                                : ""
-                    }
-                    onRowClick={(row) => {
-                        if (row.isOthersRow && !isExpanded) {
-                            setIsExpanded(true);
+                {isActionSkuFilterActive && displayRows.length === 0 ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+                        No affected inventory products matched this action item.
+                    </div>
+                ) : (
+                    <GroupedCollapsibleTable<HeatmapTableRow>
+                        rows={displayRows}
+                        leftCols={tableConfig.leftCols}
+                        groups={tableConfig.groups}
+                        singleCols={tableConfig.singleCols}
+                        layout={tableConfig.layout}
+                        initialCollapsed={
+                            useCurrentInventoryTableLayout
+                                ? undefined
+                                : {
+                                    sellable: true,
+                                }
                         }
-                    }}
-                    preserveColumnWidths={
-                        useCurrentInventoryTableLayout ? "responsive" : false
-                    }
-                    stickyLeftWidthMode="declared"
-                    stickyLeftDividerMode="leading"
-                    showStickyLeftOuterBorder
-                />
+                        collapsedState={
+                            useCurrentInventoryTableLayout
+                                ? currentInventoryCollapsedState
+                                : undefined
+                        }
+                        onCollapsedChange={
+                            useCurrentInventoryTableLayout
+                                ? handleCurrentInventoryCollapsedChange
+                                : undefined
+                        }
+                        getGroupToggleCollapsedState={
+                            useCurrentInventoryTableLayout
+                                ? (groupId, defaultIsCollapsed) =>
+                                    groupId === "totalSellableInventory"
+                                        ? !isInventoryDetailsExpanded
+                                        : groupId === "salesCoverage"
+                                            ? !isSalesCoverageDetailsExpanded
+                                            : defaultIsCollapsed
+                                : undefined
+                        }
+                        getValue={tableConfig.getValue}
+                        getRowKey={(row, index) =>
+                            `${row.sku || row.productName || "row"}-${index}`
+                        }
+                        tableClassName="ageing-risk-heatmap-table w-full table-fixed border-collapse bg-white text-sm text-charcoal-500"
+                        headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
+                        headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
+                        getRowClassName={(row) =>
+                            row.isTotalRow
+                                ? "bg-[#EFEFEF] font-semibold"
+                                : row.isPercentageRow
+                                    ? "bg-[#F8F8F8] font-semibold"
+                                    : row.isOthersRow && !isExpanded
+                                        ? "cursor-pointer"
+                                        : ""
+                        }
+                        onRowClick={(row) => {
+                            if (row.isOthersRow && !isExpanded) {
+                                setIsExpanded(true);
+                            }
+                        }}
+                        preserveColumnWidths={
+                            useCurrentInventoryTableLayout ? "responsive" : false
+                        }
+                        stickyLeftWidthMode="declared"
+                        stickyLeftDividerMode="leading"
+                        showStickyLeftOuterBorder
+                    />
+                )}
             </div>
         </div>
     );

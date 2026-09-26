@@ -678,7 +678,7 @@ def build_action_items(
             "metrics": [
                 {
                     "value": f"{aged_percent_of_total:.2f}%",
-                    "label": "% of Total",
+                    "label": " of Total",
                 },
                 {
                     "value": f"{total_aged_units:,.0f}",
@@ -702,7 +702,56 @@ def build_action_items(
     net_sales = source_metrics["net_sales"]
     ads_spend = source_metrics["ads_spend"]
     tacos = source_metrics["tacos"]
-    if ads_spend and tacos >= ACTION_THRESHOLDS["tacos_percent"]:
+
+    # Product drill-down for the Ads action item.
+    # The portfolio action still triggers from the authoritative total TACoS, while
+    # the click-through table is narrowed to SKUs whose own TACoS is >= 20%.
+    ads_tacos_threshold = ACTION_THRESHOLDS["tacos_percent"]
+    ads_affected_skus: list[str] = []
+
+    for row in rows:
+        sku = str(row.get("sku") or row.get("SKU") or "").strip()
+        if not sku:
+            continue
+
+        row_net_sales = abs(_first_number(row, "net_sales", "Net Sales"))
+        row_ads_spend = abs(
+            _first_number(
+                row,
+                "total_ads",
+                "ads_spend",
+                "advertising",
+            )
+        )
+
+        # Some productwise payloads expose the ad components instead of ads_spend.
+        if row_ads_spend == 0:
+            row_ads_spend = (
+                abs(_number(row.get("product_spend")))
+                + abs(_number(row.get("display_spend")))
+                + abs(_number(row.get("brand_spend")))
+            )
+
+        direct_row_tacos = abs(
+            _first_number(
+                row,
+                "tacos_total_advertising_cost_of_sale",
+                "tacos",
+            )
+        )
+        row_tacos = (
+            direct_row_tacos
+            if direct_row_tacos > 0
+            else (row_ads_spend / row_net_sales * 100.0 if row_net_sales > 0 else 0.0)
+        )
+
+        if row_tacos >= ads_tacos_threshold:
+            ads_affected_skus.append(sku)
+
+    # Keep the response stable and avoid duplicate SKU query parameters.
+    ads_affected_skus = list(dict.fromkeys(ads_affected_skus))
+
+    if ads_spend and tacos >= ads_tacos_threshold:
         items.append({
             "id": "ads-efficiency",
             "category": "Ads",
@@ -715,7 +764,7 @@ def build_action_items(
                 {"value": _money(net_sales, symbol), "label": "Net sales"},
             ],
             "action": "Optimize campaigns",
-            "affected_skus": [],
+            "affected_skus": ads_affected_skus,
         })
 
     # Find the product with the highest promotional rebate percentage.

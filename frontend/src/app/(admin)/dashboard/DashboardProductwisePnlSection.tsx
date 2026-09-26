@@ -1,1001 +1,2505 @@
 "use client";
 
+
+
 import React from "react";
+
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
+
 import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
+
 import { fmtInt } from "@/lib/dashboard/format";
+
 import {
+
     RiCollapseDiagonalFill,
+
     RiExpandDiagonalFill,
+
     RiLayoutColumnFill,
+
     RiLayoutColumnLine,
+
 } from "react-icons/ri";
+
+
 
 type DashboardProductwisePnlSectionProps = Record<string, any>;
 
+
+
+const PNL_ACTION_FILTER_IDS = new Set([
+
+    "high-return-rate",
+
+    "negative-profit-skus",
+
+    "promotional-rebates",
+
+    "ads-efficiency",
+
+]);
+
+
+
+const ACTION_FILTER_LABELS: Record<string, string> = {
+
+    "high-return-rate": "Product Returns",
+
+    "negative-profit-skus": "Negative CM2",
+
+    "promotional-rebates": "Promotional Rebates",
+
+    "ads-efficiency": "Advertising Efficiency",
+
+};
+
+
+
+const splitSkuValues = (value: unknown) =>
+
+    String(value ?? "")
+
+        .split(/[,;|/]+/g)
+
+        .map((sku) => sku.trim().toUpperCase())
+
+        .filter(Boolean);
+
+
+
 const getOptionalSummaryNumber = (source: unknown, keys: string[]) => {
+
     const record =
+
         source && typeof source === "object" ? (source as Record<string, unknown>) : null;
 
+
+
     for (const key of keys) {
+
         if (!record || !Object.prototype.hasOwnProperty.call(record, key)) continue;
 
+
+
         const value = record[key];
+
         if (value === undefined || value === null || value === "") continue;
 
+
+
         const normalized =
+
             typeof value === "number"
+
                 ? value
+
                 : String(value).replace(/,/g, "").trim();
 
+
+
         if (
+
             typeof normalized === "string" &&
+
             (normalized === "-" ||
+
                 (normalized.length === 1 &&
+
                     (normalized.charCodeAt(0) === 8211 || normalized.charCodeAt(0) === 8212)))
+
         ) {
+
             continue;
+
         }
 
+
+
         const n = typeof normalized === "number" ? normalized : Number(normalized);
+
         if (Number.isFinite(n)) return n;
+
     }
 
+
+
     return null;
+
 };
+
+
 
 const nonZeroOrNull = (value: unknown) => {
+
     const n = Number(String(value ?? "").replace(/,/g, "").trim());
+
     return Number.isFinite(n) && n !== 0 ? n : null;
+
 };
+
+
 
 const sumKnownNumbers = (...values: Array<number | null>) => {
+
     const known = values.filter((value): value is number => value !== null);
+
     return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
+
 };
+
+
 
 const differenceKnownNumbers = (
+
     minuend: number | null,
+
     subtrahend: number | null
+
 ) => {
+
     if (minuend === null && subtrahend === null) return null;
+
     return Number(minuend ?? 0) - Number(subtrahend ?? 0);
+
 };
 
+
+
 export default function DashboardProductwisePnlSection({
+
     currencySymbol,
+
     adsLoading,
+
     showAllMtdProductwiseRows,
+
     setShowAllMtdProductwiseRows,
+
     productwiseAllColumnsExpanded,
+
     handleToggleProductwiseAllColumns,
+
     handleDownloadPlProductwiseMtd,
+
     shouldShowDummyUi,
+
     loading,
+
     monthlySkuwiseRows,
+
     finalMonthlySkuwiseRowsForTable,
+
     shouldScrollMtdProductwiseTable,
+
     productwiseHasExpandedGroups,
+
     setProductwiseAnyGroupExpanded,
+
     SKUWISE_LEFT_COLS,
+
     SKUWISE_GROUPS,
+
     SKUWISE_SINGLE_COLS,
+
     productwiseInitialCollapsed,
+
     productwiseCollapsed,
+
     setProductwiseCollapsed,
+
     setProductwiseAllColumnsExpanded,
+
     PRODUCTWISE_GROUP_IDS,
+
     plSortConfig,
+
     setPlSortConfig,
+
     getAdsSignForCol,
+
     mtdProductwiseTableScrollHeight,
+
     toNumber,
+
     getSkuwiseDisplayProductName,
+
     openPnlSkuDrawer,
+
     renderLiveNetSalesDelta,
+
     formatAdsNumber,
+
     formatAdType,
+
     costOfAds,
+
     formatSummaryRounded,
+
     sponsoredBrandSpend,
+
     dealVouchers,
+
     platformFee,
+
     plSummaryTotals,
+
     formatSummaryValue,
+
     lost_inventory_total,
+
     otherPlatformFee,
+
     countryName,
+
     isUsPnlSkuLayout,
+
     isUkPnlSkuLayout,
+
     getProductwiseOtherTransactionsTotal,
+
     totalRowCm2Profit,
+
     totalRowCm2Margins,
+
     tacosFromDisplayedCardsForSummary,
+
     reimbursementForSummary,
+
     reimbursementVsCm2PctForSummary,
+
     reimbursementVsSalesPctForSummary,
+
 }: DashboardProductwisePnlSectionProps) {
-    const summaryTotalRow = React.useMemo(() => {
-        const rows = Array.isArray(finalMonthlySkuwiseRowsForTable) ? finalMonthlySkuwiseRowsForTable : [];
 
-        return (
-            rows.find((row: any) => {
-                const sku = String(row?.sku || "").trim().toUpperCase();
-                const name = String(row?.product_name || "").trim().toLowerCase();
+    const searchParams = useSearchParams();
 
-                return (
-                    !!row?.isTotal ||
-                    sku === "GRAND_TOTAL" ||
-                    sku === "TOTAL" ||
-                    name === "grand total" ||
-                    name === "total"
-                );
-            }) ||
-            rows[rows.length - 1] ||
-            {}
-        );
-    }, [finalMonthlySkuwiseRowsForTable]);
+    const pathname = usePathname();
 
-    const getSummaryNumber = React.useCallback(
-        (keys: string[]) =>
-            getOptionalSummaryNumber(summaryTotalRow, keys) ??
-            getOptionalSummaryNumber(plSummaryTotals, keys),
-        [plSummaryTotals, summaryTotalRow]
+    const router = useRouter();
+
+
+
+    const actionItemId = String(searchParams.get("actionItem") || "").trim();
+
+    const actionFilterSkus = React.useMemo(
+
+        () => Array.from(new Set(splitSkuValues(searchParams.get("skus")))),
+
+        [searchParams]
+
     );
 
+    const actionFilterSkuSet = React.useMemo(
+
+        () => new Set(actionFilterSkus),
+
+        [actionFilterSkus]
+
+    );
+
+    const isActionSkuFilterActive =
+
+        PNL_ACTION_FILTER_IDS.has(actionItemId) && actionFilterSkus.length > 0;
+
+
+
+
+
+    React.useEffect(() => {
+        if (!isActionSkuFilterActive || typeof window === "undefined") return;
+
+        let raf1 = 0;
+        let raf2 = 0;
+        const timers: number[] = [];
+
+        const findScrollableParent = (element: HTMLElement) => {
+            let parent = element.parentElement;
+
+            while (parent && parent !== document.body) {
+                const style = window.getComputedStyle(parent);
+                const overflowY = style.overflowY;
+                const canScroll =
+                    ["auto", "scroll", "overlay"].includes(overflowY) &&
+                    parent.scrollHeight > parent.clientHeight + 1;
+
+                if (canScroll) return parent;
+                parent = parent.parentElement;
+            }
+
+            return null;
+        };
+
+        const getDesiredTop = () => {
+            // Keep the dashboard heading/tabs visible and place the focused
+            // P&L card immediately under the tabs.
+            const tabButton = Array.from(
+                document.querySelectorAll<HTMLButtonElement>("button")
+            ).find((button) => {
+                const label = String(button.textContent || "")
+                    .replace(/\s+/g, " ")
+                    .trim();
+
+                return label === "P&L Breakdown" && button.offsetParent !== null;
+            });
+
+            if (tabButton) {
+                return tabButton.getBoundingClientRect().bottom + 16;
+            }
+
+            return window.innerWidth >= 1024 ? 175 : 120;
+        };
+
+        const scrollFocusedPnlIntoView = () => {
+            const target = document.getElementById("pnl-mtd");
+            if (!target) return;
+
+            const desiredTop = getDesiredTop();
+            const currentTop = target.getBoundingClientRect().top;
+            const delta = currentTop - desiredTop;
+
+            if (Math.abs(delta) <= 2) return;
+
+            const scrollParent = findScrollableParent(target);
+
+            if (scrollParent) {
+                scrollParent.scrollTo({
+                    top: Math.max(0, scrollParent.scrollTop + delta),
+                    behavior: "auto",
+                });
+                return;
+            }
+
+            window.scrollTo({
+                top: Math.max(0, window.scrollY + delta),
+                left: 0,
+                behavior: "auto",
+            });
+        };
+
+        // The tab and filtered table render asynchronously. Retry briefly so
+        // KPI/layout settling cannot leave the page above the product table.
+        raf1 = window.requestAnimationFrame(() => {
+            raf2 = window.requestAnimationFrame(scrollFocusedPnlIntoView);
+        });
+
+        timers.push(
+            window.setTimeout(scrollFocusedPnlIntoView, 80),
+            window.setTimeout(scrollFocusedPnlIntoView, 180),
+            window.setTimeout(scrollFocusedPnlIntoView, 350),
+            window.setTimeout(scrollFocusedPnlIntoView, 550)
+        );
+
+        return () => {
+            window.cancelAnimationFrame(raf1);
+            window.cancelAnimationFrame(raf2);
+            timers.forEach((timer) => window.clearTimeout(timer));
+        };
+    }, [isActionSkuFilterActive, actionItemId, actionFilterSkus]);
+    const actionFilteredProductwiseRows = React.useMemo(() => {
+
+    // Normal P&L view:
+
+    // keep existing Top 9 + Others behaviour.
+
+    if (!isActionSkuFilterActive) {
+
+        return Array.isArray(finalMonthlySkuwiseRowsForTable)
+
+            ? finalMonthlySkuwiseRowsForTable
+
+            : [];
+
+    }
+
+
+
+    // Action Item focused view:
+
+    // IMPORTANT:
+
+    // use complete SKU-level source instead of Top 9 + Others table.
+
+    const allRows = Array.isArray(monthlySkuwiseRows)
+
+        ? monthlySkuwiseRows
+
+        : [];
+
+
+
+    let sno = 0;
+
+
+
+    return allRows
+
+        .filter((row: any) => {
+
+            const productName = String(row?.product_name || "")
+
+                .trim()
+
+                .toLowerCase();
+
+
+
+            const sku = String(row?.sku || "")
+
+                .trim()
+
+                .toUpperCase();
+
+
+
+            // Exclude Total / Others / summary rows
+
+            if (
+
+                row?.isTotal ||
+
+                row?.isOthers ||
+
+                sku === "TOTAL" ||
+
+                sku === "GRAND_TOTAL" ||
+
+                sku === "OTHERS" ||
+
+                productName === "total" ||
+
+                productName === "grand total" ||
+
+                productName === "others"
+
+            ) {
+
+                return false;
+
+            }
+
+
+
+            const rowSkus = splitSkuValues(row?.sku);
+
+
+
+            return rowSkus.some((rowSku) =>
+
+                actionFilterSkuSet.has(rowSku)
+
+            );
+
+        })
+
+        .map((row: any) => ({
+
+            ...row,
+
+
+
+            // Keep focused result as actual product rows.
+
+            sno: ++sno,
+
+            isOthers: false,
+
+            isTotal: false,
+
+
+
+            // Normalise display name just like normal table.
+
+            product_name: getSkuwiseDisplayProductName(row),
+
+        }));
+
+}, [
+
+    finalMonthlySkuwiseRowsForTable,
+
+    monthlySkuwiseRows,
+
+    isActionSkuFilterActive,
+
+    actionFilterSkuSet,
+
+    getSkuwiseDisplayProductName,
+
+]);
+
+
+
+    const clearActionSkuFilter = React.useCallback(() => {
+
+        const nextParams = new URLSearchParams(searchParams.toString());
+
+        nextParams.delete("actionItem");
+
+        nextParams.delete("skus");
+
+
+
+        const query = nextParams.toString();
+
+        router.replace(`${pathname}${query ? `?${query}` : ""}#pnl-mtd`, { scroll: false });
+
+    }, [pathname, router, searchParams]);
+
+
+
+    const summaryTotalRow = React.useMemo(() => {
+
+        const rows = Array.isArray(finalMonthlySkuwiseRowsForTable) ? finalMonthlySkuwiseRowsForTable : [];
+
+
+
+        return (
+
+            rows.find((row: any) => {
+
+                const sku = String(row?.sku || "").trim().toUpperCase();
+
+                const name = String(row?.product_name || "").trim().toLowerCase();
+
+
+
+                return (
+
+                    !!row?.isTotal ||
+
+                    sku === "GRAND_TOTAL" ||
+
+                    sku === "TOTAL" ||
+
+                    name === "grand total" ||
+
+                    name === "total"
+
+                );
+
+            }) ||
+
+            rows[rows.length - 1] ||
+
+            {}
+
+        );
+
+    }, [finalMonthlySkuwiseRowsForTable]);
+
+
+
+    const getSummaryNumber = React.useCallback(
+
+        (keys: string[]) =>
+
+            getOptionalSummaryNumber(summaryTotalRow, keys) ??
+
+            getOptionalSummaryNumber(plSummaryTotals, keys),
+
+        [plSummaryTotals, summaryTotalRow]
+
+    );
+
+
+
     const placementFees = getSummaryNumber(["placement_fee"]);
+
     const shippingCharges = getSummaryNumber(["shipment_fees"]);
+
     const customsFees = getSummaryNumber(["customs_fee"]);
+
     const shippingChargesTotal = getSummaryNumber(["shipping_charges"]);
 
+
+
     const shortTermStorage =
+
         getSummaryNumber(["short_term_storage_fee", "short_term_storage"]) ??
+
         nonZeroOrNull(plSummaryTotals?.short_term_storage_fee);
+
     const longTermStorage =
+
         getSummaryNumber(["long_term_storage_fee", "long_term_storage"]) ??
+
         nonZeroOrNull(plSummaryTotals?.long_term_storage_fee);
+
     const storageFees = getSummaryNumber(["storage_fee"]);
 
+
+
     const inventoryCharges =
+
         getSummaryNumber([
+
             "inventory_charges",
+
             "inventory_charge",
+
             "inventory_fees",
+
             "inventory_fee",
+
             "fba_disposal",
+
         ]) ?? nonZeroOrNull(plSummaryTotals?.fba_disposal);
+
     const reimbursementForLostInventory =
+
         getSummaryNumber([
+
             "reimbursement_lost_inventory_amount",
+
             "lost_inventory_reimbursement",
+
             "lost_total",
+
         ]) ?? nonZeroOrNull(lost_inventory_total);
+
     const inventoryChargesAndReimbursement =
+
         inventoryCharges !== null && reimbursementForLostInventory !== null
+
             ? inventoryCharges - reimbursementForLostInventory
+
             : getSummaryNumber([
+
                 "inventory_charges_and_reimbursement",
+
                 "inventory_charges_reimbursement",
+
                 "inventory_charges_reimbursement_total",
+
             ]);
 
+
+
     const platformManagementFees = getSummaryNumber(["platform_management_fees"]);
+
     const others = getSummaryNumber(["other_adjustment"]);
+
     const otherFees =
+
         others === null && platformManagementFees === null
+
             ? null
+
             : Number(others ?? 0) -
+
             Math.abs(Number(platformManagementFees ?? 0));
 
+
+
     const formatSummaryValueOrDash = (value: number | null, key: string) => {
+
         return value === null ? "-" : formatSummaryValue(value, key);
+
     };
+
     const formatRoundedSummaryValueOrDash = (value: number | null) => {
+
         return value === null ? "-" : Math.round(Math.abs(Number(value))).toLocaleString();
+
     };
+
+
 
     const productwiseSummaryRows = isUsPnlSkuLayout
+
         ? [
+
             {
+
                 type: "section" as const,
+
                 id: "ads",
+
                 label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                 endValue: formatSummaryRounded(costOfAds),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "ads_1",
+
                         label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryRounded(sponsoredBrandSpend),
+
                     },
+
                     {
+
                         id: "ads_3",
+
                         label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryRounded(dealVouchers),
+
                     },
+
                 ],
+
             },
+
             // Shipping Charges summary is intentionally hidden for Amazon UK.
+
             ...(!isUkPnlSkuLayout
+
                 ? [
+
                     {
+
                         type: "section" as const,
+
                         id: "shipping_charges",
+
                         label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         endValue: formatSummaryValueOrDash(shippingChargesTotal, "shipping_charges"),
+
                         defaultCollapsed: true,
+
                         children: [
+
                             {
+
                                 id: "placement_fees",
+
                                 label: <>Placement Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                                 midValue: formatSummaryValueOrDash(placementFees, "placement_fee"),
+
                             },
+
                             {
+
                                 id: "shipping_charges_child",
+
                                 label: <>Shipping Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                                 midValue: formatSummaryValueOrDash(shippingCharges, "shipment_fees"),
+
                             },
+
                             {
+
                                 id: "customs_fees",
+
                                 label: <>Customs Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                                 midValue: formatSummaryValueOrDash(customsFees, "customs_fee"),
+
                             },
+
                         ],
+
                     },
+
                 ]
+
                 : []),
+
             {
+
                 type: "section" as const,
+
                 id: "storage_fee",
+
                 label: <>Storage Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                 endValue: formatSummaryValueOrDash(storageFees, "storage_fee"),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "short_term_storage_fee",
+
                         label: <>Short Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValueOrDash(shortTermStorage, "short_term_storage_fee"),
+
                     },
+
                     {
+
                         id: "long_term_storage_fee",
+
                         label: <>Long Term Storage <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValueOrDash(longTermStorage, "long_term_storage_fee"),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "section" as const,
+
                 id: "inventory_charges_reimbursement",
+
                 label: (
+
                     <>
+
                         Inventory Charges and Reimbursement{" "}
+
                         {Math.abs(Number(reimbursementForLostInventory ?? 0)) >
+
                             Math.abs(Number(inventoryCharges ?? 0)) ? (
+
                             <strong className="text-green-500">(+)</strong>
+
                         ) : Math.abs(Number(inventoryCharges ?? 0)) >
+
                             Math.abs(Number(reimbursementForLostInventory ?? 0)) ? (
+
                             <strong className="text-[#ff5c5c]">(-)</strong>
+
                         ) : null}
+
                     </>
+
                 ),
+
                 endValue: formatSummaryValueOrDash(
+
                     inventoryChargesAndReimbursement === null
+
                         ? null
+
                         : Math.abs(Number(inventoryChargesAndReimbursement)),
+
                     "inventory_charges_and_reimbursement"
+
                 ),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "inventory_charges",
+
                         label: <>Inventory Charges <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValueOrDash(inventoryCharges, "inventory_charges"),
+
                     },
+
                     {
+
                         id: "lost_inventory_reimbursement",
+
                         label: (
+
                             <>
+
                                 Reimbursement for lost Inventory
+
                                 {plSummaryTotals?.reimbursement_lost_inventory_units
+
                                     ? ` - ${plSummaryTotals.reimbursement_lost_inventory_units} Units `
+
                                     : " "}
+
                                 <strong className="text-green-500">(+)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValueOrDash(
+
                             reimbursementForLostInventory,
+
                             "reimbursement_lost_inventory_amount"
+
                         ),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "section" as const,
+
                 id: "other_fees",
+
                 label: (
+
                     <>
+
                         Other Fees{" "}
+
                         {Number(otherFees ?? 0) > 0 ? (
+
                             <strong className="text-green-500">(+)</strong>
+
                         ) : Number(otherFees ?? 0) < 0 ? (
+
                             <strong className="text-[#ff5c5c]">(-)</strong>
+
                         ) : null}
+
                     </>
+
                 ),
+
                 endValue: formatRoundedSummaryValueOrDash(
+
                     otherFees === null ? null : Math.abs(Number(otherFees))
+
                 ),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "platform_management_fees",
+
                         label: (
+
                             <>
+
                                 Platform Management Fees{" "}
+
                                 {Number(platformManagementFees ?? 0) !== 0 ? (
+
                                     <strong className="text-[#ff5c5c]">(-)</strong>
+
                                 ) : null}
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValueOrDash(
+
                             platformManagementFees,
+
                             "platform_management_fees"
+
                         ),
+
                     },
+
                     {
+
                         id: "others",
+
                         label: (
+
                             <>
+
                                 Others{" "}
+
                                 {Number(others ?? 0) > 0 ? (
+
                                     <strong className="text-green-500">(+)</strong>
+
                                 ) : Number(others ?? 0) < 0 ? (
+
                                     <strong className="text-[#ff5c5c]">(-)</strong>
+
                                 ) : null}
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValueOrDash(
+
                             others === null ? null : Math.abs(Number(others)),
+
                             "other_adjustment"
+
                         ),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "cm2_profit",
+
                 label: "CM2 Profit",
+
                 endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+
                 bold: true,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "cm2_profit_percentage",
+
                 label: "CM2 Profit %",
+
                 endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "tacos",
+
                 label: "TACoS (Total Advertising Cost of Sale)",
+
                 endValue: `${formatSummaryValue(
+
                     tacosFromDisplayedCardsForSummary,
+
                     "acos"
+
                 )}%`,
+
                 bold: true,
+
             },
+
             {
+
                 type: "section" as const,
+
                 id: "net_reimbursement",
+
                 label: "Net Reimbursement",
+
                 endValue: formatSummaryValue(
+
                     reimbursementForSummary,
+
                     "net_reimbursement"
+
                 ),
+
                 bold: true,
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "net_reimbursement_debt_payment",
+
                         label: (
+
                             <>
+
                                 Charged <strong className="text-[#ff5c5c]">(-)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.debt_payment,
+
                             "debt_payment"
+
                         ),
+
                     },
+
                     {
+
                         id: "net_reimbursement_disbursement",
+
                         label: (
+
                             <>
+
                                 Disbursement <strong className="text-green-500">(+)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.disbursement,
+
                             "disbursement"
+
                         ),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "rv_sales",
+
                 label: "Reimbursement vs Sales",
+
                 endValue: `${formatSummaryValue(
+
                     reimbursementVsSalesPctForSummary,
+
                     "reimbursement_vs_sales"
+
                 )}%`,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "rv_cm2",
+
                 label: "Reimbursement vs CM2 Margins",
+
                 endValue: `${formatSummaryValue(
+
                     reimbursementVsCm2PctForSummary,
+
                     "rembursment_vs_cm2_margins"
+
                 )}%`,
+
             },
+
         ]
+
         : [
+
             {
+
                 type: "section" as const,
+
                 id: "ads",
+
                 label: <>Cost of Advertisement <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                 endValue: formatSummaryRounded(costOfAds),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "ads_1",
+
                         label: <>Visibility - Ads <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryRounded(sponsoredBrandSpend),
+
                     },
+
                     {
+
                         id: "ads_3",
+
                         label: <>Visibility - Deals, Vouchers and Reviews <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryRounded(dealVouchers),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "section" as const,
+
                 id: "other",
+
                 label: "Other Transactions",
+
                 endValue: formatSummaryRounded(platformFee),
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "short_term_storage_fee",
+
                         label: <>Short Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.short_term_storage_fee,
+
                             "short_term_storage_fee"
+
                         ),
+
                     },
+
                     {
+
                         id: "long_term_storage_fee",
+
                         label: <>Long Term Storage Fee <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.long_term_storage_fee,
+
                             "long_term_storage_fee"
+
                         ),
+
                     },
+
                     {
+
                         id: "fba_disposal",
+
                         label: <>FBA Disposal <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.fba_disposal,
+
                             "fba_disposal"
+
                         ),
+
                     },
+
                     {
+
                         id: "other_3",
+
                         label: (
+
                             <>
+
                                 Reimbursement for lost Inventory{" "}
+
                                 <strong className="text-green-500">(+)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValue(lost_inventory_total, "lost_total"),
+
                     },
+
                     {
+
                         id: "other_misc",
+
                         label: <>Misc. Transactions <strong className="text-green-500">(+)</strong></>,
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.misc_transaction,
+
                             "misc_transaction"
+
                         ),
+
                     },
+
                     {
+
                         id: "other_1",
+
                         label: <>Other Platform Fees <strong className="text-[#ff5c5c]">(-)</strong></>,
+
                         midValue: formatSummaryValue(otherPlatformFee, "platformfeenew"),
+
                     },
+
                 ],
+
             },
+
             ...(countryName === "us" || countryName === "global"
+
                 ? [
+
                     {
+
                         type: "fixed" as const,
+
                         id: "ship",
+
                         label: (
+
                             <>
+
                                 Shipment Charges <strong className="text-[#ff5c5c]">(-)</strong>
+
                             </>
+
                         ),
+
                         endValue: formatSummaryValue(
+
                             plSummaryTotals.shipment_charges,
+
                             "shipment_charges"
+
                         ),
+
                     },
+
                 ]
+
                 : []),
+
             {
+
                 type: "fixed" as const,
+
                 id: "cm2_profit",
+
                 label: "CM2 Profit/Loss",
+
                 endValue: Math.round(totalRowCm2Profit).toLocaleString(),
+
                 bold: true,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "cm2_margins",
+
                 label: "CM2 Margins",
+
                 endValue: `${formatSummaryValue(totalRowCm2Margins, "cm2_margins")}%`,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "tacos",
+
                 label: "TACoS (Total Advertising Cost of Sale)",
+
                 endValue: `${formatSummaryValue(
+
                     tacosFromDisplayedCardsForSummary,
+
                     "acos"
+
                 )}%`,
+
                 bold: true,
+
             },
+
             {
+
                 type: "section" as const,
+
                 id: "net_reimbursement",
+
                 label: "Net Reimbursement",
+
                 endValue: formatSummaryValue(
+
                     reimbursementForSummary,
+
                     "net_reimbursement"
+
                 ),
+
                 bold: true,
+
                 defaultCollapsed: true,
+
                 children: [
+
                     {
+
                         id: "net_reimbursement_debt_payment",
+
                         label: (
+
                             <>
+
                                 Charged <strong className="text-[#ff5c5c]">(-)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.debt_payment,
+
                             "debt_payment"
+
                         ),
+
                     },
+
                     {
+
                         id: "net_reimbursement_disbursement",
+
                         label: (
+
                             <>
+
                                 Disbursement <strong className="text-green-500">(+)</strong>
+
                             </>
+
                         ),
+
                         midValue: formatSummaryValue(
+
                             plSummaryTotals.disbursement,
+
                             "disbursement"
+
                         ),
+
                     },
+
                 ],
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "rv_cm2",
+
                 label: "Reimbursement vs CM2 Margins",
+
                 endValue: `${formatSummaryValue(
+
                     reimbursementVsCm2PctForSummary,
+
                     "rembursment_vs_cm2_margins"
+
                 )}%`,
+
             },
+
             {
+
                 type: "fixed" as const,
+
                 id: "rv_sales",
+
                 label: "Reimbursement vs Sales",
+
                 endValue: `${formatSummaryValue(
+
                     reimbursementVsSalesPctForSummary,
+
                     "reimbursement_vs_sales"
+
                 )}%`,
+
             },
+
         ];
 
+
+
     return (
-        <div id="pnl-mtd" className="scroll-mt-[10px] mt-2 md:mt-4 w-full rounded-xl  bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+
+        <div id="pnl-mtd" className="scroll-mt-[175px] mt-2 md:mt-4 w-full rounded-xl bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+
             <div className="mb-3 relative flex items-center justify-between gap-3">
+
                 {/* LEFT: Title */}
+
                 <div className="flex items-center gap-2">
+
                     <PageBreadcrumb
+
                         pageTitle="P&L Productwise Breakdown"
+
                         variant="page"
+
                         align="left"
+
                         textSize="2xl"
+
                     />
+
                     <span className="text-base sm:text-xl lg:text-lg 2xl:text-2xl text-green-500 font-semibold">
+
                         ({currencySymbol})
+
                     </span>
+
                 </div>
+
                 {/* CENTER: Ads loading message */}
+
                 {adsLoading && (
+
                     <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 text-sm 2xl:text-base text-charcoal-700 font-medium">
+
                         <span className="inline-block h-2.5 w-2.5 rounded-full bg-charcoal-500 animate-pulse" />
+
                         Ads data is being fetched, please wait…
+
                     </div>
+
                 )}
 
+
+
                 <div className="flex items-center gap-2">
+
                     {/* Expand / collapse rows */}
-                    <button
-                        type="button"
-                        onClick={() => setShowAllMtdProductwiseRows((prev: boolean) => !prev)}
-                        title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-                        aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-                    >
-                        {showAllMtdProductwiseRows ? (
-                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                        ) : (
-                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                        )}
-                    </button>
+
+                    {!isActionSkuFilterActive && (
+
+                        <button
+
+                            type="button"
+
+                            onClick={() => setShowAllMtdProductwiseRows((prev: boolean) => !prev)}
+
+                            title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+
+                            aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
+
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+
+                        >
+
+                            {showAllMtdProductwiseRows ? (
+
+                                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+
+                            ) : (
+
+                                <RiExpandDiagonalFill size={18} className="font-extrabold" />
+
+                            )}
+
+                        </button>
+
+                    )}
+
+
 
                     {/* Expand / collapse all columns */}
+
                     <button
+
                         type="button"
+
                         onClick={handleToggleProductwiseAllColumns}
+
                         title={
+
                             productwiseAllColumnsExpanded
+
                                 ? "Collapse all columns"
+
                                 : "Expand all columns"
+
                         }
+
                         aria-label={
+
                             productwiseAllColumnsExpanded
+
                                 ? "Collapse all columns"
+
                                 : "Expand all columns"
+
                         }
+
                         className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+
                     >
+
                         {productwiseAllColumnsExpanded ? (
+
                             <RiLayoutColumnLine size={18} className="font-extrabold" />
+
                         ) : (
+
                             <RiLayoutColumnFill size={18} className="font-extrabold" />
+
                         )}
+
                     </button>
 
+
+
                     <DownloadIconButton
+
                         onClick={handleDownloadPlProductwiseMtd}
+
                         aria-label="Download P&L Productwise Breakdown MTD"
+
                         className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+
                     />
+
                 </div>
+
             </div>
 
-            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
-                <div className="text-sm text-gray-500">Loading…</div>
-            ) : finalMonthlySkuwiseRowsForTable.length === 0 ? (
-                <div className="text-sm text-red-600">
-                    No P&L productwise rows available for this period.
-                </div>
-            ) : (
-                <div
-                    className={[
-                        "w-full max-w-full rounded-xl border border-gray-300",
-                        shouldScrollMtdProductwiseTable
-                            ? "overflow-hidden"
-                            : "overflow-x-auto overflow-y-hidden",
-                    ].join(" ")}
+
+
+            {isActionSkuFilterActive && (
+
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E7E2] bg-white px-3 py-2 shadow-xl">
+
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+
+            {/* Filters button */}
+
+            <button
+
+                type="button"
+
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#D7E3DE] bg-white px-3 text-[11px] font-medium text-[#425E57] transition hover:bg-[#F7FBF9]"
+
+            >
+
+                <svg
+
+                    viewBox="0 0 24 24"
+
+                    fill="none"
+
+                    stroke="currentColor"
+
+                    strokeWidth="1.8"
+
+                    strokeLinecap="round"
+
+                    strokeLinejoin="round"
+
+                    className="h-3.5 w-3.5"
+
+                    aria-hidden="true"
+
                 >
+
+                    <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
+
+                </svg>
+
+            </button>
+
+
+
+            {/* Focused view pill */}
+
+            <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#E1ECE8] bg-[#F8FBFA] px-3 text-[11px] font-medium text-[#617972]">
+
+                <span>Focused View</span>
+
+                <svg
+
+                    viewBox="0 0 20 20"
+
+                    fill="none"
+
+                    stroke="currentColor"
+
+                    strokeWidth="1.7"
+
+                    className="h-3.5 w-3.5 text-[#91AAA2]"
+
+                    aria-hidden="true"
+
+                >
+
+                    <circle cx="10" cy="10" r="6.5" />
+
+                    <path d="M10 7v3l2 2" />
+
+                </svg>
+
+            </div>
+
+
+
+            {/* Selected action chip */}
+
+            <button
+
+                type="button"
+
+                onClick={clearActionSkuFilter}
+
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#CFE5DD] bg-[#EAF6F1] px-3 text-[11px] font-semibold text-[#2D6256] transition hover:bg-[#E2F2EC]"
+
+            >
+
+                <span className="truncate max-w-[180px]">
+
+                    {ACTION_FILTER_LABELS[actionItemId] || "Action Item"}
+
+                </span>
+
+                <svg
+
+                    viewBox="0 0 20 20"
+
+                    fill="none"
+
+                    stroke="currentColor"
+
+                    strokeWidth="1.8"
+
+                    strokeLinecap="round"
+
+                    className="h-3.5 w-3.5"
+
+                    aria-hidden="true"
+
+                >
+
+                    <path d="M6 6l8 8M14 6l-8 8" />
+
+                </svg>
+
+            </button>
+
+
+
+            {/* Product count text */}
+
+            <span className="text-[11px] font-medium text-[#7B918B]">
+
+                {actionFilteredProductwiseRows.length} matching product
+
+                {actionFilteredProductwiseRows.length === 1 ? "" : "s"}
+
+            </span>
+
+        </div>
+
+
+
+        {/* Reset filters */}
+
+        <button
+
+            type="button"
+
+            onClick={clearActionSkuFilter}
+
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#4E9A84] transition hover:text-[#2F7C67]"
+
+        >
+
+            <svg
+
+                viewBox="0 0 24 24"
+
+                fill="none"
+
+                stroke="currentColor"
+
+                strokeWidth="1.9"
+
+                strokeLinecap="round"
+
+                strokeLinejoin="round"
+
+                className="h-3.5 w-3.5"
+
+                aria-hidden="true"
+
+            >
+
+                <path d="M3 12a9 9 0 1 0 3-6.7" />
+
+                <path d="M3 4v5h5" />
+
+            </svg>
+
+            Reset filters
+
+        </button>
+
+    </div>
+
+)}
+
+
+
+            {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
+
+                <div className="text-sm text-gray-500">Loading…</div>
+
+            ) : actionFilteredProductwiseRows.length === 0 ? (
+
+                <div className="text-sm text-red-600">
+
+                    {isActionSkuFilterActive ? "No affected P&L products matched this action item." : "No P&L productwise rows available for this period."}
+
+                </div>
+
+            ) : (
+
+                <div
+
+                    className={[
+
+                        "w-full max-w-full rounded-xl border border-gray-300",
+
+                        !isActionSkuFilterActive && shouldScrollMtdProductwiseTable
+
+                            ? "overflow-hidden"
+
+                            : "overflow-x-auto overflow-y-hidden",
+
+                    ].join(" ")}
+
+                >
+
                     <div className="w-full max-w-full">
+
                         <GroupedCollapsibleTable<any>
-                            rows={finalMonthlySkuwiseRowsForTable}
+
+                            rows={actionFilteredProductwiseRows}
+
                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
+
                             tableClassName={[
+
                                 "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
+
                                 productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
+
                             ].join(" ")}
+
                             getRowKey={(row, idx) =>
+
                                 row.isTotal
+
                                     ? "TOTAL"
+
                                     : row.isOthers
+
                                         ? "OTHERS"
+
                                         : row.sku || String(idx)
+
                             }
+
                             leftCols={SKUWISE_LEFT_COLS}
+
                             groups={SKUWISE_GROUPS}
+
                             singleCols={SKUWISE_SINGLE_COLS}
+
                             initialCollapsed={productwiseInitialCollapsed}
+
                             collapsedState={productwiseCollapsed}
+
                             onCollapsedChange={(next) => {
+
                                 setProductwiseCollapsed(next);
 
+
+
                                 setProductwiseAllColumnsExpanded(
+
                                     PRODUCTWISE_GROUP_IDS.length > 0 &&
+
                                     PRODUCTWISE_GROUP_IDS.every((groupId: string) => next[groupId] === false)
+
                                 );
+
                             }}
+
                             defaultSort={plSortConfig}
+
                             onSortChange={setPlSortConfig}
+
                             showSignRowInBody
+
                             getSignForCol={getAdsSignForCol}
+
                             bodyMaxHeight={
-                                shouldScrollMtdProductwiseTable
+
+                                !isActionSkuFilterActive && shouldScrollMtdProductwiseTable
+
                                     ? mtdProductwiseTableScrollHeight
+
                                     : undefined
+
                             }
+
                             preserveColumnWidths="responsive"
+
                             stickyLeftBorderMode="shadow-only"
+
                             stickyLeftDividerMode="leading"
+
                             stickyLeftHorizontalBorderMode="border"
+
                             isTotalRow={(row) => {
+
                                 const name = String(row?.product_name || "").trim().toLowerCase();
+
                                 const sku = String(row?.sku || "").trim().toUpperCase();
 
+
+
                                 return (
+
                                     !!row.isTotal ||
+
                                     sku === "GRAND_TOTAL" ||
+
                                     sku === "TOTAL" ||
+
                                     name === "grand total" ||
+
                                     name === "total"
+
                                 );
+
                             }}
+
+
 
                             layout={[
+
                                 { type: "group", id: "quantity" },
+
                                 { type: "single", key: "asp" },
+
                                 { type: "group", id: "net_sales" },
+
                                 ...(isUsPnlSkuLayout
+
                                     ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+
                                     : [{ type: "group" as const, id: "promotions" }]),
+
                                 { type: "single", key: "cogs" },
+
                                 { type: "group", id: "marketplace_fees" },
+
                                 { type: "group", id: "other_transactions" },
+
                                 { type: "group", id: "profit" },
+
                                 { type: "group", id: "ads_spend" },
+
                                 { type: "single", key: "acos" },
+
                                 { type: "group", id: "cm2_profit" },
+
                             ]}
 
+
+
                             // initialCollapsed={{ marketplace_fees: false }}
+
                             getRowClassName={(row, index) => {
+
                                 if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
+
                                 if (row.isOthers) {
+
                                     return showAllMtdProductwiseRows
+
                                         ? "bg-white"
+
                                         : "bg-white cursor-pointer";
+
                                 }
+
                                 return index % 2 === 0 ? "bg-white" : "bg-gray-50";
+
                             }}
+
                             onRowClick={(row) => {
+
                                 if (!showAllMtdProductwiseRows && row.isOthers) {
+
                                     setShowAllMtdProductwiseRows(true);
+
                                 }
+
                             }}
+
                             getValue={(row, colKey) => {
+
                                 if (colKey === "sno") return row.isTotal ? "" : row.sno ?? "";
+
                                 if (colKey === "sku") {
+
                                     if (row.isOthers || row.isTotal) return "-";
+
                                     return row.sku || "-";
+
                                 }
+
                                 if (colKey === "quantity") {
+
                                     return fmtInt(toNumber((row as any).quantity));
+
                                 }
+
+
 
                                 if (colKey === "return_quantity") {
+
                                     return fmtInt(toNumber((row as any).return_quantity));
+
                                 }
+
+
 
                                 if (colKey === "total_quantity") {
+
                                     return fmtInt(
+
                                         toNumber(
+
                                             (row as any).total_quantity ??
+
                                             (toNumber((row as any).quantity) - toNumber((row as any).return_quantity))
+
                                         )
+
                                     );
+
                                 }
+
                                 if (colKey === "product_name") {
+
                                     if (row.isTotal) {
+
                                         return (
+
                                             <span className="inline-block w-full truncate font-semibold">
+
                                                 Total
+
                                             </span>
+
                                         );
+
                                     }
 
+
+
                                     if (row.isOthers) {
+
                                         return (
+
                                             <span
+
                                                 className="inline-block w-full truncate text-green-500"
+
                                                 title="Aggregated remaining products"
+
                                             >
+
                                                 Others
+
                                             </span>
+
                                         );
+
                                     }
+
+
+
 
 
                                     const displayName = getSkuwiseDisplayProductName(row);
 
+
+
                                     return (
+
                                         <button
+
                                             type="button"
+
                                             onClick={() =>
+
                                                 openPnlSkuDrawer({
+
                                                     ...row,
+
                                                     product_name: displayName,
+
                                                 })
+
                                             }
+
                                             className="flex w-full items-end justify-between gap-2 text-left text-green-500"
+
                                             title={String(displayName || "")}
+
                                         >
+
                                             <span className="min-w-0 flex-1 whitespace-normal break-words">
+
                                                 {displayName}
+
                                             </span>
+
                                             {renderLiveNetSalesDelta({
+
                                                 ...row,
+
                                                 product_name: displayName,
+
                                             })}
+
                                         </button>
+
                                     );
+
                                 }
+
+
 
                                 if (colKey === "quantity")
+
                                     return Math.round(Number(row.quantity || 0)).toLocaleString();
 
+
+
                                 if (colKey === "asp") return formatAdsNumber(row.asp);
+
                                 if (colKey === "net_sales") return Math.round(Number(row.net_sales || 0)).toLocaleString();
 
+
+
                                 if (colKey === "other_transactions") {
+
                                     const v = Number(
+
                                         typeof getProductwiseOtherTransactionsTotal === "function"
+
                                             ? getProductwiseOtherTransactionsTotal(row)
+
                                             : row.other_transactions ?? row.tax_and_credits ?? 0
+
                                     );
 
+
+
                                     return Math.round(Number.isFinite(v) ? v : 0).toLocaleString();
+
                                 }
+
+
 
                                 if (colKey === "misc_transaction") {
+
                                     const v = Number((row as any)[colKey] ?? 0);
+
                                     const absValue = Math.abs(Number.isFinite(v) ? v : 0);
+
                                     return absValue > 0 && absValue < 1
+
                                         ? formatAdsNumber(absValue)
+
                                         : Math.round(absValue).toLocaleString();
+
                                 }
+
+
 
                                 if (colKey === "tax" || colKey === "net_taxes" || colKey === "credits" || colKey === "tax_and_credits") {
+
                                     const v = Number((row as any)[colKey] ?? 0);
+
                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString();
+
                                 }
+
                                 if (colKey === "cm1_profit_per") {
+
                                     const v = Number(row.cm1_profit_per ?? 0);
+
                                     return `${formatAdsNumber(Math.abs(v))}%`;
+
                                 }
+
+
 
                                 if (colKey === "cm1_profit_per_unit") {
+
                                     const v = Number(row.cm1_profit_per_unit ?? 0);
+
                                     return Math.round(Math.abs(v)).toLocaleString();
+
                                 }
+
+
 
                                 if (colKey === "cm2_profit_per") {
+
                                     const v = Number(row.cm2_profit_per ?? 0);
+
                                     return `${formatAdsNumber(v)}%`;
+
                                 }
+
+
 
                                 // CM2 per unit (no %)
+
                                 if (colKey === "cm2_profit_per_unit") {
+
                                     const v = Number(row.cm2_profit_per_unit ?? 0);
+
                                     return Math.round(v).toLocaleString();
+
                                 }
+
                                 if (colKey === "ad_type") {
+
                                     if (row.isOthers || row.isTotal) return "-";
+
                                     return formatAdType((row as any).ad_type);
+
                                 }
+
                                 if (
+
                                     colKey === "product_spend" ||
+
                                     colKey === "display_spend" ||
+
                                     colKey === "brand_spend"
+
                                 ) {
+
                                     const v = Number((row as any)[colKey] ?? 0);
 
+
+
                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+
                                         minimumFractionDigits: 0,
+
                                         maximumFractionDigits: 0,
+
                                     });
+
                                 }
+
+
 
                                 if (colKey === "ads_spend") {
+
                                     const v = Number(row.ads_spend ?? 0);
 
+
+
                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+
                                         minimumFractionDigits: 0,
+
                                         maximumFractionDigits: 0,
+
                                     });
+
                                 }
+
+
 
                                 if (colKey === "ads_spend")
+
                                     return Math.round(Math.abs(Number(row.ads_spend || 0))).toLocaleString();
+
                                 if (colKey === "acos") {
+
                                     const v = Number(row.acos ?? 0);
+
                                     return `${formatAdsNumber(v)}%`;
+
                                 }
+
                                 if (colKey === "cogs")
+
                                     return Math.round(Math.abs(Number(row.cogs || 0))).toLocaleString();
 
+
+
                                 if (colKey === "fba_fees")
+
                                     return Math.round(Math.abs(Number(row.fba_fees || 0))).toLocaleString();
 
+
+
                                 if (colKey === "selling_fees")
+
                                     return Math.round(Math.abs(Number(row.selling_fees || 0))).toLocaleString();
 
+
+
                                 if (colKey === "marketplace_total")
+
                                     return Math.round(
+
                                         Math.abs(Number(row.fba_fees || 0)) + Math.abs(Number(row.selling_fees || 0))
+
                                     ).toLocaleString();
+
                                 if (colKey === "cm2_profit")
+
                                     return Math.round(Number(row.cm2_profit || 0)).toLocaleString();
+
                                 if (colKey === "profit")
+
                                     return Math.round(Number(row.profit || 0)).toLocaleString();
+
                                 if (colKey === "promotional_rebates") {
+
                                     const v = Number((row as any)[colKey] ?? 0);
+
+
 
                                     return Math.round(Math.abs(Number.isFinite(v) ? v : 0)).toLocaleString("en-GB", {
+
                                         minimumFractionDigits: 0,
+
                                         maximumFractionDigits: 0,
+
                                     });
+
                                 }
+
+
 
                                 if (colKey === "promotional_rebates_percentage") {
+
                                     const v = Number((row as any)[colKey] ?? 0);
+
+
 
                                     const value = Math.abs(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+
                                         minimumFractionDigits: 2,
+
                                         maximumFractionDigits: 2,
+
                                     });
+
+
 
                                     return `${value}%`;
+
                                 }
+
                                 if (
+
                                     colKey === "gross_sales" ||
+
                                     colKey === "refund_sales" ||
+
                                     colKey === "net_sales_tax_and_credits" ||
+
                                     colKey === "net_sales"
+
                                 ) {
+
                                     const v = Number((row as any)[colKey] ?? 0);
 
+
+
                                     return Math.round(Number.isFinite(v) ? v : 0).toLocaleString("en-GB", {
+
                                         minimumFractionDigits: 0,
+
                                         maximumFractionDigits: 0,
+
                                     });
+
                                 }
 
+
+
                                 return (row as any)[colKey] ?? "";
+
                             }}
+
                             summary={{
+
                                 enabled: finalMonthlySkuwiseRowsForTable.length > 0,
+
                                 rows: productwiseSummaryRows,
 
+
+
                                 valueCols: 2,
+
                                 boldSectionsByDefault: false,
+
                             }}
+
                         />
+
                     </div>
+
                 </div>
+
             )}
 
+
+
         </div>
+
     );
+
 }

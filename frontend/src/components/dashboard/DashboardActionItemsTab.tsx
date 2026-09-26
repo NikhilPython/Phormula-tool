@@ -1595,20 +1595,39 @@ function ActionItemsView({
     const monthPath = encodeURIComponent(month);
     const yearPath = encodeURIComponent(year);
 
-    // Dispatch opens Dispatch Planning.
-    if (item.id === "dispatch-required") {
-      return `/inventory-forecast/${countryPath}/${monthPath}/${yearPath}#dispatch`;
+    const actionSearch = new URLSearchParams();
+    actionSearch.set("actionItem", item.id);
+
+    const affectedSkus = Array.from(
+      new Set(
+        (item.affected_skus || [])
+          .map((sku) => String(sku || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (affectedSkus.length > 0) {
+      actionSearch.set("skus", affectedSkus.join(","));
     }
 
-    // All other inventory actions open Inventory Insights.
+    const actionQuery = actionSearch.toString();
+    const querySuffix = actionQuery ? `?${actionQuery}` : "";
+
+    // Dispatch opens Dispatch Planning and filters the dispatch product table.
+    if (item.id === "dispatch-required") {
+      return `/inventory-forecast/${countryPath}/${monthPath}/${yearPath}${querySuffix}#dispatch`;
+    }
+
+    // All other inventory actions open Inventory Insights and filter only the
+    // Ageing / Current Inventory table. Inventory cards/charts stay untouched.
     if (item.category === "Inventory & Dispatch") {
-      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}#inventory-insights`;
+      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}${querySuffix}#inventory-insights`;
     }
 
     // Returns, Ads and Finance actions (including Negative CM2 / Promotions)
-    // are investigated in the P&L Breakdown tab.
+    // open P&L and filter only the productwise table. Dashboard cards stay intact.
     if (["Returns", "Ads", "Finance"].includes(item.category)) {
-      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}#pnl-mtd`;
+      return `/live-dashboard/${countryPath}/${monthPath}/${yearPath}${querySuffix}#pnl-mtd`;
     }
 
     return null;
@@ -1632,21 +1651,16 @@ function ActionItemsView({
       window.history.pushState(
         null,
         "",
-        `${targetUrl.pathname}${targetUrl.hash}`
+        `${targetUrl.pathname}${targetUrl.search}${targetUrl.hash}`
       );
 
       if (targetHash) {
-        window.dispatchEvent(
-          new CustomEvent("page-hash-navigate", {
+    window.dispatchEvent(
+        new CustomEvent("page-hash-navigate", {
             detail: { hash: targetHash },
-          })
-        );
-
-        document.getElementById(targetHash)?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
+        })
+    );
+}
 
       return;
     }
