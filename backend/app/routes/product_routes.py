@@ -64,7 +64,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v21_minimum_referral_fee"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v22_all_periods_referral_recalculation"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
@@ -119,6 +119,7 @@ def _resolve_us_referral_fee_applicable(
     referral_fee_percent,
     quantity,
 ):
+    # The caller supplies a freshly calculated fee/status, never saved diagnostics.
     if str(source_status or "").strip().lower() != "undercharged":
         return float(source_answer or 0)
 
@@ -237,42 +238,79 @@ def _apply_us_referral_fee_price_bands(frame):
         errors="coerce",
     )
 
-    def _resolve_rate(row):
-        existing_rate_value = pd.to_numeric(row.get("referral_fee", 0), errors="coerce")
-        existing_rate = 0.0 if pd.isna(existing_rate_value) else float(existing_rate_value)
-        category_key = str(row.get("product_group", "") or "").strip().lower()
+    # Resolve each category/band once, rather than filtering and sorting a
+    # DataFrame for every transaction in a historical month.
+    categories = frame["product_group"].fillna("").astype(str).str.strip().str.lower()
+    unit_values = pd.to_numeric(
+        frame.get("total_value", pd.Series(0, index=frame.index)), errors="coerce"
+    ).fillna(0)
+    rates = pd.to_numeric(
+        frame.get("referral_fee", pd.Series(0, index=frame.index)), errors="coerce"
+    ).fillna(0).astype(float)
+    category_rates["_band_width"] = category_rates["price_to"] - category_rates["price_from"]
+    for category_key in categories.unique():
         if not category_key:
-            return existing_rate
-
+            continue
         category_first = re.split(r"[&/\-]", category_key, maxsplit=1)[0].strip()
         category_matches = category_rates[category_rates["category"].eq(category_key)]
         if category_matches.empty and category_first:
             category_matches = category_rates[category_rates["category"].eq(category_first)]
-        if category_matches.empty:
-            return existing_rate
-
-        unit_value_value = pd.to_numeric(row.get("total_value", 0), errors="coerce")
-        unit_value = 0.0 if pd.isna(unit_value_value) else float(unit_value_value)
-        band_matches = category_matches[
-            (category_matches["price_from"] <= unit_value)
-            & (category_matches["price_to"] >= unit_value)
-            & category_matches["referral_fee_percent_est"].notna()
-        ].copy()
-        if band_matches.empty:
-            return existing_rate
-
-        band_matches["_band_width"] = (
-            band_matches["price_to"] - band_matches["price_from"]
-        )
-        selected = band_matches.sort_values(
+        category_matches = category_matches.sort_values(
             ["_band_width", "price_from"],
             ascending=[True, False],
             kind="stable",
-        ).iloc[0]
-        return float(selected["referral_fee_percent_est"])
+        )
+        unmatched = categories.eq(category_key)
+        for band in category_matches.itertuples(index=False):
+            if pd.isna(band.referral_fee_percent_est):
+                continue
+            matched = unmatched & unit_values.between(band.price_from, band.price_to)
+            rates.loc[matched] = float(band.referral_fee_percent_est)
+            unmatched = unmatched & ~matched
 
-    frame["referral_fee"] = frame.apply(_resolve_rate, axis=1)
+    frame["referral_fee"] = rates
     return frame
+
+
+def _recalculate_us_referral_source_fees(frame):
+    """Rebuild current US import diagnostics for every period before grouping.
+
+    Historical tables contain answers produced by older import formulas. Their
+    presence (or saved status) must not select the formula used by reconciliation.
+    Keep the current import's per-unit rounding and shipping-inclusive base;
+    the existing undercharge adjustment is applied after order/SKU grouping.
+    """
+    frame = frame.copy()
+    for column in (
+        "product_sales", "shipping_credits", "gift_wrap_credits",
+        "promotional_rebates", "quantity", "referral_fee", "selling_fees",
+    ):
+        if column not in frame.columns:
+            frame[column] = 0.0
+        frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0)
+
+    units = frame["quantity"].where(frame["quantity"] > 0, 1)
+    base = (
+        frame["product_sales"] + frame["shipping_credits"]
+        + frame["gift_wrap_credits"] + frame["promotional_rebates"]
+    )
+    # Match plotting_utils' current US import calculation, including rounding.
+    frame["total_value"] = [
+        float(Decimal(value / quantity).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        for value, quantity in zip(base, units)
+    ]
+    frame = _apply_us_referral_fee_price_bands(frame)
+    frame["answer"] = [
+        round(value * (rate / 100.0), 2) * quantity if sales != 0 else 0.0
+        for value, rate, quantity, sales in zip(
+            frame["total_value"], frame["referral_fee"], units, frame["product_sales"]
+        )
+    ]
+    descriptions = frame.get("description", pd.Series("", index=frame.index))
+    tax_rows = descriptions.fillna("").astype(str).str.strip().str.lower().eq("tax")
+    frame.loc[tax_rows, "answer"] = 0.0
+    return frame
+
 
 def _safe_identifier(value, fallback="value"):
     cleaned = re.sub(r"[^a-zA-Z0-9_]+", "_", str(value or "").strip().lower())
@@ -3690,6 +3728,9 @@ def get_table_data(file_name):
                 df.loc[refund_rows, "answer"] = 0
             df = df.loc[(pre_group_net_sales >= 0) & ~refund_rows].copy()
 
+        if reconciliation_country == "us":
+            df = _recalculate_us_referral_source_fees(df)
+
         if reconciliation_country in {"us", "uk"} and "order_id" in df.columns:
             order_ids = df["order_id"].fillna("").astype(str).str.strip()
             valid_order_ids = ~order_ids.str.lower().isin({"", "nan", "none", "<na>"})
@@ -3769,77 +3810,42 @@ def get_table_data(file_name):
                 fee_units = fee_units.where(fee_units > 0, fallback_fee_units)
                 fee_units = fee_units.where(fee_units > 0, 1)
 
-                if source_answer_available:
-                    df["answer"] = pd.to_numeric(
+                # Derive the adjustment decision from the rebuilt order fee,
+                # not a legacy status or the first status in a grouped order.
+                source_status = pd.Series("OK", index=df.index)
+                source_difference = [
+                    _round_half_up(abs(charged) - answer)
+                    for charged, answer in zip(df["selling_fees"], df["answer"])
+                ]
+                source_status.loc[pd.Series(source_difference, index=df.index) < 0] = "undercharged"
+                df["answer"] = [
+                    _resolve_us_referral_fee_applicable(
+                        source_answer,
+                        status,
+                        product_sales,
+                        gift_wrap_credits,
+                        promotional_rebates,
+                        rate,
+                        quantity,
+                    )
+                    for (
+                        source_answer,
+                        status,
+                        product_sales,
+                        gift_wrap_credits,
+                        promotional_rebates,
+                        rate,
+                        quantity,
+                    ) in zip(
                         df["answer"],
-                        errors="coerce",
-                    ).fillna(0)
-                    source_status = df.get(
-                        "errorstatus",
-                        pd.Series("", index=df.index),
-                    ).fillna("").astype(str).str.strip().str.lower()
-                    df["answer"] = [
-                        _resolve_us_referral_fee_applicable(
-                            source_answer,
-                            status,
-                            product_sales,
-                            gift_wrap_credits,
-                            promotional_rebates,
-                            rate,
-                            quantity,
-                        )
-                        for (
-                            source_answer,
-                            status,
-                            product_sales,
-                            gift_wrap_credits,
-                            promotional_rebates,
-                            rate,
-                            quantity,
-                        ) in zip(
-                            df["answer"],
-                            source_status,
-                            df["product_sales"],
-                            df["gift_wrap_credits"],
-                            df["promotional_rebates"],
-                            df["referral_fee"],
-                            fee_units,
-                        )
-                    ]
-                else:
-                    qty_for_calc = fee_units
-                    applicable_base = (
-                        df["product_sales"]
-                        + df["gift_wrap_credits"]
-                        - df["promotional_rebates"].abs()
-                    ).clip(lower=0)
-                    df["total_value"] = [
-                        _round_half_up(base / qty)
-                        for base, qty in zip(applicable_base, qty_for_calc)
-                    ]
-                    df = _apply_us_referral_fee_price_bands(df)
-                    df["answer"] = [
-                        _calculate_us_referral_fee_applicable(
-                            product_sales,
-                            gift_wrap_credits,
-                            promotional_rebates,
-                            rate,
-                            quantity,
-                        )
-                        for (
-                            product_sales,
-                            gift_wrap_credits,
-                            promotional_rebates,
-                            rate,
-                            quantity,
-                        ) in zip(
-                            df["product_sales"],
-                            df["gift_wrap_credits"],
-                            df["promotional_rebates"],
-                            df["referral_fee"],
-                            fee_units,
-                        )
-                    ]
+                        source_status,
+                        df["product_sales"],
+                        df["gift_wrap_credits"],
+                        df["promotional_rebates"],
+                        df["referral_fee"],
+                        fee_units,
+                    )
+                ]
 
                 charged_for_diff = pd.to_numeric(df["selling_fees"], errors="coerce").fillna(0).abs()
                 df["difference"] = [
