@@ -1726,9 +1726,20 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const total_charged = ref_charged + fba_charged + other_charged + platform_charged;
       const total_applicable = ref_applicable + fba_applicable + other_applicable + platform_charged;
 
+      const rawSku = String(r.sku ?? "").trim();
+      const rawProductName = String(r.product_name ?? "").trim();
+
+      const displayProductName =
+        rawProductName &&
+          rawProductName !== "0" &&
+          rawProductName.toLowerCase() !== "null" &&
+          rawProductName.toLowerCase() !== "undefined"
+          ? rawProductName
+          : rawSku;
+
       return {
-        sku: isTotal ? "" : (r.sku ?? ""),
-        productName: isTotal ? "Grand Total" : (r.product_name ?? ""),
+        sku: isTotal ? "" : rawSku,
+        productName: isTotal ? "Grand Total" : displayProductName,
         units: quantity,
         sales,
         grossSales,
@@ -2475,10 +2486,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
                 <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                   <div>
                     {/* <p className="text-sm font-semibold text-charcoal-500">Detailed referral fee analysis</p> */}
-                   <PageBreadcrumb
+                    <PageBreadcrumb
                       pageTitle="Detailed Referral Fee Analysis"
                       textSize="lg"
-                      variant="page"/>
+                      variant="page" />
                   </div>
                   {/* <button
                     type="button"
