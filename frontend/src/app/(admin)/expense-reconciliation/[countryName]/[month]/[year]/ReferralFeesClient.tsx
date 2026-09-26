@@ -1681,7 +1681,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const filtered = skuwiseRows.filter((r) => {
       const skuStr = String(r.sku ?? "");
       if (skuStr === "Grand Total") return true;
-      return !skuStr.startsWith("Charge z-");
+     return !skuStr.startsWith("Charge -");
     });
 
     return filtered.map((r) => {
