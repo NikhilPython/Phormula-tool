@@ -28,6 +28,8 @@ import Button from "@/components/ui/button/Button";
 import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 import { useAppSelector } from "@/lib/store";
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
+import { motion, AnimatePresence } from "framer-motion";
+import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -497,7 +499,1364 @@ const PLATFORM_KEYS = ["platform_fees", "marketplace_fees"];
 const OTHER_KEYS = ["other_fees", "misc_fees"];
 
 
+/* ===================== Product Detail Drawer ===================== */
+type DrawerRecommendation = {
+  journey_summary?: string[];
+  recommendation?: string;
+  inventory_recommendation?: string;
+  ads_recommendation?: string;
+};
 
+type DrawerRecommendationsMap = Record<string, DrawerRecommendation | any>;
+
+type DrawerMetric = {
+  label: string;
+  value: string;
+  color?: string;
+};
+
+type DrawerProductBlock = {
+  name: string;
+  skuKey?: string;
+  metrics: DrawerMetric[];
+  drawerOnlyMetrics?: DrawerMetric[];
+  journeyBullets: string[];
+  recommendationBullets: string[];
+  inventoryBullets: string[];
+};
+
+type DrawerAiState = {
+  blocks: DrawerProductBlock[];
+  recommendationsMap: DrawerRecommendationsMap;
+  periodText: string;
+};
+
+type DrawerBestPerformanceMetric = {
+  month?: string;
+  year?: string | number;
+  units?: number;
+  net_sales?: number;
+  asp?: number;
+  cm1_profit?: number;
+  unit_wise_profitability?: number;
+};
+
+type DrawerBestPerformanceData = {
+  units?: DrawerBestPerformanceMetric;
+  net_sales?: DrawerBestPerformanceMetric;
+  asp?: DrawerBestPerformanceMetric;
+  cm1_profit?: DrawerBestPerformanceMetric;
+  unit_wise_profitability?: DrawerBestPerformanceMetric;
+};
+
+const normalizeDrawerKey = (value: string) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s-]/g, "");
+
+const drawerMonthIndex: Record<string, number> = {
+  january: 0,
+  february: 1,
+  march: 2,
+  april: 3,
+  may: 4,
+  june: 5,
+  july: 6,
+  august: 7,
+  september: 8,
+  october: 9,
+  november: 10,
+  december: 11,
+};
+
+const monthNameToNumberForDrawer = (month: string) => {
+  const index = drawerMonthIndex[String(month || "").toLowerCase()];
+  return typeof index === "number" ? String(index + 1) : "";
+};
+
+const drawerMetricCurrent = (metric: any) => {
+  if (metric && typeof metric === "object" && "current" in metric) {
+    return metric.current;
+  }
+  return metric;
+};
+
+const drawerMetricDelta = (metric: any) => {
+  if (metric && typeof metric === "object" && "delta_pct" in metric) {
+    return metric.delta_pct;
+  }
+  return null;
+};
+
+const drawerMetricPrevious = (metric: any) => {
+  if (metric && typeof metric === "object" && "previous" in metric) {
+    return metric.previous;
+  }
+  return undefined;
+};
+
+const drawerMoney = (value: any, symbol: string, decimals = 2) => {
+  const n = toNumberSafe(drawerMetricCurrent(value));
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+};
+
+const drawerMoneyRounded = (value: any, symbol: string) => {
+  const n = Math.round(toNumberSafe(drawerMetricCurrent(value)));
+  return `${symbol}${n.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+};
+
+const drawerDeltaText = (delta: any) => {
+  if (delta === null || delta === undefined || !Number.isFinite(Number(delta))) {
+    return "";
+  }
+  const n = Number(delta);
+  return ` (${n >= 0 ? "+" : ""}${n.toFixed(2)}%)`;
+};
+
+const formatDrawerMetricValue = (
+  metric: any,
+  type: "money" | "number",
+  symbol: string
+) => {
+  const current = drawerMetricCurrent(metric);
+  const delta = drawerMetricDelta(metric);
+  const main =
+    type === "money"
+      ? drawerMoney(current, symbol)
+      : Math.round(toNumberSafe(current)).toLocaleString();
+  return `${main}${drawerDeltaText(delta)}`;
+};
+
+const formatDrawerCoverage = (value: any) => {
+  const n = toNumberSafe(drawerMetricCurrent(value));
+  return n > 0 ? n.toFixed(2) : "-";
+};
+
+const formatDrawerInventory = (value: any) => {
+  const n = toNumberSafe(drawerMetricCurrent(value));
+  return Number.isFinite(n) ? Math.round(n).toLocaleString() : "-";
+};
+
+const hasRealDrawerCm2 = (row: any) => {
+  const cm1 = toNumberSafe(drawerMetricCurrent(row?.profit));
+  const cm2Raw = drawerMetricCurrent(row?.cm2_profit);
+  if (cm2Raw === null || cm2Raw === undefined || cm2Raw === "") return false;
+
+  const cm2 = toNumberSafe(cm2Raw);
+  const ads = Math.abs(
+    toNumberSafe(
+      drawerMetricCurrent(
+        row?.productwise_ads_spend ?? row?.ads_spend ?? row?.advertising_total
+      )
+    )
+  );
+
+  if (Math.abs(cm1 - cm2) < 0.01) return false;
+  if (Math.abs(cm2) < 0.01 && ads < 0.01) return false;
+  return true;
+};
+
+const parseDrawerMdSections = (md?: string | null): Record<string, string[]> => {
+  if (!md) return {};
+
+  const sections: Record<string, string[]> = { ROOT: [] };
+  let current = "ROOT";
+
+  for (const raw of md.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    if (line.toLowerCase().startsWith("## ")) {
+      current = line.replace(/^##\s+/i, "").trim().toUpperCase();
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+
+    sections[current].push(line.replace(/^[-*•]\s+/, "").trim());
+  }
+
+  return sections;
+};
+
+const splitDrawerBullets = (text?: string) => {
+  if (!text) return [];
+  const clean = String(text).trim();
+  if (!clean) return [];
+
+  if (clean.includes("\n")) {
+    return clean
+      .split("\n")
+      .map((line) => line.replace(/^[-*•]\s+/, "").trim())
+      .filter(Boolean);
+  }
+
+  return clean
+    .split(/(?:\.\s+|;\s+|\s\|\s)/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+};
+
+const cleanDrawerInventoryText = (text?: string) =>
+  String(text || "")
+    .replace(
+      /^Your coverage ratio is\s*[\d.]+\s*months\s*(?:and\s*)?/i,
+      ""
+    )
+    .replace(/^and\s+/i, "")
+    .trim();
+
+const finalizeDrawerBlock = (
+  block: DrawerProductBlock,
+  range: Range
+): DrawerProductBlock => {
+  const metrics = [...(block.metrics || [])];
+
+  const cm1 = metrics.find(
+    (metric) => metric.label.trim().toLowerCase() === "cm1 profit"
+  );
+  const cm2 = metrics.find(
+    (metric) => metric.label.trim().toLowerCase() === "cm2 profit"
+  );
+
+  const getMainNumber = (value?: string) => {
+    const main = String(value || "").split("(")[0];
+    const n = Number(main.replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const useCm1 =
+    range !== "monthly" ||
+    !cm2 ||
+    (cm1 && Math.abs(getMainNumber(cm1.value) - getMainNumber(cm2.value)) < 0.01);
+
+  const cleanedMetrics = metrics.filter((metric) => {
+    const label = metric.label.trim().toLowerCase();
+
+    if (range !== "monthly" && label === "stock cover") return false;
+
+    if (useCm1 && ["cm2 profit", "cm2 profit per unit"].includes(label)) {
+      return false;
+    }
+
+    if (!useCm1 && ["cm1 profit", "cm1 profit per unit"].includes(label)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return { ...block, metrics: cleanedMetrics };
+};
+
+const parseDrawerProductBlocks = (
+  lines: string[],
+  range: Range
+): DrawerProductBlock[] => {
+  const metricLabels = [
+    "ASP",
+    "Units",
+    "Net sales",
+    "CM1 profit",
+    "CM1 profit per unit",
+    "CM2 profit",
+    "CM2 profit per unit",
+    "Productwise ads spend",
+    "Stock Cover",
+    "Coverage ratio",
+    "Current inventory",
+    "Current Inventory",
+  ];
+
+  const isMetric = (line: string) =>
+    metricLabels.some((label) =>
+      line.toLowerCase().startsWith(`${label.toLowerCase()}:`)
+    );
+
+  const blocks: DrawerProductBlock[] = [];
+  let current: DrawerProductBlock | null = null;
+  let inJourney = false;
+
+  const pushCurrent = () => {
+    if (current?.name?.trim()) {
+      blocks.push(finalizeDrawerBlock(current, range));
+    }
+    current = null;
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || "")
+      .replace(/^[-*•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+
+    if (!line) continue;
+
+    const nextLine = String(lines[i + 1] || "")
+      .replace(/^[-*•]\s+/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+
+    const lower = line.toLowerCase();
+    const isHeader =
+      !isMetric(line) &&
+      !lower.startsWith("sku:") &&
+      !lower.startsWith("bucket:") &&
+      !lower.startsWith("recommendation:") &&
+      !lower.startsWith("ads action:") &&
+      !lower.startsWith("inventory action:") &&
+      !lower.startsWith("product journey") &&
+      Boolean(nextLine) &&
+      (isMetric(nextLine) || nextLine.toLowerCase().startsWith("sku:"));
+
+    if (isHeader) {
+      pushCurrent();
+
+      const skuFromParen = line.match(/\(([A-Z0-9-]+)\)/i)?.[1]?.trim();
+      const skuFromPrefix = line.match(/^([A-Z0-9-]+)\s*[-:]\s*/i)?.[1]?.trim();
+      const cleanName = line
+        .replace(/\([A-Z0-9-]+\)/i, "")
+        .replace(/^([A-Z0-9-]+)\s*[-:]\s*/i, "")
+        .trim();
+
+      current = {
+        name: cleanName || line,
+        skuKey: skuFromParen || skuFromPrefix,
+        metrics: [],
+        drawerOnlyMetrics: [],
+        journeyBullets: [],
+        recommendationBullets: [],
+        inventoryBullets: [],
+      };
+      inJourney = false;
+      continue;
+    }
+
+    if (!current) continue;
+
+    if (lower.startsWith("sku:")) {
+      current.skuKey = line.replace(/^sku:\s*/i, "").trim();
+      continue;
+    }
+
+    if (lower.startsWith("product journey")) {
+      inJourney = true;
+      continue;
+    }
+
+    if (lower.startsWith("recommendation:")) {
+      inJourney = false;
+      const value = line.replace(/^recommendation:\s*/i, "").trim();
+      if (value) current.recommendationBullets.push(value);
+      continue;
+    }
+
+    if (lower.startsWith("inventory action:")) {
+      inJourney = false;
+      const value = line.replace(/^inventory action:\s*/i, "").trim();
+      if (value) current.inventoryBullets.push(value);
+      continue;
+    }
+
+    if (lower.startsWith("ads action:")) {
+      inJourney = false;
+      const value = line.replace(/^ads action:\s*/i, "").trim();
+      if (value) current.recommendationBullets.push(value);
+      continue;
+    }
+
+    if (isMetric(line)) {
+      const [rawLabel, ...rest] = line.split(":");
+      const rawValue = rest.join(":").trim();
+      const normalizedLabel = rawLabel.trim().toLowerCase();
+      const label =
+        normalizedLabel === "coverage ratio" ? "Stock Cover" : rawLabel.trim();
+
+      const numeric = Number(
+        String(rawValue).split("(")[0].replace(/[^0-9.-]/g, "")
+      );
+      const color = Number.isFinite(numeric)
+        ? numeric < 0
+          ? "#DC2626"
+          : numeric > 0
+            ? "#059669"
+            : "#414042"
+        : "#414042";
+
+      if (normalizedLabel === "current inventory") {
+        if (range === "monthly") {
+          current.drawerOnlyMetrics?.push({
+            label: "Current Inventory",
+            value: rawValue,
+            color,
+          });
+        }
+        continue;
+      }
+
+      if (normalizedLabel === "productwise ads spend") {
+        if (range === "monthly") {
+          current.drawerOnlyMetrics?.push({
+            label: "Ads",
+            value: rawValue,
+            color: "#414042",
+          });
+        }
+        continue;
+      }
+
+      current.metrics.push({ label, value: rawValue, color });
+      continue;
+    }
+
+    if (inJourney) {
+      const value = line.replace(/^-+\s*/, "").trim();
+      if (value) current.journeyBullets.push(value);
+    }
+  }
+
+  pushCurrent();
+  return blocks;
+};
+
+const drawerRecommendationSource = (recommendations: any): DrawerRecommendationsMap => {
+  if (!recommendations || typeof recommendations !== "object") return {};
+  return (
+    recommendations?.sku_actions ??
+    recommendations?.recommendations ??
+    recommendations ??
+    {}
+  );
+};
+
+const findDrawerRecommendation = (
+  map: DrawerRecommendationsMap,
+  block: DrawerProductBlock,
+  fallbackSku?: string
+) => {
+  const sku = String(block.skuKey || fallbackSku || "").trim();
+  return (
+    (sku && map?.[sku]) ||
+    map?.[block.name] ||
+    map?.[block.name.trim()] ||
+    Object.entries(map || {}).find(
+      ([key]) => normalizeDrawerKey(key) === normalizeDrawerKey(block.name)
+    )?.[1] ||
+    null
+  );
+};
+
+const mergeDrawerRecommendationsIntoBlocks = (
+  blocks: DrawerProductBlock[],
+  recommendationsMap: DrawerRecommendationsMap
+) =>
+  blocks.map((block) => {
+    const recObj = findDrawerRecommendation(recommendationsMap, block);
+
+    return {
+      ...block,
+      journeyBullets:
+        block.journeyBullets.length > 0
+          ? block.journeyBullets
+          : Array.isArray(recObj?.journey_summary)
+            ? recObj.journey_summary
+            : [],
+      recommendationBullets:
+        block.recommendationBullets.length > 0
+          ? block.recommendationBullets
+          : splitDrawerBullets(recObj?.recommendation),
+      inventoryBullets:
+        block.inventoryBullets.length > 0
+          ? block.inventoryBullets
+          : splitDrawerBullets(recObj?.inventory_recommendation),
+    };
+  });
+
+const getGlobalDrawerRow = (source: any, productName: string) => {
+  if (!source || typeof source !== "object") return {};
+
+  return (
+    source?.[productName] ||
+    Object.values(source).find(
+      (row: any) =>
+        normalizeDrawerKey(String(row?.product_name || "")) ===
+        normalizeDrawerKey(productName)
+    ) ||
+    {}
+  );
+};
+
+const buildGlobalDrawerAiState = (
+  data: any,
+  range: Range,
+  symbol: string,
+  fallbackPeriodText: string
+): DrawerAiState => {
+  const products = Array.isArray(data?.global_ai?.product_journey_comparison)
+    ? data.global_ai.product_journey_comparison
+    : [];
+  const skuCurrent = data?.metrics?.sku_current ?? {};
+  const skuMom = data?.metrics?.sku_mom ?? {};
+
+  const recommendationsMap: DrawerRecommendationsMap = {};
+
+  const blocks = products.map((product: any) => {
+    const productName = String(product?.product_name || "Unknown Product").trim();
+    const currentRow = getGlobalDrawerRow(skuCurrent, productName);
+    const momRow = getGlobalDrawerRow(skuMom, productName);
+
+    const cm1Metric = momRow?.profit ?? currentRow?.profit;
+    const cm1PerUnitMetric =
+      momRow?.unit_wise_profitability ?? currentRow?.unit_wise_profitability;
+    const cm2Metric = momRow?.cm2_profit ?? currentRow?.cm2_profit;
+    const cm2PerUnitMetric =
+      momRow?.cm2_profit_per_unit ??
+      momRow?.cm2_profit_per ??
+      currentRow?.cm2_profit_per_unit ??
+      currentRow?.cm2_profit_per;
+
+    const metrics: DrawerMetric[] = [
+      {
+        label: "Units",
+        value: formatDrawerMetricValue(
+          momRow?.total_quantity ?? currentRow?.total_quantity,
+          "number",
+          symbol
+        ),
+      },
+      {
+        label: "Net sales",
+        value: formatDrawerMetricValue(
+          momRow?.net_sales ?? currentRow?.net_sales,
+          "money",
+          symbol
+        ),
+      },
+      {
+        label: "ASP",
+        value: formatDrawerMetricValue(
+          momRow?.asp ?? currentRow?.asp,
+          "money",
+          symbol
+        ),
+      },
+    ];
+
+    if (range === "monthly" && hasRealDrawerCm2(currentRow)) {
+      metrics.push(
+        {
+          label: "CM2 profit",
+          value: formatDrawerMetricValue(cm2Metric, "money", symbol),
+        },
+        {
+          label: "CM2 profit per unit",
+          value: formatDrawerMetricValue(cm2PerUnitMetric, "money", symbol),
+        }
+      );
+    } else {
+      metrics.push(
+        {
+          label: "CM1 profit",
+          value: formatDrawerMetricValue(cm1Metric, "money", symbol),
+        },
+        {
+          label: "CM1 profit per unit",
+          value: formatDrawerMetricValue(cm1PerUnitMetric, "money", symbol),
+        }
+      );
+    }
+
+    if (range === "monthly") {
+      metrics.push({
+        label: "Stock Cover",
+        value: formatDrawerCoverage(currentRow?.selected_period_coverage_ratio),
+      });
+    }
+
+    const actions = product?.country_actions ?? {};
+    const uk = actions?.uk ?? {};
+    const us = actions?.us ?? {};
+
+    const recommendation = [
+      uk?.recommendation ? `UK: ${uk.recommendation}` : "",
+      us?.recommendation ? `US: ${us.recommendation}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const inventoryRecommendation = [
+      uk?.inventory_recommendation
+        ? `UK: ${uk.inventory_recommendation}`
+        : "",
+      us?.inventory_recommendation
+        ? `US: ${us.inventory_recommendation}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const adsRecommendation = [
+      uk?.ads_recommendation ? `UK: ${uk.ads_recommendation}` : "",
+      us?.ads_recommendation ? `US: ${us.ads_recommendation}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    recommendationsMap[productName] = {
+      journey_summary: product?.journey_comparison ?? [],
+      recommendation,
+      inventory_recommendation: inventoryRecommendation,
+      ads_recommendation: adsRecommendation,
+    };
+
+    return {
+      name: productName,
+      metrics,
+      drawerOnlyMetrics:
+        range === "monthly"
+          ? [
+              {
+                label: "Current Inventory",
+                value: formatDrawerInventory(currentRow?.current_inventory),
+              },
+              {
+                label: "Ads",
+                value: formatDrawerMetricValue(
+                  momRow?.productwise_ads_spend ??
+                    currentRow?.productwise_ads_spend,
+                  "money",
+                  symbol
+                ),
+              },
+            ]
+          : [],
+      journeyBullets: Array.isArray(product?.journey_comparison)
+        ? product.journey_comparison
+        : [],
+      recommendationBullets: splitDrawerBullets(recommendation),
+      inventoryBullets: splitDrawerBullets(inventoryRecommendation),
+    } as DrawerProductBlock;
+  });
+
+  const comparison = data?.comparison ?? {};
+  const periodLabel = String(comparison?.period_label || "").trim();
+  const previousLabel = String(
+    comparison?.previous_period_label || comparison?.previous_label || ""
+  ).trim();
+
+  return {
+    blocks,
+    recommendationsMap,
+    periodText:
+      periodLabel && previousLabel
+        ? `(${periodLabel} vs ${previousLabel})`
+        : fallbackPeriodText,
+  };
+};
+
+const buildDrawerPeriodText = (
+  range: Range,
+  month: string,
+  quarter: string,
+  year: string
+) => {
+  if (range === "yearly") {
+    return `(${year} vs ${Number(year) - 1})`;
+  }
+
+  if (range === "quarterly") {
+    const order = ["Q1", "Q2", "Q3", "Q4"];
+    const currentQuarter = String(quarter || "").toUpperCase();
+    const index = order.indexOf(currentQuarter);
+
+    if (index === -1) return `(${quarter} ${year})`;
+
+    const previousQuarter = order[index === 0 ? 3 : index - 1];
+    const previousYear = index === 0 ? Number(year) - 1 : Number(year);
+
+    return `(${currentQuarter} ${year} vs ${previousQuarter} ${previousYear})`;
+  }
+
+  const monthIndex = drawerMonthIndex[String(month || "").toLowerCase()];
+  if (typeof monthIndex !== "number") return `(${month} ${year})`;
+
+  const currentDate = new Date(Number(year), monthIndex, 1);
+  const previousDate = new Date(Number(year), monthIndex - 1, 1);
+
+  const currentLabel = currentDate.toLocaleString("en-US", { month: "short" });
+  const previousLabel = previousDate.toLocaleString("en-US", { month: "short" });
+
+  return `(${currentLabel}’${String(currentDate.getFullYear()).slice(-2)} vs ${previousLabel}’${String(previousDate.getFullYear()).slice(-2)})`;
+};
+
+const getDrawerSummaryPeriodText = (
+  summaryLines: string[],
+  fallback: string,
+  range: Range
+) => {
+  const first = String(summaryLines?.[0] || "");
+  const match = first.match(/\(([^)]+)\)/);
+
+  if (!match?.[1]) return fallback;
+
+  const rawPeriod = match[1].trim();
+
+  if (range === "monthly") {
+    const monthlyMatch = rawPeriod.match(
+      /^([A-Za-z]+)\s+(\d{4})\s+vs\s+([A-Za-z]+)\s+(\d{4})$/i
+    );
+
+    if (!monthlyMatch) return fallback;
+
+    const [, currentMonth, currentYear, previousMonth, previousYear] = monthlyMatch;
+
+    const currentShort = new Date(`${currentMonth} 1, ${currentYear}`).toLocaleString(
+      "en-US",
+      { month: "short" }
+    );
+    const previousShort = new Date(`${previousMonth} 1, ${previousYear}`).toLocaleString(
+      "en-US",
+      { month: "short" }
+    );
+
+    return `(${currentShort}’${currentYear.slice(-2)} vs ${previousShort}’${previousYear.slice(-2)})`;
+  }
+
+  if (range === "quarterly") {
+    const quarterlyMatch = rawPeriod.match(
+      /^(Q[1-4])\s+(\d{4})\s+vs\s+(Q[1-4])\s+(\d{4})$/i
+    );
+
+    if (!quarterlyMatch) return fallback;
+
+    const [, currentQuarter, currentYear, previousQuarter, previousYear] = quarterlyMatch;
+
+    return `(${currentQuarter.toUpperCase()} ${currentYear} vs ${previousQuarter.toUpperCase()} ${previousYear})`;
+  }
+
+  return `(${rawPeriod})`;
+};
+
+const splitDrawerMetricValue = (value: string) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(.+?)\s*(\(([+-]?)[^)]+\))\s*$/);
+
+  if (!match) {
+    return { main: text, delta: "", deltaColor: "" };
+  }
+
+  return {
+    main: match[1].trim(),
+    delta: match[2].trim(),
+    deltaColor:
+      match[3] === "+"
+        ? "text-emerald-600"
+        : match[3] === "-"
+          ? "text-red-600"
+          : "text-charcoal-500",
+  };
+};
+
+const formatDrawerDeltaDisplay = (delta: string) => {
+  const clean = String(delta || "").replace(/[()]/g, "").trim();
+  if (!clean) return "";
+  if (clean.startsWith("+")) return `▲ ${clean.slice(1)}`;
+  if (clean.startsWith("-")) return `▼ ${clean.slice(1)}`;
+  return clean;
+};
+
+const formatDrawerMetricTitle = (label: string) =>
+  String(label || "")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cm1", "CM1")
+    .replace("Cm2", "CM2");
+
+const formatDrawerMetricLabel = (label: string) =>
+  String(label || "").trim().toLowerCase() === "stock cover"
+    ? "Stock Cover (Months)"
+    : formatDrawerMetricTitle(label);
+
+const formatDrawerMainValue = (label: string, main: string) => {
+  const normalized = String(label || "").trim().toLowerCase();
+  if (!["net sales", "cm1 profit", "cm2 profit", "ads"].includes(normalized)) {
+    return main;
+  }
+
+  const currencyMatch = String(main || "").match(/^([^0-9-]*)/);
+  const currency = currencyMatch?.[1] ?? "";
+  const numberValue = Number(String(main || "").replace(/[^0-9.-]/g, ""));
+  if (!Number.isFinite(numberValue)) return main;
+  return `${currency}${Math.round(numberValue).toLocaleString()}`;
+};
+
+const formatDrawerBestPeriod = (month?: string, year?: string | number) => {
+  if (!month) return "-";
+  const shortMonth = String(month).slice(0, 3);
+  const shortYear = year ? String(year).slice(-2) : "";
+  return shortYear ? `${shortMonth.charAt(0).toUpperCase()}${shortMonth.slice(1).toLowerCase()}'${shortYear}` : shortMonth;
+};
+
+const drawerMetricColors = [
+  "border border-[#FDD36F] border-t-4",
+  "border border-[#75BBDA] border-t-4",
+  "border border-[#B75A5A] border-t-4",
+  "border border-[#C49466] border-t-4",
+  "border border-[#7B9A6D] border-t-4",
+  "border border-[#C49466] border-t-4",
+  "border border-[#7B9A6D] border-t-4",
+  "border border-[#C49466] border-t-4",
+  "border border-[#7B9A6D] border-t-4",
+  "border border-[#C49466] border-t-4",
+];
+
+const drawerMetricOrder = [
+  "units",
+  "net sales",
+  "asp",
+  "ads",
+  "cm2 profit",
+  "cm2 profit per unit",
+  "cm1 profit",
+  "cm1 profit per unit",
+  "current inventory",
+  "stock cover",
+];
+
+type ReferralProductDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  block: DrawerProductBlock | null;
+  productName: string;
+  recObj?: any;
+  countryName: string;
+  month: string;
+  year: string;
+  range: Range;
+  quarter: string;
+  drawerPeriodText: string;
+  currencySymbol: string;
+  homeCurrency: string;
+  aiLoading: boolean;
+  aiError: string | null;
+};
+
+function ReferralProductDrawer({
+  open,
+  onClose,
+  block,
+  productName,
+  recObj,
+  countryName,
+  month,
+  year,
+  range,
+  quarter,
+  drawerPeriodText,
+  currencySymbol,
+  homeCurrency,
+  aiLoading,
+  aiError,
+}: ReferralProductDrawerProps) {
+  const [bestLoading, setBestLoading] = useState(false);
+  const [bestError, setBestError] = useState<string | null>(null);
+  const [bestData, setBestData] = useState<DrawerBestPerformanceData | null>(null);
+
+  useEffect(() => {
+    // Wait for /summary to resolve and match the clicked product first.
+    // This keeps all drawer sections in sync and prevents Best Performance
+    // from being the only request fired for an empty product block.
+    if (!open || !productName || !block) return;
+
+    const controller = new AbortController();
+
+    const fetchBestPerformance = async () => {
+      try {
+        setBestLoading(true);
+        setBestError(null);
+        setBestData(null);
+
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        if (!token) throw new Error("Missing token");
+
+        const response = await fetch(`${baseURL}/ProductBestPerformance`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            product_name: productName,
+            country: countryName,
+            home_currency:
+              countryName.toLowerCase() === "global"
+                ? homeCurrency
+                : currencySymbol,
+          }),
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(json?.error || "Failed to fetch best performance");
+        }
+
+        setBestData(json?.best_performance ?? null);
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        setBestError(error?.message || "Failed to load best performance");
+      } finally {
+        setBestLoading(false);
+      }
+    };
+
+    fetchBestPerformance();
+    return () => controller.abort();
+  }, [open, productName, block, countryName, homeCurrency, currencySymbol]);
+
+  if (!open) return null;
+
+  const actionBullets =
+    block?.recommendationBullets?.length
+      ? block.recommendationBullets
+      : splitDrawerBullets(recObj?.recommendation);
+
+  const inventoryBullets = (
+    block?.inventoryBullets?.length
+      ? block.inventoryBullets
+      : splitDrawerBullets(recObj?.inventory_recommendation)
+  )
+    .map(cleanDrawerInventoryText)
+    .filter(Boolean);
+
+  const adsBullets = splitDrawerBullets(recObj?.ads_recommendation);
+  const journeyBullets =
+    block?.journeyBullets?.length
+      ? block.journeyBullets
+      : Array.isArray(recObj?.journey_summary)
+        ? recObj.journey_summary
+        : [];
+
+  const hasCm2 = (block?.metrics || []).some((metric) =>
+    ["cm2 profit", "cm2 profit per unit"].includes(
+      metric.label.trim().toLowerCase()
+    )
+  );
+
+  const sortedMetrics = [
+    ...(block?.metrics || []),
+    ...(block?.drawerOnlyMetrics || []),
+  ]
+    .filter((metric) => {
+      const label = metric.label.trim().toLowerCase();
+      const isGlobal = countryName.toLowerCase() === "global";
+
+      if (
+        range === "monthly" &&
+        label === "ads" &&
+        !hasCm2
+      ) {
+        return false;
+      }
+
+      if (
+        isGlobal &&
+        ["stock cover", "current inventory"].includes(label)
+      ) {
+        return false;
+      }
+
+      if (range !== "monthly") {
+        return ![
+          "ads",
+          "stock cover",
+          "current inventory",
+          "cm2 profit",
+          "cm2 profit per unit",
+        ].includes(label);
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      const ai = drawerMetricOrder.indexOf(a.label.toLowerCase());
+      const bi = drawerMetricOrder.indexOf(b.label.toLowerCase());
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+
+  const getMetricBorder = (label: string, fallbackIndex: number) => {
+    const index = drawerMetricOrder.indexOf(label.trim().toLowerCase());
+    return drawerMetricColors[
+      index === -1 ? fallbackIndex % drawerMetricColors.length : index
+    ];
+  };
+
+  const previousCompletedMonth = (() => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - 1);
+    return {
+      month: date.toLocaleString("en-US", { month: "long" }).toLowerCase(),
+      year: String(date.getFullYear()),
+      quarter: getQuarterFromMonth(
+        date.toLocaleString("en-US", { month: "long" }).toLowerCase()
+      ),
+    };
+  })();
+
+  const showRecommendations =
+    range === "yearly"
+      ? year === previousCompletedMonth.year
+      : range === "quarterly"
+        ? year === previousCompletedMonth.year &&
+          quarter === previousCompletedMonth.quarter
+        : year === previousCompletedMonth.year &&
+          month.toLowerCase() === previousCompletedMonth.month;
+
+  return (
+    <AnimatePresence>
+      <>
+        <motion.div
+          className="fixed inset-0 z-[999999] h-full bg-black/40"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        />
+
+        <motion.aside
+          className="fixed right-0 top-0 z-[1000000] h-screen w-[95vw] bg-white shadow-2xl sm:w-[75vw] lg:w-[50vw]"
+          initial={{ x: 520 }}
+          animate={{ x: 0 }}
+          exit={{ x: 520 }}
+          transition={{ type: "tween", duration: 0.25 }}
+        >
+          <div className="flex h-full flex-col gap-4">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 p-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+                  <PageBreadcrumb
+                    pageTitle="Detailed View - "
+                    variant="page"
+                    textSize="2xl"
+                  />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {productName || block?.name || "Details"}
+                    </span>
+                    <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                      {drawerPeriodText}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                aria-label="Close product detail"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
+              {aiLoading && !block ? (
+                <div className="flex min-h-[240px] items-center justify-center">
+                  <Loader fullscreen={false} transparent />
+                </div>
+              ) : aiError && !block ? (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-600">
+                  {aiError}
+                </div>
+              ) : !block ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-charcoal-500">
+                  Product insight data is not available for this period.
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <PageBreadcrumb
+                      pageTitle="Metrics"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                      className="mb-2"
+                    />
+
+                    <div
+                      className={
+                        range === "monthly"
+                          ? "grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4"
+                          : "grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1700px]:grid-cols-5"
+                      }
+                    >
+                      {sortedMetrics.map((metric, index) => {
+                        const { main, delta, deltaColor } =
+                          splitDrawerMetricValue(metric.value);
+                        const displayMain = formatDrawerMainValue(
+                          metric.label,
+                          main
+                        );
+
+                        return (
+                          <div
+                            key={`${metric.label}-${index}`}
+                            className={[
+                              "flex min-h-[60px] w-full flex-col justify-between rounded-xl bg-white p-1.5 shadow-sm 2xl:p-2",
+                              getMetricBorder(metric.label, index),
+                            ].join(" ")}
+                          >
+                            <span className="text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                              {formatDrawerMetricLabel(metric.label)}
+                            </span>
+
+                            <div className="mt-1 flex items-baseline justify-between gap-3 leading-tight tabular-nums">
+                              <span className="truncate text-sm font-semibold text-charcoal-500 2xl:text-lg">
+                                {displayMain}
+                              </span>
+                              {delta ? (
+                                <span
+                                  className={`whitespace-nowrap text-right text-[10px] font-semibold 2xl:text-xs ${
+                                    metric.label.toLowerCase() === "ads"
+                                      ? "text-charcoal-500"
+                                      : deltaColor
+                                  }`}
+                                >
+                                  {formatDrawerDeltaDisplay(delta)}
+                                </span>
+                              ) : [
+                                  "cm1 profit",
+                                  "cm1 profit per unit",
+                                  "cm2 profit",
+                                  "cm2 profit per unit",
+                                ].includes(metric.label.trim().toLowerCase()) ? (
+                                <span className="whitespace-nowrap text-right text-[10px] font-semibold text-charcoal-400 2xl:text-xs">
+                                  -
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <PageBreadcrumb
+                      pageTitle="Overall Best Performance"
+                      variant="page"
+                      align="left"
+                      textSize="xl"
+                    />
+                    <p className="mb-2 mt-1 text-xs text-charcoal-500 2xl:text-sm">
+                      Best performance is calculated from overall historical data, not just the selected period.
+                    </p>
+
+                    {bestLoading ? (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        Loading best performance...
+                      </div>
+                    ) : bestError ? (
+                      <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-3 text-xs text-red-600 2xl:text-sm">
+                        {bestError}
+                      </div>
+                    ) : bestData ? (
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+                        {[
+                          {
+                            label: "Units",
+                            value: Math.round(
+                              toNumberSafe(bestData?.units?.units)
+                            ).toLocaleString(),
+                            period: formatDrawerBestPeriod(
+                              bestData?.units?.month,
+                              bestData?.units?.year
+                            ),
+                          },
+                          {
+                            label: "Net Sales",
+                            value: drawerMoneyRounded(
+                              bestData?.net_sales?.net_sales,
+                              currencySymbol
+                            ),
+                            period: formatDrawerBestPeriod(
+                              bestData?.net_sales?.month,
+                              bestData?.net_sales?.year
+                            ),
+                          },
+                          {
+                            label: "ASP",
+                            value: drawerMoney(
+                              bestData?.asp?.asp,
+                              currencySymbol
+                            ),
+                            period: formatDrawerBestPeriod(
+                              bestData?.asp?.month,
+                              bestData?.asp?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit",
+                            value: drawerMoneyRounded(
+                              bestData?.cm1_profit?.cm1_profit,
+                              currencySymbol
+                            ),
+                            period: formatDrawerBestPeriod(
+                              bestData?.cm1_profit?.month,
+                              bestData?.cm1_profit?.year
+                            ),
+                          },
+                          {
+                            label: "CM1 Profit Per Unit",
+                            value: drawerMoney(
+                              bestData?.unit_wise_profitability
+                                ?.unit_wise_profitability,
+                              currencySymbol
+                            ),
+                            period: formatDrawerBestPeriod(
+                              bestData?.unit_wise_profitability?.month,
+                              bestData?.unit_wise_profitability?.year
+                            ),
+                          },
+                        ].map((card, index) => (
+                          <div
+                            key={card.label}
+                            className={[
+                              "flex min-h-[78px] w-full flex-col justify-between rounded-xl bg-white p-1.5 shadow-sm 2xl:p-2",
+                              getMetricBorder(card.label, index),
+                            ].join(" ")}
+                          >
+                            <span className="text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                              {formatDrawerMetricTitle(card.label)}
+                            </span>
+                            <div className="mt-1 leading-tight tabular-nums">
+                              <div className="text-[10px] font-medium text-charcoal-500 2xl:text-xs">
+                                {card.period}
+                              </div>
+                              <div className="mt-1 whitespace-nowrap text-sm font-semibold text-charcoal-500 2xl:text-lg">
+                                {card.value}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-charcoal-500 2xl:text-sm">
+                        -
+                      </div>
+                    )}
+                  </div>
+
+                  {showRecommendations && (
+                    <div>
+                      <PageBreadcrumb
+                        pageTitle="Recommendations"
+                        variant="page"
+                        align="left"
+                        textSize="xl"
+                        className="mb-2"
+                      />
+
+                      {actionBullets.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                            Action
+                          </div>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                            {actionBullets.map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {inventoryBullets.length > 0 && (
+                        <div className="mt-2">
+                          <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                            Inventory
+                          </div>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                            {inventoryBullets.map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {adsBullets.length > 0 && (
+                        <div className="mt-2">
+                          <div className="text-xs font-semibold text-charcoal-500 2xl:text-sm">
+                            Ads
+                          </div>
+                          <ul className="list-disc space-y-1 pl-5 text-xs text-charcoal-500 2xl:text-sm">
+                            {adsBullets.map((item, index) => (
+                              <li key={index}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {actionBullets.length === 0 &&
+                        inventoryBullets.length === 0 &&
+                        adsBullets.length === 0 && (
+                          <div className="text-xs text-charcoal-500 2xl:text-sm">
+                            -
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  <div className="w-full">
+                    <Productinfoinpopup
+                      productname={block.name || productName}
+                      countryName={countryName}
+                      isOtherSkus={false}
+                      otherSkuProductNames={[]}
+                    />
+                  </div>
+
+                  <div>
+                    <PageBreadcrumb
+                      pageTitle="Product Journey"
+                      variant="page"
+                      textSize="xl"
+                      className="mb-2"
+                    />
+                    {journeyBullets.length > 0 ? (
+                      <ol className="list-decimal space-y-1 pl-3 text-xs text-charcoal-500 marker:font-semibold marker:text-charcoal-400 2xl:text-sm">
+                        {journeyBullets.map((item: any, index: React.Key | null | undefined) => (
+                          <li key={index}>
+                            {String(item)
+                              .replace(/^\d+\.\s*-\s*/, "")
+                              .replace(/^\d+\.\s*/, "")
+                              .replace(/^-+\s*/, "")}
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <div className="text-xs text-charcoal-500 2xl:text-sm">
+                        -
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </motion.aside>
+      </>
+    </AnimatePresence>
+  );
+}
 
 
 function SalesCard({
@@ -1081,6 +2440,206 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [userId, setUserId] = useState<string>("unknown");
   const [allOrdersByStatus, setAllOrdersByStatus] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const [drawerAi, setDrawerAi] = useState<DrawerAiState>({
+    blocks: [],
+    recommendationsMap: {},
+    periodText: "",
+  });
+  const [drawerAiLoading, setDrawerAiLoading] = useState(false);
+  const [drawerAiError, setDrawerAiError] = useState<string | null>(null);
+  const [drawerAiRequestKey, setDrawerAiRequestKey] = useState(0);
+  const [selectedDrawerProduct, setSelectedDrawerProduct] = useState<{
+    name: string;
+    sku?: string;
+  } | null>(null);
+
+  const drawerCurrencySymbol = useMemo(
+    () => fmtCurrency(0).replace(/[\d.,\s]/g, ""),
+    [fmtCurrency]
+  );
+
+  const drawerFallbackPeriodText = useMemo(
+    () => buildDrawerPeriodText(range, month, selectedQuarter, year),
+    [range, month, selectedQuarter, year]
+  );
+
+  const selectedDrawerBlock = useMemo(() => {
+    if (!selectedDrawerProduct) return null;
+
+    const selectedName = normalizeDrawerKey(selectedDrawerProduct.name);
+    const selectedSku = String(selectedDrawerProduct.sku || "").trim().toLowerCase();
+    const canUseSku = selectedSku && selectedSku !== "multiple";
+
+    return (
+      (canUseSku
+        ? drawerAi.blocks.find(
+            (block) =>
+              String(block.skuKey || "").trim().toLowerCase() === selectedSku
+          )
+        : undefined) ||
+      drawerAi.blocks.find(
+        (block) => normalizeDrawerKey(block.name) === selectedName
+      ) ||
+      null
+    );
+  }, [drawerAi.blocks, selectedDrawerProduct]);
+
+  const selectedDrawerRecObj = useMemo(() => {
+    if (!selectedDrawerBlock) return null;
+    return findDrawerRecommendation(
+      drawerAi.recommendationsMap,
+      selectedDrawerBlock,
+      selectedDrawerProduct?.sku
+    );
+  }, [drawerAi.recommendationsMap, selectedDrawerBlock, selectedDrawerProduct]);
+
+  const openReferralProductDrawer = useCallback((row: any) => {
+    if (!row || row._isTotal || row._isOthers) return;
+
+    const name = String(row.productName || "").trim();
+    if (!name) return;
+
+    setDrawerAiError(null);
+    setDrawerAiLoading(true);
+    setSelectedDrawerProduct({
+      name,
+      sku: String(row.sku || "").trim(),
+    });
+    // Force the same /summary API to run on every product click.
+    // Previously it only ran when the period changed, so clicking a product
+    // could open the drawer with an empty/stale block while only
+    // ProductBestPerformance was visible in Network.
+    setDrawerAiRequestKey((value) => value + 1);
+  }, []);
+
+  useEffect(() => {
+    setSelectedDrawerProduct(null);
+  }, [effectiveCountry, range, month, selectedQuarter, year]);
+
+  useEffect(() => {
+    if (isPreviewMode) {
+      setDrawerAi({ blocks: [], recommendationsMap: {}, periodText: drawerFallbackPeriodText });
+      setDrawerAiLoading(false);
+      setDrawerAiError(null);
+      return;
+    }
+
+    const timeline =
+      range === "monthly"
+        ? monthNameToNumberForDrawer(month)
+        : range === "quarterly"
+          ? selectedQuarter
+          : "ALL";
+
+    if (!effectiveCountry || !year) return;
+    if (range === "monthly" && !timeline) return;
+    if (range === "quarterly" && !selectedQuarter) return;
+
+    const controller = new AbortController();
+
+    const fetchDrawerAiSummary = async () => {
+      try {
+        setDrawerAiLoading(true);
+        setDrawerAiError(null);
+
+        const token =
+          typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+        const url = new URL(`${baseURL}/summary`);
+        url.searchParams.set("country", effectiveCountry);
+        url.searchParams.set("period", range);
+        url.searchParams.set("timeline", String(timeline));
+        url.searchParams.set("year", String(year));
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        const data: any = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Failed to fetch AI product insights");
+        }
+
+        if (
+          data?.scope === "global" ||
+          data?.global_ai ||
+          effectiveCountry === "global"
+        ) {
+          setDrawerAi(
+            buildGlobalDrawerAiState(
+              data,
+              range,
+              drawerCurrencySymbol,
+              drawerFallbackPeriodText
+            )
+          );
+          return;
+        }
+
+        const sections = parseDrawerMdSections(data?.summary);
+        const productLines = [
+          ...(sections["PRODUCT INSIGHTS"] ?? []),
+          ...(sections["ALL SKU INDIVIDUAL INSIGHTS"] ?? []),
+        ];
+
+        const fallbackLines = productLines.length
+          ? productLines
+          : String(data?.summary || "")
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean);
+
+        const recommendationsMap = drawerRecommendationSource(
+          data?.recommendations
+        );
+
+        const blocks = mergeDrawerRecommendationsIntoBlocks(
+          parseDrawerProductBlocks(fallbackLines, range),
+          recommendationsMap
+        );
+
+        const summaryLines = sections["SUMMARY"] ?? sections["ROOT"] ?? [];
+
+        setDrawerAi({
+          blocks,
+          recommendationsMap,
+          periodText: getDrawerSummaryPeriodText(
+            summaryLines,
+            drawerFallbackPeriodText,
+            range
+          ),
+        });
+      } catch (error: any) {
+        if (error?.name === "AbortError") return;
+        setDrawerAi({
+          blocks: [],
+          recommendationsMap: {},
+          periodText: drawerFallbackPeriodText,
+        });
+        setDrawerAiError(error?.message || "Failed to load product insights");
+      } finally {
+        setDrawerAiLoading(false);
+      }
+    };
+
+    fetchDrawerAiSummary();
+    return () => controller.abort();
+  }, [
+    effectiveCountry,
+    range,
+    month,
+    selectedQuarter,
+    year,
+    isPreviewMode,
+    drawerCurrencySymbol,
+    drawerFallbackPeriodText,
+    drawerAiRequestKey,
+  ]);
 
   const [salesStatus, setSalesStatus] = useState<SalesStatusSummary>({
     totalSales: 0,
@@ -3269,7 +4828,19 @@ export default function ReferralFeesDashboard(): JSX.Element {
                             );
                           }
 
-                          return <span className="font-medium text-green-500">{row.productName}</span>;
+                          return (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openReferralProductDrawer(row);
+                              }}
+                              className="w-full cursor-pointer text-left font-medium text-green-500 hover:underline"
+                              title={`View details for ${row.productName}`}
+                            >
+                              {row.productName}
+                            </button>
+                          );
                         }
 
                         if (columnKey === "sku") {
@@ -3303,6 +4874,24 @@ export default function ReferralFeesDashboard(): JSX.Element {
           </>
         </PreviewLockedSection>
       )}
+
+      <ReferralProductDrawer
+        open={Boolean(selectedDrawerProduct)}
+        onClose={() => setSelectedDrawerProduct(null)}
+        block={selectedDrawerBlock}
+        productName={selectedDrawerProduct?.name || ""}
+        recObj={selectedDrawerRecObj}
+        countryName={effectiveCountry}
+        month={range === "monthly" ? month : ""}
+        year={year}
+        range={range}
+        quarter={range === "quarterly" ? selectedQuarter : ""}
+        drawerPeriodText={drawerAi.periodText || drawerFallbackPeriodText}
+        currencySymbol={drawerCurrencySymbol}
+        homeCurrency={homeCurrency}
+        aiLoading={drawerAiLoading}
+        aiError={drawerAiError}
+      />
 
     </div >
   );
