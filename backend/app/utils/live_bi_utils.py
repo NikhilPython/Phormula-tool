@@ -1767,6 +1767,17 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
 
     df["quantity_filtered"] = 0.0
     df.loc[~return_mask, "quantity_filtered"] = df.loc[~return_mask, "quantity"].abs()
+    if str(country or "").strip().lower() in {"uk", "us"}:
+        # Live BI quantity means net units, like monthly total_quantity.
+        # Do not count reimbursement/adjustment quantities or infer units from
+        # descriptions. Keep signed refunds in the daily series so summing a
+        # selected date range deducts each refund exactly once.
+        unit_type = df["type"].str.strip().str.casefold()
+        units = df["quantity"].abs()
+        df["quantity_filtered"] = (
+            units.where(unit_type.eq("shipment"), 0.0)
+            - units.where(unit_type.eq("refund"), 0.0)
+        ).where(df["sku"].notna(), 0.0)
 
     # ----------------------------
     # Fee extraction (LIVEORDERS-SPECIFIC)

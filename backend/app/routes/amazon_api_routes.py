@@ -173,6 +173,46 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
     return metrics
 
 
+def _align_dashboard_quantities(data):
+    """Use the SKU TOTAL row for every MTD quantity and per-unit card."""
+    if not isinstance(data, dict):
+        return data
+    total = next((
+        row for row in data.get("skuwise_items", []) or []
+        if isinstance(row, dict)
+        and str(row.get("sku") or "").strip().upper() in {"TOTAL", "GRAND_TOTAL"}
+    ), None)
+    quantity_keys = ("quantity", "return_quantity", "total_quantity")
+    if total is None or any(total.get(key) is None for key in quantity_keys):
+        return data
+
+    quantities = {key: _dashboard_number(total[key]) for key in quantity_keys}
+    totals = {**(data.get("totals") or {}), **quantities}
+    derived = {**(data.get("derived_totals") or {}), **quantities}
+    derived["asp"] = _dashboard_number(total.get("asp")) if total.get("asp") is not None else (
+        _dashboard_number(_dashboard_number(derived.get("net_sales")) / quantities["total_quantity"])
+        if quantities["total_quantity"] else 0.0
+    )
+    return {
+        **data,
+        "totals": totals,
+        "derived_totals": derived,
+        "dashboard_card_metrics": _build_dashboard_card_metrics(
+            {**totals, **derived},
+            (data.get("previous_period") or {}).get("totals") or {},
+        ),
+    }
+
+
+def _align_live_dashboard_cache_quantities(payload, country, start_day, end_day):
+    # Custom ranges have their own totals; the SKU table represents full MTD.
+    if country not in {"uk", "us"} or start_day is not None or end_day is not None or not isinstance(payload, dict):
+        return payload
+    if not isinstance(payload.get("data"), dict):
+        return payload
+    return {**payload, "data": _align_dashboard_quantities(payload["data"])}
+
+
 def _round_dashboard_payload_numbers(value):
     """Round every finite float in a persisted dashboard snapshot to 2dp."""
     if isinstance(value, dict):
@@ -3589,10 +3629,18 @@ def finances_mtd_transactions():
             | transaction_type_lower.str.contains("refund|return", case=False, na=False, regex=True)
         )
 
-        # Sales quantity only from non-return rows
+        sales_mask = ~return_mask
+        if ui_country in {"uk", "us"}:
+            # UK/US unit counts come only from the transaction type. Inventory
+            # reimbursements and other adjustments must not count as units.
+            unit_type = type_lower.str.strip()
+            sales_mask = unit_type.eq("shipment")
+            return_mask = unit_type.eq("refund")
+
+        # UK/US sales quantity counts Shipment rows only.
         df_skus["sales_quantity"] = 0.0
-        df_skus.loc[~return_mask, "sales_quantity"] = (
-            df_skus.loc[~return_mask, "quantity"].abs()
+        df_skus.loc[sales_mask, "sales_quantity"] = (
+            df_skus.loc[sales_mask, "quantity"].abs()
         )
 
         # Return quantity only from refund/return rows
@@ -3643,11 +3691,10 @@ def finances_mtd_transactions():
         ).fillna(0.0)
 
         # Final required quantity columns
-        # quantity = sold units before deducting returns
-        df_sku["quantity"] = (
-            pd.to_numeric(df_sku["sales_quantity"], errors="coerce").fillna(0.0)
-            + pd.to_numeric(df_sku["return_quantity"], errors="coerce").fillna(0.0)
-        )
+        # UK/US quantity is Shipment units; deduct Refund units only once below.
+        df_sku["quantity"] = df_sku["sales_quantity"]
+        if ui_country not in {"uk", "us"}:
+            df_sku["quantity"] = df_sku["quantity"] + df_sku["return_quantity"]
 
         # total_quantity = quantity - return_quantity
         df_sku["total_quantity"] = (
@@ -4648,6 +4695,17 @@ def finances_mtd_transactions():
             skuwise_items = []
             print("EMPTY SKUWISE TABLE CREATE ERROR:", str(e))
 
+    if ui_country in {"uk", "us"}:
+        aligned = _align_dashboard_quantities({
+            "totals": totals,
+            "derived_totals": derived_totals,
+            "skuwise_items": skuwise_items,
+            "previous_period": previous_period,
+        })
+        totals = aligned["totals"]
+        derived_totals = aligned["derived_totals"]
+        net_qty_total = float(totals.get("total_quantity", net_qty_total))
+
     if response_format == "excel":
         df = pd.DataFrame(all_rows) if all_rows else pd.DataFrame()
         df = df.reindex(
@@ -4813,6 +4871,9 @@ def save_live_dashboard_data():
         cache_payload = body.get("cachePayload")
         if cache_payload is None:
             return jsonify({"success": False, "error": "cachePayload is required"}), 400
+        cache_payload = _align_live_dashboard_cache_quantities(
+            cache_payload, country, start_day, end_day
+        )
         cache_payload = _round_dashboard_payload_numbers(cache_payload)
 
         saved_at = body.get("savedAt") or int(time.time() * 1000)
@@ -4943,9 +5004,27 @@ def save_live_dashboard_data():
         with PHORMULA_ENGINE.begin() as conn:
             conn.execute(text(create_sql))
             row = conn.execute(
-                text(select_sql),
+                text(select_sql + " FOR UPDATE"),
                 select_params,
             ).mappings().first()
+            if row:
+                row = dict(row)
+                repaired_payload = _align_live_dashboard_cache_quantities(
+                    row["payload"], country, start_day, end_day
+                )
+                if repaired_payload != row["payload"]:
+                    conn.execute(text(f"""
+                        UPDATE public.{table_name}
+                        SET payload = CAST(:payload AS jsonb)
+                        WHERE id = :id AND user_id = :user_id
+                    """), {
+                        "payload": json.dumps(repaired_payload),
+                        "id": row["id"],
+                        "user_id": user_id,
+                    })
+                    # Preserve refresh timestamps: this repairs the snapshot,
+                    # but does not fetch new transactions from Amazon.
+                    row["payload"] = repaired_payload
 
         if not row:
             return jsonify({
