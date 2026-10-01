@@ -10,7 +10,7 @@ import io
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 import jwt
@@ -402,17 +402,27 @@ def _create_and_fetch_fee_preview_bytes(marketplace_id: str, timeout_seconds: in
     """
     Polls report generation. Re-applies region before each call (reduces client-global issues).
     """
-    last_err = None
+    errors = []
     _assert_marketplace_allowed(marketplace_id)
 
     for rtype in FEE_PREVIEW_REPORT_TYPES:
+        report_id = None
         try:
             _apply_region_and_marketplace_from_request(marketplace_id=marketplace_id)
+
+            report_spec = {"reportType": rtype, "marketplaceIds": [marketplace_id]}
+            if rtype == "GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA":
+                # Amazon requires a window of at least 72 hours for FBA fee previews.
+                now = datetime.now(timezone.utc)
+                report_spec.update({
+                    "dataStartTime": (now - timedelta(hours=72)).isoformat(),
+                    "dataEndTime": now.isoformat(),
+                })
 
             created = amazon_client.make_api_call(
                 f"{REPORTS_BASE}/reports",
                 "POST",
-                data={"reportType": rtype, "marketplaceIds": [marketplace_id]},
+                data=report_spec,
             )
 
             if not created or "error" in created:
@@ -425,8 +435,7 @@ def _create_and_fetch_fee_preview_bytes(marketplace_id: str, timeout_seconds: in
                         raise ValueError(msg)
                     if code in ("Unauthorized", "AccessDenied"):
                         raise PermissionError(msg)
-                last_err = created
-                continue
+                raise RuntimeError(f"Report creation failed: {created}")
 
             report_id = (
                 created.get("reportId")
@@ -434,8 +443,7 @@ def _create_and_fetch_fee_preview_bytes(marketplace_id: str, timeout_seconds: in
                 or created.get("ReportId")
             )
             if not report_id:
-                last_err = {"error": "No reportId in create response", "body": created}
-                continue
+                raise RuntimeError(f"No reportId in create response: {created}")
 
             t0 = time.time()
             sleep_s = 2
@@ -468,7 +476,11 @@ def _create_and_fetch_fee_preview_bytes(marketplace_id: str, timeout_seconds: in
                     return _download_report_document(doc.get("payload") or doc)
 
                 if proc in ("CANCELLED", "FATAL"):
-                    raise RuntimeError(f"{rtype} failed with status: {proc}")
+                    doc_id = payload.get("reportDocumentId")
+                    raise RuntimeError(
+                        f"Amazon report status: {proc}"
+                        + (f"; diagnostic document: {doc_id}" if doc_id else "")
+                    )
 
                 if time.time() - t0 > timeout_seconds:
                     raise TimeoutError(f"Timed out waiting for {rtype} to complete.")
@@ -477,10 +489,12 @@ def _create_and_fetch_fee_preview_bytes(marketplace_id: str, timeout_seconds: in
                 sleep_s = min(20, sleep_s + 2)
 
         except Exception as e:
-            last_err = str(e)
+            detail = f"{rtype} (reportId={report_id or 'not created'}): {e}"
+            errors.append(detail)
+            logger.warning("Fee preview attempt failed for marketplace %s: %s", marketplace_id, detail)
             continue
 
-    raise RuntimeError(f"All fee preview report types failed. Last error: {last_err}")
+    raise RuntimeError("All fee preview report types failed. " + " | ".join(errors))
 
 # ============================================================
 # OPTIMIZED PIPELINE: Fee -> user table (FULL steps 7/8/9 added)
