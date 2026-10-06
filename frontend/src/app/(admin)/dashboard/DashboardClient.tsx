@@ -5960,7 +5960,9 @@ export default function DashboardPage() {
         const curr = {
             units: toNumber(biAlignedTotals?.total_current_quantity),
             netSales: toNumber(biAlignedTotals?.total_current_net_sales),
+            netSalesPerUnit: toNumber(biAlignedTotals?.total_current_net_sales_per_unit),
             grossSales: toNumber(biAlignedTotals?.total_current_gross_sales),
+            grossSalesPerUnit: toNumber(biAlignedTotals?.total_current_gross_sales_per_unit),
             profit: toNumber(biAlignedTotals?.total_current_profit),
             cm2Profit: toNumber(biAlignedTotals?.total_current_profit_cm2),
             asp: toNumber(biAlignedTotals?.total_current_asp),
@@ -5970,7 +5972,9 @@ export default function DashboardPage() {
         const prev = {
             units: toNumber(biAlignedTotals?.total_previous_quantity),
             netSales: toNumber(biAlignedTotals?.total_previous_net_sales),
+            netSalesPerUnit: toNumber(biAlignedTotals?.total_previous_net_sales_per_unit),
             grossSales: toNumber(biAlignedTotals?.total_previous_gross_sales),
+            grossSalesPerUnit: toNumber(biAlignedTotals?.total_previous_gross_sales_per_unit),
             profit: toNumber(biAlignedTotals?.total_previous_profit),
             cm2Profit: toNumber(biAlignedTotals?.total_previous_profit_cm2),
             asp: toNumber(biAlignedTotals?.total_previous_asp),
@@ -6013,7 +6017,12 @@ export default function DashboardPage() {
         return {
             total_current_net_sales: conv(biAlignedTotals.total_current_net_sales),
             total_previous_net_sales: conv(biAlignedTotals.total_previous_net_sales),
+            total_current_net_sales_per_unit: conv(biAlignedTotals.total_current_net_sales_per_unit),
+            total_previous_net_sales_per_unit: conv(biAlignedTotals.total_previous_net_sales_per_unit),
             total_previous_net_sales_full_month: conv(biAlignedTotals.total_previous_net_sales_full_month),
+
+            total_current_gross_sales_per_unit: conv(biAlignedTotals.total_current_gross_sales_per_unit),
+            total_previous_gross_sales_per_unit: conv(biAlignedTotals.total_previous_gross_sales_per_unit),
 
             total_current_advertising: conv(biAlignedTotals.total_current_advertising),
             total_previous_advertising: conv(biAlignedTotals.total_previous_advertising),
@@ -7487,9 +7496,13 @@ export default function DashboardPage() {
             unitsDelta: toNumber(metric("units").change_percentage),
             grossSales: toNumber(metric("gross_sales").current),
             prevGrossSales: toNumber(metric("gross_sales").previous),
+            grossSalesPerUnit: toNumber(metric("gross_sales").current_per_unit),
+            prevGrossSalesPerUnit: toNumber(metric("gross_sales").previous_per_unit),
             grossSalesDelta: toNumber(metric("gross_sales").change_percentage),
             netSales: toNumber(metric("net_sales").current),
             prevNetSales: toNumber(metric("net_sales").previous),
+            netSalesPerUnit: toNumber(metric("net_sales").current_per_unit),
+            prevNetSalesPerUnit: toNumber(metric("net_sales").previous_per_unit),
             netSalesDelta: toNumber(metric("net_sales").change_percentage),
             asp: toNumber(metric("asp").current),
             prevAsp: toNumber(metric("asp").previous),
@@ -7518,7 +7531,10 @@ export default function DashboardPage() {
     const stickyTableTotals = useMemo(() => {
         return {
             units: globalMtdCardData.units,
+            grossSales: globalMtdCardData.grossSales,
+            grossSalesPerUnit: globalMtdCardData.grossSalesPerUnit,
             netSales: globalMtdCardData.netSales,
+            netSalesPerUnit: globalMtdCardData.netSalesPerUnit,
             asp: globalMtdCardData.asp,
             costOfAds: globalMtdCardData.ads,
             costOfAdsPerUnit: globalMtdCardData.adsPerUnit,
@@ -7533,7 +7549,10 @@ export default function DashboardPage() {
     const stickyPreviousTotals = useMemo(() => {
         return {
             units: globalMtdCardData.prevUnits,
+            grossSales: globalMtdCardData.prevGrossSales,
+            grossSalesPerUnit: globalMtdCardData.prevGrossSalesPerUnit,
             netSales: globalMtdCardData.prevNetSales,
+            netSalesPerUnit: globalMtdCardData.prevNetSalesPerUnit,
             asp: globalMtdCardData.prevAsp,
             costOfAds: globalMtdCardData.prevAds,
             costOfAdsPerUnit: globalMtdCardData.prevAdsPerUnit,
@@ -8815,6 +8834,30 @@ export default function DashboardPage() {
                     ? stats_lastMonthTotalHome
                     : 0;
 
+    const mtdGrossSalesCurrentPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.grossSales.currentPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_current_gross_sales_per_unit)
+            : toNumber(backendDashboardMetric("gross_sales").current_per_unit);
+
+    const mtdGrossSalesPreviousPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.grossSales.previousPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_previous_gross_sales_per_unit)
+            : toNumber(backendDashboardMetric("gross_sales").previous_per_unit);
+
+    const mtdNetSalesCurrentPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.netSales.currentPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_current_net_sales_per_unit)
+            : toNumber(backendDashboardMetric("net_sales").current_per_unit);
+
+    const mtdNetSalesPreviousPerUnitDisplay = shouldShowDummyUi
+        ? dummyStatData.netSales.previousPerUnit
+        : rangeActive
+            ? toNumber(biAlignedTotals?.total_previous_net_sales_per_unit)
+            : toNumber(backendDashboardMetric("net_sales").previous_per_unit);
+
     const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.current
         : rangeActive
@@ -9109,6 +9152,13 @@ export default function DashboardPage() {
             ),
             formatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
             previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
+            currentPerUnit: isStickyGlobal
+                ? stickyTableTotals.netSalesPerUnit
+                : mtdNetSalesCurrentPerUnitDisplay,
+            previousPerUnit: isStickyGlobal
+                ? stickyPreviousTotals.netSalesPerUnit
+                : mtdNetSalesPreviousPerUnitDisplay,
+            perUnitFormatter: (val: number) => formatDisplayAmount(val),
             bottomLabel: prevLabel,
             className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
         },
@@ -11736,9 +11786,13 @@ export default function DashboardPage() {
             unitsDelta: toNumber(metric("units").change_percentage),
             grossSales: toNumber(metric("gross_sales").current),
             prevGrossSales: toNumber(metric("gross_sales").previous),
+            grossSalesPerUnit: toNumber(metric("gross_sales").current_per_unit),
+            prevGrossSalesPerUnit: toNumber(metric("gross_sales").previous_per_unit),
             grossSalesDelta: toNumber(metric("gross_sales").change_percentage),
             netSales: toNumber(metric("net_sales").current),
             prevNetSales: toNumber(metric("net_sales").previous),
+            netSalesPerUnit: toNumber(metric("net_sales").current_per_unit),
+            prevNetSalesPerUnit: toNumber(metric("net_sales").previous_per_unit),
             netSalesDelta: toNumber(metric("net_sales").change_percentage),
             asp: toNumber(metric("asp").current),
             prevAsp: toNumber(metric("asp").previous),
@@ -11801,6 +11855,9 @@ export default function DashboardPage() {
                         deltaPct={c.grossSalesDelta}
                         formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                        currentPerUnit={c.grossSalesPerUnit}
+                        previousPerUnit={c.prevGrossSalesPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         bottomLabel={prevLabel}
                         className="border-[#ED9F50] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -11813,6 +11870,9 @@ export default function DashboardPage() {
                         deltaPct={c.netSalesDelta}
                         formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                        currentPerUnit={c.netSalesPerUnit}
+                        previousPerUnit={c.prevNetSalesPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -11913,6 +11973,9 @@ export default function DashboardPage() {
                         deltaPct={null}
                         formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                        currentPerUnit={c.grossSalesPerUnit}
+                        previousPerUnit={c.prevGrossSalesPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         bottomLabel={prevLabel}
                         className="border-[#ED9F50] border-t-4"
                         loading={!shouldShowDummyUi && loading}
@@ -11925,6 +11988,9 @@ export default function DashboardPage() {
                         deltaPct={null}
                         formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                        currentPerUnit={c.netSalesPerUnit}
+                        previousPerUnit={c.prevNetSalesPerUnit}
+                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && loading}
@@ -12753,6 +12819,10 @@ export default function DashboardPage() {
                         amazonDataCurrency={amazonDataCurrency}
                         prev={prev}
                         deltas={deltas}
+                        mtdGrossSalesCurrentPerUnitDisplay={mtdGrossSalesCurrentPerUnitDisplay}
+                        mtdGrossSalesPreviousPerUnitDisplay={mtdGrossSalesPreviousPerUnitDisplay}
+                        mtdNetSalesCurrentPerUnitDisplay={mtdNetSalesCurrentPerUnitDisplay}
+                        mtdNetSalesPreviousPerUnitDisplay={mtdNetSalesPreviousPerUnitDisplay}
                         mtdCostOfAdsCurrentDisplay={mtdCostOfAdsCurrentDisplay}
                         mtdCostOfAdsPreviousDisplay={mtdCostOfAdsPreviousDisplay}
                         mtdCostOfAdsCurrentPerUnitDisplay={mtdCostOfAdsCurrentPerUnitDisplay}

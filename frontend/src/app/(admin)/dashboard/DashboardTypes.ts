@@ -278,6 +278,8 @@ export type BiAlignedTotals = {
     total_previous_net_sales_full_month?: number;
     total_previous_net_sales?: number;
     total_current_net_sales?: number;
+    total_current_net_sales_per_unit?: number;
+    total_previous_net_sales_per_unit?: number;
 
     total_current_advertising?: number;
     total_previous_advertising?: number;
@@ -298,6 +300,8 @@ export type BiAlignedTotals = {
     total_previous_asp?: number;
     total_current_gross_sales?: number;
     total_previous_gross_sales?: number;
+    total_current_gross_sales_per_unit?: number;
+    total_previous_gross_sales_per_unit?: number;
     total_current_promotional_rebates?: number;
     total_previous_promotional_rebates?: number;
     total_current_promotional_rebates_percentage?: number;

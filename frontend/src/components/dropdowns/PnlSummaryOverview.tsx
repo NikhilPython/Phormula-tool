@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Bot,
   Boxes,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   PackageSearch,
   Sparkles,
@@ -77,8 +79,6 @@ type Props = {
   data: PnlSummaryOverviewData;
   onNavigate: (tab: SummaryDestination) => void;
 };
-
-const SLIDE_DURATION_MS = 5000;
 
 const compactNumber = (value: number, maximumFractionDigits = 1) =>
   new Intl.NumberFormat("en", {
@@ -183,12 +183,6 @@ const formatPeriodLabel = (label: string) => {
 export default function PnlSummaryOverview({ data, onNavigate }: Props) {
   const [activeSlide, setActiveSlide] = useState(0);
   const { currencySymbol, financial } = data;
-  const [isPaused, setIsPaused] = useState(false);
-  const [slideProgress, setSlideProgress] = useState(0);
-
-  const progressRef = useRef(0);
-  const lastFrameRef = useRef<number | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
 
   const slides = useMemo(
     () => [
@@ -256,68 +250,13 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
     []
   );
 
-  // useEffect(() => {
-  //   if (isPaused) return;
-
-  //   const timer = window.setTimeout(() => {
-  //     setActiveSlide((current) => (current + 1) % slides.length);
-  //   }, SLIDE_DURATION_MS);
-
-  //   return () => window.clearTimeout(timer);
-  // }, [activeSlide, slides.length, isPaused]);
-
-  useEffect(() => {
-    if (isPaused) {
-      lastFrameRef.current = null;
-
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-
-      return;
-    }
-
-    const animate = (timestamp: number) => {
-      if (lastFrameRef.current === null) {
-        lastFrameRef.current = timestamp;
-      }
-
-      const elapsed = timestamp - lastFrameRef.current;
-      lastFrameRef.current = timestamp;
-
-      const progressIncrease = elapsed / SLIDE_DURATION_MS;
-
-      progressRef.current += progressIncrease;
-
-      if (progressRef.current >= 1) {
-        progressRef.current = 0;
-        setSlideProgress(0);
-        lastFrameRef.current = timestamp;
-
-        setActiveSlide((current) => (current + 1) % slides.length);
-      } else {
-        setSlideProgress(progressRef.current);
-      }
-
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-
-      lastFrameRef.current = null;
-    };
-  }, [isPaused, slides.length]);
-
   useEffect(() => {
     setActiveSlide(0);
   }, [data.periodLabel]);
+
+  const showSlide = (index: number) => {
+    setActiveSlide((index + slides.length) % slides.length);
+  };
 
   const slide = slides[activeSlide];
   const SlideIcon = slide.icon;
@@ -576,7 +515,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
   return (
     <section id="summary" className="flex h-[calc(100dvh-260px)] min-h-[440px] max-h-[620px] flex-col overflow-hidden rounded-2xl border border-[#CFE8DF] bg-white shadow-sm 2xl:h-[560px] 2xl:min-h-[560px] 2xl:max-h-[560px]">
-      <div className="flex min-h-[42px] items-center border-b border-slate-100 px-4 py-2 sm:px-6 2xl:min-h-[48px] 2xl:px-8">
+      <div className="flex min-h-[42px] items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 sm:px-6 2xl:min-h-[48px] 2xl:px-8">
         <div className="flex min-w-0 items-center gap-2">
           <PageBreadcrumb
             pageTitle={
@@ -589,6 +528,27 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             align="left"
           />
         </div>
+
+        <div className="flex shrink-0 items-center gap-1" aria-label="Manual slide controls">
+          <button
+            type="button"
+            onClick={() => showSlide(activeSlide - 1)}
+            aria-label="Show previous overview slide"
+            title="Previous slide"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-[#5EA68E] hover:text-[#3f806d] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-1"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => showSlide(activeSlide + 1)}
+            aria-label="Show next overview slide"
+            title="Next slide"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-[#5EA68E] hover:text-[#3f806d] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-1"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
       </div>
 
       <nav
@@ -599,29 +559,15 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           <button
             key={item.key}
             type="button"
-            onClick={() => {
-              progressRef.current = 0;
-              setSlideProgress(0);
-              lastFrameRef.current = null;
-              setActiveSlide(index);
-            }}
+            onClick={() => showSlide(index)}
             aria-label={`Show ${item.label} summary`}
             aria-current={index === activeSlide ? "step" : undefined}
             title={`Show ${item.label} summary`}
             className="group min-w-0 rounded-md px-0.5 pb-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-1"
           >
             <div className="h-1 overflow-hidden rounded-full bg-slate-100">
-              {index < activeSlide ? (
-                <div className="h-full w-full bg-[#5EA68E]/65 transition-colors group-hover:bg-[#5EA68E]" />
-              ) : index === activeSlide ? (
-                // <motion.div key={`${item.key}-${activeSlide}`} className="h-full origin-left bg-[#5EA68E]" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: SLIDE_DURATION_MS / 1000, ease: "linear" }} />
-                <div
-                  className="h-full origin-left bg-[#5EA68E]"
-                  style={{
-                    transform: `scaleX(${slideProgress})`,
-                    transformOrigin: "left",
-                  }}
-                />
+              {index === activeSlide ? (
+                <div className="h-full w-full bg-[#5EA68E]" />
               ) : (
                 <div className="h-full w-0 bg-[#5EA68E] transition-all duration-200 group-hover:w-full group-hover:bg-[#5EA68E]/35" />
               )}
@@ -635,23 +581,11 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <AnimatePresence mode="wait">
           <motion.div
             key={slide.key}
-            role="button"
-            tabIndex={0}
-            aria-label={isPaused ? "Resume summary slideshow" : "Pause summary slideshow"}
-            aria-pressed={isPaused}
-            title={isPaused ? "Resume summary slideshow" : "Pause summary slideshow"}
-            onClick={() => setIsPaused((current) => !current)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                setIsPaused((current) => !current);
-              }
-            }}
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className={`relative flex h-full w-full cursor-pointer flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2 2xl:px-8 2xl:py-6 ${slide.key === "ai" ? "justify-start sm:p-4" : "justify-center sm:p-6"}`}
+            className={`relative flex h-full w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] p-4 2xl:px-8 2xl:py-6 ${slide.key === "ai" ? "justify-start sm:p-4" : "justify-center sm:p-6"}`}
           >
             {/* <div className={`pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full blur-3xl ${tone.glow}`} /> */}
             <div className={`relative z-10 flex max-w-3xl flex-col items-center text-center ${slide.key === "ai" ? "mb-2" : "mb-4"}`}>

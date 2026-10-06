@@ -6207,6 +6207,26 @@ def live_mtd_vs_previous():
 
         total_current_gross_sales = float(curr_aligned_totals.get("product_sales", 0) or 0)
         total_previous_gross_sales = float(prev_aligned_totals.get("product_sales", 0) or 0)
+        total_current_gross_sales_per_unit = (
+            total_current_gross_sales / total_current_quantity
+            if total_current_quantity
+            else 0.0
+        )
+        total_previous_gross_sales_per_unit = (
+            total_previous_gross_sales / total_previous_quantity
+            if total_previous_quantity
+            else 0.0
+        )
+        total_current_net_sales_per_unit = (
+            total_current_net_sales / total_current_quantity
+            if total_current_quantity
+            else 0.0
+        )
+        total_previous_net_sales_per_unit = (
+            total_previous_net_sales / total_previous_quantity
+            if total_previous_quantity
+            else 0.0
+        )
         total_current_promotions = float(curr_aligned_totals.get("promotional_rebates", 0) or 0)
         total_previous_promotions = float(prev_aligned_totals.get("promotional_rebates", 0) or 0)
         total_current_tacos = (
@@ -6236,6 +6256,8 @@ def live_mtd_vs_previous():
 
             "total_current_net_sales": round(total_current_net_sales, 2),
             "total_previous_net_sales": round(total_previous_net_sales, 2),
+            "total_current_net_sales_per_unit": round(total_current_net_sales_per_unit, 2),
+            "total_previous_net_sales_per_unit": round(total_previous_net_sales_per_unit, 2),
 
             "total_previous_net_sales_full_month": float(total_previous_net_sales_full_month or 0),
 
@@ -6254,6 +6276,8 @@ def live_mtd_vs_previous():
             "total_previous_asp": round(total_previous_asp, 2),
             "total_current_gross_sales": round(total_current_gross_sales, 2),
             "total_previous_gross_sales": round(total_previous_gross_sales, 2),
+            "total_current_gross_sales_per_unit": round(total_current_gross_sales_per_unit, 2),
+            "total_previous_gross_sales_per_unit": round(total_previous_gross_sales_per_unit, 2),
             "total_current_promotional_rebates": round(total_current_promotions, 2),
             "total_previous_promotional_rebates": round(total_previous_promotions, 2),
             "total_current_promotional_rebates_percentage": round(

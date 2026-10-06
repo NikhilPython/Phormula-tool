@@ -9,8 +9,8 @@ import type {
 
 export const dummyStatData = {
     units: { current: 0, previous: 0, deltaPct: 0 },
-    grossSales: { current: 0, previous: 0, deltaPct: 0 },
-    netSales: { current: 0, previous: 0, deltaPct: 0 },
+    grossSales: { current: 0, previous: 0, currentPerUnit: 0, previousPerUnit: 0, deltaPct: 0 },
+    netSales: { current: 0, previous: 0, currentPerUnit: 0, previousPerUnit: 0, deltaPct: 0 },
     asp: { current: 0, previous: 0, deltaPct: 0 },
     costOfAds: { current: 0, previous: 0, currentPerUnit: 0, previousPerUnit: 0, deltaPct: 0 },
     tacos: { current: 0, previous: 0, deltaPct: 0 },

@@ -53,6 +53,10 @@ export default function DashboardLiveSalesTab({
     amazonDataCurrency,
     prev,
     deltas,
+    mtdGrossSalesCurrentPerUnitDisplay,
+    mtdGrossSalesPreviousPerUnitDisplay,
+    mtdNetSalesCurrentPerUnitDisplay,
+    mtdNetSalesPreviousPerUnitDisplay,
     mtdCostOfAdsCurrentDisplay,
     mtdCostOfAdsPreviousDisplay,
     mtdCostOfAdsCurrentPerUnitDisplay,
@@ -272,6 +276,17 @@ export default function DashboardLiveSalesTab({
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                                                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                        currentPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.grossSales.currentPerUnit
+                                                                : globalMtdCardData.grossSalesPerUnit
+                                                        }
+                                                        previousPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.grossSales.previousPerUnit
+                                                                : globalMtdCardData.prevGrossSalesPerUnit
+                                                        }
+                                                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                         bottomLabel={prevLabel}
                                                         className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                                     />
@@ -288,6 +303,17 @@ export default function DashboardLiveSalesTab({
                                                         loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                                         formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                                                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                        currentPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.netSales.currentPerUnit
+                                                                : globalMtdCardData.netSalesPerUnit
+                                                        }
+                                                        previousPerUnit={
+                                                            shouldShowDummyUi
+                                                                ? dummyStatData.netSales.previousPerUnit
+                                                                : globalMtdCardData.prevNetSalesPerUnit
+                                                        }
+                                                        perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                         bottomLabel={prevLabel}
                                                         className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                     />
@@ -474,6 +500,9 @@ export default function DashboardLiveSalesTab({
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
+                                                    currentPerUnit={mtdGrossSalesCurrentPerUnitDisplay}
+                                                    previousPerUnit={mtdGrossSalesPreviousPerUnitDisplay}
+                                                    perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                                 />
@@ -502,6 +531,9 @@ export default function DashboardLiveSalesTab({
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
+                                                    currentPerUnit={mtdNetSalesCurrentPerUnitDisplay}
+                                                    previousPerUnit={mtdNetSalesPreviousPerUnitDisplay}
+                                                    perUnitFormatter={(val) => formatDisplayAmount(val)}
                                                     bottomLabel={prevLabel}
                                                     className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                                 />
