@@ -952,6 +952,7 @@ const Productinfoinpopup: React.FC<ProductinfoinpopupProps> = ({
           enabled: true,
           mode: "index",
           intersect: false,
+          filter: (context: any) => Number(context.parsed.y) !== 0,
           backgroundColor: "#ffffff",
           titleColor: "#414042",
           bodyColor: "#414042",

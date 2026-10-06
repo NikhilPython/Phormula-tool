@@ -11,7 +11,7 @@ import PageBreadcrumb from "../common/PageBreadCrumb";
 import { Modal } from "@/components/ui/modal";
 import FileUploadForm from "@/app/(admin)/(ui-elements)/modals/FileUploadForm";
 import PeriodFiltersTable from "../filters/PeriodFiltersTable";
-import { IoMdLock } from "react-icons/io";
+import { IoMdArrowBack, IoMdLock } from "react-icons/io";
 import Loader from "@/components/loader/Loader";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
 import ExcelJS from "exceljs";
@@ -35,6 +35,10 @@ import AmazonAdsConnect from "@/features/integration/AmazonAdsConnectLegacy";
 import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessModal";
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
+import PnlSummaryOverview, {
+  type PnlSummaryOverviewData,
+  type SummaryDestination,
+} from "./PnlSummaryOverview";
 
 import type {
   AgeingBucket,
@@ -6791,6 +6795,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const [activeTab, setActiveTab] = useState<DashboardTab>("businessSummary");
+  const [showDashboardDetails, setShowDashboardDetails] = useState(false);
   const shouldScrollTabTopRef = useRef(false);
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
@@ -6801,9 +6806,29 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
 
+  const returnToOverview = useCallback(() => {
+    setShowDashboardDetails(false);
+    setActiveTab("businessSummary");
+
+    if (typeof window !== "undefined") {
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`
+      );
+    }
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      });
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash) return;
     setActiveTab("businessSummary");
+    setShowDashboardDetails(false);
   }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
 
   useEffect(() => {
@@ -6818,6 +6843,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       setPendingHash(hash);
       setActiveTab(targetTab);
+      setShowDashboardDetails(true);
     };
 
     const onHashChange = () => {
@@ -7496,6 +7522,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     // ✅ Important: if user is already on this range, don't reset filters.
     // This fixes yearly 2026 -> yearly 2025 getting forced back to 2026.
     if (v === range) return;
+
+    returnToOverview();
 
     setRange(v);
 
@@ -8831,6 +8859,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const handleMonthChange = (v: string) => {
+    returnToOverview();
     setSelectedMonth(v);
 
     if (isDemoMode) {
@@ -8843,6 +8872,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const handleQuarterChange = (v: string) => {
+    returnToOverview();
     const q = isQuarter(v) ? v : "";
     setSelectedQuarter(q);
 
@@ -8856,6 +8886,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const handleYearChange = (v: string) => {
+    returnToOverview();
     setSelectedYear(String(v));
 
     if (isDemoMode) {
@@ -9498,7 +9529,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (activeTab !== "inventoryInsights") return;
+    if (showDashboardDetails && activeTab !== "inventoryInsights") return;
 
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
@@ -9595,6 +9626,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return () => ac.abort();
   }, [
     activeTab,
+    showDashboardDetails,
     range,
     selectedMonth,
     selectedQuarter,
@@ -10053,6 +10085,128 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }, 0);
   }, [skuRows]);
 
+  const overviewData: PnlSummaryOverviewData = (() => {
+    const currentMetrics = uploadsData?.card_metrics?.current;
+    const metricDeltas = uploadsData?.card_metrics?.deltas;
+    const currentSummary = displayData;
+
+    const cm2Margin =
+      currentMetrics?.cm2_margin_pct ??
+      pickFirstNonZeroNum(
+        currentSummary.cm2_margins,
+        currentSummary.cm2_profit_percentage,
+        currentSummary.cm2_profit_per
+      );
+
+    const costOfAds =
+      currentMetrics?.cost_of_ads ??
+      currentSummary.advertising_total_final ??
+      currentSummary.advertising_total ??
+      0;
+
+    const tacos =
+      currentMetrics?.tacos_pct ??
+      currentSummary.tacos ??
+      calculateTacos(currentSummary.total_sales, costOfAds);
+
+    const productRows = skuJourneyPeriodRows.filter(isSkuJourneyProductRow);
+    const topSku = productRows[0];
+    const topProfitRow = topData.rows[0];
+    const bottomProfitRow = bottomData.rows[0];
+
+    const findInventoryAction = (...keys: string[]) =>
+      inventoryInsightsData?.actions.find((action) => keys.includes(action.key));
+
+    const healthyAction = findInventoryAction("healthy", "age_0_90");
+    const highAlertAction = findInventoryAction("high_alert");
+    const liquidateAction = findInventoryAction("liquidate");
+
+    const summaryLines = (aiPanel?.summaryBullets ?? [])
+      .map((line) => String(line || "").trim())
+      .filter(Boolean);
+
+    const executiveSummary =
+      summaryLines.find(
+        (line, index) =>
+          index > 0 &&
+          !/^##\s+/i.test(line) &&
+          !/^period\s*:/i.test(line)
+      ) ?? "";
+
+    const recommendation =
+      aiPanel?.portfolioRecommendation ??
+      aiPanel?.recommendationBullets?.find(Boolean) ??
+      "";
+
+    const periodLabel =
+      range === "monthly"
+        ? `${formatInventoryExcelMonthName(selectedMonth)} ${selectedYear}`
+        : range === "quarterly"
+          ? `${selectedQuarter} ${selectedYear}`
+          : selectedYear;
+
+    return {
+      periodLabel,
+      currencySymbol,
+      financial: {
+        netSales: {
+          value: currentMetrics?.net_sales ?? currentSummary.total_sales,
+          delta: metricDeltas?.net_sales,
+        },
+        cm2Profit: {
+          value: currentMetrics?.cm2_profit ?? currentSummary.cm2_profit,
+          delta: metricDeltas?.cm2_profit,
+        },
+        tacos: {
+          value: tacos,
+          delta: metricDeltas?.tacos_pct,
+        },
+        units: {
+          value: currentMetrics?.units ?? currentSummary.unit_sold,
+          delta: metricDeltas?.units,
+        },
+        cm2Margin,
+      },
+      ai: {
+        summary: executiveSummary,
+        recommendation,
+        loading: aiPanelLoading,
+      },
+      pnl: {
+        topProduct: topProfitRow?.product_name ?? "",
+        topProfit: toNum(topProfitRow?.profit),
+        bottomProduct: bottomProfitRow?.product_name ?? "",
+        bottomProfit: toNum(bottomProfitRow?.profit),
+        productCount: productRows.length,
+      },
+      cashFlow: {
+        cashPosition: toNum(targetSummary?.cashflow_total),
+        targetSales: toNum(targetSummary?.target_sales),
+        shortfall: Math.abs(toNum(targetSummary?.shortfall_total)),
+        loading: targetSummaryLoading,
+      },
+      sku: {
+        topProduct: getSkuJourneyProductLabel(topSku),
+        netSales: toNum(topSku?.net_sales),
+        units: toNum(
+          topSku?.net_units_sold ??
+          topSku?.total_quantity ??
+          topSku?.quantity ??
+          topSku?.units_sold
+        ),
+        productCount: productRows.length,
+      },
+      inventory: {
+        totalUnits: toNum(inventoryInsightsData?.donutTotalUnits),
+        healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
+        highAlertSkus: toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
+        liquidateSkus: toNum(liquidateAction?.skuCount ?? liquidateAction?.count),
+        loading: inventoryInsightsLoading,
+        unavailable: Boolean(inventoryInsightsError || (!inventoryInsightsLoading && !inventoryInsightsData)),
+      },
+    };
+  })();
+
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
 
@@ -10129,6 +10283,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     // Only update URL on manual tab switch.
     // Do not dispatch page-hash-navigate, because that triggers scrollIntoView.
     window.history.replaceState(null, "", nextUrl);
+  };
+
+  const navigateFromOverview = (tab: SummaryDestination) => {
+    shouldScrollTabTopRef.current = true;
+    setShowDashboardDetails(true);
+    setActiveTab(tab);
+    syncTabToHash(tab);
   };
 
 
@@ -10238,40 +10399,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         </div>
       </div>
 
-      {/* ===================== NEW: TABS (UNDER HEADER) ===================== */}
-
-      <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 
-    max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
-        <SegmentedToggle<DashboardTab>
-          value={activeTab}
-          options={TAB_OPTIONS}
-          onChange={(t) => {
-            if (tabsDisabled?.[t]) return;
-
-            shouldScrollTabTopRef.current = true;
-
-            setActiveTab(t);
-
-            if (t === "skuwiseProfit" && range === "monthly") {
-              setRange("yearly");
-              setSelectedMonth("");
-              setSelectedQuarter("");
-              setUploadsData({
-                summary: zeroData,
-                summaryComparisons: zeroComparisons,
-              });
-              setSkuRows([]);
-              setSkuNoDataFound(false);
-              setSkuRowsError(null);
-            }
-
-            syncTabToHash(t);
-          }}
-          className="w-full"
-          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-          compact
-        />
-      </div>
       <PreviewLockedSection
         enabled={isDemoMode}
         title="Preview Mode"
@@ -10279,6 +10406,64 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
+        {!showDashboardDetails ? (
+          <div className="mt-3 sm:mt-4 2xl:mt-3">
+            <PnlSummaryOverview
+              data={overviewData}
+              onNavigate={navigateFromOverview}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+              <PageBreadcrumb
+                pageTitle="Detailed Financial Metrics"
+                textSize="lg"
+                variant="page"
+                align="left"
+              />
+
+              <button
+                type="button"
+                onClick={returnToOverview}
+                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-4 py-2 text-xs font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:text-sm"
+              >
+                <IoMdArrowBack className="text-sm" />
+                Back to overview
+              </button>
+            </div>
+
+            <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 mt-3 border-b border-gray-200 bg-[#F7F7F7] max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+              <SegmentedToggle<DashboardTab>
+                value={activeTab}
+                options={TAB_OPTIONS}
+                onChange={(t) => {
+                  if (tabsDisabled?.[t]) return;
+
+                  shouldScrollTabTopRef.current = true;
+                  setActiveTab(t);
+
+                  if (t === "skuwiseProfit" && range === "monthly") {
+                    setRange("yearly");
+                    setSelectedMonth("");
+                    setSelectedQuarter("");
+                    setUploadsData({
+                      summary: zeroData,
+                      summaryComparisons: zeroComparisons,
+                    });
+                    setSkuRows([]);
+                    setSkuNoDataFound(false);
+                    setSkuRowsError(null);
+                  }
+
+                  syncTabToHash(t);
+                }}
+                className="w-full"
+                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                compact
+              />
+            </div>
+
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
         {activeTab !== "cashFlow" && activeTab !== "skuwiseProfit" && activeTab !== "inventoryInsights" && (
 
@@ -11304,6 +11489,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             </div>
           )}
         </div>
+          </>
+        )}
       </PreviewLockedSection>
 
       {/* ===================== YOUR EXISTING OVERLAYS / MODALS (KEEP) ===================== */}
