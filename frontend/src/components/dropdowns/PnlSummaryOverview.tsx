@@ -567,9 +567,9 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           >
             <div className="h-1 overflow-hidden rounded-full bg-slate-100">
               {index === activeSlide ? (
-                <div className="h-full w-full bg-[#5EA68E]" />
+                <div className="h-full w-full bg-[#5EA68E] transition-colors" />
               ) : (
-                <div className="h-full w-0 bg-[#5EA68E] transition-all duration-200 group-hover:w-full group-hover:bg-[#5EA68E]/35" />
+                <div className="h-full w-0 bg-[#5EA68E] group-hover:w-full group-hover:bg-[#5EA68E]/35" />
               )}
             </div>
             <p className={`mt-1 hidden truncate text-center text-[9px] font-medium transition-colors md:block 2xl:text-[11px] ${index === activeSlide ? "text-[#3f806d]" : "text-slate-400 group-hover:text-slate-600"}`}>{item.label}</p>
