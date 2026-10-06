@@ -10556,6 +10556,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 const formatWholeMoney = (val: number) =>
                   formatMoney(roundMoney(val), { decimals: 0 });
 
+                const formatWholeMoneyWithPerUnit = (
+                  total: number,
+                  perUnit: number
+                ) =>
+                  `${formatWholeMoney(total)} (${formatMoney(perUnit, {
+                    decimals: 0,
+                  })}/unit)`;
+
                 const formatAspMoney = (val: number) =>
                   formatMoney(toNum(val), { decimals: 2 });
 
@@ -10694,7 +10702,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     className: "bg-white border border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
                     comparisons: buildBackendComparisonRow(
                       "net_sales",
-                      formatWholeMoney(previousCardMetrics?.net_sales ?? 0)
+                      formatWholeMoneyWithPerUnit(
+                        previousCardMetrics?.net_sales ?? 0,
+                        previousCardMetrics?.net_sales_per_unit ?? 0
+                      )
                     ),
                   },
                   {
@@ -10708,7 +10719,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     className: "bg-white border border-[#B75A5A] border-t-4 border-t-[#B75A5A]",
                     comparisons: buildBackendComparisonRow(
                       "marketplace_fees",
-                      formatWholeMoney(previousCardMetrics?.marketplace_fees ?? 0),
+                      formatWholeMoneyWithPerUnit(
+                        previousCardMetrics?.marketplace_fees ?? 0,
+                        previousCardMetrics?.marketplace_fees_per_unit ?? 0
+                      ),
                       true
                     ),
                   },
@@ -10723,7 +10737,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
                     comparisons: buildBackendComparisonRow(
                       "cost_of_ads",
-                      formatWholeMoney(previousCardMetrics?.cost_of_ads ?? 0),
+                      formatWholeMoneyWithPerUnit(
+                        previousCardMetrics?.cost_of_ads ?? 0,
+                        previousCardMetrics?.cost_of_ads_per_unit ?? 0
+                      ),
                       true
                     ),
                   },
