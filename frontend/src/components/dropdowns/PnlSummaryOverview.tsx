@@ -134,8 +134,8 @@ const StorageCostDelta = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs font-semibold 2xl:text-sm ${
-        deltaPercentage <= 0 ? "text-emerald-600" : "text-rose-600"
+      className={`inline-flex items-center gap-1 text-xs font-semibold ${
+        deltaPercentage <= 0 ? "text-emerald-600" : "text-red-600"
       }`}
       title={
         deltaValue
@@ -484,7 +484,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             label="Healthy"
             value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
             trailing={
-              <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+              <span className="text-xs font-semibold text-slate-500">
                 {compactNumber(data.inventory.healthyUnits, 0)} units
               </span>
             }
@@ -496,7 +496,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             label="High alert"
             value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
             trailing={
-              <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+              <span className="text-xs font-semibold text-slate-500">
                 {compactNumber(data.inventory.highAlertUnits, 0)} units
               </span>
             }
@@ -541,7 +541,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           label="Healthy"
           value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
           trailing={
-            <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+            <span className="text-xs font-semibold text-slate-500">
               {compactNumber(data.inventory.healthyUnits, 0)} units
             </span>
           }
@@ -553,7 +553,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           label="High alert"
           value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
           trailing={
-            <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+            <span className="text-xs font-semibold text-slate-500">
               {compactNumber(data.inventory.highAlertUnits, 0)} units
             </span>
           }
