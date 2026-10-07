@@ -84,7 +84,12 @@ type MetricFormat =
   | "percent"
   | "number"
   | "decimal";
-type MetricCategory = "Revenue & Demand" | "Profitability" | "Advertising & Promotion" | "Fees & Other Costs" | "Inventory & Dispatch";
+type MetricCategory =
+  | "Revenue & Demand"
+  | "Profitability"
+  | "Advertising & Promotion"
+  | "Amazon Fees & Charges"
+  | "Inventory & Dispatch";
 
 type MonthSnapshot = {
   key: string;
