@@ -6084,6 +6084,10 @@ const buildInventoryInsightsFromResponses = (
           skuCount:
             latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
             getUniqueSkuCount(highAlertRows),
+          unitCount: highAlertRows.reduce(
+            (sum, row) => sum + getRowAgeingTotalUnits(row),
+            0
+          ),
 
           avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -6124,6 +6128,10 @@ const buildInventoryInsightsFromResponses = (
           skuCount:
             latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
             getUniqueSkuCount(highAlertRows),
+          unitCount: highAlertRows.reduce(
+            (sum, row) => sum + getRowAgeingTotalUnits(row),
+            0
+          ),
 
           avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -10119,7 +10127,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const healthyAction = findInventoryAction("healthy", "age_0_90");
     const highAlertAction = findInventoryAction("high_alert");
-    const liquidateAction = findInventoryAction("liquidate");
+    const estimatedStorageAction = findInventoryAction("estimated_storage_cost");
 
     const summaryLines = (aiPanel?.summaryBullets ?? [])
       .map((line) => String(line || "").trim())
@@ -10199,8 +10207,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       inventory: {
         totalUnits: toNum(inventoryInsightsData?.donutTotalUnits),
         healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
+        healthyUnits: toNum(healthyAction?.unitCount),
         highAlertSkus: toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
-        liquidateSkus: toNum(liquidateAction?.skuCount ?? liquidateAction?.count),
+        highAlertUnits: toNum(highAlertAction?.unitCount),
+        estimatedStorageCost: String(
+          estimatedStorageAction?.displayValue ??
+          formatInventoryStorageCost(0, countryName, homeCurrency)
+        ),
+        estimatedStorageCostDeltaValue:
+          estimatedStorageAction?.deltaValue === undefined
+            ? undefined
+            : String(estimatedStorageAction.deltaValue),
+        estimatedStorageCostDeltaPercentage:
+          estimatedStorageAction?.deltaPercentage,
         loading: inventoryInsightsLoading,
         unavailable: Boolean(inventoryInsightsError || (!inventoryInsightsLoading && !inventoryInsightsData)),
       },

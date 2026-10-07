@@ -68,8 +68,12 @@ export type PnlSummaryOverviewData = {
   inventory: {
     totalUnits: number;
     healthySkus: number;
+    healthyUnits: number;
     highAlertSkus: number;
-    liquidateSkus: number;
+    highAlertUnits: number;
+    estimatedStorageCost: string;
+    estimatedStorageCostDeltaValue?: string;
+    estimatedStorageCostDeltaPercentage?: number | null;
     loading?: boolean;
     unavailable?: boolean;
   };
@@ -116,6 +120,34 @@ const Delta = ({ value, inverse = false }: { value?: number; inverse?: boolean }
 const SkeletonLine = ({ className = "" }: { className?: string }) => (
   <div className={`h-3 animate-pulse rounded-full bg-slate-200 ${className}`} />
 );
+
+const StorageCostDelta = ({
+  deltaValue,
+  deltaPercentage,
+}: {
+  deltaValue?: string;
+  deltaPercentage?: number | null;
+}) => {
+  if (typeof deltaPercentage !== "number") return null;
+
+  const DeltaIcon = deltaPercentage <= 0 ? TrendingDown : TrendingUp;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-xs font-semibold 2xl:text-sm ${
+        deltaPercentage <= 0 ? "text-emerald-600" : "text-rose-600"
+      }`}
+      title={
+        deltaValue
+          ? `Change vs previous month: ${deltaValue}`
+          : "Change vs previous month"
+      }
+    >
+      <DeltaIcon size={13} strokeWidth={2.5} />
+      {Math.abs(deltaPercentage).toFixed(2)}%
+    </span>
+  );
+};
 
 const MetricTile = ({
   label,
@@ -315,9 +347,9 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
               <div className="flex items-end gap-1">
                 <span>{formatMoney(financial.cm2Profit.value, currencySymbol)}</span>
 
-                <span className="text-[10px] font-medium text-slate-500 sm:text-xs mb-0.5">
+                {/* <span className="text-[10px] font-medium text-slate-500 sm:text-xs mb-0.5">
                   {formatPercent(financial.cm2Margin)}
-                </span>
+                </span> */}
               </div>
             }
             trailing={<Delta value={financial.cm2Profit.delta} />}
@@ -451,6 +483,11 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           <MetricTile
             label="Healthy"
             value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
+            trailing={
+              <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+                {compactNumber(data.inventory.healthyUnits, 0)} units
+              </span>
+            }
             detail="Within a healthy stock range"
             accent="border-emerald-400"
           />
@@ -458,14 +495,25 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           <MetricTile
             label="High alert"
             value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
+            trailing={
+              <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+                {compactNumber(data.inventory.highAlertUnits, 0)} units
+              </span>
+            }
             detail="Need near-term attention"
             accent="border-rose-400"
           />
 
           <MetricTile
-            label="Liquidate"
-            value={`${compactNumber(data.inventory.liquidateSkus, 0)} SKUs`}
-            detail="Aged inventory to action"
+            label="Estimate Storage Cost"
+            value={data.inventory.estimatedStorageCost}
+            trailing={
+              <StorageCostDelta
+                deltaValue={data.inventory.estimatedStorageCostDeltaValue}
+                deltaPercentage={data.inventory.estimatedStorageCostDeltaPercentage}
+              />
+            }
+            detail="Monthly storage estimate"
             accent="border-amber-400"
           />
         </div>
@@ -492,6 +540,11 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <MetricTile
           label="Healthy"
           value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
+          trailing={
+            <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+              {compactNumber(data.inventory.healthyUnits, 0)} units
+            </span>
+          }
           detail="Within a healthy stock range"
           accent="border-[#7B9A6D]"
         />
@@ -499,14 +552,25 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <MetricTile
           label="High alert"
           value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
+          trailing={
+            <span className="text-sm font-semibold text-slate-500 2xl:text-base">
+              {compactNumber(data.inventory.highAlertUnits, 0)} units
+            </span>
+          }
           detail="Need near-term attention"
           accent="border-[#B75A5A]"
         />
 
         <MetricTile
-          label="Liquidate"
-          value={`${compactNumber(data.inventory.liquidateSkus, 0)} SKUs`}
-          detail="Aged inventory to action"
+          label="Estimate Storage Cost"
+          value={data.inventory.estimatedStorageCost}
+          trailing={
+            <StorageCostDelta
+              deltaValue={data.inventory.estimatedStorageCostDeltaValue}
+              deltaPercentage={data.inventory.estimatedStorageCostDeltaPercentage}
+            />
+          }
+          detail="Monthly storage estimate"
           accent="border-[#EDA153]"
         />
       </div>
