@@ -824,15 +824,37 @@ function buildCm2FactorInsight(current: MonthSnapshot, previous?: MonthSnapshot)
   return `Main factor${strongest.length === 1 ? "" : "s"} behind CM2 ${cm2Direction}: ${factorText}.`;
 }
 
-function buildOtherExpenseInsight(
+function buildAmazonChargesMovementInsight(
   current: MonthSnapshot,
   previous: MonthSnapshot | undefined,
   format: (value: number, type: MetricFormat) => string
 ) {
-  if (!previous) return "No previous-month expense baseline is available.";
+  if (!previous) return "No previous-month Amazon Charges baseline is available.";
 
-  const totalDelta = (current.values.platformFee ?? 0) - (previous.values.platformFee ?? 0);
-  if (totalDelta === 0) return "Other expense was unchanged month over month.";
+  const currentValue = Math.abs(current.values.platformFee ?? 0);
+  const previousValue = Math.abs(previous.values.platformFee ?? 0);
+  const delta = currentValue - previousValue;
+  const changePct = percentageChange(currentValue, previousValue);
+
+  if (Math.abs(delta) < 0.005) {
+    return `Amazon Charges were unchanged at ${format(currentValue, "currency")}.`;
+  }
+
+  const direction = delta > 0 ? "increased" : "decreased";
+  const impactWord = delta > 0 ? "additional cost" : "saving";
+  const percentageText = changePct === null
+    ? "no comparable percentage"
+    : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`;
+
+  return `Amazon Charges ${direction} by ${format(Math.abs(delta), "currency")} (${percentageText}), from ${format(previousValue, "currency")} to ${format(currentValue, "currency")} — ${impactWord} vs previous month.`;
+}
+
+function buildAmazonChargesComponentInsight(
+  current: MonthSnapshot,
+  previous: MonthSnapshot | undefined,
+  format: (value: number, type: MetricFormat) => string
+) {
+  if (!previous) return "No previous-month component baseline is available.";
 
   const factors = [
     { label: "Misc. Transactions", key: "miscTransaction" },
@@ -840,8 +862,8 @@ function buildOtherExpenseInsight(
     { label: "Inventory Charges", key: "platformInventoryStorageFee" },
     { label: "Subscription Fees", key: "subscriptionFees" },
   ].map((factor) => {
-    const currentValue = current.values[factor.key] ?? 0;
-    const previousValue = previous.values[factor.key] ?? 0;
+    const currentValue = Math.abs(current.values[factor.key] ?? 0);
+    const previousValue = Math.abs(previous.values[factor.key] ?? 0);
     return {
       ...factor,
       currentValue,
@@ -851,27 +873,37 @@ function buildOtherExpenseInsight(
     };
   });
 
-  const describe = (factor: typeof factors[number]) => {
-    const movement = factor.percentage === null
-      ? "new expense"
-      : `${factor.percentage > 0 ? "+" : ""}${factor.percentage.toFixed(1)}%`;
-    return `${factor.label}: ${format(factor.previousValue, "currency")} → ${format(factor.currentValue, "currency")} (${movement})`;
-  };
   const movingFactors = factors
-    .filter((factor) => factor.delta !== 0)
+    .filter((factor) => Math.abs(factor.delta) >= 0.005)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
   if (!movingFactors.length) {
-    return "The tracked Other expense components were unchanged.";
+    return "Tracked Amazon-related cost components were unchanged month over month.";
   }
 
-  const strongest = movingFactors.slice(0, 1);
-  const second = movingFactors[1];
-  if (second && Math.abs(second.delta) >= Math.abs(strongest[0].delta) * 0.1) {
-    strongest.push(second);
+  const strongest = movingFactors[0];
+  const movementLabel = strongest.delta > 0 ? "Largest increase" : "Largest saving";
+  const movementPct = strongest.percentage === null
+    ? "new cost"
+    : `${strongest.percentage > 0 ? "+" : ""}${strongest.percentage.toFixed(1)}%`;
+  const absoluteMovement = `${strongest.delta > 0 ? "+" : "-"}${format(Math.abs(strongest.delta), "currency")}`;
+
+  return `${movementLabel}: ${strongest.label} ${format(strongest.previousValue, "currency")} → ${format(strongest.currentValue, "currency")} (${movementPct}, ${absoluteMovement}).`;
+}
+
+function buildAmazonChargesSalesShareInsight(
+  current: MonthSnapshot,
+  format: (value: number, type: MetricFormat) => string
+) {
+  const amazonCharges = Math.abs(current.values.platformFee ?? 0);
+  const netSales = Math.abs(current.values.netSales ?? 0);
+
+  if (netSales <= 0) {
+    return "Amazon Charges as a share of net sales cannot be calculated because net sales are zero.";
   }
 
-  return `Largest component changes affecting Other expense: ${strongest.map(describe).join(", ")}.`;
+  const share = safePercent(amazonCharges, netSales);
+  return `Amazon Charges are ${format(share, "percent")} of net sales (${format(amazonCharges, "currency")} of ${format(netSales, "currency")}).`;
 }
 
 function percentageChange(current: number, previous?: number) {
@@ -993,12 +1025,12 @@ const metricDefinitions: MetricDefinition[] = [
   },
   {
     key: "platformFee",
-    title: "Other",
-    category: "Fees & Other Costs",
+    title: "Amazon Charges",
+    category: "Amazon Fees & Charges",
     icon: "coin",
     format: "currency",
     inverseTrend: true,
-    detail: (s, f) => `Other Transactions are ${f(safePercent(Math.abs(s.values.platformFee), s.values.netSales), "percent")} of net sales.`,
+    detail: (s, f) => `Amazon Charges are ${f(safePercent(Math.abs(s.values.platformFee), Math.abs(s.values.netSales)), "percent")} of net sales.`,
   },
   {
     key: "promotionalRebates",
@@ -1460,9 +1492,15 @@ function MetricFlipCard({
       previousValue === undefined ? undefined : currentValue - previousValue
     )
     : "";
-  const otherExpenseInsight = isOtherExpense
-    ? buildOtherExpenseInsight(current, previous, format)
-    : null;
+  const amazonChargesMovementInsight = isOtherExpense
+    ? buildAmazonChargesMovementInsight(current, previous, format)
+    : "";
+  const amazonChargesComponentInsight = isOtherExpense
+    ? buildAmazonChargesComponentInsight(current, previous, format)
+    : "";
+  const amazonChargesSalesShareInsight = isOtherExpense
+    ? buildAmazonChargesSalesShareInsight(current, format)
+    : "";
   const promotionalRebateInsight = isPromotionalRebate
     ? buildPromotionalRebateInsight(unitContributorData)
     : null;
@@ -1471,7 +1509,7 @@ function MetricFlipCard({
     : isTacos
       ? acosContributorInsight
       : isOtherExpense
-        ? otherExpenseInsight ?? ""
+        ? amazonChargesComponentInsight
         : isPromotionalRebate
           ? promotionalRebateInsight?.highest ?? ""
           : productContributorInsight;
@@ -1484,7 +1522,7 @@ function MetricFlipCard({
         : isTacos
           ? ""
           : isOtherExpense
-            ? ""
+            ? amazonChargesSalesShareInsight
             : isPromotionalRebate
               ? promotionalRebateInsight?.improved ?? ""
               : definition.detail(current, format);
@@ -1542,11 +1580,15 @@ function MetricFlipCard({
           {hasCustomMovementAnalysis ? <>
             <li className="flex gap-2">
               <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />
-              <span>
-                Previous <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong>
-                {" → "}Current <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>
-                {" "}<strong className={theme.text}>({deltaText})</strong>
-              </span>
+              {isOtherExpense ? (
+                <span>{amazonChargesMovementInsight}</span>
+              ) : (
+                <span>
+                  Previous <strong className="text-charcoal-500">{format(previousValue ?? 0, definition.format)}</strong>
+                  {" → "}Current <strong className="text-charcoal-500">{format(currentValue, definition.format)}</strong>
+                  {" "}<strong className={theme.text}>({deltaText})</strong>
+                </span>
+              )}
             </li>
             <li className="flex gap-2">
               <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${theme.bg}`} />

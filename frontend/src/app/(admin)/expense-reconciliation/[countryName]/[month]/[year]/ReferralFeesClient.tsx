@@ -8,7 +8,7 @@ import React, {
   type JSX,
   useCallback,
 } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import { jwtDecode } from "jwt-decode";
@@ -30,6 +30,7 @@ import { useAppSelector } from "@/lib/store";
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import { motion, AnimatePresence } from "framer-motion";
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
+import ActionDiagnosisPanel from "@/components/dashboard/ActionDiagnosisPanel";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -1122,20 +1123,20 @@ const buildGlobalDrawerAiState = (
       drawerOnlyMetrics:
         range === "monthly"
           ? [
-            {
-              label: "Current Inventory",
-              value: formatDrawerInventory(currentRow?.current_inventory),
-            },
-            {
-              label: "Ads",
-              value: formatDrawerMetricValue(
-                momRow?.productwise_ads_spend ??
-                currentRow?.productwise_ads_spend,
-                "money",
-                symbol
-              ),
-            },
-          ]
+              {
+                label: "Current Inventory",
+                value: formatDrawerInventory(currentRow?.current_inventory),
+              },
+              {
+                label: "Ads",
+                value: formatDrawerMetricValue(
+                  momRow?.productwise_ads_spend ??
+                    currentRow?.productwise_ads_spend,
+                  "money",
+                  symbol
+                ),
+              },
+            ]
           : [],
       journeyBullets: Array.isArray(product?.journey_comparison)
         ? product.journey_comparison
@@ -1173,75 +1174,29 @@ const buildDrawerPeriodText = (
 
   if (range === "quarterly") {
     const order = ["Q1", "Q2", "Q3", "Q4"];
-    const currentQuarter = String(quarter || "").toUpperCase();
-    const index = order.indexOf(currentQuarter);
-
+    const index = order.indexOf(String(quarter || "").toUpperCase());
     if (index === -1) return `(${quarter} ${year})`;
-
     const previousQuarter = order[index === 0 ? 3 : index - 1];
     const previousYear = index === 0 ? Number(year) - 1 : Number(year);
-
-    return `(${currentQuarter} ${year} vs ${previousQuarter} ${previousYear})`;
+    return `(${quarter}'${year.slice(-2)} vs ${previousQuarter}'${String(previousYear).slice(-2)})`;
   }
 
   const monthIndex = drawerMonthIndex[String(month || "").toLowerCase()];
   if (typeof monthIndex !== "number") return `(${month} ${year})`;
-
   const currentDate = new Date(Number(year), monthIndex, 1);
   const previousDate = new Date(Number(year), monthIndex - 1, 1);
-
   const currentLabel = currentDate.toLocaleString("en-US", { month: "short" });
   const previousLabel = previousDate.toLocaleString("en-US", { month: "short" });
-
-  return `(${currentLabel}’${String(currentDate.getFullYear()).slice(-2)} vs ${previousLabel}’${String(previousDate.getFullYear()).slice(-2)})`;
+  return `(${currentLabel}'${String(currentDate.getFullYear()).slice(-2)} vs ${previousLabel}'${String(previousDate.getFullYear()).slice(-2)})`;
 };
 
 const getDrawerSummaryPeriodText = (
   summaryLines: string[],
-  fallback: string,
-  range: Range
+  fallback: string
 ) => {
   const first = String(summaryLines?.[0] || "");
   const match = first.match(/\(([^)]+)\)/);
-
-  if (!match?.[1]) return fallback;
-
-  const rawPeriod = match[1].trim();
-
-  if (range === "monthly") {
-    const monthlyMatch = rawPeriod.match(
-      /^([A-Za-z]+)\s+(\d{4})\s+vs\s+([A-Za-z]+)\s+(\d{4})$/i
-    );
-
-    if (!monthlyMatch) return fallback;
-
-    const [, currentMonth, currentYear, previousMonth, previousYear] = monthlyMatch;
-
-    const currentShort = new Date(`${currentMonth} 1, ${currentYear}`).toLocaleString(
-      "en-US",
-      { month: "short" }
-    );
-    const previousShort = new Date(`${previousMonth} 1, ${previousYear}`).toLocaleString(
-      "en-US",
-      { month: "short" }
-    );
-
-    return `(${currentShort}’${currentYear.slice(-2)} vs ${previousShort}’${previousYear.slice(-2)})`;
-  }
-
-  if (range === "quarterly") {
-    const quarterlyMatch = rawPeriod.match(
-      /^(Q[1-4])\s+(\d{4})\s+vs\s+(Q[1-4])\s+(\d{4})$/i
-    );
-
-    if (!quarterlyMatch) return fallback;
-
-    const [, currentQuarter, currentYear, previousQuarter, previousYear] = quarterlyMatch;
-
-    return `(${currentQuarter.toUpperCase()} ${currentYear} vs ${previousQuarter.toUpperCase()} ${previousYear})`;
-  }
-
-  return `(${rawPeriod})`;
+  return match?.[1] ? `(${match[1]})` : fallback;
 };
 
 const splitDrawerMetricValue = (value: string) => {
@@ -1516,9 +1471,9 @@ function ReferralProductDrawer({
       ? year === previousCompletedMonth.year
       : range === "quarterly"
         ? year === previousCompletedMonth.year &&
-        quarter === previousCompletedMonth.quarter
+          quarter === previousCompletedMonth.quarter
         : year === previousCompletedMonth.year &&
-        month.toLowerCase() === previousCompletedMonth.month;
+          month.toLowerCase() === previousCompletedMonth.month;
 
   return (
     <AnimatePresence>
@@ -1625,19 +1580,20 @@ function ReferralProductDrawer({
                               </span>
                               {delta ? (
                                 <span
-                                  className={`whitespace-nowrap text-right text-[10px] font-semibold 2xl:text-xs ${metric.label.toLowerCase() === "ads"
+                                  className={`whitespace-nowrap text-right text-[10px] font-semibold 2xl:text-xs ${
+                                    metric.label.toLowerCase() === "ads"
                                       ? "text-charcoal-500"
                                       : deltaColor
-                                    }`}
+                                  }`}
                                 >
                                   {formatDrawerDeltaDisplay(delta)}
                                 </span>
                               ) : [
-                                "cm1 profit",
-                                "cm1 profit per unit",
-                                "cm2 profit",
-                                "cm2 profit per unit",
-                              ].includes(metric.label.trim().toLowerCase()) ? (
+                                  "cm1 profit",
+                                  "cm1 profit per unit",
+                                  "cm2 profit",
+                                  "cm2 profit per unit",
+                                ].includes(metric.label.trim().toLowerCase()) ? (
                                 <span className="whitespace-nowrap text-right text-[10px] font-semibold text-charcoal-400 2xl:text-xs">
                                   -
                                 </span>
@@ -2088,6 +2044,7 @@ function PreviewLockedSection({
 /* ===================== MAIN DASHBOARD PAGE ===================== */
 export default function ReferralFeesDashboard(): JSX.Element {
   const routeParams = useParams();
+  const searchParams = useSearchParams();
   const companyName = useAppSelector(
     (state) => state.auth.user?.company_name || ""
   );
@@ -2216,6 +2173,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
       </div>
     );
   };
+
+  
 
   const buildFeeComparison = (
     applicableAmount: number,
@@ -2473,9 +2432,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
     return (
       (canUseSku
         ? drawerAi.blocks.find(
-          (block) =>
-            String(block.skuKey || "").trim().toLowerCase() === selectedSku
-        )
+            (block) =>
+              String(block.skuKey || "").trim().toLowerCase() === selectedSku
+          )
         : undefined) ||
       drawerAi.blocks.find(
         (block) => normalizeDrawerKey(block.name) === selectedName
@@ -2589,9 +2548,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
         const fallbackLines = productLines.length
           ? productLines
           : String(data?.summary || "")
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean);
+              .split(/\r?\n/)
+              .map((line) => line.trim())
+              .filter(Boolean);
 
         const recommendationsMap = drawerRecommendationSource(
           data?.recommendations
@@ -2609,8 +2568,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
           recommendationsMap,
           periodText: getDrawerSummaryPeriodText(
             summaryLines,
-            drawerFallbackPeriodText,
-            range
+            drawerFallbackPeriodText
           ),
         });
       } catch (error: any) {
@@ -2954,7 +2912,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
             units: scaledUnits[detailIndex] ?? r.units,
             sales: scaledSales[detailIndex] ?? r.sales,
           };
-          detailIndex += 1; 
+          detailIndex += 1;
           return adjusted;
         });
       })();
@@ -3020,7 +2978,6 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const refFeesApplied = grandSummary
         ? grandSummary.refFeesCharged
         : lineItems.reduce((acc, r) => acc + getChargedReferralFees(r), 0);
-
 
       const fbaFees = monthlySummary
         ? Math.abs(toNumberSafe((monthlySummary as any).fba_fees))
@@ -3240,7 +3197,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const filtered = skuwiseRows.filter((r) => {
       const skuStr = String(r.sku ?? "");
       if (skuStr === "Grand Total") return true;
-      return !skuStr.startsWith("Charge -");
+     return !skuStr.startsWith("Charge -");
     });
 
     return filtered.map((r) => {
@@ -3713,6 +3670,32 @@ export default function ReferralFeesDashboard(): JSX.Element {
   }, [month, range, selectedQuarter, year]);
 
 
+  const referralActionDiagnosis = useMemo(() => {
+    if (String(searchParams.get("actionItem") || "") !== "referral-fee-variance") {
+      return null;
+    }
+
+    return {
+      title: "Review referral fee variance",
+      description: `This focused view explains the referral-fee variance that triggered the Action Item for ${selectedPeriodLabel || "the selected period"}.`,
+      metrics: [
+        { label: "Potential overcharge", value: fmtCurrency(referralFeeInsight.overcharged_amount) },
+        { label: "Units to review", value: fmtInteger(referralFeeInsight.overcharged_units) },
+        { label: "Overcharge rate", value: `${referralFeeInsight.overcharge_rate_pct.toFixed(2)}%` },
+        { label: "Affected units", value: `${referralFeeInsight.affected_units_pct.toFixed(2)}%` },
+        { label: "Accurately charged", value: `${referralFeeInsight.accurate_units_pct.toFixed(2)}%` },
+        { label: "Net fee variance", value: fmtCurrency(referralFeeInsight.net_variance) },
+      ],
+      whyItMatters:
+        "The action is raised when charged referral fees are above the calculated applicable fees. Reviewing the affected units helps separate genuine overcharges from expected fee differences.",
+      recommendedAction:
+        "Open the detailed analysis, review the affected products and orders, and confirm the fee basis before raising a reimbursement or support case.",
+      triggerRule:
+        "Charged referral fees are above the calculated applicable referral fees (positive fee difference).",
+    };
+  }, [fmtCurrency, referralFeeInsight, searchParams, selectedPeriodLabel]);
+
+
   return (
     <div className="space-y-1.5 font-sans text-charcoal-500">
 
@@ -3815,6 +3798,18 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
         </div>
       </div>
+
+      {referralActionDiagnosis && (
+        <ActionDiagnosisPanel
+          title={referralActionDiagnosis.title}
+          description={referralActionDiagnosis.description}
+          metrics={referralActionDiagnosis.metrics}
+          whyItMatters={referralActionDiagnosis.whyItMatters}
+          recommendedAction={referralActionDiagnosis.recommendedAction}
+          triggerRule={referralActionDiagnosis.triggerRule}
+          evidenceNote="Uses the same reconciliation metrics already shown on this page; no fee values are estimated in the diagnosis panel."
+        />
+      )}
 
       {
         loading && (

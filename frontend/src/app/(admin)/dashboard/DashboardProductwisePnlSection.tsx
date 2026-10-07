@@ -11,6 +11,7 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
 
 import GroupedCollapsibleTable from "@/components/ui/table/GroupedCollapsibleTable";
+import ActionDiagnosisPanel from "@/components/dashboard/ActionDiagnosisPanel";
 
 import { fmtInt } from "@/lib/dashboard/format";
 
@@ -142,30 +143,22 @@ const nonZeroOrNull = (value: unknown) => {
 
 };
 
+const firstActionNumber = (row: any, keys: string[]) => {
+    for (const key of keys) {
+        if (!row || !Object.prototype.hasOwnProperty.call(row, key)) continue;
+        const value = row[key];
+        if (value === null || value === undefined || value === "") continue;
 
+        const raw = typeof value === "number"
+            ? value
+            : String(value).replace(/,/g, "").replace(/%/g, "").trim();
 
-const sumKnownNumbers = (...values: Array<number | null>) => {
+        if (typeof raw === "string" && ["-", "–", "—"].includes(raw)) continue;
 
-    const known = values.filter((value): value is number => value !== null);
-
-    return known.length ? known.reduce((sum, value) => sum + value, 0) : null;
-
-};
-
-
-
-const differenceKnownNumbers = (
-
-    minuend: number | null,
-
-    subtrahend: number | null
-
-) => {
-
-    if (minuend === null && subtrahend === null) return null;
-
-    return Number(minuend ?? 0) - Number(subtrahend ?? 0);
-
+        const n = typeof raw === "number" ? raw : Number(raw);
+        if (Number.isFinite(n)) return n;
+    }
+    return 0;
 };
 
 
@@ -533,6 +526,351 @@ export default function DashboardProductwisePnlSection({
 ]);
 
 
+
+    const actionFocusedTotalRow = React.useMemo(() => {
+        if (!isActionSkuFilterActive || !actionFilteredProductwiseRows.length) {
+            return null;
+        }
+
+        const rows = actionFilteredProductwiseRows as any[];
+        const sum = (keys: string[]) =>
+            rows.reduce((total, row) => total + firstActionNumber(row, keys), 0);
+
+        const quantity = sum(["quantity"]);
+        const returnQuantity = sum(["return_quantity", "returned_quantity"]);
+        const totalQuantity = rows.reduce((total, row) => {
+            const explicit = firstActionNumber(row, ["total_quantity", "net_quantity"]);
+            if (explicit !== 0) return total + explicit;
+            return total + Math.max(
+                0,
+                firstActionNumber(row, ["quantity"]) -
+                    firstActionNumber(row, ["return_quantity", "returned_quantity"])
+            );
+        }, 0);
+
+        const netSales = sum(["net_sales", "sales"]);
+        const grossSales = sum(["gross_sales"]);
+        const refundSales = sum(["refund_sales", "refunded_sales"]);
+        const promoAmount = sum(["promotional_rebates", "promotion_rebates"]);
+
+        const productSpend = sum(["product_spend"]);
+        const displaySpend = sum(["display_spend"]);
+        const brandSpend = sum(["brand_spend"]);
+        const directAdsSpend = sum(["total_ads", "ads_spend", "advertising"]);
+        const componentAdsSpend = productSpend + displaySpend + brandSpend;
+        const adsSpend = directAdsSpend !== 0 ? directAdsSpend : componentAdsSpend;
+
+        const cogs = sum(["cogs"]);
+        const fbaFees = sum(["fba_fees"]);
+        const sellingFees = sum(["selling_fees"]);
+        const amazonFees = rows.reduce((total, row) => {
+            const direct = Math.abs(
+                firstActionNumber(row, ["amazon_fees", "marketplace_fees"])
+            );
+            if (direct > 0) return total + direct;
+            return (
+                total +
+                Math.abs(firstActionNumber(row, ["fba_fees"])) +
+                Math.abs(firstActionNumber(row, ["selling_fees"]))
+            );
+        }, 0);
+
+        const otherTransactions = rows.reduce(
+            (total, row) =>
+                total + Number(getProductwiseOtherTransactionsTotal(row) || 0),
+            0
+        );
+        const tax = sum(["tax", "net_taxes"]);
+        const credits = sum(["credits", "net_credits"]);
+        const taxAndCredits = sum(["tax_and_credits", "net_sales_tax_and_credits"]);
+        const miscTransaction = sum(["misc_transaction", "misc_transactions"]);
+
+        const cm1Profit = sum(["profit", "cm1_profit"]);
+        const cm2Profit = sum(["cm2_profit", "total_cm2_profit"]);
+
+        return {
+            sno: undefined,
+            sku: "FOCUSED_TOTAL",
+            product_name: "Total",
+            isTotal: true,
+            isOthers: false,
+
+            quantity,
+            return_quantity: returnQuantity,
+            total_quantity: totalQuantity,
+            asp: quantity !== 0 ? netSales / quantity : 0,
+            gross_sales: grossSales,
+            refund_sales: refundSales,
+            net_sales: netSales,
+            promotional_rebates: promoAmount,
+            promotional_rebates_percentage:
+                netSales !== 0
+                    ? (Math.abs(promoAmount) / Math.abs(netSales)) * 100
+                    : 0,
+
+            cogs,
+            fba_fees: fbaFees,
+            selling_fees: sellingFees,
+            amazon_fees: amazonFees,
+            marketplace_fees: amazonFees,
+
+            tax,
+            credits,
+            tax_and_credits: taxAndCredits,
+            net_sales_tax_and_credits: taxAndCredits,
+            other_transactions: otherTransactions,
+            misc_transaction: miscTransaction,
+
+            profit: cm1Profit,
+            cm1_profit_per: netSales !== 0 ? (cm1Profit / netSales) * 100 : 0,
+            cm1_profit_per_unit:
+                totalQuantity !== 0 ? cm1Profit / totalQuantity : 0,
+
+            product_spend: productSpend,
+            display_spend: displaySpend,
+            brand_spend: brandSpend,
+            ads_spend: adsSpend,
+            total_ads: adsSpend,
+            advertising_fees: adsSpend,
+            acos:
+                netSales !== 0
+                    ? (Math.abs(adsSpend) / Math.abs(netSales)) * 100
+                    : 0,
+
+            cm2_profit: cm2Profit,
+            cm2_profit_per: netSales !== 0 ? (cm2Profit / netSales) * 100 : 0,
+            cm2_profit_per_unit:
+                totalQuantity !== 0 ? cm2Profit / totalQuantity : 0,
+
+            platform_fee: sum(["platform_fee"]),
+            platform_fee_inventory_storage: sum([
+                "platform_fee_inventory_storage",
+            ]),
+            lost_total: sum(["lost_total"]),
+            other: sum(["other"]),
+            dealsvouchar_ads: sum(["dealsvouchar_ads"]),
+            platformfeenew: sum(["platformfeenew"]),
+        };
+    }, [
+        actionFilteredProductwiseRows,
+        getProductwiseOtherTransactionsTotal,
+        isActionSkuFilterActive,
+    ]);
+
+    const actionTableRows = React.useMemo(
+        () =>
+            actionFocusedTotalRow
+                ? [...actionFilteredProductwiseRows, actionFocusedTotalRow]
+                : actionFilteredProductwiseRows,
+        [actionFilteredProductwiseRows, actionFocusedTotalRow]
+    );
+
+    const actionDiagnosis = React.useMemo(() => {
+        if (!isActionSkuFilterActive || !actionFilteredProductwiseRows.length) {
+            return null;
+        }
+
+        const rows = actionFilteredProductwiseRows as any[];
+        const money = (value: number) =>
+            `${currencySymbol}${Math.abs(value).toLocaleString(undefined, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+            })}`;
+        const productName = (row: any) =>
+            String(row?.product_name || row?.productName || row?.sku || "Product").trim();
+        const adsSpendFor = (row: any) => {
+            const direct = Math.abs(
+                firstActionNumber(row, ["total_ads", "ads_spend", "advertising"])
+            );
+            if (direct > 0) return direct;
+            return (
+                Math.abs(firstActionNumber(row, ["product_spend"])) +
+                Math.abs(firstActionNumber(row, ["display_spend"])) +
+                Math.abs(firstActionNumber(row, ["brand_spend"]))
+            );
+        };
+
+       if (actionItemId === "high-return-rate") {
+            const enriched = rows.map((row) => {
+                const sold = Math.abs(
+                    firstActionNumber(row, [
+                        "return_rate_base_quantity",
+                        "quantity",
+                        "total_quantity",
+                    ])
+                );
+                const returned = Math.abs(
+                    firstActionNumber(row, ["return_quantity", "returned_quantity"])
+                );
+                const directRate = Math.abs(
+                    firstActionNumber(row, ["return_rate", "return_rate_percentage"])
+                );
+                const rate = sold > 0 ? (returned / sold) * 100 : directRate;
+                const refundSales = Math.abs(
+                    firstActionNumber(row, ["refund_sales", "refunded_sales"])
+                );
+                return { row, sold, returned, rate, refundSales };
+            });
+            const totalReturned = enriched.reduce((sum, item) => sum + item.returned, 0);
+            const totalSold = enriched.reduce((sum, item) => sum + item.sold, 0);
+            const aggregateRate = totalSold > 0 ? (totalReturned / totalSold) * 100 : 0;
+            const refundSales = enriched.reduce((sum, item) => sum + item.refundSales, 0);
+            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
+            const highest = ranked[0];
+            return {
+                title: "Product returns need investigation",
+                description: "Products above the 2.00% return-rate threshold.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    { label: "Return rate", value: `${aggregateRate.toFixed(2)}%`, helper: "Affected products combined" },
+                    { label: "Return qty", value: Math.round(totalReturned).toLocaleString() },
+                    { label: "Units sold", value: Math.round(totalSold).toLocaleString() },
+                    ...(refundSales > 0 ? [{ label: "Refund sales", value: money(refundSales) }] : []),
+                    ...(highest ? [{ label: "Highest return rate", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                ],
+                whyItMatters:
+                    "High returns reduce realized sales and can add refund or fulfilment cost. This view isolates the products contributing to the alert.",
+                recommendedAction: highest
+                    ? `Start with ${productName(highest.row)} at ${highest.rate.toFixed(2)}%. Review return reasons, listing expectations, product quality and fulfilment issues before changing pricing or advertising.`
+                    : "Review return reasons for the affected products and check listing, product-quality and fulfilment issues.",
+                triggerRule: "Product return quantity ÷ sold quantity × 100 > 2.00%.",
+                riskTitle: "Highest return-rate products",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.rate.toFixed(2)}%`,
+                    secondary: `${Math.round(item.returned).toLocaleString()} returns / ${Math.round(item.sold).toLocaleString()} sold`,
+                })),
+            };
+        }
+        if (actionItemId === "negative-profit-skus") {
+            const enriched = rows.map((row) => ({
+                row,
+                cm2: firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]),
+                netSales: Math.abs(firstActionNumber(row, ["net_sales", "sales"])),
+                adsSpend: adsSpendFor(row),
+            }));
+            const negativeRows = enriched.filter((item) => item.cm2 < 0);
+            const ranked = [...negativeRows].sort((a, b) => a.cm2 - b.cm2);
+            const totalLoss = Math.abs(negativeRows.reduce((sum, item) => sum + item.cm2, 0));
+            const affectedSales = negativeRows.reduce((sum, item) => sum + item.netSales, 0);
+            const affectedAds = negativeRows.reduce((sum, item) => sum + item.adsSpend, 0);
+            const worst = ranked[0];
+            return {
+                title: "Negative CM2 requires margin review",
+                description: "Products currently below zero CM2 profit.",
+                metrics: [
+                    { label: "Affected SKUs", value: negativeRows.length.toLocaleString() },
+                    { label: "Total CM2 loss", value: money(totalLoss) },
+                    ...(worst ? [{ label: "Lowest CM2", value: `-${money(Math.abs(worst.cm2))}`, helper: productName(worst.row) }] : []),
+                    { label: "Affected net sales", value: money(affectedSales) },
+                    { label: "Ad spend", value: money(affectedAds) },
+                ],
+                whyItMatters:
+                    "These products are below zero CM2 after the costs included in the product-level calculation, so continuing the same economics can deepen the loss.",
+                recommendedAction: worst
+                    ? `Start with ${productName(worst.row)}. Review selling price, COGS, Amazon fees, promotions and advertising before deciding whether to reprice, reduce spend or pause.`
+                    : "Review price, COGS, Amazon fees, promotions and advertising for the affected SKUs.",
+                triggerRule: "Product CM2 Profit < 0.",
+                riskTitle: "Largest CM2 losses",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `-${money(Math.abs(item.cm2))}`,
+                    secondary: `Net sales ${money(item.netSales)} • Ads ${money(item.adsSpend)}`,
+                })),
+            };
+        }
+        if (actionItemId === "promotional-rebates") {
+            const enriched = rows.map((row) => {
+                const promoAmount = Math.abs(
+                    firstActionNumber(row, ["promotional_rebates", "promotion_rebates"])
+                );
+                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
+                const directRate = Math.abs(
+                    firstActionNumber(row, [
+                        "promotional_rebates_percentage",
+                        "promotion_rebates_percentage",
+                    ])
+                );
+                const rate = directRate > 0 ? directRate : netSales > 0 ? (promoAmount / netSales) * 100 : 0;
+                return { row, promoAmount, netSales, rate };
+            });
+            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
+            const promoAmount = enriched.reduce((sum, item) => sum + item.promoAmount, 0);
+            const netSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
+            const highest = ranked[0];
+            return {
+                title: "Promotional rebate leakage",
+                description: "Products with high promotional rebate impact.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    ...(highest ? [{ label: "Highest promo %", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                    { label: "Promo rebates", value: money(promoAmount) },
+                    { label: "Net sales", value: money(netSales) },
+                    ...(netSales > 0 ? [{ label: "Focused promo share", value: `${((promoAmount / netSales) * 100).toFixed(2)}%` }] : []),
+                ],
+                whyItMatters:
+                    "Promotional rebates consume a share of product revenue. A high rebate percentage can compress contribution margin even when sales remain healthy.",
+                recommendedAction: highest
+                    ? `Review active promotions for ${productName(highest.row)} first. Confirm the discount is intentional and generating enough incremental sales or strategic value to justify the rebate level.`
+                    : "Review the active promotions and confirm the rebate level is intentional and commercially justified.",
+                triggerRule: "Top product promotional rebate percentage > 10%.",
+                riskTitle: "Highest promotional rebate %",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.rate.toFixed(2)}%`,
+                    secondary: `Rebates ${money(item.promoAmount)} • Sales ${money(item.netSales)}`,
+                })),
+            };
+        }
+        if (actionItemId === "ads-efficiency") {
+            const enriched = rows.map((row) => {
+                const adsSpend = adsSpendFor(row);
+                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
+                // Keep product TACoS identical to the backend filter and table:
+                // product ad spend / product net sales * 100.
+                const tacos = netSales > 0 ? (adsSpend / netSales) * 100 : 0;
+                const cm2 = firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]);
+                return { row, adsSpend, netSales, tacos, cm2 };
+            });
+            const totalAds = enriched.reduce((sum, item) => sum + item.adsSpend, 0);
+            const totalSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
+            const focusedTacos = totalSales > 0 ? (totalAds / totalSales) * 100 : 0;
+            const ranked = [...enriched].sort((a, b) => b.tacos - a.tacos);
+            const highest = ranked[0];
+            const negativeCm2Count = enriched.filter((item) => item.cm2 < 0).length;
+            return {
+                title: "Advertising efficiency needs attention",
+                description: "Products with TACoS at or above 20%.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    { label: "Focused TACoS", value: `${focusedTacos.toFixed(2)}%`, helper: "Ads ÷ net sales" },
+                    { label: "Ad spend", value: money(totalAds) },
+                    { label: "Net sales", value: money(totalSales) },
+                    ...(highest ? [{ label: "Highest TACoS", value: `${highest.tacos.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                    ...(negativeCm2Count > 0 ? [{ label: "Negative CM2", value: `${negativeCm2Count} product${negativeCm2Count === 1 ? "" : "s"}` }] : []),
+                ],
+                whyItMatters:
+                    "High TACoS means advertising is consuming a large share of net sales. The product-level view helps separate efficient spend from products where ad cost is putting more pressure on margin.",
+                recommendedAction: highest
+                    ? `Start with ${productName(highest.row)} at ${highest.tacos.toFixed(2)}% TACoS. Review bids, budgets and search-term efficiency together with CM2 before reducing or reallocating spend.`
+                    : "Review bids, budgets and search-term efficiency for the affected products together with their CM2 performance.",
+                triggerRule: "Portfolio TACoS ≥ 20%; focused products are SKUs with product TACoS ≥ 20%.",
+                riskTitle: "Highest product TACoS",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.tacos.toFixed(2)}%`,
+                    secondary: `Ads ${money(item.adsSpend)} • Sales ${money(item.netSales)}`,
+                })),
+            };
+        }
+
+        return null;
+    }, [
+        actionFilteredProductwiseRows,
+        actionItemId,
+        currencySymbol,
+        isActionSkuFilterActive,
+    ]);
 
     const clearActionSkuFilter = React.useCallback(() => {
 
@@ -1873,6 +2211,19 @@ export default function DashboardProductwisePnlSection({
 )}
 
 
+            {actionDiagnosis && (
+                <ActionDiagnosisPanel
+                    title={actionDiagnosis.title}
+                    description={actionDiagnosis.description}
+                    metrics={actionDiagnosis.metrics}
+                    whyItMatters={actionDiagnosis.whyItMatters}
+                    recommendedAction={actionDiagnosis.recommendedAction}
+                    triggerRule={actionDiagnosis.triggerRule}
+                    riskTitle={actionDiagnosis.riskTitle}
+                    riskItems={actionDiagnosis.riskItems}
+                    evidenceNote="Calculated from the affected product rows shown below; no portfolio totals are recalculated for this focused view."
+                />
+            )}
 
             {!shouldShowDummyUi && loading && monthlySkuwiseRows.length === 0 ? (
 
@@ -1908,7 +2259,7 @@ export default function DashboardProductwisePnlSection({
 
                         <GroupedCollapsibleTable<any>
 
-                            rows={actionFilteredProductwiseRows}
+                            rows={actionTableRows}
 
                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
 

@@ -14,6 +14,7 @@ import GroupedCollapsibleTable, {
     type LeafCol,
 } from "@/components/ui/table/GroupedCollapsibleTable";
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
+import ActionDiagnosisPanel from "@/components/dashboard/ActionDiagnosisPanel";
 import { exportAgeingRiskHeatmapExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 export type AgeingBucket = {
@@ -798,17 +799,27 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             return bUnitSales - aUnitSales;
         });
 
-        if (isActionSkuFilterActive) {
-            return sortedData as HeatmapTableRow[];
-        }
+        // In an Action Item focused view, the Total row must represent only
+        // the filtered products. Do not reuse the backend portfolio Total.
+        const totalRow = isActionSkuFilterActive
+            ? buildAggregateRow(
+                "Total",
+                sortedData,
+                buckets,
+                { isTotalRow: true },
+                unitSalesDataKey
+            )
+            : buildTotalRow(
+                sortedData,
+                data,
+                buckets,
+                inventoryAgeSummary,
+                unitSalesDataKey
+            );
 
-        const totalRow = buildTotalRow(
-            sortedData,
-            data,
-            buckets,
-            inventoryAgeSummary,
-            unitSalesDataKey
-        );
+        if (isActionSkuFilterActive) {
+            return [...sortedData, totalRow] as HeatmapTableRow[];
+        }
 
         if (!canCollapse || isExpanded) {
             return [...sortedData, totalRow] as HeatmapTableRow[];
@@ -827,6 +838,166 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
 
         return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
     }, [tableSourceData, data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, isActionSkuFilterActive]);
+
+    const actionDiagnosis = useMemo(() => {
+        if (!isActionSkuFilterActive) return null;
+
+        const affectedRows = displayRows.filter(
+            (row) => !row.isTotalRow && !row.isPercentageRow && !row.isOthersRow
+        );
+        if (!affectedRows.length) return null;
+
+        const currentStockFor = (row: AgeingRiskHeatmapRow) => {
+            const value = Number(
+                row.totalInStock ??
+                row.totalUnits ??
+                getCurrentFbaNumberValue(row) + Number(row.currentAwd || 0)
+            );
+            return Number.isFinite(value) ? value : 0;
+        };
+
+        const inTransitFor = (row: AgeingRiskHeatmapRow) => {
+            const value = Number(
+                row.totalInTransit ??
+                Number(row.transitFba ?? row.fcTransfer ?? 0) +
+                Number(row.transitAwd ?? row.inboundUnits ?? 0)
+            );
+            return Number.isFinite(value) ? value : 0;
+        };
+
+        if (actionItemId === "inventory-coverage-risk") {
+            const coverageRows = affectedRows
+                .map((row) => ({
+                    row,
+                    coverage: Number(row.coverageRatio ?? 0),
+                    coverageWithTransit: Number(row.coverageCurrentAndTransit ?? 0),
+                }))
+                .filter((item) => Number.isFinite(item.coverage));
+
+            const validCoverage = coverageRows.filter((item) => item.coverage > 0);
+            const averageCoverage = validCoverage.length
+                ? validCoverage.reduce((sum, item) => sum + item.coverage, 0) / validCoverage.length
+                : 0;
+            const validTransitCoverage = coverageRows.filter(
+                (item) => Number.isFinite(item.coverageWithTransit) && item.coverageWithTransit > 0
+            );
+            const averageCoverageWithTransit = validTransitCoverage.length
+                ? validTransitCoverage.reduce((sum, item) => sum + item.coverageWithTransit, 0) / validTransitCoverage.length
+                : 0;
+            const currentStock = affectedRows.reduce((sum, row) => sum + currentStockFor(row), 0);
+            const inTransit = affectedRows.reduce((sum, row) => sum + inTransitFor(row), 0);
+            const recentSales = affectedRows.reduce(
+                (sum, row) => sum + getUnitSalesValue(row, unitSalesDataKey),
+                0
+            );
+            const ranked = [...validCoverage].sort((a, b) => a.coverage - b.coverage);
+            const lowest = ranked[0];
+
+            return {
+                title: "Inventory coverage needs action",
+                description: `${affectedRows.length} affected product${affectedRows.length === 1 ? " is" : "s are"} at or below the 2.00-month replenishment threshold.`,
+                metrics: [
+                    { label: "Affected products", value: affectedRows.length.toLocaleString() },
+                    { label: "Avg coverage", value: averageCoverage > 0 ? `${averageCoverage.toFixed(2)} mo` : "—", helper: "Current inventory" },
+                    { label: "Threshold", value: "2.00 mo" },
+                    { label: "Current stock", value: Math.round(currentStock).toLocaleString() },
+                    { label: "In transit", value: Math.round(inTransit).toLocaleString() },
+                    { label: "30-day sales", value: Math.round(recentSales).toLocaleString(), helper: averageCoverageWithTransit > 0 ? `Avg with transit ${averageCoverageWithTransit.toFixed(2)} mo` : undefined },
+                ],
+                whyItMatters:
+                    "Coverage below the replenishment threshold means current stock may not provide enough runway for expected demand. In-transit inventory helps show whether the risk is already being covered.",
+                recommendedAction: lowest
+                    ? `Prioritize ${lowest.row.productName} at ${lowest.coverage.toFixed(2)} months coverage. Compare current + in-transit stock with forecast demand and replenishment lead time before placing the next order.`
+                    : "Prioritize the lowest-coverage products and compare current + in-transit stock with forecast demand and replenishment lead time.",
+                triggerRule: "Current inventory coverage ≤ 2.00 months.",
+                riskTitle: "Lowest coverage products",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: item.row.productName || item.row.sku || "Product",
+                    detail: item.coverage > 0 ? `${item.coverage.toFixed(2)} mo` : "—",
+                    secondary: `${Math.round(currentStockFor(item.row)).toLocaleString()} stock • ${Math.round(inTransitFor(item.row)).toLocaleString()} transit`,
+                })),
+            };
+        }
+
+        if (actionItemId === "aged-inventory") {
+            const agedBuckets = buckets.filter((bucket) => {
+                const label = String(bucket.label || "").toLowerCase();
+                const key = String(bucket.key || "").toLowerCase();
+                return (
+                    label.includes("181") ||
+                    label.includes("271") ||
+                    label.includes("365+") ||
+                    key.includes("oneeightyone") ||
+                    key.includes("twoseventyone") ||
+                    key.includes("threesixtyfive")
+                );
+            });
+            const oldestBucket = buckets.find((bucket) => {
+                const label = String(bucket.label || "").toLowerCase();
+                const key = String(bucket.key || "").toLowerCase();
+                return label.includes("365+") || key.includes("threesixtyfiveplus");
+            });
+
+            const enriched = affectedRows.map((row) => {
+                const agedUnits = agedBuckets.reduce(
+                    (sum, bucket) => sum + Number(row[bucket.key] || 0),
+                    0
+                );
+                const bucketTotal = buckets.reduce(
+                    (sum, bucket) => sum + Number(row[bucket.key] || 0),
+                    0
+                );
+                const oldestUnits = oldestBucket ? Number(row[oldestBucket.key] || 0) : 0;
+                const agedShare = bucketTotal > 0 ? (agedUnits / bucketTotal) * 100 : 0;
+                return { row, agedUnits, bucketTotal, oldestUnits, agedShare };
+            });
+
+            const totalAged = enriched.reduce((sum, item) => sum + item.agedUnits, 0);
+            const totalBucketUnits = enriched.reduce((sum, item) => sum + item.bucketTotal, 0);
+            const totalOldest = enriched.reduce((sum, item) => sum + item.oldestUnits, 0);
+            const agedShare = totalBucketUnits > 0 ? (totalAged / totalBucketUnits) * 100 : 0;
+            const storageCost = affectedRows.reduce(
+                (sum, row) => sum + Math.max(0, Number(row.storageCostUsd || 0)),
+                0
+            );
+            const ranked = [...enriched].sort((a, b) => b.agedUnits - a.agedUnits);
+            const highest = ranked[0];
+
+            return {
+                title: "Aged inventory requires a clearance plan",
+                description: `${affectedRows.length} affected product${affectedRows.length === 1 ? " contains" : "s contain"} inventory aged 181 days or more.`,
+                metrics: [
+                    { label: "Affected products", value: affectedRows.length.toLocaleString() },
+                    { label: "Aged 181+ units", value: Math.round(totalAged).toLocaleString() },
+                    { label: "Aged share", value: `${agedShare.toFixed(2)}%`, helper: "Within affected inventory age buckets" },
+                    { label: "365+ units", value: Math.round(totalOldest).toLocaleString() },
+                    ...(storageCost > 0 ? [{ label: "Est. storage cost", value: `${storageCostCurrencySymbol}${storageCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` }] : []),
+                    ...(highest ? [{ label: "Largest aged position", value: Math.round(highest.agedUnits).toLocaleString(), helper: highest.row.productName }] : []),
+                ],
+                whyItMatters:
+                    "Older inventory ties up stock and can increase storage or disposal pressure. The focused view shows where the ageing concentration is highest.",
+                recommendedAction: highest
+                    ? `Start with ${highest.row.productName}, which has ${Math.round(highest.agedUnits).toLocaleString()} units aged 181+ days. Prioritize 365+ and 271–365 stock, then review clearance, liquidation or demand-recovery options before replenishing more.`
+                    : "Prioritize the oldest stock first, then review clearance or liquidation options before replenishing more.",
+                triggerRule: "Focused products contain inventory aged 181 days or more.",
+                riskTitle: "Largest aged positions",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: item.row.productName || item.row.sku || "Product",
+                    detail: `${Math.round(item.agedUnits).toLocaleString()} units`,
+                    secondary: `${item.agedShare.toFixed(1)}% aged 181+${item.oldestUnits > 0 ? ` • ${Math.round(item.oldestUnits).toLocaleString()} units 365+` : ""}`,
+                })),
+            };
+        }
+
+        return null;
+    }, [
+        actionItemId,
+        buckets,
+        displayRows,
+        isActionSkuFilterActive,
+        storageCostCurrencySymbol,
+        unitSalesDataKey,
+    ]);
 
     const bucketMaxValues = useMemo(() => {
         const maxMap: Record<string, number> = {};
@@ -1798,6 +1969,20 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         Reset filters
                     </button>
                 </div>
+            )}
+
+            {actionDiagnosis && (
+                <ActionDiagnosisPanel
+                    title={actionDiagnosis.title}
+                    description={actionDiagnosis.description}
+                    metrics={actionDiagnosis.metrics}
+                    whyItMatters={actionDiagnosis.whyItMatters}
+                    recommendedAction={actionDiagnosis.recommendedAction}
+                    triggerRule={actionDiagnosis.triggerRule}
+                    riskTitle={actionDiagnosis.riskTitle}
+                    riskItems={actionDiagnosis.riskItems}
+                    evidenceNote="Calculated from the affected inventory rows shown below; charts and portfolio totals remain unchanged."
+                />
             )}
 
             <div className="rounded-xl w-full overflow-x-auto">

@@ -3177,7 +3177,7 @@ export default function DashboardPage() {
                 const routeCountry = String(responsePeriod?.country || inventoryCountry);
                 const routeMonth = String(responsePeriod?.month || invMonthYear.month);
                 const routeYear = String(responsePeriod?.year || invMonthYear.year);
-                const referralPageHref = `/expense-reconciliation/${encodeURIComponent(routeCountry)}/${encodeURIComponent(routeMonth)}/${encodeURIComponent(routeYear)}`;
+                const referralPageHref = `/expense-reconciliation/${encodeURIComponent(routeCountry)}/${encodeURIComponent(routeMonth)}/${encodeURIComponent(routeYear)}?actionItem=referral-fee-variance`;
                 const apiReferralFeeActionItem = baseActionItems.find(
                     (item) => item.id === "referral-fee-variance"
                 );

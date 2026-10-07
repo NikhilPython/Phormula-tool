@@ -19,6 +19,7 @@ import DataTable, { type ColumnDef, type Row } from '@/components/ui/table/DataT
 import SegmentedToggle from '@/components/ui/SegmentedToggle'
 import Button from '@/components/ui/button/Button'
 import DownloadIconButton from "@/components/ui/button/DownloadIconButton";
+import ActionDiagnosisPanel from "@/components/dashboard/ActionDiagnosisPanel";
 import PageBreadcrumb from '@/components/common/PageBreadCrumb'
 import Loader from '@/components/loader/Loader'
 import { exportDispatchExcel } from "@/lib/excel/exportCurrentInventoryExcel";
@@ -1166,6 +1167,67 @@ export default function DispatchPage({
     })
   }, [skuData, isActionSkuFilterActive, actionFilterSkuSet])
 
+  const actionDiagnosis = useMemo(() => {
+    if (!isActionSkuFilterActive || !actionFilteredSkuData.length) return null
+
+    const productName = (row: SkuRow) =>
+      String(row['Product Name'] || row['SKU'] || 'Product').trim()
+
+    const enriched = actionFilteredSkuData.map((row) => {
+      const air = Math.max(0, toNumber(row['AIR']))
+      const sea = Math.max(0, toNumber(row['SEA']))
+      const dispatch = Math.max(0, toNumber(row['To be Dispatch']) || air + sea)
+      const shortfall = Math.max(0, toNumber(row['Shortfall Unit']))
+      const projectedSales = Math.max(0, toNumber(row['Projected Sales Total']))
+      const coverage = Math.max(0, toNumber(row['Inventory Coverage Ratio Before Dispatch']))
+      const inStock = Math.max(0, toNumber(row['In stock']))
+      const inTransit = Math.max(0, toNumber(row['In transit']))
+
+      return { row, air, sea, dispatch, shortfall, projectedSales, coverage, inStock, inTransit }
+    })
+
+    const totalAir = enriched.reduce((sum, item) => sum + item.air, 0)
+    const totalSea = enriched.reduce((sum, item) => sum + item.sea, 0)
+    const totalDispatch = enriched.reduce((sum, item) => sum + item.dispatch, 0)
+    const totalShortfall = enriched.reduce((sum, item) => sum + item.shortfall, 0)
+    const totalProjectedSales = enriched.reduce((sum, item) => sum + item.projectedSales, 0)
+    const coverageRows = enriched.filter((item) => item.coverage > 0)
+    const averageCoverage = coverageRows.length
+      ? coverageRows.reduce((sum, item) => sum + item.coverage, 0) / coverageRows.length
+      : 0
+    const ranked = [...enriched].sort((a, b) => {
+      if (b.shortfall !== a.shortfall) return b.shortfall - a.shortfall
+      if (a.coverage && b.coverage && a.coverage !== b.coverage) return a.coverage - b.coverage
+      return b.dispatch - a.dispatch
+    })
+    const highest = ranked[0]
+
+    return {
+      title: 'Dispatch plan requires action',
+      description: `${actionFilteredSkuData.length} product${actionFilteredSkuData.length === 1 ? '' : 's'} require air or sea dispatch in the current plan.`,
+      metrics: [
+        { label: 'Affected products', value: actionFilteredSkuData.length.toLocaleString() },
+        { label: 'To dispatch', value: Math.round(totalDispatch).toLocaleString() },
+        { label: 'Air units', value: Math.round(totalAir).toLocaleString() },
+        { label: 'Sea units', value: Math.round(totalSea).toLocaleString() },
+        { label: 'Shortfall units', value: Math.round(totalShortfall).toLocaleString() },
+        { label: 'Avg pre-dispatch coverage', value: averageCoverage > 0 ? `${averageCoverage.toFixed(2)} mo` : '—', helper: totalProjectedSales > 0 ? `${Math.round(totalProjectedSales).toLocaleString()} projected sales units` : undefined },
+      ],
+      whyItMatters:
+        'These products need additional inbound stock in the dispatch plan. The shortfall and pre-dispatch coverage help show which products are most exposed before the planned shipment arrives.',
+      recommendedAction: highest
+        ? `Prioritize ${productName(highest.row)} first. Validate the ${Math.round(highest.air).toLocaleString()} AIR / ${Math.round(highest.sea).toLocaleString()} SEA split against its shortfall, coverage and shipment dates before finalizing the dispatch.`
+        : 'Validate the AIR/SEA split against shortfall, coverage and shipment dates before finalizing the dispatch plan.',
+      triggerRule: 'Product has an AIR or SEA dispatch requirement in the current dispatch plan.',
+      riskTitle: 'Largest dispatch gaps',
+      riskItems: ranked.slice(0, 3).map((item) => ({
+        name: productName(item.row),
+        detail: `${Math.round(item.dispatch).toLocaleString()} units`,
+        secondary: `${Math.round(item.shortfall).toLocaleString()} shortfall • ${item.coverage > 0 ? `${item.coverage.toFixed(2)} mo coverage` : 'coverage n/a'} • AIR ${Math.round(item.air).toLocaleString()} / SEA ${Math.round(item.sea).toLocaleString()}`,
+      })),
+    }
+  }, [actionFilteredSkuData, isActionSkuFilterActive])
+
   useEffect(() => {
     setSkuProductNameLookup({})
   }, [countryName])
@@ -2272,9 +2334,6 @@ export default function DispatchPage({
 
   const tableRows = useMemo<DispatchTableRow[]>(() => {
     const sourceRows = isActionSkuFilterActive ? actionFilteredSkuData : skuData
-    const totalRow = isActionSkuFilterActive
-      ? undefined
-      : sourceRows.find((row) => isTotalRow(row))
 
     const sortedRows = [...sourceRows]
       .filter((row) => !isTotalRow(row))
@@ -2283,6 +2342,23 @@ export default function DispatchPage({
         const valB = Number(b['FBA'] ?? 0)
         return valB - valA
       })
+
+    // When Action Item filtering is active, create a focused Total row from
+    // only the filtered products. Normal view keeps the existing source Total.
+    const totalRow: SkuRow | undefined = isActionSkuFilterActive
+      ? { 'Product Name': 'Total', 'SKU': 'total' }
+      : sourceRows.find((row) => isTotalRow(row))
+
+    const calculateDisplayedColumnTotal = (columnName: string) =>
+      sortedRows.reduce((sum, row) => {
+        const value = row[columnName]
+        const num =
+          typeof value === 'number'
+            ? value
+            : Number(String(value ?? '').replace(/,/g, '').trim())
+
+        return sum + (Number.isFinite(num) ? num : 0)
+      }, 0)
 
     let rowsForDisplay: SkuRow[] = []
 
@@ -2319,57 +2395,57 @@ export default function DispatchPage({
 
         if (isTotal) {
           if (col === 'FBA') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'AWD') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'In Transit FBA') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'In Transit AWD') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'In stock') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'In transit') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'Projected Sales Total') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'Shortfall Unit') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'To be Dispatch') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'SEA') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
           if (col === 'AIR') {
-            obj[col] = calculateColumnTotal(col).toLocaleString('en-US')
+            obj[col] = calculateDisplayedColumnTotal(col).toLocaleString('en-US')
             return
           }
 
@@ -3003,96 +3079,66 @@ export default function DispatchPage({
             {isActionSkuFilterActive && (
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E7E2] bg-white px-3 py-2 shadow-xl">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-
-                  {/* Filters */}
                   <button
                     type="button"
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#D7E3DE] bg-white px-3 text-[11px] font-medium text-[#425E57] transition hover:bg-[#F7FBF9]"
+                    aria-label="Active filters"
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
                       <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
                     </svg>
                   </button>
 
-                  {/* Focused view */}
                   <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#E1ECE8] bg-[#F8FBFA] px-3 text-[11px] font-medium text-[#617972]">
                     <span>Focused View</span>
-
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.7"
-                      className="h-3.5 w-3.5 text-[#91AAA2]"
-                      aria-hidden="true"
-                    >
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5 text-[#91AAA2]" aria-hidden="true">
                       <circle cx="10" cy="10" r="6.5" />
                       <path d="M10 7v3l2 2" />
                     </svg>
                   </div>
 
-                  {/* Selected filter */}
                   <button
                     type="button"
                     onClick={clearActionSkuFilter}
                     className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#CFE5DD] bg-[#EAF6F1] px-3 text-[11px] font-semibold text-[#2D6256] transition hover:bg-[#E2F2EC]"
                   >
-                    <span className="max-w-[180px] truncate">
-                      Dispatch Required
-                    </span>
-
-                    <svg
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
+                    <span>Dispatch Required</span>
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-3.5 w-3.5" aria-hidden="true">
                       <path d="M6 6l8 8M14 6l-8 8" />
                     </svg>
                   </button>
 
-                  {/* Count */}
                   <span className="text-[11px] font-medium text-[#7B918B]">
-                    {actionFilteredSkuData.length} matching product
-                    {actionFilteredSkuData.length === 1 ? "" : "s"}
+                    {actionFilteredSkuData.length} matching product{actionFilteredSkuData.length === 1 ? '' : 's'}
                   </span>
                 </div>
 
-                {/* Reset */}
                 <button
                   type="button"
                   onClick={clearActionSkuFilter}
                   className="inline-flex h-8 shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#4E9A84] transition hover:text-[#2F7C67]"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-3.5 w-3.5"
-                    aria-hidden="true"
-                  >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
                     <path d="M3 12a9 9 0 1 0 3-6.7" />
                     <path d="M3 4v5h5" />
                   </svg>
-
                   Reset filters
                 </button>
               </div>
+            )}
+
+            {actionDiagnosis && (
+              <ActionDiagnosisPanel
+                title={actionDiagnosis.title}
+                description={actionDiagnosis.description}
+                metrics={actionDiagnosis.metrics}
+                whyItMatters={actionDiagnosis.whyItMatters}
+                recommendedAction={actionDiagnosis.recommendedAction}
+                triggerRule={actionDiagnosis.triggerRule}
+                riskTitle={actionDiagnosis.riskTitle}
+                riskItems={actionDiagnosis.riskItems}
+                evidenceNote="Calculated from the affected dispatch rows shown below; the underlying forecast is not recalculated by this focused view."
+              />
             )}
 
             <div className="forecast-data border border-slate-200 bg-white shadow-sm rounded-xl">
