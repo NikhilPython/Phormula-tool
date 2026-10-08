@@ -20,6 +20,7 @@ from sqlalchemy import text
 import pandas as pd
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from datetime import date
+from app.utils.fba_fee_calculator import estimate_fba_fee, number as fba_number, resolve_fba_measurements
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
     build_pnl_card_metrics,
@@ -64,10 +65,96 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v22_all_periods_referral_recalculation"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v27_fba_net_refunds"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
+
+
+def _recalculate_fba_source_fees(frame, user_id, country):
+    """Estimate each source shipment before grouping, preserving price and date bands."""
+    from app.models.user_models import Product, Fee
+
+    frame = frame.copy()
+    marketplace = {"us": "ATVPDKIKX0DER", "uk": "A1F83G8C2ARO7P"}.get(
+        str(country or "").strip().lower(), ""
+    )
+    products = Product.query.filter(
+        Product.user_id == user_id,
+        Product.marketplace_id == marketplace,
+        Product.sku.in_(frame["sku"].dropna().unique().tolist()),
+    ).all() if not frame.empty and marketplace else []
+    fields = (
+        "user_id", "sku", "asin", "marketplace_id", "product_type", "fulfillment_channel",
+        "package_dimensions", "package_weight_value", "package_weight_unit", "attributes",
+    )
+    catalog = {p.sku: {field: getattr(p, field) for field in fields} for p in products}
+    if catalog and str(country or "").strip().lower() == "us":
+        preview_fields = ("user_id", "sku", "asin", "marketplace_id", "longest_side", "median_side",
+                          "shortest_side", "unit_of_dimension", "item_package_weight", "unit_of_weight")
+        previews = Fee.query.filter(
+            Fee.user_id == user_id, Fee.marketplace_id == marketplace,
+            Fee.sku.in_(list(catalog)),
+        ).all()
+        for preview in previews:
+            catalog[preview.sku] = resolve_fba_measurements(
+                catalog[preview.sku], {field: getattr(preview, field) for field in preview_fields},
+            )
+    amounts, reasons = [], []
+    for row in frame.to_dict("records"):
+        quantity = fba_number(row.get("quantity"))
+        sales = fba_number(row.get("product_sales"))
+        price = sales / quantity if sales is not None and quantity and quantity > 0 else None
+        raw_date = next((row.get(key) for key in ("shipment_date", "posted_date", "date_time", "date")
+                         if pd.notna(row.get(key)) and row.get(key)), None)
+        timestamp = pd.to_datetime(raw_date, errors="coerce")
+        shipped_on = timestamp.date() if pd.notna(timestamp) else None
+        channel = next((row.get(key) for key in ("fulfillment", "fulfilment", "fulfillment_channel")
+                        if pd.notna(row.get(key)) and str(row.get(key)).strip().lower()
+                        not in {"", "none", "null", "nan", "0", "0.0"}), None)
+        amount, reason = estimate_fba_fee(
+            catalog.get(str(row.get("sku", "")).strip()), quantity=quantity,
+            unit_price=price, shipped_on=shipped_on, marketplace_id=marketplace,
+            fulfillment_channel=channel, transaction_type=row.get("type", "order"),
+        )
+        amounts.append(amount)
+        reasons.append(reason)
+    frame["fbaanswer"] = pd.Series(amounts, index=frame.index, dtype="float64")
+    frame["fba_unavailable_count"] = frame["fbaanswer"].isna().astype(int)
+    frame["fba_estimate_status"] = reasons
+    frame["fba_quantity"] = pd.to_numeric(frame.get("quantity", pd.Series(0, index=frame.index)), errors="coerce").fillna(0)
+    frame.loc[frame["fba_estimate_status"].eq("not_fulfillment_sale"), "fba_quantity"] = 0
+    return frame
+
+
+def _fba_refund_records(frame):
+    """Preserve return units and FBA credits independently of referral filtering."""
+    records = []
+    for row in frame.to_dict("records"):
+        kind = str(row.get("type", "")).strip().lower()
+        if kind != "refund":
+            continue
+        units = fba_number(row.get("return_quantity")) or fba_number(row.get("quantity")) or Decimal(0)
+        charged = -(fba_number(row.get("fba_fees")) or Decimal(0))
+        records.append({
+            "record_type": "fba_adjustment", "source_order": len(records),
+            "order_id": str(row.get("order_id", "") or ""),
+            "sku": str(row.get("sku", "") or ""),
+            "product_name": str(row.get("product_name", "") or ""),
+            "units": -float(abs(units)), "fba_quantity": -float(abs(units)),
+            "fba_fees_charged": float(charged), "fba_fees_applicable": None,
+            "fba_estimate_status": "refund_credit_not_comparable", "status": "noreferallfee",
+        })
+    return records
+
+
+def _nullable_fee(value):
+    return None if pd.isna(value) else float(value)
+
+
+def _sum_expected_fees(values):
+    values = list(values)
+    return None if any(value is None or pd.isna(value) for value in values) else float(sum(values))
 
 
 def _calculate_us_referral_fee_applicable(
@@ -366,6 +453,7 @@ def _materialize_expense_reconciliation_table(
     sku_monthly_rows=None,
     sku_monthly_summary=None,
     status_source_df=None,
+    fba_adjustments_df=None,
     platform_fee_total=0,
     other_fee_total=0,
 ):
@@ -481,8 +569,11 @@ def _materialize_expense_reconciliation_table(
         )
         detail_df["_referral_fees_applicable"] = detail_df["answer"]
         detail_df["_referral_fees_charged"] = detail_df["selling_fees"]
-        detail_df["_fba_fees_charged"] = detail_df["fba_fees"].abs()
-        detail_df["_fba_fees_applicable"] = detail_df["_fba_fees_charged"]
+        detail_df["_fba_fees_charged"] = -detail_df["fba_fees"]
+        detail_df["_fba_fees_applicable"] = pd.to_numeric(
+            detail_df.get("fbaanswer", pd.Series(float("nan"), index=detail_df.index)),
+            errors="coerce",
+        )
         detail_df["_referral_fees_accurate"] = detail_df["answer"].where(status_norm == "accurate", 0)
         detail_df["_referral_fees_undercharged"] = detail_df["difference"].where(
             status_norm == "undercharged",
@@ -593,8 +684,8 @@ def _materialize_expense_reconciliation_table(
                 "referral_fee_per": _raw_numeric("referral_fee"),
                 "referral_fees_applicable": _raw_numeric("answer"),
                 "referral_fees_charged": _raw_numeric("selling_fees"),
-                "fba_fees_applicable": _raw_numeric("fbaanswer", "fba_fees").abs(),
-                "fba_fees_charged": _raw_numeric("fba_fees").abs(),
+                "fba_fees_applicable": _raw_numeric("fbaanswer"),
+                "fba_fees_charged": -_raw_numeric("fba_fees"),
                 "difference": _raw_numeric("difference"),
             })
 
@@ -919,6 +1010,43 @@ def _materialize_expense_reconciliation_table(
         sort=False,
     )
 
+    # Missing estimates must survive legacy numeric filling and group sums.
+    # A subtotal is unavailable if any contributing order lacks an estimate.
+    if status_source_df is not None and not status_source_df.empty:
+        # Match the raw-status filtering above, including for other marketplaces.
+        fba_source = raw_status.copy()
+        fba_source["_expected"] = pd.to_numeric(fba_source["fbaanswer"], errors="coerce")
+        fba_source.loc[fba_source["fba_unavailable_count"].gt(0), "_expected"] = float("nan")
+        by_product = fba_source.groupby(["sku", "product_name"], dropna=False)["_expected"].agg(
+            lambda s: s.sum(skipna=False)
+        )
+        by_status = fba_source.groupby(["sku", "product_name", "status"], dropna=False)["_expected"].agg(
+            lambda s: s.sum(skipna=False)
+        )
+        rows["fba_fees_applicable"] = [
+            by_product.get((r.sku, r.product_name), float("nan")) for r in rows.itertuples()
+        ]
+        is_grand = rows["product_name"].eq("Grand Total")
+        rows.loc[is_grand, "fba_fees_applicable"] = fba_source["_expected"].sum(skipna=False)
+        detail_mask = cached_status_rows["record_type"].eq("detail")
+        cached_status_rows.loc[detail_mask, "fba_fees_applicable"] = fba_source["_expected"].to_numpy()
+        cached_status_rows.loc[detail_mask, "fba_estimate_status"] = fba_source["fba_estimate_status"].to_numpy()
+        if "fba_quantity" in fba_source.columns:
+            cached_status_rows.loc[detail_mask, "fba_quantity"] = fba_source["fba_quantity"].to_numpy()
+        summary_mask = ~detail_mask
+        cached_status_rows.loc[summary_mask, "fba_fees_applicable"] = [
+            by_status.get((r.sku, r.product_name, r.status), float("nan"))
+            for r in cached_status_rows.loc[summary_mask].itertuples()
+        ]
+    else:
+        rows["fba_fees_applicable"] = float("nan")
+        cached_status_rows["fba_fees_applicable"] = float("nan")
+
+    if fba_adjustments_df is not None and not fba_adjustments_df.empty:
+        cached_status_rows = pd.concat([
+            cached_status_rows, pd.DataFrame(_fba_refund_records(fba_adjustments_df)),
+        ], ignore_index=True)
+
     create_database_if_not_exists(db_url2)
     rows.to_sql(
         table_name,
@@ -1033,8 +1161,8 @@ def _fee_percentage_metrics(
     def _metric(charged, applicable):
         return {
             "charged_net_sales_pct": _net_sales_percentage(charged),
-            "applicable_net_sales_pct": _net_sales_percentage(applicable),
-            "charged_vs_applicable_pct": _charged_vs_applicable(
+            "applicable_net_sales_pct": None if applicable is None or pd.isna(applicable) else _net_sales_percentage(applicable),
+            "charged_vs_applicable_pct": None if applicable is None or pd.isna(applicable) else _charged_vs_applicable(
                 charged,
                 applicable,
             ),
@@ -1127,7 +1255,9 @@ def _expense_reconciliation_api_response(
     for column in numeric_columns:
         if column not in cached.columns:
             cached[column] = 0
-        cached[column] = pd.to_numeric(cached[column], errors="coerce").fillna(0)
+        cached[column] = pd.to_numeric(cached[column], errors="coerce")
+        if column != "fba_fees_applicable":
+            cached[column] = cached[column].fillna(0)
 
     if "sku" not in cached.columns:
         cached["sku"] = ""
@@ -1154,7 +1284,7 @@ def _expense_reconciliation_api_response(
         net_sales = float(row.get("net_sales", 0) or 0)
         applicable = float(row.get("referral_fees_applicable", 0) or 0)
         charged = float(row.get("referral_fees_charged", 0) or 0)
-        fba_applicable = float(row.get("fba_fees_applicable", 0) or 0)
+        fba_applicable = _nullable_fee(row.get("fba_fees_applicable"))
         fba_charged = float(row.get("fba_fees_charged", 0) or 0)
         platform_applicable = float(row.get("platform_fees_applicable", 0) or 0)
         platform_charged = float(row.get("platform_fees_charged", 0) or 0)
@@ -1227,7 +1357,9 @@ def _expense_reconciliation_api_response(
         cached_status[column] = pd.to_numeric(
             cached_status[column],
             errors="coerce",
-        ).fillna(0)
+        )
+        if column != "fba_fees_applicable":
+            cached_status[column] = cached_status[column].fillna(0)
 
     status_aliases = {
         "accurate": "Accurate",
@@ -1275,7 +1407,9 @@ def _expense_reconciliation_api_response(
             "total_amount": total_amount,
             "answer": applicable,
             "selling_fees": float(row.get("referral_fees_charged", 0) or 0),
-            "fbaanswer": float(row.get("fba_fees_applicable", 0) or 0),
+            "fbaanswer": _nullable_fee(row.get("fba_fees_applicable")),
+            "fba_estimate_status": str(row.get("fba_estimate_status") or ""),
+            "fba_quantity": float(row.get("fba_quantity", units)) if pd.notna(row.get("fba_quantity", units)) else units,
             "fba_fees": float(row.get("fba_fees_charged", 0) or 0),
             "difference": difference,
             "overcharged": max(difference, 0),
@@ -1286,7 +1420,19 @@ def _expense_reconciliation_api_response(
             "errorstatus": errorstatus,
         }
 
+    fba_adjustments = []
     for _, row in cached_status.iterrows():
+        if str(row.get("record_type", "")).strip().lower() == "fba_adjustment":
+            fba_adjustments.append({
+                "order_id": str(row.get("order_id", "") or ""),
+                "sku": str(row.get("sku", "") or ""),
+                "product_name": str(row.get("product_name", "") or ""),
+                "fba_quantity": float(row.get("units", 0) or 0),
+                "fba_fees": float(row.get("fba_fees_charged", 0) or 0),
+                "fbaanswer": None, "fba_estimate_status": "refund_credit_not_comparable",
+                "transaction_type": "Refund",
+            })
+            continue
         resolved_status, record = _status_record(row)
         if str(row.get("record_type", "")).strip().lower() == "summary":
             summary_status_records[resolved_status].append(record)
@@ -1323,7 +1469,11 @@ def _expense_reconciliation_api_response(
             "errorstatus": "",
         }
         for field in sum_fields:
-            summary[field] = float(sum(float(record.get(field, 0) or 0) for record in records))
+            summary[field] = (
+                _sum_expected_fees(record.get(field) for record in records)
+                if field == "fbaanswer"
+                else float(sum(float(record.get(field, 0) or 0) for record in records))
+            )
         return summary
 
     status_summaries = {}
@@ -1348,7 +1498,21 @@ def _expense_reconciliation_api_response(
         grand_record["sku"] = "Grand Total"
     display_records.append(grand_record)
 
-    original_records = cached.where(pd.notna(cached), None).to_dict(orient="records")
+    fba_data = [record for records in status_records.values() for record in records
+                if record.get("fba_estimate_status") != "not_fulfillment_sale"] + fba_adjustments
+    fba_charged_by_sku = {}
+    for record in fba_data:
+        sku = record["sku"]
+        fba_charged_by_sku[sku] = fba_charged_by_sku.get(sku, 0) + record["fba_fees"]
+    fba_net_charged = round(sum(fba_charged_by_sku.values()), 2)
+    for records in (detail_records, display_records):
+        for record in records:
+            if record.get("sku") in fba_charged_by_sku:
+                record["fba_fees"] = round(fba_charged_by_sku[record["sku"]], 2)
+            elif record.get("sku") == "Grand Total":
+                record["fba_fees"] = fba_net_charged
+    grand_record["fba_fees"] = fba_net_charged
+    original_records = cached.astype(object).where(pd.notna(cached), None).to_dict(orient="records")
     net_sales_total = float(grand_record.get("net_sales_total_value", 0) or 0)
     platform_fee_total = float(grand_record.get("platform_fees_charged", 0) or 0)
     other_fee_total = float(grand_record.get("other_fees_charged", 0) or 0)
@@ -1384,6 +1548,7 @@ def _expense_reconciliation_api_response(
         "undercharged_data": status_records["Undercharged"],
         "overcharged_data": status_records["Overcharged"],
         "no_ref_fee_data": status_records["noreferallfee"],
+        "fba_data": fba_data,
         "created_table_name": table_name,
         "raw_table": original_records,
         "table_name": table_name,
@@ -3703,6 +3868,9 @@ def get_table_data(file_name):
 
         reconciliation_country = str(country or "").strip().lower()
         source_answer_available = "answer" in df.columns
+        fba_adjustments_df = df.loc[
+            df.get("type", pd.Series("", index=df.index)).astype(str).str.strip().str.lower().eq("refund")
+        ].copy()
         if reconciliation_country in {"us", "uk"}:
             pre_group_net_sales = pd.Series(0.0, index=df.index)
             net_sales_columns = (
@@ -3731,6 +3899,8 @@ def get_table_data(file_name):
         if reconciliation_country == "us":
             df = _recalculate_us_referral_source_fees(df)
 
+        df = _recalculate_fba_source_fees(df, user_id, country)
+
         if reconciliation_country in {"us", "uk"} and "order_id" in df.columns:
             order_ids = df["order_id"].fillna("").astype(str).str.strip()
             valid_order_ids = ~order_ids.str.lower().isin({"", "nan", "none", "<na>"})
@@ -3753,6 +3923,8 @@ def get_table_data(file_name):
                 "selling_fees",
                 "fba_fees",
                 "fbaanswer",
+                "fba_quantity",
+                "fba_unavailable_count",
                 "platform_fee",
                 "advertising_total",
                 "answer",
@@ -3762,7 +3934,11 @@ def get_table_data(file_name):
             for column in df.columns:
                 if column in {"_reconciliation_order_key", "sku"}:
                     continue
-                if column in order_sum_columns:
+                if column == "fbaanswer":
+                    aggregation_rules[column] = lambda amounts: amounts.sum(skipna=False)
+                elif column == "fba_estimate_status":
+                    aggregation_rules[column] = lambda reasons: "; ".join(dict.fromkeys(reasons.astype(str)))
+                elif column in order_sum_columns:
                     aggregation_rules[column] = "sum"
                 elif column in order_quantity_columns:
                     aggregation_rules[column] = "max"
@@ -3778,9 +3954,6 @@ def get_table_data(file_name):
                 .agg(aggregation_rules)
                 .drop(columns=["_reconciliation_order_key"], errors="ignore")
             )
-
-        if "fbaanswer" not in df.columns:
-            df["fbaanswer"] = df.get("fba_fees", 0)
 
         def _round_half_up(value):
             return float(Decimal(str(value or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
@@ -3987,7 +4160,7 @@ def get_table_data(file_name):
         req_cols = [
             "sku", "product_name", "product_sales",
             "net_sales_total_value", "total_amount", "selling_fees", "fba_fees",
-            "fbaanswer", "answer", "errorstatus", "difference", "status",
+            "fbaanswer", "fba_unavailable_count", "answer", "errorstatus", "difference", "status",
             "quantity", "return_quantity", "total_quantity", "total_value"
         ]
         # keep only available cols
@@ -4001,6 +4174,7 @@ def get_table_data(file_name):
             "selling_fees",
             "fba_fees",
             "fbaanswer",
+            "fba_unavailable_count",
             "answer",
             "difference",
             "quantity",
@@ -4164,6 +4338,10 @@ def get_table_data(file_name):
         over_df     = over_df.replace({np.nan: 0})
         ref_df      = ref_df.replace({np.nan: 0})
 
+        for result_frame in (final_df, accurate_df, under_df, over_df, ref_df, grand_total):
+            if "fba_unavailable_count" in result_frame:
+                result_frame.loc[result_frame["fba_unavailable_count"].gt(0), "fbaanswer"] = None
+
         try:
             expense_reconciliation_result = _materialize_expense_reconciliation_table(
                 user_id=user_id,
@@ -4176,6 +4354,7 @@ def get_table_data(file_name):
                 sku_monthly_rows=sku_monthly_rows,
                 sku_monthly_summary=sku_monthly_summary,
                 status_source_df=df,
+                fba_adjustments_df=fba_adjustments_df,
                 platform_fee_total=platform_fee_total,
                 other_fee_total=other_total_adjusted,
             )
@@ -4229,7 +4408,7 @@ def get_table_data(file_name):
             referral_charged=fallback_referral_charged,
             referral_applicable=fallback_grand.get("answer", 0),
             fba_charged=fallback_fba_charged,
-            fba_applicable=fallback_fba_charged,
+            fba_applicable=_nullable_fee(fallback_grand.get("fbaanswer")),
             platform_charged=platform_fee_total,
             platform_applicable=platform_fee_total,
             other_charged=other_total_adjusted,
@@ -4258,11 +4437,11 @@ def get_table_data(file_name):
             "success": True,
             "message": "SKU wise table generated successfully.",
             "range": range_,
-            "table": final_df.to_dict(orient="records"),
-            "accurate_data": raw_ok_df.to_dict(orient="records"),
-            "undercharged_data": raw_under_df.to_dict(orient="records"),
-            "overcharged_data": raw_over_df.to_dict(orient="records"),
-            "no_ref_fee_data": raw_ref_df.to_dict(orient="records"),
+            "table": final_df.astype(object).where(pd.notna(final_df), None).to_dict(orient="records"),
+            "accurate_data": raw_ok_df.astype(object).where(pd.notna(raw_ok_df), None).to_dict(orient="records"),
+            "undercharged_data": raw_under_df.astype(object).where(pd.notna(raw_under_df), None).to_dict(orient="records"),
+            "overcharged_data": raw_over_df.astype(object).where(pd.notna(raw_over_df), None).to_dict(orient="records"),
+            "no_ref_fee_data": raw_ref_df.astype(object).where(pd.notna(raw_ref_df), None).to_dict(orient="records"),
             "created_table_name": skutable,
             "raw_table": raw_table_data,     # raw of source table (monthly or merged)
             "table_name": source_table,      # which table was used

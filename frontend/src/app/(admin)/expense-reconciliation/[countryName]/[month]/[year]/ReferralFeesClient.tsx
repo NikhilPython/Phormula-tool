@@ -26,6 +26,7 @@ import SkuAgeingDonutChart, {
 } from "@/components/common/inventory/SkuAgeingDonutChart";
 import Button from "@/components/ui/button/Button";
 import { exportReferralFeesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import { exportFbaFeesExcel } from "@/lib/excel/exportFbaFeesExcel";
 import { useAppSelector } from "@/lib/store";
 import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import { motion, AnimatePresence } from "framer-motion";
@@ -123,7 +124,7 @@ type ReferralRow = Partial<{
   errorstatus: string;
   selling_fees: number | string;
   fba_fees: number | string;
-  fbaanswer: number | string;
+  fbaanswer: number | string | null;
   other_transaction_fees: number | string;
   platform_fee: number | string;
   answer: number | string;
@@ -292,6 +293,10 @@ const toNumberSafe = (v: any): number => {
   const num = Number(String(v).replace(/[, ]+/g, ""));
   return Number.isNaN(num) ? 0 : num;
 };
+
+// Missing expected fees must propagate through subtotals instead of becoming zero.
+const expectedFee = (value: unknown): number =>
+  value == null || value === "" ? Number.NaN : Number(value);
 
 const getNetSales = (r: any): number => {
   const net = toNumberSafe(r?.net_sales_total_value);
@@ -1953,10 +1958,10 @@ function FeeCard({
       <div className="grid grid-cols-[1fr_auto] items-end gap-2">
         <div className="flex items-baseline gap-3">
           <p className="text-[11px] sm:text-xs font-semibold text-charcoal-500 whitespace-nowrap">
-            {fmtCurrency(toNumberSafe(applicable))}
+            {Number.isFinite(applicable) ? fmtCurrency(applicable) : "Unavailable"}
           </p>
           <p className="text-[11px] sm:text-xs font-bold text-emerald-600 whitespace-nowrap">
-            ({fmtPctPlain(applicablePct)})
+            {Number.isFinite(applicable) ? `(${fmtPctPlain(applicablePct)})` : ""}
           </p>
         </div>
 
@@ -1965,7 +1970,7 @@ function FeeCard({
         >
           {deltaPct > 0 && <span className="text-sm leading-none">▲</span>}
           {deltaPct < 0 && <span className="text-sm leading-none">▼</span>}
-          <span>{fmtPctDelta(deltaPct)}</span>
+          <span>{Number.isFinite(applicable) ? fmtPctDelta(deltaPct) : "—"}</span>
         </div>
       </div>
     </div>
@@ -2181,6 +2186,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
     applicablePct: number,
     deltaPct: number | null
   ) => {
+    if (!Number.isFinite(applicableAmount)) {
+      return [{ label: "Applicable estimate", valueText: "Unavailable", deltaText: "—", deltaClassName: "text-gray-400" }];
+    }
     const delta =
       deltaPct == null || !Number.isFinite(Number(deltaPct))
         ? null
@@ -2397,6 +2405,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string>("unknown");
   const [allOrdersByStatus, setAllOrdersByStatus] = useState<any[]>([]);
+  const [fbaOrders, setFbaOrders] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [drawerAi, setDrawerAi] = useState<DrawerAiState>({
@@ -2647,6 +2656,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setSkuMonthlySummary(null);
       setFeeSummaryRows(DUMMY_FEE_SUMMARY_ROWS);
       setAllOrdersByStatus([]);
+      setFbaOrders([]);
 
       setCard6(DUMMY_CARD6);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
@@ -2662,6 +2672,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
+      setFbaOrders([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
       setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
@@ -2723,10 +2734,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
           charged_net_sales_pct: toNumberSafe(
             apiFeePercentages?.fba_fees?.charged_net_sales_pct
           ),
-          applicable_net_sales_pct: toNumberSafe(
+          applicable_net_sales_pct: expectedFee(
             apiFeePercentages?.fba_fees?.applicable_net_sales_pct
           ),
-          charged_vs_applicable_pct: toNumberSafe(
+          charged_vs_applicable_pct: expectedFee(
             apiFeePercentages?.fba_fees?.charged_vs_applicable_pct
           ),
         },
@@ -2825,6 +2836,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
       ];
 
       setAllOrdersByStatus(mergedAll);
+      setFbaOrders(Array.isArray(json?.fba_data) ? json.fba_data :
+        [...overcharged, ...undercharged, ...accurate,
+        ...(Array.isArray(json?.no_ref_fee_data) ? json.no_ref_fee_data : [])]);
 
       const summarySource = arr.filter((r) => {
         const sku = String(r.sku ?? "");
@@ -3001,9 +3015,10 @@ export default function ReferralFeesDashboard(): JSX.Element {
       const platformFees = platformFeeTotalFromApi !== 0 ? platformFeeTotalFromApi : platformFeesDerived;
       const otherFees = otherTotalFromApi !== 0 ? otherTotalFromApi : otherFeesDerived;
 
-      // FBA applicable is a dollar amount, so use the FBA fee total.
-      // The fbaanswer field is a diagnostic value and can be much larger when summed.
-      const fbaFeesApplicable = fbaFees;
+      const fbaGrand = arr.find((r) => String(r.sku).toLowerCase() === "grand total");
+      const fbaFeesApplicable = fbaGrand
+        ? expectedFee(fbaGrand.fbaanswer)
+        : lineItems.reduce((sum, r) => sum + expectedFee(r.fbaanswer), 0);
       const platformFeesApplicable = platformFees;
       const otherFeesApplicable = otherFees;
 
@@ -3054,6 +3069,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setSkuMonthlySummary(null);
       setFeeSummaryRows([]);
       setAllOrdersByStatus([]);
+      setFbaOrders([]);
       setFeePercentages(EMPTY_FEE_PERCENTAGES);
       setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
@@ -3225,7 +3241,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
           ? toNumberSafe((monthlyMatch as any)?.fba_fees)
           : FBA_KEYS.reduce((sum, k) => sum + toNumberSafe((r as any)[k]), 0)
       );
-      const fba_applicable = fba_charged;
+      const fba_applicable = expectedFee(r.fbaanswer);
 
       // ✅ Other fees from row
       const other_charged = Math.abs(
@@ -3349,13 +3365,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
       acc.ref_applicable += toNumberSafe(r.ref_applicable);
       acc.ref_charged += toNumberSafe(r.ref_charged);
 
-      acc.fba_applicable += toNumberSafe(r.fba_applicable);
+      acc.fba_applicable += expectedFee(r.fba_applicable);
       acc.fba_charged += toNumberSafe(r.fba_charged);
 
       acc.other_applicable += toNumberSafe(r.other_applicable);
       acc.other_charged += toNumberSafe(r.other_charged);
 
-      acc.total_applicable += toNumberSafe(r.total_applicable);
+      acc.total_applicable += expectedFee(r.total_applicable);
       acc.total_charged += toNumberSafe(r.total_charged);
 
       acc.overcharged += toNumberSafe(r.overcharged);
@@ -3394,13 +3410,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
           acc.ref_applicable += toNumberSafe(row.ref_applicable);
           acc.ref_charged += toNumberSafe(row.ref_charged);
 
-          acc.fba_applicable += toNumberSafe(row.fba_applicable);
+          acc.fba_applicable += expectedFee(row.fba_applicable);
           acc.fba_charged += toNumberSafe(row.fba_charged);
 
           acc.other_applicable += toNumberSafe(row.other_applicable);
           acc.other_charged += toNumberSafe(row.other_charged);
 
-          acc.total_applicable += toNumberSafe(row.total_applicable);
+          acc.total_applicable += expectedFee(row.total_applicable);
           acc.total_charged += toNumberSafe(row.total_charged);
 
           acc.overcharged += toNumberSafe(row.overcharged);
@@ -3487,6 +3503,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
   }, [skuTableDisplay]);
 
 
+  const handleDownloadFbaExcel = useCallback(() => {
+    exportFbaFeesExcel({ rows: fbaOrders, country, currency: displayCurrencyCode, company: companyName,
+      period: range === "yearly" ? year : range === "quarterly" ? `${selectedQuarter} ${year}` : `${month} ${year}` });
+  }, [fbaOrders, country, displayCurrencyCode, companyName, range, year, selectedQuarter, month]);
+
   const handleDownloadExcel = useCallback(() => {
     exportReferralFeesExcel({
       filename:
@@ -3538,6 +3559,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
   );
 
   const fmtMoneyNoSymbol = useCallback((n: any) => {
+    if (n == null || !Number.isFinite(Number(n))) return "Unavailable";
     return Math.round(toNumberSafe(n)).toLocaleString();
   }, []);
 
@@ -3839,6 +3861,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
           onAction={handlePreviewAction}
         >
           <>
+            <p className="mt-3 text-xs text-slate-600">
+              FBA applicable fees are estimated from package measurements and the transaction date and price.
+              Storage, inventory surcharges and program discounts are separate.
+              {!Number.isFinite(card6.fbaFeesApplicable) && " Some products lack measurements or a supported rate; their fees and combined totals are unavailable."}
+            </p>
             {!showDeepDive ? (
               <section className="relative mt-4 overflow-hidden rounded-2xl border border-[#CFE8DF] bg-white shadow-sm">
 
@@ -4555,6 +4582,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                           align="left"
                           className="mb-0 md:mb-4 text-center"
                         />
+                        <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button>
                         <DownloadButton
                           onClick={handleDownloadExcel}
                           disabled={isPreviewMode}
@@ -4696,6 +4724,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                       align="left"
                       className="mt-4 mb-0 md:mb-4 text-center"
                     />
+                    <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button>
                     <DownloadButton
                       onClick={handleDownloadExcel}
                       disabled={isPreviewMode}

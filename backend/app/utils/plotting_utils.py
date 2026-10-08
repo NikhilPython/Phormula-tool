@@ -333,18 +333,11 @@ def apply_modifications(df, country):
             df.at[index, 'answer'] = answer
             df.at[index, 'difference'] = difference
 
-            # ✅ FBA fee calculation
-            if total_value != 0:
-                fba_answer = round((fba_fees / total_value) * 100.0, 2)
-                if referral_fee != 0 and (referral_fee - 1 <= fba_answer <= referral_fee + 1):
-                    df.at[index, 'fbaerrorstatus'] = 'OK'
-                else:
-                    df.at[index, 'fbaerrorstatus'] = 'error'
-            else:
-                fba_answer = 0.0
-                df.at[index, 'fbaerrorstatus'] = 'DivideByZeroError'
-
-            df.at[index, 'fbaanswer'] = fba_answer
+            # Fulfillment is a per-unit currency fee, not a referral percentage.
+            # Reconciliation calculates it after grouping orders and loading
+            # the user's product measurements and the applicable rate card.
+            df.at[index, 'fbaanswer'] = float('nan')
+            df.at[index, 'fbaerrorstatus'] = 'PendingProductEstimate'
 
 
             if txn_type.lower() == "adjustment":
@@ -541,18 +534,11 @@ def apply_modifications_fatch(df, country):
             df.at[index, 'answer'] = answer
             df.at[index, 'difference'] = difference
 
-            # ✅ FBA fee calculation
-            if total_value != 0:
-                fba_answer = round((fba_fees / total_value) * 100.0, 2)
-                if referral_fee != 0 and (referral_fee - 1 <= fba_answer <= referral_fee + 1):
-                    df.at[index, 'fbaerrorstatus'] = 'OK'
-                else:
-                    df.at[index, 'fbaerrorstatus'] = 'error'
-            else:
-                fba_answer = 0.0
-                df.at[index, 'fbaerrorstatus'] = 'DivideByZeroError'
-
-            df.at[index, 'fbaanswer'] = fba_answer
+            # Fulfillment is a per-unit currency fee, not a referral percentage.
+            # Reconciliation calculates it after grouping orders and loading
+            # the user's product measurements and the applicable rate card.
+            df.at[index, 'fbaanswer'] = float('nan')
+            df.at[index, 'fbaerrorstatus'] = 'PendingProductEstimate'
 
             # No referral fee status
             if referral_fee == 0:

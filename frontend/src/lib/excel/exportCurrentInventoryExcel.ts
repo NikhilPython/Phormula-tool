@@ -1376,6 +1376,12 @@ const REFERRAL_TABLE_BORDER = {
 
 const referralNumber = (value: any) => toNumberLoose(value) ?? 0;
 
+const expectedFulfillmentNumber = (value: any) => toNumberLoose(value) ?? Number.NaN;
+const expectedFulfillmentCell = (...values: any[]): number | string => {
+  const number = expectedFulfillmentNumber(values.find((value) => value !== undefined));
+  return Number.isFinite(number) ? number : "Unavailable";
+};
+
 const isReferralTotalLabel = (value: any) => {
   const label = String(value ?? "").trim().toLowerCase();
   return label === "total" || label === "grand total";
@@ -1689,11 +1695,11 @@ const aggregateReferralProductRows = (
       row?.ref_applicable ?? row?.applicable
     );
     aggregate.refCharged += referralNumber(row?.ref_charged ?? row?.charged);
-    aggregate.fbaApplicable += referralNumber(row?.fba_applicable);
+    aggregate.fbaApplicable += expectedFulfillmentNumber(row?.fba_applicable);
     aggregate.fbaCharged += referralNumber(row?.fba_charged);
     aggregate.otherApplicable += referralNumber(row?.other_applicable);
     aggregate.otherCharged += referralNumber(row?.other_charged);
-    aggregate.totalApplicable += referralNumber(row?.total_applicable);
+    aggregate.totalApplicable += expectedFulfillmentNumber(row?.total_applicable);
     aggregate.totalCharged += referralNumber(row?.total_charged);
   }
 
@@ -1724,11 +1730,11 @@ const aggregateReferralProductRows = (
         referralNumber(row.sales),
         referralNumber(row.refApplicable),
         referralNumber(row.refCharged),
-        referralNumber(row.fbaApplicable),
+        expectedFulfillmentCell(row.fbaApplicable),
         referralNumber(row.fbaCharged),
         referralNumber(row.otherApplicable),
         referralNumber(row.otherCharged),
-        referralNumber(row.totalApplicable),
+        expectedFulfillmentCell(row.totalApplicable),
         referralNumber(row.totalCharged),
       ];
     });
@@ -1740,11 +1746,11 @@ const aggregateReferralProductRows = (
       sales: totals.sales + referralNumber(row.sales),
       refApplicable: totals.refApplicable + referralNumber(row.refApplicable),
       refCharged: totals.refCharged + referralNumber(row.refCharged),
-      fbaApplicable: totals.fbaApplicable + referralNumber(row.fbaApplicable),
+      fbaApplicable: totals.fbaApplicable + expectedFulfillmentNumber(row.fbaApplicable),
       fbaCharged: totals.fbaCharged + referralNumber(row.fbaCharged),
       otherApplicable: totals.otherApplicable + referralNumber(row.otherApplicable),
       otherCharged: totals.otherCharged + referralNumber(row.otherCharged),
-      totalApplicable: totals.totalApplicable + referralNumber(row.totalApplicable),
+      totalApplicable: totals.totalApplicable + expectedFulfillmentNumber(row.totalApplicable),
       totalCharged: totals.totalCharged + referralNumber(row.totalCharged),
     }),
     {
@@ -1782,7 +1788,7 @@ const aggregateReferralProductRows = (
           totalSource.charged,
           computedTotals.refCharged
         ),
-    firstReferralNumber(
+    expectedFulfillmentCell(
       cardSummary.fbaFeesApplicable,
       totalSource.fba_applicable,
       computedTotals.fbaApplicable
@@ -1802,7 +1808,7 @@ const aggregateReferralProductRows = (
       totalSource.other_charged,
       computedTotals.otherCharged
     ),
-    firstReferralNumber(
+    expectedFulfillmentCell(
       cardSummary.totalFeesApplicable,
       totalSource.total_applicable,
       computedTotals.totalApplicable
