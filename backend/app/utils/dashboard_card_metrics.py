@@ -178,6 +178,12 @@ def _ads(source: Mapping[str, Any]) -> float:
     ))
 
 
+def calculate_pnl_tacos(source: Mapping[str, Any]) -> float:
+    """Calculate period TACoS from full-precision ad costs and net sales."""
+    net_sales = _first(source, "net_sales", "total_sales")
+    return _ads(source) / net_sales * 100 if net_sales else 0.0
+
+
 def find_total_row(rows: Iterable[Mapping[str, Any]] | None) -> MutableMapping[str, Any]:
     materialized = list(rows or [])
     for row in reversed(materialized):
@@ -256,11 +262,9 @@ def _period_values(source: Mapping[str, Any]) -> dict[str, float]:
     if asp == 0 and units:
         asp = net_sales / units
 
-    tacos_pct = _first_non_zero(
-        source, "tacos_total_advertising_cost_of_sale", "tacos", "acos"
-    )
-    if tacos_pct == 0 and net_sales:
-        tacos_pct = cost_of_ads / net_sales * 100
+    # Stored monthly percentages may have been summed by older yearly rollups.
+    # Always use the same period ad costs and net sales as the adjacent cards.
+    tacos_pct = calculate_pnl_tacos(source)
 
     return {
         "units": dashboard_number(units),

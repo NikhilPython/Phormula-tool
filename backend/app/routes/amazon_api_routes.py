@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, make_response, request
 from app import db
 from app.models.user_models import amazon_user, Product, CountryProfile, User
 from app.utils.token_utils import get_effective_user_id_from_token
-from app.utils.formulas_utils import uk_advertising, uk_platform_fee
+from app.utils.formulas_utils import uk_advertising, uk_platform_fee, filter_seller_product_rows
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
 _upsert_products_to_db_with_open_date , 
 _month_date_range_utc, 
@@ -4478,6 +4478,7 @@ def finances_mtd_transactions():
                 total_row[col] = val
 
         df_sku = pd.concat([df_sku, pd.DataFrame([total_row])], ignore_index=True)
+        df_sku = filter_seller_product_rows(df_sku)
 
         # Remove helper column from final DB table
         df_sku.drop(columns=["sales_quantity"], inplace=True, errors="ignore")

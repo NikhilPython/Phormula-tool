@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
 from app.utils.formulas_utils import (
+    filter_seller_product_rows,
     us_sales,
     us_tax,
     us_credits,
@@ -2392,6 +2393,7 @@ def process_skuwise_us_data(user_id, country, month, year):
         sum_row["user_id"] = user_id
 
         sku_grouped = pd.concat([sku_grouped, pd.DataFrame([sum_row])], ignore_index=True)
+        sku_grouped = filter_seller_product_rows(sku_grouped)
 
         # ---------- create tables ----------
         create_us_nse_full_table(target_table)      # nse_{user_id}_{country}_{month}{year}
@@ -3520,6 +3522,7 @@ def process_us_yearly_skuwise_data(user_id, country, year):
         sku_grouped["user_id"] = user_id
 
         sku_grouped = pd.concat([sku_grouped, pd.DataFrame([sum_row])], ignore_index=True)
+        sku_grouped = filter_seller_product_rows(sku_grouped)
 
         sku_grouped = add_report_compat_columns(sku_grouped)
 
@@ -4523,6 +4526,7 @@ def process_us_quarterly_skuwise_data(user_id, country, month, year, quarter, db
         sku_grouped["user_id"] = user_id
 
         sku_grouped = pd.concat([sku_grouped, pd.DataFrame([sum_row])], ignore_index=True)
+        sku_grouped = filter_seller_product_rows(sku_grouped)
 
         sku_grouped = add_report_compat_columns(sku_grouped)
 

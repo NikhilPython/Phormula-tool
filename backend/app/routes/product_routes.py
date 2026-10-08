@@ -24,6 +24,7 @@ from app.utils.fba_fee_calculator import estimate_fba_fee, number as fba_number,
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
     build_pnl_card_metrics,
+    calculate_pnl_tacos,
     persist_per_unit_fields,
 )
 load_dotenv()
@@ -1781,6 +1782,10 @@ def aggregate_monthly_sku_rows(rows):
     ]
 
     derived_fields = {
+        "tacos_total_advertising_cost_of_sale",
+        "tacos",
+        "tacos_pct",
+        "acos",
         "asp",
         "average_selling_price",
         "avg_selling_price",
@@ -1930,6 +1935,15 @@ def aggregate_monthly_sku_rows(rows):
                 row["advertising_total_final"] = rollup_ad_total
                 row["advertising_fees"] = rollup_ad_total
                 row["total_ads"] = rollup_ad_total
+
+        # Percentages are not additive. Use the final period's ad costs,
+        # including the TOTAL ad overrides above, and its combined net sales.
+        tacos = calculate_pnl_tacos(row)
+        row["tacos_total_advertising_cost_of_sale"] = tacos
+        row["acos"] = tacos  # Legacy P&L alias uses ad costs / net sales.
+        for alias in ("tacos", "tacos_pct"):
+            if alias in row:
+                row[alias] = tacos
 
         if "average_selling_price" in row:
             row["average_selling_price"] = asp

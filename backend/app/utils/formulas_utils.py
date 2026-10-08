@@ -4,6 +4,42 @@ import pandas as pd
 import numpy as np
 
 # ---------- generic helpers (safe, reusable) ---------------------------------
+def filter_seller_product_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    """Hide inventory IDs and rows with no unit activity after building TOTAL.
+
+    Keep their advertising, inventory charges and other amounts in TOTAL.
+    Retain returns-only products and products whose sales were fully returned.
+    """
+    if "sku" not in frame.columns:
+        return frame.copy()
+
+    sku = frame["sku"].fillna("").astype(str).str.strip()
+    names = (
+        frame["product_name"]
+        if "product_name" in frame.columns
+        else pd.Series("", index=frame.index)
+    )
+    unnamed = names.fillna("").astype(str).str.strip().str.lower().isin(
+        {"", "0", "0.0", "nan", "none", "null"}
+    )
+    inventory_identifier = (
+        sku.str.fullmatch(r"X00[A-Z0-9]{7}", case=False, na=False)
+        | sku.str.lower().str.startswith("amazon.found.")
+    )
+    quantity_columns = [
+        col for col in ("quantity", "return_quantity", "total_quantity")
+        if col in frame.columns
+    ]
+    no_unit_activity = pd.Series(False, index=frame.index)
+    if quantity_columns:
+        quantities = frame[quantity_columns].apply(pd.to_numeric, errors="coerce")
+        no_unit_activity = quantities.eq(0).all(axis=1)
+
+    is_total = sku.str.upper().isin({"TOTAL", "GRAND_TOTAL", "GRAND TOTAL"})
+    hide = ((unnamed & inventory_identifier) | no_unit_activity) & ~is_total
+    return frame.loc[~hide].copy()
+
+
 def safe_num(x) -> pd.Series:
     """
     Coerce a Series/array/scalar to a numeric Series; non-finite -> 0.0.
