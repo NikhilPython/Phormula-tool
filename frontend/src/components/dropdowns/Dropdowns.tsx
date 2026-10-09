@@ -4331,6 +4331,7 @@ const DEMO_TARGET_SUMMARY = {
   target_sales: 0,
   shortfall_total: 0,
   cashflow_total: 0,
+  cashflow_delta: 0,
 };
 
 const heatmapBuckets: AgeingBucket[] = [
@@ -6810,6 +6811,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     target_sales?: number;
     shortfall_total?: number;
     cashflow_total?: number;
+    cashflow_delta?: number;
   } | null>(isDemoMode ? DEMO_TARGET_SUMMARY : null);
 
   const [targetSummaryLoading, setTargetSummaryLoading] = useState(false);
@@ -8590,13 +8592,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     "December",
   ];
 
-  const fetchSingleMonthTargetSummary = async (monthName: string) => {
+  const fetchSingleMonthTargetSummary = async (
+    monthName: string,
+    yearValue: string | number = selectedYear
+  ) => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
     url.searchParams.set("month", monthName);
-    url.searchParams.set("year", selectedYear);
+    url.searchParams.set("year", String(yearValue));
     url.searchParams.set("country", initialCountryName.toLowerCase());
 
     if (initialCountryName.toLowerCase() === "global" && homeCurrency) {
@@ -8650,16 +8655,30 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setTargetSummaryLoading(true);
 
       let monthsToFetch: string[] = [];
+      let previousMonthsToFetch: string[] = [];
+      const selectedYearNum = Number(selectedYear);
+      let previousYear = selectedYearNum;
 
       if (range === "monthly") {
-        monthsToFetch = [
-          selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase(),
-        ];
+        const normalizedMonth =
+          selectedMonth.charAt(0).toUpperCase() + selectedMonth.slice(1).toLowerCase();
+        const monthIndex = allMonths.findIndex(
+          (monthName) => monthName.toLowerCase() === normalizedMonth.toLowerCase()
+        );
+
+        monthsToFetch = [normalizedMonth];
+        previousMonthsToFetch = [allMonths[(monthIndex + 11) % 12]];
+        previousYear = monthIndex === 0 ? selectedYearNum - 1 : selectedYearNum;
       } else if (range === "quarterly" && selectedQuarter) {
         monthsToFetch = quarterToMonths[selectedQuarter];
+        const quarterOrder: Quarter[] = ["Q1", "Q2", "Q3", "Q4"];
+        const quarterIndex = quarterOrder.indexOf(selectedQuarter);
+        const previousQuarter = quarterOrder[(quarterIndex + 3) % 4];
+
+        previousMonthsToFetch = quarterToMonths[previousQuarter];
+        previousYear = quarterIndex === 0 ? selectedYearNum - 1 : selectedYearNum;
       } else if (range === "yearly") {
         const currentDate = new Date();
-        const selectedYearNum = Number(selectedYear);
         const currentYear = currentDate.getFullYear();
         const currentMonthIndex = currentDate.getMonth(); // 0 = Jan, 11 = Dec
 
@@ -8673,6 +8692,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           // Future year: fetch nothing
           monthsToFetch = [];
         }
+
+        previousMonthsToFetch = [...monthsToFetch];
+        previousYear = selectedYearNum - 1;
       }
 
       if (!monthsToFetch.length) {
@@ -8680,13 +8702,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           target_sales: 0,
           shortfall_total: 0,
           cashflow_total: 0,
+          cashflow_delta: undefined,
         });
         return;
       }
 
-      const monthlyResults = await Promise.all(
-        monthsToFetch.map((monthName) => fetchSingleMonthTargetSummary(monthName))
-      );
+      const [monthlyResults, previousMonthlyResults] = await Promise.all([
+        Promise.all(
+          monthsToFetch.map((monthName) =>
+            fetchSingleMonthTargetSummary(monthName, selectedYearNum)
+          )
+        ),
+        Promise.all(
+          previousMonthsToFetch.map((monthName) =>
+            fetchSingleMonthTargetSummary(monthName, previousYear)
+          )
+        ),
+      ]);
 
       const totals = monthlyResults.reduce(
         (acc, curr) => {
@@ -8702,7 +8734,23 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         }
       );
 
-      setTargetSummary(totals);
+      const previousCashflowTotal = previousMonthlyResults.reduce(
+        (sum, result) => sum + Number(result.cashflow_total ?? 0),
+        0
+      );
+      const roundedCurrentCashflow = Math.round(totals.cashflow_total);
+      const roundedPreviousCashflow = Math.round(previousCashflowTotal);
+      const cashflowDelta =
+        roundedPreviousCashflow === 0
+          ? undefined
+          : ((roundedCurrentCashflow - roundedPreviousCashflow) /
+              Math.abs(roundedPreviousCashflow)) *
+            100;
+
+      setTargetSummary({
+        ...totals,
+        cashflow_delta: cashflowDelta,
+      });
     } catch (error) {
       console.error("Failed to fetch target summary:", error);
       setTargetSummary(null);
@@ -10117,10 +10165,66 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       currentSummary.tacos ??
       calculateTacos(currentSummary.total_sales, costOfAds);
 
-    const productRows = skuJourneyPeriodRows.filter(isSkuJourneyProductRow);
-    const topSku = productRows[0];
-    const topProfitRow = topData.rows[0];
-    const bottomProfitRow = bottomData.rows[0];
+    const rankedCm1Skus = displaySkuRows
+      .filter((row) => {
+        const productName = String(row.product_name || "").trim().toLowerCase();
+        const sku = String(row.sku || "").trim().toLowerCase();
+
+        return (
+          (productName || sku) &&
+          productName !== "total" &&
+          sku !== "total" &&
+          productName !== "others" &&
+          sku !== "others"
+        );
+      })
+      .map((row) => ({
+        productName: String(row.product_name || row.sku || "Unnamed product"),
+        sku: String(row.sku || ""),
+        netSales: toNum(row.net_sales),
+        cm1Profit: toNum(row.profit),
+        netSalesIncrease: toNum(row.net_sales_delta),
+        netSalesGrowth:
+          row.net_sales_delta_percentage === undefined ||
+          row.net_sales_delta_percentage === null
+            ? undefined
+            : toNum(row.net_sales_delta_percentage),
+      }));
+
+    const heroSkus = [...rankedCm1Skus]
+      .sort((a, b) => b.cm1Profit - a.cm1Profit)
+      .slice(0, 5)
+      .map((row) => ({
+        productName: row.productName,
+        sku: row.sku,
+        netSales: row.netSales,
+        secondaryValue: row.cm1Profit,
+        netSalesDeltaPercentage: row.netSalesGrowth,
+      }));
+    const leastPerformingSkus = [...rankedCm1Skus]
+      .sort((a, b) => a.cm1Profit - b.cm1Profit)
+      .slice(0, 5)
+      .map((row) => ({
+        productName: row.productName,
+        sku: row.sku,
+        netSales: row.netSales,
+        secondaryValue: row.cm1Profit,
+        netSalesDeltaPercentage: row.netSalesGrowth,
+      }));
+    const topNetSalesGrowthSkus = [...rankedCm1Skus]
+      .filter(
+        (row) =>
+          typeof row.netSalesGrowth === "number" && row.netSalesGrowth > 0
+      )
+      .sort((a, b) => (b.netSalesGrowth ?? 0) - (a.netSalesGrowth ?? 0))
+      .slice(0, 5)
+      .map((row) => ({
+        productName: row.productName,
+        sku: row.sku,
+        netSales: row.netSales,
+        secondaryValue: row.netSalesIncrease,
+        netSalesDeltaPercentage: row.netSalesGrowth,
+      }));
 
     const findInventoryAction = (...keys: string[]) =>
       inventoryInsightsData?.actions.find((action) => keys.includes(action.key));
@@ -10173,6 +10277,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           value: currentMetrics?.units ?? currentSummary.unit_sold,
           delta: metricDeltas?.units,
         },
+        marketplaceFees: {
+          value: currentMetrics?.marketplace_fees ?? marketplaceFeesFromTable,
+          delta: metricDeltas?.marketplace_fees,
+        },
         cm2Margin,
       },
       ai: {
@@ -10181,28 +10289,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         loading: aiPanelLoading,
       },
       pnl: {
-        topProduct: topProfitRow?.product_name ?? "",
-        topProfit: toNum(topProfitRow?.profit),
-        bottomProduct: bottomProfitRow?.product_name ?? "",
-        bottomProfit: toNum(bottomProfitRow?.profit),
-        productCount: productRows.length,
+        heroSkus,
+        leastPerformingSkus,
+        topNetSalesGrowthSkus,
       },
       cashFlow: {
-        cashPosition: toNum(targetSummary?.cashflow_total),
-        targetSales: toNum(targetSummary?.target_sales),
-        shortfall: Math.abs(toNum(targetSummary?.shortfall_total)),
+        cashGenerated: toNum(targetSummary?.cashflow_total),
+        delta: targetSummary?.cashflow_delta,
         loading: targetSummaryLoading,
-      },
-      sku: {
-        topProduct: getSkuJourneyProductLabel(topSku),
-        netSales: toNum(topSku?.net_sales),
-        units: toNum(
-          topSku?.net_units_sold ??
-          topSku?.total_quantity ??
-          topSku?.quantity ??
-          topSku?.units_sold
-        ),
-        productCount: productRows.length,
       },
       inventory: {
         totalUnits: toNum(inventoryInsightsData?.donutTotalUnits),

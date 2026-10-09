@@ -65,13 +65,14 @@ const buildTopAoA = ({
   titleRow[0] = title || "";
   aoa.push(titleRow);
 
-  // Row 2: Company left, brand on the right (anchored)
-  const row2 = new Array(headerCount).fill("");
-  row2[0] = `Company Name : ${companyName || ""}`;
+  // Keep the company and brand with the rest of the left-side metadata.
+  const companyRow = new Array(headerCount).fill("");
+  companyRow[0] = `Company Name : ${companyName || ""}`;
+  aoa.push(companyRow);
 
-  const anchor0 = Math.max(0, anchorCol1Based - 1);
-  row2[Math.min(headerCount - 1, anchor0)] = brandName || "";
-  aoa.push(row2);
+  const brandRow = new Array(headerCount).fill("");
+  brandRow[0] = `Brand Name : ${brandName || ""}`;
+  aoa.push(brandRow);
 
   for (const line of extraLines) {
     const r = new Array(headerCount).fill("");
@@ -87,7 +88,7 @@ const buildTopAoA = ({
 const applyTopStyles = (
   ws: XLSX.WorkSheet,
   headerCount: number,
-  anchorCol1Based: number
+  _anchorCol1Based: number
 ) => {
   // Title same look as other header text (not bold)
   const a1 = XLSX.utils.encode_cell({ r: 0, c: 0 });
@@ -98,32 +99,20 @@ const applyTopStyles = (
     };
   }
 
-  // Row 2: company left, brand right
-  for (let c = 0; c < headerCount; c++) {
-    const addr = XLSX.utils.encode_cell({ r: 1, c });
+  // Rows 2-3: company and brand, matching the other left-side details.
+  for (const rowIndex of [1, 2]) {
+    const addr = XLSX.utils.encode_cell({ r: rowIndex, c: 0 });
     if (!ws[addr]) continue;
     ws[addr].s = {
       font: { bold: false, sz: 11 },
-      alignment: { horizontal: c === 0 ? "left" : "right", vertical: "center" },
-    };
-  }
-
-  // Brand a bit stronger
-  const anchor0 = Math.max(0, anchorCol1Based - 1);
-  const bAddr = XLSX.utils.encode_cell({
-    r: 1,
-    c: Math.min(headerCount - 1, anchor0),
-  });
-  if (ws[bAddr]) {
-    ws[bAddr].s = {
-      font: { bold: true, sz: 11 },
-      alignment: { horizontal: "right", vertical: "center" },
+      alignment: { horizontal: "left", vertical: "center" },
     };
   }
 
   ws["!rows"] = ws["!rows"] || [];
   ws["!rows"][0] = { hpt: 18 };
   ws["!rows"][1] = { hpt: 18 };
+  ws["!rows"][2] = { hpt: 18 };
 };
 
 /* =========================
@@ -502,7 +491,7 @@ const tableBorder = {
     if (!rows?.length) return;
 
     const ws = workbook.addWorksheet(safeSheetName(sheetName), {
-      views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+      views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
     });
 
     const headerCount = headers.length;
@@ -524,16 +513,15 @@ const tableBorder = {
     ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
     ws.getCell(2, 1).alignment = { horizontal: "left" };
 
-    ws.getCell(2, headerCount).value = brandName || "";
-    ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-    ws.getCell(2, headerCount).font = { bold: true };
+    ws.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+    ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-    ws.getCell(3, 1).value = `Country : ${countryLabel}`;
-    ws.getCell(4, 1).value = `Platform : ${platformLabel}`;
-    ws.getCell(5, 1).value = `Currency : ${currencySymbol}`;
-    ws.getCell(6, 1).value = `Period : ${periodLabel}`;
+    ws.getCell(4, 1).value = `Country : ${countryLabel}`;
+    ws.getCell(5, 1).value = `Platform : ${platformLabel}`;
+    ws.getCell(6, 1).value = `Currency : ${currencySymbol}`;
+    ws.getCell(7, 1).value = `Period : ${periodLabel}`;
 
-    const headerRowNumber = 8;
+    const headerRowNumber = 9;
     const headerRow = ws.getRow(headerRowNumber);
 
     headers.forEach((header, index) => {
@@ -2568,7 +2556,7 @@ const getSignFontColor = (sign: string) => {
   ========================= */
   if (shouldExportReconSheet) {
     const ws1 = wb.addWorksheet(safeSheetName("Inventory Recon"), {
-      views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
+      views: [{ state: "frozen", xSplit: 0, ySplit: 10 }],
     });
 
     ws1.mergeCells(1, 1, 1, headerCount);
@@ -2582,17 +2570,16 @@ const getSignFontColor = (sign: string) => {
     ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
     ws1.getCell(2, 1).alignment = { horizontal: "left" };
 
-    ws1.getCell(2, headerCount).value = `${brandName || ""}`;
-    ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
-    ws1.getCell(2, headerCount).font = { bold: true };
+    ws1.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+    ws1.getCell(3, 1).alignment = { horizontal: "left" };
 
-    ws1.getCell(3, 1).value = `Country : ${titleCountry}`;
-    ws1.getCell(4, 1).value = `Platform : ${platformLabel}`;
-    ws1.getCell(5, 1).value = `Period : ${periodLabel}`;
+    ws1.getCell(4, 1).value = `Country : ${titleCountry}`;
+    ws1.getCell(5, 1).value = `Platform : ${platformLabel}`;
+    ws1.getCell(6, 1).value = `Period : ${periodLabel}`;
 
-    const groupHeaderRowNumber = 7;
-    const subHeaderRowNumber = 8;
-    const signRowNumber = 9;
+    const groupHeaderRowNumber = 8;
+    const subHeaderRowNumber = 9;
+    const signRowNumber = 10;
 
     const groupHeaderRow = ws1.getRow(groupHeaderRowNumber);
     const subHeaderRow = ws1.getRow(subHeaderRowNumber);
@@ -2762,7 +2749,7 @@ const getSignFontColor = (sign: string) => {
     );
 
     const wsLost = wb.addWorksheet(safeSheetName("Lost vs Compensation"), {
-      views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+      views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
     });
 
     wsLost.mergeCells(1, 1, 1, lostHeaderCount);
@@ -2776,15 +2763,14 @@ const getSignFontColor = (sign: string) => {
     wsLost.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
     wsLost.getCell(2, 1).alignment = { horizontal: "left" };
 
-    wsLost.getCell(2, lostHeaderCount).value = `${brandName || ""}`;
-    wsLost.getCell(2, lostHeaderCount).alignment = { horizontal: "right" };
-    wsLost.getCell(2, lostHeaderCount).font = { bold: true };
+    wsLost.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+    wsLost.getCell(3, 1).alignment = { horizontal: "left" };
 
-    wsLost.getCell(3, 1).value = `Country : ${titleCountry}`;
-    wsLost.getCell(4, 1).value = `Platform : ${platformLabel}`;
-    wsLost.getCell(5, 1).value = `Period : ${periodLabel}`;
+    wsLost.getCell(4, 1).value = `Country : ${titleCountry}`;
+    wsLost.getCell(5, 1).value = `Platform : ${platformLabel}`;
+    wsLost.getCell(6, 1).value = `Period : ${periodLabel}`;
 
-    const lostHeaderRowNumber = 7;
+    const lostHeaderRowNumber = 8;
     const lostHeaderRow = wsLost.getRow(lostHeaderRowNumber);
 
     lostHeaders.forEach((h, i) => {
@@ -2896,18 +2882,15 @@ const getSignFontColor = (sign: string) => {
     ws2.getCell("A1").font = { bold: false };
 
     ws2.getCell("A2").value = `Company Name : ${companyName || ""}`;
-    ws2.getCell("N2").value = `${brandName || ""}`;
-    ws2.getCell("N2").alignment = { horizontal: "right" };
-    ws2.getCell("N2").font = { bold: true };
-
-    ws2.getCell("A3").value = `Country : ${titleCountry}`;
-    ws2.getCell("A4").value = `Platform : ${platformLabel}`;
-    ws2.getCell("A5").value = `Period : ${periodLabel}`;
+    ws2.getCell("A3").value = `Brand Name : ${brandName || ""}`;
+    ws2.getCell("A4").value = `Country : ${titleCountry}`;
+    ws2.getCell("A5").value = `Platform : ${platformLabel}`;
+    ws2.getCell("A6").value = `Period : ${periodLabel}`;
 
     const breakupImg = parseBase64(breakupChartBase64);
     const ageingImg = parseBase64(ageingChartBase64);
 
-    let rowCursor = 7;
+    let rowCursor = 8;
 
     const addImageBlock = (
       label: string,
@@ -3170,16 +3153,15 @@ writeTile(
   ws1.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws1.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws1.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws1.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws1.getCell(2, headerCount).font = { bold: true };
+  ws1.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+  ws1.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws1.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws1.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws1.getCell(5, 1).value = `Currency : ${currencyLabel || ""}`;
-  ws1.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+  ws1.getCell(4, 1).value = `Country : ${titleCountry || ""}`;
+  ws1.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws1.getCell(6, 1).value = `Currency : ${currencyLabel || ""}`;
+  ws1.getCell(7, 1).value = `Period : ${periodLabel || ""}`;
 
-  const tableHeaderRowNumber = 7;
+  const tableHeaderRowNumber = 8;
 
   // ---------- Sheet 1 content: Country tiles OR table ----------
   // ws1.columns = [
@@ -3288,7 +3270,7 @@ if (isGlobalExport) {
   // 3) else no data
   else {
     ws1.views = [{ state: "frozen", xSplit: 0, ySplit: tableHeaderRowNumber }];
-    ws1.getCell("A7").value = "No data provided.";
+    ws1.getCell("A8").value = "No data provided.";
   }
 
   // -------------------------
@@ -3308,17 +3290,16 @@ if (isGlobalExport) {
   ws2.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws2.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws2.getCell(2, headerCount2).value = `${brandName || ""}`;
-  ws2.getCell(2, headerCount2).alignment = { horizontal: "right" };
-  ws2.getCell(2, headerCount2).font = { bold: true };
+  ws2.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+  ws2.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws2.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws2.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws2.getCell(5, 1).value = `Currency : ${currencyLabel || ""}`;
-  ws2.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+  ws2.getCell(4, 1).value = `Country : ${titleCountry || ""}`;
+  ws2.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws2.getCell(6, 1).value = `Currency : ${currencyLabel || ""}`;
+  ws2.getCell(7, 1).value = `Period : ${periodLabel || ""}`;
 
   // Freeze header rows
-  const CHARTS_HEADER_ROW = 7;
+  const CHARTS_HEADER_ROW = 8;
   ws2.views = [{ state: "frozen", xSplit: 0, ySplit: CHARTS_HEADER_ROW }];
 
   // Parse images
@@ -3531,25 +3512,24 @@ const tableBorder = {
     sheet.getCell(2, 1).value = `Company Name : ${companyName}`;
     sheet.getCell(2, 1).alignment = { horizontal: "left" };
 
-    sheet.getCell(2, headerCount).value = brandName;
-    sheet.getCell(2, headerCount).alignment = { horizontal: "right" };
-    sheet.getCell(2, headerCount).font = { bold: true };
+    sheet.getCell(3, 1).value = `Brand Name : ${brandName}`;
+    sheet.getCell(3, 1).alignment = { horizontal: "left" };
 
-    sheet.getCell(3, 1).value = `Country : ${titleCountry}`;
-    sheet.getCell(4, 1).value = `Platform : ${platformLabel}`;
-    sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
+    sheet.getCell(4, 1).value = `Country : ${titleCountry}`;
+    sheet.getCell(5, 1).value = `Platform : ${platformLabel}`;
+    sheet.getCell(6, 1).value = `Period : ${periodLabel}`;
   };
 
   /* =========================
      Sheet 1: Forecast Table
   ========================= */
   const ws1 = workbook.addWorksheet("Forecast Table", {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
   });
 
   applyExcelHeader(ws1, sheetHeaderCount);
 
-  const tableStartRow = 7;
+  const tableStartRow = 8;
 
   tableData.forEach((row, idx) => {
     ws1.getRow(tableStartRow + idx).values = row;
@@ -3636,11 +3616,11 @@ cell.border = tableBorder;
     });
 
     ws2.addImage(imageId, {
-      tl: { col: 0, row: 6 },
+      tl: { col: 0, row: 7 },
       ext: { width: 1200, height: 520 },
     });
   } else {
-    ws2.getCell("A7").value = "No chart image available.";
+    ws2.getCell("A8").value = "No chart image available.";
   }
 
   const xlsxBuffer = await workbook.xlsx.writeBuffer();
@@ -3717,7 +3697,7 @@ export async function exportDispatchExcel(params: {
   };
 
   const ws = wb.addWorksheet(safeSheetName("Dispatch"), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
   });
 
   // Header block
@@ -3729,13 +3709,12 @@ export async function exportDispatchExcel(params: {
   ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws.getCell(2, headerCount).font = { bold: true };
+  ws.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+  ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+  ws.getCell(4, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
 
   const hasDispatchGroups =
     headers.includes("FBA") &&
@@ -3744,7 +3723,7 @@ export async function exportDispatchExcel(params: {
     headers.includes("AIR");
 
   if (hasDispatchGroups) {
-    const groupRowNumber = 6;
+    const groupRowNumber = 7;
     const groupRow = ws.getRow(groupRowNumber);
 
     headers.forEach((_, index) => {
@@ -3790,7 +3769,7 @@ export async function exportDispatchExcel(params: {
     }
   }
 
-  const headerRowNumber = 7;
+  const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);
 
   headers.forEach((h, i) => {
@@ -3976,7 +3955,7 @@ export async function exportPurchaseOrderExcel(params: {
   };
 
   const ws = wb.addWorksheet(safeSheetName(sheetName), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
   });
 
   ws.mergeCells(1, 1, 1, headerCount);
@@ -3987,15 +3966,14 @@ export async function exportPurchaseOrderExcel(params: {
   ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws.getCell(2, headerCount).font = { bold: true };
+  ws.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+  ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(3, 1).value = `Country : ${titleCountry || ""}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+  ws.getCell(4, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
 
-  const headerRowNumber = 7;
+  const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);
 
   headers.forEach((h, i) => {
@@ -4218,13 +4196,12 @@ const tableBorder = {
     sheet.getCell(2, 1).value = `Company Name : ${companyName}`;
     sheet.getCell(2, 1).alignment = { horizontal: "left" };
 
-    sheet.getCell(2, headerCount).value = brandName;
-    sheet.getCell(2, headerCount).alignment = { horizontal: "right" };
-    sheet.getCell(2, headerCount).font = { bold: true };
+    sheet.getCell(3, 1).value = `Brand Name : ${brandName}`;
+    sheet.getCell(3, 1).alignment = { horizontal: "left" };
 
-    sheet.getCell(3, 1).value = `Country : ${titleCountry}`;
-    sheet.getCell(4, 1).value = `Platform : ${platformLabel}`;
-    sheet.getCell(5, 1).value = `Period : ${periodLabel}`;
+    sheet.getCell(4, 1).value = `Country : ${titleCountry}`;
+    sheet.getCell(5, 1).value = `Platform : ${platformLabel}`;
+    sheet.getCell(6, 1).value = `Period : ${periodLabel}`;
   };
 
   const headerRow1 = [
@@ -4318,12 +4295,12 @@ const tableBorder = {
      Sheet 1: P&L Forecast Table
   ========================= */
   const ws1 = workbook.addWorksheet("P&L Forecast", {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 9 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 10 }],
   });
 
   applyExcelHeader(ws1, headerCount);
 
-  const tableStartRow = 7;
+  const tableStartRow = 8;
 
   ws1.getRow(tableStartRow).values = headerRow1;
   ws1.getRow(tableStartRow + 1).values = headerRow2;
@@ -4440,11 +4417,11 @@ const tableBorder = {
     });
 
     ws2.addImage(imageId, {
-      tl: { col: 0, row: 6 },
+      tl: { col: 0, row: 7 },
       ext: { width: 1200, height: 520 },
     });
   } else {
-    ws2.getCell("A7").value = "No chart image available.";
+    ws2.getCell("A8").value = "No chart image available.";
   }
 
   const xlsxBuffer = await workbook.xlsx.writeBuffer();
@@ -4524,7 +4501,7 @@ export async function exportWarehouseDataExcel(params: {
   wb.created = new Date();
 
   const ws = wb.addWorksheet(safeSheetName("Warehouse Data"), {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
   });
 
   const firstRow = dataRows[0] || {};
@@ -4566,15 +4543,14 @@ const whiteFill = {
   ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
   ws.getCell(2, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(2, headerCount).value = `${brandName || ""}`;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
-  ws.getCell(2, headerCount).font = { bold: true };
+  ws.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
+  ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(3, 1).value = `Country : ${titleCountry || normalizeCountryLabel(countryName)}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel || ""}`;
+  ws.getCell(4, 1).value = `Country : ${titleCountry || normalizeCountryLabel(countryName)}`;
+  ws.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
 
-  const headerRowNumber = 7;
+  const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);
 
   const displayHeaders = headers.map((h) => {
@@ -4728,7 +4704,7 @@ export async function exportSkuInformationExcel(params: {
   wb.created = new Date();
 
   const ws = wb.addWorksheet("SKU Information", {
-    views: [{ state: "frozen", xSplit: 0, ySplit: 7 }],
+    views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
   });
 
   const headers = Object.keys(dataRows[0] || {});
@@ -4753,15 +4729,15 @@ const whiteFill = {
   ws.getCell(1, 1).alignment = { horizontal: "left" };
 
   ws.getCell(2, 1).value = `Company Name : ${companyName}`;
-  ws.getCell(2, headerCount).value = brandName;
-  ws.getCell(2, headerCount).alignment = { horizontal: "right" };
+  ws.getCell(3, 1).value = `Brand Name : ${brandName}`;
+  ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(3, 1).value = `Country : ${titleCountry}`;
-  ws.getCell(4, 1).value = `Platform : ${platformLabel}`;
-  ws.getCell(5, 1).value = `Period : ${periodLabel}`;
+  ws.getCell(4, 1).value = `Country : ${titleCountry}`;
+  ws.getCell(5, 1).value = `Platform : ${platformLabel}`;
+  ws.getCell(6, 1).value = `Period : ${periodLabel}`;
 
   // Table header
-  const headerRowNumber = 7;
+  const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);
 
 headers.forEach((h, i) => {

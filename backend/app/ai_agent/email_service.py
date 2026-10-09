@@ -252,15 +252,19 @@ def build_email_html(state: Dict[str, Any]) -> str:
 def build_excel_attachment(state):
     wb = Workbook()
     ws = wb.active
+    user = User.query.filter_by(id=state.get("user_id")).first()
+    company_name = (getattr(user, "company_name", None) or "").strip()
+    brand_name = (getattr(user, "brand_name", None) or "").strip()
 
     bold = Font(bold=True)
 
     # -------- HEADER --------
     ws.cell(row=1, column=1, value="P&L Productwise Breakdown").font = bold
-    ws.cell(row=2, column=1, value="Company Name: Skin Elements")
-    ws.cell(row=3, column=1, value=f"Currency: {'£' if state.get('country') == 'uk' else '$'}")
-    ws.cell(row=4, column=1, value=f"Country: {state.get('country')}")
-    ws.cell(row=5, column=1, value="Platform: Amazon")
+    ws.cell(row=2, column=1, value=f"Company Name: {company_name}")
+    ws.cell(row=3, column=1, value=f"Brand Name: {brand_name}")
+    ws.cell(row=4, column=1, value=f"Currency: {'£' if state.get('country') == 'uk' else '$'}")
+    ws.cell(row=5, column=1, value=f"Country: {state.get('country')}")
+    ws.cell(row=6, column=1, value="Platform: Amazon")
 
     # -------- TABLE HEADER --------
     headers = [
@@ -274,7 +278,7 @@ def build_excel_attachment(state):
         "CM1 Profit", "CM1 Profit Per Unit", "CM1 Profit %"
     ]
 
-    start_row = 7
+    start_row = 8
 
     for col, h in enumerate(headers, start=1):
         ws.cell(row=start_row, column=col, value=h).font = bold
