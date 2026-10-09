@@ -89,9 +89,6 @@ const addBorderToRow = (rowNumber: number) => {
       .toLowerCase()
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
-  // column index where CM1 Profit total exists (used in top section)
-  const PROFIT_COL_INDEX = colIndex["profit"] || columns.length;
-
   /**
    * ===== TOP BLOCK =====
    * Your model.extraRows is:
@@ -106,16 +103,15 @@ const addBorderToRow = (rowNumber: number) => {
   // 1️⃣ Title row (use extraRows[2] if present; fallback text)
   ws.addRow([extraRows?.[2]?.[0] ?? "Profit Breakup (SKU Level)"]);
 
-  // 2️⃣ Company + Brand row (brand aligned to PROFIT col)
+  // 2️⃣ Company and brand rows, kept with the left-side metadata
   const brandName = capitalizeWords((extraRows?.[0]?.[0] || "").toString());
   const companyName = capitalizeWords((extraRows?.[1]?.[0] || "").toString());
 
-  const companyBrandRow = new Array(columns.length).fill("");
-  companyBrandRow[0] = `Company Name : ${companyName}`;
-  companyBrandRow[Math.max(0, PROFIT_COL_INDEX - 1)] = `${brandName}`;
+  const companyRow = ws.addRow([`Company Name : ${companyName}`]);
+  companyRow.font = { bold: false };
 
-  const cbRow = ws.addRow(companyBrandRow);
-  cbRow.font = { bold: false };
+  const brandRow = ws.addRow([`Brand Name : ${brandName}`]);
+  brandRow.font = { bold: false };
 
   // 3️⃣ Currency / Country / Platform (extraRows[3..])
   for (let i = 3; i < (extraRows?.length || 0); i++) {

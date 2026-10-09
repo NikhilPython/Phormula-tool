@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, MetaData, Table, text, inspect
 from sqlalchemy.orm import sessionmaker
 from config import Config
 from calendar import month_name
-from app.models.user_models import CountryProfile
+from app.models.user_models import CountryProfile, User
 from dotenv import load_dotenv
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -2618,6 +2618,9 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
     profile = CountryProfile.query.filter_by(user_id=user_id, country=country).first()
     if not profile:
         raise ValueError(f"Country profile not found for user {user_id} and country {country}")
+    user = User.query.filter_by(id=user_id).first()
+    company_name = (getattr(user, "company_name", None) or "").strip()
+    brand_name = (getattr(user, "brand_name", None) or "").strip()
     ship_time_weeks = int(profile.ship_time_weeks or 0)
     air_time_weeks = int(profile.air_time_weeks or 0)
     stock_unit_weeks = int(profile.stock_unit_weeks or 0)
@@ -3239,10 +3242,9 @@ def generate_forecast(user_id, new_df, country, mv, year, hybrid_allowed: bool =
         # Merge title across columns
         max_cols = max(len(df.columns), 6)
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max_cols)
-        company_name = "Skin"
-
         # Meta info
         ws["A2"] = f"Company Name : {company_name}"
+        ws["A3"] = f"Brand Name : {brand_name}"
         ws["A4"] = f"Country : {str(country).upper()}"
         ws["A5"] = "Platform : Phormula"
 

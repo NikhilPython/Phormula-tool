@@ -8,15 +8,14 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
-  PackageSearch,
   Sparkles,
   TrendingDown,
   TrendingUp,
   TriangleAlert,
-  WalletCards,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import SummaryMetricCard from "./SummaryMetricCard";
 
 export type SummaryDestination =
   | "graphs"
@@ -29,16 +28,31 @@ export type SummaryDestination =
 type DeltaMetric = {
   value: number;
   delta?: number;
+  previousValue?: number;
+  perUnit?: number;
+  previousPerUnit?: number;
+  percentage?: number;
+  previousPercentage?: number;
+};
+
+type SkuTableMetric = {
+  productName: string;
+  sku: string;
+  netSales: number;
+  secondaryValue: number;
+  netSalesDeltaPercentage?: number;
 };
 
 export type PnlSummaryOverviewData = {
   periodLabel: string;
+  comparisonLabel: string;
   currencySymbol: string;
   financial: {
     netSales: DeltaMetric;
     cm2Profit: DeltaMetric;
     tacos: DeltaMetric;
     units: DeltaMetric;
+    marketplaceFees: DeltaMetric;
     cm2Margin: number;
   };
   ai: {
@@ -47,23 +61,15 @@ export type PnlSummaryOverviewData = {
     loading?: boolean;
   };
   pnl: {
-    topProduct: string;
-    topProfit: number;
-    bottomProduct: string;
-    bottomProfit: number;
-    productCount: number;
+    heroSkus: SkuTableMetric[];
+    leastPerformingSkus: SkuTableMetric[];
+    topNetSalesGrowthSkus: SkuTableMetric[];
   };
   cashFlow: {
-    cashPosition: number;
-    targetSales: number;
-    shortfall: number;
+    cashGenerated: number;
+    previousCashGenerated?: number;
+    delta?: number;
     loading?: boolean;
-  };
-  sku: {
-    topProduct: string;
-    netSales: number;
-    units: number;
-    productCount: number;
   };
   inventory: {
     totalUnits: number;
@@ -84,22 +90,72 @@ type Props = {
   onNavigate: (tab: SummaryDestination) => void;
 };
 
-const compactNumber = (value: number, maximumFractionDigits = 1) =>
-  new Intl.NumberFormat("en", {
-    notation: Math.abs(value) >= 10_000 ? "compact" : "standard",
-    maximumFractionDigits,
-  }).format(Number(value || 0));
+const formatWholeNumber = (value: number) => {
+  const roundedValue = Math.round(Number(value || 0));
 
-const formatMoney = (value: number, currencySymbol: string) => {
-  const sign = value < 0 ? "-" : "";
-  return `${sign}${currencySymbol}${compactNumber(Math.abs(value))}`;
+  return new Intl.NumberFormat("en", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Object.is(roundedValue, -0) ? 0 : roundedValue);
 };
 
-const formatPercent = (value: number) =>
-  `${Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
+const formatMoney = (value: number, currencySymbol: string) => {
+  const roundedValue = Math.round(Number(value || 0));
+  const sign = roundedValue < 0 ? "-" : "";
+  return `${sign}${currencySymbol}${formatWholeNumber(Math.abs(roundedValue))}`;
+};
+
+const formatPercentageNumber = (value: number) =>
+  Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const formatPercent = (value: number) => `${formatPercentageNumber(value)}%`;
+
+
+const formatMoneyWithPerUnit = (
+  value: number,
+  perUnit: number | undefined,
+  currencySymbol: string
+): React.ReactNode => (
+  <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="text-base 2xl:text-lg font-bold text-charcoal-500">
+      {formatMoney(value, currencySymbol)}
+    </span>
+
+    {typeof perUnit === "number" && Number.isFinite(perUnit) && (
+      <span className="text-[10px] 2xl:text-xs font-normal text-charcoal-500">
+        ({formatMoney(perUnit, currencySymbol)}/unit)
+      </span>
+    )}
+  </span>
+);
+
+const formatMoneyWithPercentage = (
+  value: number,
+  percentage: number | undefined,
+  currencySymbol: string
+): React.ReactNode => (
+  <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="text-base 2xl:text-lg font-bold text-charcoal-500">
+      {formatMoney(value, currencySymbol)}
+    </span>
+
+    {typeof percentage === "number" && Number.isFinite(percentage) && (
+      <span className="text-[10px] 2xl:text-xs font-normal text-charcoal-500">
+        ({formatPercent(percentage)})
+      </span>
+    )}
+  </span>
+);
+
+
+const roundFormattedValue = (value: string) =>
+  value.replace(/-?\d[\d,]*(?:\.\d+)?/, (match) => {
+    const numericValue = Number(match.replace(/,/g, ""));
+    return Number.isFinite(numericValue) ? formatWholeNumber(numericValue) : match;
+  });
 
 const Delta = ({ value, inverse = false }: { value?: number; inverse?: boolean }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -112,7 +168,7 @@ const Delta = ({ value, inverse = false }: { value?: number; inverse?: boolean }
   return (
     <span className={`inline-flex items-center gap-1 font-semibold ${positive ? "text-emerald-600" : "text-rose-600"}`}>
       <Icon size={13} strokeWidth={2.5} />
-      {Math.abs(value).toFixed(1)}%
+      {formatPercentageNumber(Math.abs(value))}%
     </span>
   );
 };
@@ -134,17 +190,16 @@ const StorageCostDelta = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs font-semibold ${
-        deltaPercentage <= 0 ? "text-emerald-600" : "text-red-600"
-      }`}
+      className={`inline-flex items-center gap-1 text-xs font-semibold ${deltaPercentage <= 0 ? "text-emerald-600" : "text-red-600"
+        }`}
       title={
         deltaValue
-          ? `Change vs previous month: ${deltaValue}`
+          ? `Change vs previous month: ${roundFormattedValue(deltaValue)}`
           : "Change vs previous month"
       }
     >
       <DeltaIcon size={13} strokeWidth={2.5} />
-      {Math.abs(deltaPercentage).toFixed(2)}%
+      {formatPercentageNumber(Math.abs(deltaPercentage))}%
     </span>
   );
 };
@@ -155,15 +210,20 @@ const MetricTile = ({
   detail,
   trailing,
   accent = "border-[#5EA68E] ",
+  compact = false,
 }: {
   label: string;
   value: React.ReactNode;
   detail?: React.ReactNode;
   trailing?: React.ReactNode;
   accent?: string;
+  compact?: boolean;
 }) => (
   <div
-    className={`relative flex h-full min-h-[108px] flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white p-3.5 shadow-sm sm:p-4 2xl:min-h-[132px] 2xl:p-5 ${accent}`}
+    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white p-3.5 shadow-sm sm:p-4 ${compact
+      ? "min-h-[88px] 2xl:min-h-[88px] 2xl:p-3.5"
+      : "min-h-[108px] 2xl:min-h-[132px] 2xl:p-5"
+      } ${accent}`}
   >
     <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 2xl:text-[11px]">
       {label}
@@ -187,6 +247,92 @@ const MetricTile = ({
     ) : null}
   </div>
 );
+
+const SkuPerformanceTable = ({
+  rows,
+  productHeading,
+  metricHeading,
+  metricType,
+  currencySymbol,
+  tone,
+  emptyMessage = "No SKU performance data is available for this period.",
+}: {
+  rows: SkuTableMetric[];
+  productHeading: string;
+  metricHeading: string;
+  metricType: "money" | "percentage";
+  currencySymbol: string;
+  tone: "positive" | "negative";
+  emptyMessage?: string;
+}) => {
+  const badgeClass =
+    tone === "positive"
+      ? "bg-emerald-50 text-emerald-700"
+      : "bg-rose-50 text-rose-700";
+
+  return (
+    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid grid-cols-4 items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[minmax(0,2fr)_minmax(100px,1fr)_minmax(100px,1fr)_minmax(140px,1fr)] 2xl:gap-3 2xl:px-5 2xl:text-xs">
+        <span>{productHeading}</span>
+        <span className="text-right">Net sales</span>
+        <span className="text-right">{metricHeading}</span>
+        <span className="text-right">Net Sales Growth (%)</span>
+      </div>
+
+      {rows.length ? (
+        rows.map((row, index) => (
+          <div
+            key={`${row.sku}-${row.productName}-${index}`}
+            className="grid grid-cols-4 items-center gap-2 border-b border-slate-100 px-4 py-1 last:border-b-0 md:grid-cols-[minmax(0,1.5fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)] 2xl:gap-3 2xl:px-5"
+          >
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold 2xl:h-7 2xl:w-7 2xl:text-xs ${badgeClass}`}>
+                {index + 1}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-charcoal-500 2xl:text-sm" title={row.productName}>
+                  {row.productName || "Unnamed product"}
+                </p>
+                {row.sku ? (
+                  <p className="truncate text-[9px] leading-3 text-slate-400 2xl:text-[11px]" title={row.sku}>
+                    {row.sku}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <span className="text-right text-xs font-semibold text-charcoal-500 2xl:text-sm">
+              {formatMoney(row.netSales, currencySymbol)}
+            </span>
+            <span
+              className={`text-right text-xs font-semibold 2xl:text-sm ${metricType === "percentage"
+                ? "inline-flex items-center justify-end gap-1 text-emerald-600"
+                : row.secondaryValue < 0
+                  ? "text-rose-600"
+                  : "text-charcoal-500"
+                }`}
+            >
+              {metricType === "percentage" ? (
+                <>
+                  <TrendingUp size={13} strokeWidth={2.5} />
+                  {formatPercent(row.secondaryValue)}
+                </>
+              ) : (
+                formatMoney(row.secondaryValue, currencySymbol)
+              )}
+            </span>
+            <span className="flex justify-end text-right text-[10px] 2xl:text-xs">
+              <Delta value={row.netSalesDeltaPercentage} />
+            </span>
+          </div>
+        ))
+      ) : (
+        <div className="px-4 py-8 text-center text-sm text-slate-500">
+          {emptyMessage}
+        </div>
+      )}
+    </div>
+  );
+};
 
 
 const formatPeriodLabel = (label: string) => {
@@ -239,34 +385,34 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         destination: "graphs" as SummaryDestination,
       },
       {
-        key: "pnl",
-        label: "P&L Breakdown",
-        eyebrow: "Product profitability",
-        title: "Where profit was made and lost",
-        description: "The strongest and weakest product contribution.",
+        key: "heroSkus",
+        label: "Hero SKUs",
+        eyebrow: "Leading products",
+        title: "Your hero SKUs",
+        description: "The products generating the strongest CM1 profit.",
         icon: TrendingUp,
         tone: "emerald",
         destination: "skuBreakdown" as SummaryDestination,
       },
       {
-        key: "cash",
-        label: "Cash Flow",
-        eyebrow: "Cash and targets",
-        title: "Cash position versus plan",
-        description: "A compact view of liquidity, targets, and shortfall.",
-        icon: WalletCards,
-        tone: "cyan",
-        destination: "cashFlow" as SummaryDestination,
+        key: "leastSkus",
+        label: "Least Performing SKUs",
+        eyebrow: "Products to review",
+        title: "Least performing SKUs",
+        description: "The products with the weakest CM1 contribution.",
+        icon: TrendingDown,
+        tone: "rose",
+        destination: "skuBreakdown" as SummaryDestination,
       },
       {
-        key: "sku",
-        label: "SKU Journey",
-        eyebrow: "SKU performance",
-        title: "Your leading product journey",
-        description: "The product creating the most sales momentum.",
-        icon: PackageSearch,
-        tone: "amber",
-        destination: "skuwiseProfit" as SummaryDestination,
+        key: "netSalesGrowth",
+        label: "Top Net Sales Growth",
+        eyebrow: "Period-over-period growth",
+        title: "SKUs gaining the most sales",
+        description: "The strongest increases in net sales versus the past period.",
+        icon: TrendingUp,
+        tone: "sky",
+        destination: "skuBreakdown" as SummaryDestination,
       },
       {
         key: "inventory",
@@ -303,6 +449,12 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
   };
 
   const tone = toneClasses[slide.tone];
+  const isFinanceSlide = slide.key === "finance";
+  const isSkuTableSlide =
+    slide.key === "heroSkus" ||
+    slide.key === "leastSkus" ||
+    slide.key === "netSalesGrowth";
+  const usesCompactHeader = isFinanceSlide || isSkuTableSlide;
 
   const renderSlideBody = () => {
     if (slide.key === "ai") {
@@ -325,148 +477,140 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
     }
 
     if (slide.key === "finance") {
-      return (
-        <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
-          <MetricTile
-            label="Units sold"
-            value={compactNumber(financial.units.value, 0)}
-            trailing={<Delta value={financial.units.delta} />}
-            accent="border-[#FDD36F]"
-          />
 
-          <MetricTile
-            label="Net sales"
-            value={formatMoney(financial.netSales.value, currencySymbol)}
-            trailing={<Delta value={financial.netSales.delta} />}
-            accent="border-[#75BBDA]"
-          />
+      const financeValue = (
+        value: React.ReactNode,
+        delta?: number,
+        inverse = false
+      ) => (
+        <div className="flex w-full items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            {value}
+          </div>
 
-          <MetricTile
-            label="CM2 profit"
-            value={
-              <div className="flex items-end gap-1">
-                <span>{formatMoney(financial.cm2Profit.value, currencySymbol)}</span>
-
-                {/* <span className="text-[10px] font-medium text-slate-500 sm:text-xs mb-0.5">
-                  {formatPercent(financial.cm2Margin)}
-                </span> */}
-              </div>
-            }
-            trailing={<Delta value={financial.cm2Profit.delta} />}
-            accent="border-[#B8C78C]"
-          />
-
-          <MetricTile
-            label="TACoS"
-            value={formatPercent(financial.tacos.value)}
-            trailing={<Delta value={financial.tacos.delta} inverse />}
-            accent="border-[#3A8EA4]"
-          />
-
-
+          <div className="shrink-0 whitespace-nowrap text-[9px] leading-none 2xl:text-[10px]">
+            <Delta value={delta} inverse={inverse} />
+          </div>
         </div>
       );
-    }
 
-    if (slide.key === "pnl") {
+
       return (
-        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 2xl:gap-4">
-          <MetricTile
-            label="Top profit contributor"
-            value={formatMoney(data.pnl.topProfit, currencySymbol)}
-            detail={data.pnl.topProduct || "No product ranking available"}
-            accent="border-green-500"
+        <div className="grid w-full grid-cols-2 gap-2 lg:grid-cols-3 2xl:gap-3">
+          <SummaryMetricCard
+            title="Units sold"
+            value={financeValue(
+              formatWholeNumber(financial.units.value),
+              financial.units.delta
+            )}
+            className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white"
           />
 
-          <MetricTile
-            label="Weakest contributor"
-            value={formatMoney(data.pnl.bottomProfit, currencySymbol)}
-            detail={data.pnl.bottomProduct || "No product ranking available"}
-            accent="border-[#B75A5A]"
+          <SummaryMetricCard
+            title="Net sales"
+            value={financeValue(
+              formatMoneyWithPerUnit(
+                financial.netSales.value,
+                financial.netSales.perUnit,
+                currencySymbol
+              ),
+              financial.netSales.delta
+            )}
+            className="border border-[#75BBDA] border-t-4 border-t-[#75BBDA] bg-white"
           />
 
-          <MetricTile
-            label="Products reviewed"
-            value={compactNumber(data.pnl.productCount, 0)}
-            detail="Ranked by period profit contribution"
-            accent="border-[#EDA052]"
-          />
-        </div>
-      );
-    }
 
-    if (slide.key === "cash") {
-      return data.cashFlow.loading ? (
-        <div className="w-full space-y-3 rounded-xl border border-slate-200 bg-white p-5">
-          <SkeletonLine />
-          <SkeletonLine className="w-3/4" />
-        </div>
-      ) : (
-        <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3 2xl:gap-4">
-          <MetricTile
-            label="Cash position"
-            value={formatMoney(data.cashFlow.cashPosition, currencySymbol)}
-            detail={
-              data.cashFlow.cashPosition >= 0
-                ? "Positive cash position"
-                : "Negative cash position"
-            }
-            accent="border-[#B8C78C]"
+
+          <SummaryMetricCard
+            title="Marketplace fees"
+            value={financeValue(
+              formatMoneyWithPerUnit(
+                financial.marketplaceFees.value,
+                financial.marketplaceFees.perUnit,
+                currencySymbol
+              ),
+              financial.marketplaceFees.delta,
+              true
+            )}
+            className="border border-[#B75A5A] border-t-4 border-t-[#B75A5A] bg-white"
           />
 
-          <MetricTile
-            label="Sales target"
-            value={formatMoney(data.cashFlow.targetSales, currencySymbol)}
-            detail={`Selected ${data.periodLabel.toLowerCase()} target`}
-            accent="border-[#75BBDA]"
+          <SummaryMetricCard
+            title="TACoS"
+            value={financeValue(
+              formatPercent(financial.tacos.value),
+              financial.tacos.delta,
+              true
+            )}
+            className="border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4] bg-white"
           />
 
-          <MetricTile
-            label="Target shortfall"
-            value={formatMoney(data.cashFlow.shortfall, currencySymbol)}
-            detail={
-              data.cashFlow.shortfall > 0
-                ? "Remaining to reach target"
-                : "Target achieved"
-            }
-            accent={
-              data.cashFlow.shortfall > 0
-                ? "border-[#B75A5A]"
-                : "border-green-500"
-            }
+          <SummaryMetricCard
+            title="CM2 profit"
+            value={financeValue(
+              formatMoneyWithPercentage(
+                financial.cm2Profit.value,
+                financial.cm2Profit.percentage,
+                currencySymbol
+              ),
+              financial.cm2Profit.delta
+            )}
+            className="border border-[#B8C78C] border-t-4 border-t-[#B8C78C] bg-white"
+          />
+
+          <SummaryMetricCard
+            title="Cash generated"
+            value={financeValue(
+              data.cashFlow.loading ? (
+                <SkeletonLine className="w-24" />
+              ) : (
+                formatMoney(data.cashFlow.cashGenerated, currencySymbol)
+              ),
+              data.cashFlow.delta
+            )}
+            className="border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] bg-white"
           />
         </div>
       );
     }
 
-    if (slide.key === "sku") {
+    if (slide.key === "heroSkus") {
       return (
-        <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-3 sm:grid-cols-3 2xl:max-w-none 2xl:gap-4">
-          <MetricTile
-            label="Leading product"
-            value={
-              <span className="line-clamp-1 text-base sm:text-lg">
-                {data.sku.topProduct || "No product available"}
-              </span>
-            }
-            detail="Highest net-sales product"
-            accent="border-[#FDD36F]"
-          />
+        <SkuPerformanceTable
+          rows={data.pnl.heroSkus}
+          productHeading="Leading products"
+          metricHeading="CM1 profit"
+          metricType="money"
+          currencySymbol={currencySymbol}
+          tone="positive"
+        />
+      );
+    }
 
-          <MetricTile
-            label="Product net sales"
-            value={formatMoney(data.sku.netSales, currencySymbol)}
-            detail={`${compactNumber(data.sku.units, 0)} units sold`}
-            accent="border-[#75BBDA]"
-          />
+    if (slide.key === "leastSkus") {
+      return (
+        <SkuPerformanceTable
+          rows={data.pnl.leastPerformingSkus}
+          productHeading="Least performing SKUs"
+          metricHeading="CM1 profit"
+          metricType="money"
+          currencySymbol={currencySymbol}
+          tone="negative"
+        />
+      );
+    }
 
-          <MetricTile
-            label="SKUs reviewed"
-            value={compactNumber(data.sku.productCount, 0)}
-            detail="Included in the selected period"
-            accent="border-[#3A8EA4]"
-          />
-        </div>
+    if (slide.key === "netSalesGrowth") {
+      return (
+        <SkuPerformanceTable
+          rows={data.pnl.topNetSalesGrowthSkus}
+          productHeading="Fastest-growing SKUs"
+          metricHeading="Net sales increase"
+          metricType="money"
+          currencySymbol={currencySymbol}
+          tone="positive"
+          emptyMessage="No SKUs with positive net sales growth are available for this period."
+        />
       );
     }
 
@@ -475,17 +619,17 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
           <MetricTile
             label="Total inventory"
-            value={`${compactNumber(data.inventory.totalUnits, 0)} units`}
+            value={`${formatWholeNumber(data.inventory.totalUnits)} units`}
             detail="Inventory included in this view"
             accent="border-sky-400"
           />
 
           <MetricTile
             label="Healthy"
-            value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
+            value={`${formatWholeNumber(data.inventory.healthySkus)} SKUs`}
             trailing={
               <span className="text-xs font-semibold text-slate-500">
-                {compactNumber(data.inventory.healthyUnits, 0)} units
+                {formatWholeNumber(data.inventory.healthyUnits)} units
               </span>
             }
             detail="Within a healthy stock range"
@@ -494,10 +638,10 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <MetricTile
             label="High alert"
-            value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
+            value={`${formatWholeNumber(data.inventory.highAlertSkus)} SKUs`}
             trailing={
               <span className="text-xs font-semibold text-slate-500">
-                {compactNumber(data.inventory.highAlertUnits, 0)} units
+                {formatWholeNumber(data.inventory.highAlertUnits)} units
               </span>
             }
             detail="Need near-term attention"
@@ -506,7 +650,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <MetricTile
             label="Estimate Storage Cost"
-            value={data.inventory.estimatedStorageCost}
+            value={roundFormattedValue(data.inventory.estimatedStorageCost)}
             trailing={
               <StorageCostDelta
                 deltaValue={data.inventory.estimatedStorageCostDeltaValue}
@@ -532,17 +676,17 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
         <MetricTile
           label="Total inventory"
-          value={`${compactNumber(data.inventory.totalUnits, 0)} units`}
+          value={`${formatWholeNumber(data.inventory.totalUnits)} units`}
           detail="Inventory included in this view"
           accent="border-[#75BBDA]"
         />
 
         <MetricTile
           label="Healthy"
-          value={`${compactNumber(data.inventory.healthySkus, 0)} SKUs`}
+          value={`${formatWholeNumber(data.inventory.healthySkus)} SKUs`}
           trailing={
             <span className="text-xs font-semibold text-slate-500">
-              {compactNumber(data.inventory.healthyUnits, 0)} units
+              {formatWholeNumber(data.inventory.healthyUnits)} units
             </span>
           }
           detail="Within a healthy stock range"
@@ -551,10 +695,10 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
         <MetricTile
           label="High alert"
-          value={`${compactNumber(data.inventory.highAlertSkus, 0)} SKUs`}
+          value={`${formatWholeNumber(data.inventory.highAlertSkus)} SKUs`}
           trailing={
             <span className="text-xs font-semibold text-slate-500">
-              {compactNumber(data.inventory.highAlertUnits, 0)} units
+              {formatWholeNumber(data.inventory.highAlertUnits)} units
             </span>
           }
           detail="Need near-term attention"
@@ -563,7 +707,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
         <MetricTile
           label="Estimate Storage Cost"
-          value={data.inventory.estimatedStorageCost}
+          value={roundFormattedValue(data.inventory.estimatedStorageCost)}
           trailing={
             <StorageCostDelta
               deltaValue={data.inventory.estimatedStorageCostDeltaValue}
@@ -649,24 +793,40 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className={`relative flex h-full w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] p-4 2xl:px-8 2xl:py-6 ${slide.key === "ai" ? "justify-start sm:p-4" : "justify-center sm:p-6"}`}
+            className="relative flex h-full w-full flex-col items-stretch justify-start overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] px-4 py-3 sm:px-6 sm:py-4 2xl:px-8"
+
           >
             {/* <div className={`pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full blur-3xl ${tone.glow}`} /> */}
-            <div className={`relative z-10 flex max-w-3xl flex-col items-center text-center ${slide.key === "ai" ? "mb-2" : "mb-4"}`}>
+
+            {/* Compact horizontal slide header */}
+            <div className="relative z-10 mx-auto mb-3 flex w-full max-w-[1480px] items-center gap-3 border-b border-slate-200/70 pb-3">
+
+              {/* Icon */}
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-xl 2xl:h-12 2xl:w-12 ${tone.icon}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}
               >
-                <SlideIcon size={20} />
+                <SlideIcon size={18} strokeWidth={2.2} />
               </div>
 
+              {/* Title and description */}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold leading-6 text-charcoal-500 sm:text-lg">
+                  {slide.title}
+                </h2>
+
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-500 2xl:text-xs">
+                  {slide.description}
+                </p>
+              </div>
+
+              {/* Section label */}
               <span
-                className={`mt-2 rounded-full border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] ${tone.badge}`}
+                className={`hidden shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${tone.badge}`}
               >
                 {slide.eyebrow}
               </span>
-              <h2 className={`${slide.key === "ai" ? "mt-1.5" : "mt-2"} text-xl font-bold leading-tight text-charcoal-500 sm:text-2xl 2xl:text-[28px]`}>{slide.title}</h2>
-              <p className="mt-1 text-[10px] text-slate-500 sm:text-xs 2xl:mt-2 2xl:max-w-sm 2xl:text-sm 2xl:leading-5">{slide.description}</p>
             </div>
+
             <div className="relative z-10 w-full 2xl:mx-auto 2xl:max-w-[1480px]">{renderSlideBody()}</div>
           </motion.div>
         </AnimatePresence>

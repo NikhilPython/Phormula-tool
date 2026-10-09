@@ -507,9 +507,9 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const getExtraRows = () => {
     const formattedCountry = isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase();
     return [
-      [`${userMeta?.brand_name || "N/A"}`],
-      [`${userMeta?.company_name || "N/A"}`],
       [`Profit Breakup (SKU Level) - ${periodInfo}`],
+      [`Company Name : ${userMeta?.company_name || "N/A"}`],
+      [`Brand Name : ${userMeta?.brand_name || "N/A"}`],
       [`Currency:  ${currencySymbol}`],
       [`Country: ${formattedCountry}`],
       [`Platform: Amazon`],
