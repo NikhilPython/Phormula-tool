@@ -1162,6 +1162,32 @@ def _normalise_formula_country(country: str | None) -> str:
     return aliases.get(country_key, country_key)
 
 
+def previous_product_sales(df):
+    """Keep transaction rows (including repeated orders) and exclude other types.
+
+    Quantity remains shipped units for the dashboard's Units card. Refund and
+    net quantities are explicit. Sales exclude taxes, credits and promotions.
+    Amounts remain in the marketplace's native currency until aggregation.
+    """
+    types = df.get("type", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.casefold()
+    shipment = types.eq("shipment")
+    refund = types.eq("refund")
+    quantity = pd.to_numeric(df.get("quantity", pd.Series(0, index=df.index)), errors="coerce").fillna(0).abs()
+    sales = pd.to_numeric(df.get("product_sales", pd.Series(0, index=df.index)), errors="coerce").fillna(0)
+    result = pd.DataFrame(index=df.index)
+    result["quantity"] = quantity.where(shipment, 0)
+    result["shipment_quantity"] = result["quantity"]
+    result["refund_quantity"] = quantity.where(refund, 0)
+    result["net_quantity"] = result["quantity"] - result["refund_quantity"]
+    result["shipment_sales"] = sales.where(shipment, 0)
+    # Refunds are exposed as a positive deduction, regardless of source sign.
+    result["refund_sales"] = sales.abs().where(refund, 0)
+    result["gross_sales"] = result["shipment_sales"]
+    result["net_sales"] = result["gross_sales"] - result["refund_sales"]
+    result["product_sales"] = result["net_sales"]
+    return result
+
+
 def _shipment_type_mask(df: pd.DataFrame) -> pd.Series:
     if df is None:
         return pd.Series(dtype=bool)
@@ -1205,58 +1231,12 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
     if df.empty:
         return []
 
-    # Ensure numeric columns exist for gross_sales formula
-    gross_cols = [
-        "product_sales",
-        "product_sales_tax",
-        "postage_credits",
-        "gift_wrap_credits",
-        "shipping_credits_tax",
-        "giftwrap_credits_tax",
-        "promotional_rebates",
-        "promotional_rebates_tax",
-    ]
-    for c in gross_cols:
-        if c not in df.columns:
-            df[c] = 0.0
-
-    # ✅ Row-level gross_sales (robust: subtract abs rebates)
-    df["gross_sales"] = (
-        safe_num(df["product_sales"])
-        + safe_num(df["product_sales_tax"])
-        + safe_num(df["postage_credits"])
-        + safe_num(df["gift_wrap_credits"])
-        + safe_num(df["shipping_credits_tax"])
-        + safe_num(df["giftwrap_credits_tax"])
-        - safe_num(df["promotional_rebates"]).abs()
-        - safe_num(df["promotional_rebates_tax"]).abs()
-    )
-
-    # ---- quantity per SKU ----
-    if "quantity" in df.columns:
-        base_qty_df = df[["sku"]].drop_duplicates()
-        shipment_qty_df = (
-            df.loc[_shipment_type_mask(df)]
-            .assign(quantity=lambda x: safe_num(x["quantity"]))
-            .groupby("sku", as_index=False)["quantity"]
-            .sum()
-        )
-        qty_df = base_qty_df.merge(shipment_qty_df, on="sku", how="left")
-        qty_df["quantity"] = safe_num(qty_df.get("quantity", 0.0))
-    else:
-        qty_df = pd.DataFrame(columns=["sku", "quantity"])
-
-    # ---- product_sales per SKU ----
-    product_sales_df = (
-        df.assign(product_sales=safe_num(df["product_sales"]))
-          .groupby("sku", as_index=False)["product_sales"]
-          .sum()
-    )
-
-    # ---- gross_sales per SKU ✅ ----
-    gross_sales_df = (
-        df.groupby("sku", as_index=False)["gross_sales"].sum()
-    )
+    sales_metrics = previous_product_sales(df)
+    sales_metrics["sku"] = df["sku"]
+    sales_metrics = sales_metrics.groupby("sku", as_index=False).sum()
+    for col in ("promotional_rebates", "promotional_rebates_tax"):
+        if col not in df.columns:
+            df[col] = 0.0
 
     promotional_rebates_df = (
         df.assign(
@@ -1295,35 +1275,14 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
     country_key = _normalise_formula_country(country)
 
     if country_key == "us":
-        _, sales_by, _ = us_sales(df, country=country_key)
         _, tax_credit_by, _ = us_tax_and_credits(df, country=country_key)
         _, profit_by, _ = us_profit(df, country=country_key)
-
-        if sales_by is not None and not sales_by.empty:
-            sales_by = sales_by.rename(columns={"__metric__": "sales_metric"})
-        else:
-            sales_by = pd.DataFrame(columns=["sku", "sales_metric"])
 
         if tax_credit_by is not None and not tax_credit_by.empty:
             tax_credit_by = tax_credit_by.rename(columns={"__metric__": "tax_credit_metric"})
         else:
             tax_credit_by = pd.DataFrame(columns=["sku", "tax_credit_metric"])
     else:
-        # Keep the established UK previous-period behavior unchanged.
-        df["net_sales"] = (
-            safe_num(df.get("product_sales", 0.0))
-            + safe_num(df.get("promotional_rebates", 0.0))
-        )
-
-        sales_by = (
-            df.groupby("sku", as_index=False)["net_sales"]
-            .sum()
-            .rename(columns={"net_sales": "sales_metric"})
-        )
-
-        # _, tax_credit_by, _ = uk_credits(df)
-        # _, profit_by, _ = uk_profit(df)
-
         _, tax_credit_by, _ = uk_credits(
             df,
             country=country_key,
@@ -1349,13 +1308,10 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
 
     # ---- merge everything ----
     metrics = (
-        qty_df
+        sales_metrics
         .merge(name_df, on="sku", how="left")
-        .merge(product_sales_df, on="sku", how="left")
         .merge(promotional_rebates_df, on="sku", how="left")
-        .merge(gross_sales_df, on="sku", how="left")  # ✅ NEW
         .merge(amazon_fees_df, on="sku", how="left")  # ✅ NEW
-        .merge(sales_by[["sku", "sales_metric"]], on="sku", how="left")
         .merge(tax_credit_by[["sku", "tax_credit_metric"]], on="sku", how="left")
         .merge(profit_by[["sku", "profit_metric"]], on="sku", how="left")
     )
@@ -1368,14 +1324,13 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
     metrics["gross_sales"] = safe_num(metrics.get("gross_sales", 0.0))  # ✅ NEW
     metrics["selling_fees"] = safe_num(metrics.get("selling_fees", 0.0))
     metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
-    metrics["sales_metric"] = safe_num(metrics.get("sales_metric", 0.0))
     metrics["tax_credit_metric"] = safe_num(metrics.get("tax_credit_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
 
     metrics["tax_and_credits"] = metrics["tax_credit_metric"]
 
-    metrics["net_sales"] = metrics["sales_metric"]
     metrics["profit"] = metrics["profit_metric"]
+
     metrics["promotional_rebates_percentage"] = np.where(
         metrics["net_sales"] != 0,
         (metrics["promotional_rebates"] / metrics["net_sales"]) * 100.0,
@@ -1400,6 +1355,11 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
         "sku",
         "product_name",
         "quantity",
+        "shipment_quantity",
+        "refund_quantity",
+        "net_quantity",
+        "shipment_sales",
+        "refund_sales",
         "product_sales",
         "promotional_rebates",
         "promotional_rebates_percentage",
@@ -1423,7 +1383,7 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
 
 
 
-def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date):
+def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date, *, include_dashboard_totals=False):
     country_key = _normalise_formula_country(country)
 
     table_name = construct_prev_table_name(
@@ -1454,7 +1414,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         result = conn.execute(query, params)
         rows = result.fetchall()
         if not rows:
-            return [], []
+            return ([], [], {}) if include_dashboard_totals else ([], [])
 
         df = pd.DataFrame(rows, columns=result.keys())
 
@@ -1555,10 +1515,6 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         for d in sorted(tmp_all["date_only"].unique()):
             day_all = tmp_all[tmp_all["date_only"] == d]
             day_sku = tmp_sku[tmp_sku["date_only"] == d]
-            day_sku_shipments = day_sku.loc[_shipment_type_mask(day_sku)]
-
-            quantity = float(safe_num(day_sku_shipments.get("quantity", 0)).abs().sum()) if len(day_sku_shipments) else 0.0
-            product_sales = float(safe_num(day_sku.get("product_sales", 0)).sum()) if len(day_sku) else 0.0
             cogs = float(
                 safe_num(day_sku.get("cost_of_unit_sold", 0)).sum()
             ) if len(day_sku) else 0.0
@@ -1570,23 +1526,13 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
                 safe_num(day_sku.get("fba_fees", 0)).sum()
             ) if len(day_sku) else 0.0
 
-            # Match the finance MTD card's previous-period sales formula.
-            gross_sales = product_sales
             promotional_rebates = float(safe_num(day_sku.get("promotional_rebates", 0.0)).sum()) if len(day_sku) else 0.0
-            type_normalized = (
-                day_sku.get("type", pd.Series("", index=day_sku.index))
-                .fillna("")
-                .astype(str)
-                .str.strip()
-                .str.lower()
-            ) if len(day_sku) else pd.Series(dtype=str)
-            refund_mask = type_normalized.eq("refund") if len(day_sku) else pd.Series(dtype=bool)
-            refund_sales = (
-                float(safe_num(day_sku.loc[refund_mask, "product_sales"]).abs().sum())
-                if len(day_sku) and "product_sales" in day_sku.columns
-                else 0.0
-            )
-            net_sales = gross_sales - refund_sales - abs(promotional_rebates)
+            sales_totals = previous_product_sales(day_sku).sum().to_dict()
+            quantity = float(sales_totals["quantity"])
+            product_sales = float(sales_totals["product_sales"])
+            gross_sales = float(sales_totals["gross_sales"])
+            refund_sales = float(sales_totals["refund_sales"])
+            net_sales = float(sales_totals["net_sales"])
 
             # sales/profit based on SKU rows (keeps your earlier behavior for UK)
             sales_df = day_sku if len(day_sku) else day_all
@@ -1612,6 +1558,10 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             daily_series.append({
                 "date": d.isoformat(),
                 "quantity": float(quantity),
+                "shipment_quantity": float(sales_totals["shipment_quantity"]),
+                "refund_quantity": float(sales_totals["refund_quantity"]),
+                "net_quantity": float(sales_totals["net_quantity"]),
+                "shipment_sales": float(sales_totals["shipment_sales"]),
                 "product_sales": float(product_sales),
                 "gross_sales": float(gross_sales),
                 "refund_sales": float(refund_sales),
@@ -1629,6 +1579,14 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
             })
 
     daily_series = sorted(daily_series, key=lambda x: x["date"])
+    if include_dashboard_totals:
+        # Import at call time: amazon_utils also imports the historical SKU helper.
+        from app.utils.amazon_utils import previous_period_metrics_from_df
+
+        _, dashboard_totals, _ = previous_period_metrics_from_df(
+            df, country_key, sku_metrics=sku_metrics, include_daily=False
+        )
+        return sku_metrics, daily_series, dashboard_totals
     return sku_metrics, daily_series
 
 

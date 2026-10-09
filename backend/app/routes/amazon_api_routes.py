@@ -2741,8 +2741,13 @@ def finances_mtd_transactions():
             # Import at request time to avoid a module-level circular import.
             from app.routes.live_data_bi_routes import get_previous_global_data_for_live_bi
 
-            previous_global = get_previous_global_data_for_live_bi(user_id)
-            previous_source = {
+            previous_global = get_previous_global_data_for_live_bi(
+                user_id,
+                as_of=request.args.get("as_of"),
+                start_day=request.args.get("start_day", type=int),
+                end_day=request.args.get("end_day", type=int),
+            )
+            previous_source = previous_global.get("dashboard_totals_global") or {
                 **(previous_global.get("derived_totals_global") or {}),
                 **(previous_global.get("aligned_totals_global") or {}),
             }
@@ -2765,7 +2770,7 @@ def finances_mtd_transactions():
                 ),
                 {},
             )
-            previous_country_source = {
+            previous_country_source = previous_global.get(f"dashboard_totals_{card_country}") or {
                 **(previous_global.get(f"derived_totals_{card_country}") or {}),
                 **(previous_global.get(f"aligned_totals_{card_country}") or {}),
             }

@@ -6746,6 +6746,7 @@ def _safe_float(v):
     
 DAILY_MONEY_COLS = [
     "product_sales",
+    "shipment_sales",
     "gross_sales",
     "net_sales",
     "refund_sales",
@@ -6965,6 +6966,11 @@ def _build_derived_totals_from_skuwise(skuwise_items, extra_totals):
 
     return {
         "quantity": round(quantity, 2),
+        "shipment_quantity": round(_safe_float(total.get("shipment_quantity", quantity)), 2),
+        "refund_quantity": round(_safe_float(total.get("refund_quantity")), 2),
+        "net_quantity": round(_safe_float(total.get("net_quantity", quantity)), 2),
+        "shipment_sales": round(_safe_float(total.get("shipment_sales", gross_sales)), 2),
+        "refund_sales": round(_safe_float(total.get("refund_sales")), 2),
         "gross_sales": round(gross_sales, 2),
         "net_sales": round(net_sales, 2),
         "profit": round(profit, 2),
@@ -6995,8 +7001,8 @@ def _items_to_df(items, country):
     df["country"] = country
     df["source_country"] = country
     for col in df.columns:
-            if col not in ("sku", "product_name", "country", "source_country"):
-                df[col] = pd.to_numeric(df[col], errors="ignore")
+        if col not in ("sku", "product_name", "country", "source_country", "currency"):
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
 def _convert_uk_to_usd(df, rate):
@@ -7004,6 +7010,8 @@ def _convert_uk_to_usd(df, rate):
         return df
     money_cols = [
         "product_sales",
+        "shipment_sales",
+        "refund_sales",
         "gross_sales",
         "net_sales",
         "profit",
@@ -7137,6 +7145,37 @@ def _append_total_row(items, country):
 
 
 
+def combine_previous_dashboard_totals(uk_totals, us_totals, uk_to_usd_rate):
+    """Convert additive UK finance totals once, then derive global ratios."""
+    money_fields = (
+        "gross_sales", "net_sales", "profit", "platform_fee", "advertising_fees",
+        "cm2_profit", "promotional_rebates", "previous_net_reimbursement", "cogs",
+        "amazon_fees", "tax_and_credits", "misc_transaction", "lost_total",
+        "platform_fee_inventory_storage", "platformfeenew", "platform_fee_new",
+    )
+    quantity_fields = ("quantity", "return_quantity", "total_quantity")
+
+    def totals(source, rate, currency):
+        out = {key: float(source.get(key, 0) or 0) * rate for key in money_fields}
+        out.update({key: float(source.get(key, 0) or 0) for key in quantity_fields})
+        out["total_quantity"] = float(source.get("total_quantity", out["quantity"]) or 0)
+        return ratios(out, currency)
+
+    def ratios(out, currency):
+        units = out["total_quantity"]
+        net_sales = out["net_sales"]
+        out["asp"] = out["net_sales"] / units if units else 0.0
+        out["profit_percentage"] = out["cm2_profit"] / net_sales * 100 if net_sales else 0.0
+        out["promotional_rebates_percentage"] = out["promotional_rebates"] / net_sales * 100 if net_sales else 0.0
+        out["currency"] = currency
+        return out
+
+    uk = totals(uk_totals or {}, float(uk_to_usd_rate), "USD")
+    us = totals(us_totals or {}, 1.0, "USD")
+    combined = {key: uk[key] + us[key] for key in money_fields + quantity_fields}
+    return {"uk": uk, "us": us, "global": ratios(combined, "USD")}
+
+
 def get_previous_global_data_for_live_bi(
     user_id,
     as_of=None,
@@ -7165,14 +7204,19 @@ def get_previous_global_data_for_live_bi(
     # -------------------------------------------------------------------------
     # SAFE FETCH HELPERS
     # -------------------------------------------------------------------------
+    dashboard_totals_by_period = {}
+
     def safe_fetch_previous_period_data(user_id, country, start_date, end_date):
         try:
-            items, daily = fetch_previous_period_data(
+            items, daily, dashboard_totals = fetch_previous_period_data(
                 user_id,
                 country,
                 start_date,
                 end_date,
+                include_dashboard_totals=True,
             )
+
+            dashboard_totals_by_period[(country, start_date, end_date)] = dashboard_totals
 
             return items or [], daily or []
 
@@ -7309,6 +7353,20 @@ def get_previous_global_data_for_live_bi(
         user_currency="gbp",
         selected_currency="usd",
     ) or 1.0
+
+    dashboard_totals = combine_previous_dashboard_totals(
+        dashboard_totals_by_period.get(("uk", prev_start, prev_end)),
+        dashboard_totals_by_period.get(("us", prev_start, prev_end)),
+        uk_to_usd_rate,
+    )
+    dashboard_full_totals = combine_previous_dashboard_totals(
+        dashboard_totals_by_period.get(("uk", prev_full_start, prev_full_end)),
+        dashboard_totals_by_period.get(("us", prev_full_start, prev_full_end)),
+        uk_to_usd_rate,
+    )
+    for country, totals in dashboard_totals.items():
+        totals["total_previous_net_sales_full_month"] = dashboard_full_totals[country]["net_sales"]
+        totals["previous_net_reimbursement"] = dashboard_full_totals[country]["previous_net_reimbursement"]
 
     # -------------------------------------------------------------------------
     # CONVERT UK TO USD SAFELY
@@ -7484,6 +7542,10 @@ def get_previous_global_data_for_live_bi(
         "derived_totals_global": derived_totals_global,
         "derived_totals_uk": derived_totals_uk,
         "derived_totals_us": derived_totals_us,
+
+        "dashboard_totals_global": dashboard_totals["global"],
+        "dashboard_totals_uk": dashboard_totals["uk"],
+        "dashboard_totals_us": dashboard_totals["us"],
 
         "skuwise_items_uk": skuwise_items_uk,
         "skuwise_items_us": skuwise_items_us,

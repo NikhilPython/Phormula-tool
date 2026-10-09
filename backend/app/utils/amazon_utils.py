@@ -3476,10 +3476,17 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
 
         df = pd.DataFrame(rows, columns=result.keys())
 
+    return previous_period_metrics_from_df(df, country)
+
+
+def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metrics=None, include_daily=True):
+    """Finance comparison totals shared by country and Global dashboards."""
+    df = df.copy()
     # -------------------------
     # Per-SKU metrics (existing)
     # -------------------------
-    sku_metrics = compute_sku_metrics_from_df(df, country=country) or []
+    if sku_metrics is None:
+        sku_metrics = compute_sku_metrics_from_df(df, country=country) or []
 
     # -------------------------
     # Totals (NOT day-wise)
@@ -3668,7 +3675,7 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
     daily_series = []
     date_col = "date_ts" if "date_ts" in df.columns else ("date_time" if "date_time" in df.columns else None)
 
-    if date_col:
+    if date_col and include_daily:
         tmp = df.copy()
         tmp["date_only"] = pd.to_datetime(tmp[date_col], errors="coerce").dt.date
 

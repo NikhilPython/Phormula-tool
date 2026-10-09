@@ -132,6 +132,38 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 
 
+/** Reject saved Global cards whose comparisons came from product-only totals. */
+function hasConsistentGlobalComparisons(data: any, previousData: any): boolean {
+    const close = (actual: unknown, expected: unknown) => {
+        if (actual == null || expected == null) return false;
+        const a = Number(actual);
+        const b = Number(expected);
+        return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 0.005001;
+    };
+
+    return (["uk", "us", "global"] as const).every((country) => {
+        const totals = previousData?.[`dashboard_totals_${country}`];
+        const cards = country === "global"
+            ? data?.dashboard_card_metrics
+            : data?.dashboard_card_metrics_by_country?.[country];
+        if (!totals || !cards) return false;
+
+        const fields = {
+            units: totals.total_quantity,
+            gross_sales: totals.gross_sales,
+            net_sales: totals.net_sales,
+            asp: totals.asp,
+            cost_of_ads: totals.advertising_fees,
+            cm2_profit: totals.cm2_profit,
+            promotions: Math.abs(Number(totals.promotional_rebates)),
+        };
+        return Object.entries(fields).every(([metric, value]) =>
+            close(cards[metric]?.previous, value)
+        );
+    });
+}
+
+
 const ROUND_LABELS = [
     "Gross Sales",
     "Net Sales",
@@ -153,7 +185,7 @@ const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
-const DASHBOARD_CACHE_SCHEMA_VERSION = 5;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 6;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -4269,6 +4301,12 @@ export default function DashboardPage() {
                         format: "json",
                     });
 
+            if (apiCountry === "global") {
+                params.set("as_of", getGlobalPreviousSkuwiseAsOfISO());
+                params.set("start_day", String(selectedStartDay ?? 1));
+                params.set("end_day", String(Math.min(selectedEndDay ?? dashboardAllowedDay, dashboardAllowedDay)));
+            }
+
             const url = `${FIN_MTD_TX_ENDPOINT}?${params.toString()}`;
 
 
@@ -4298,7 +4336,7 @@ export default function DashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [platform, amazonConnections, isMonthYearNA]);
+    }, [platform, amazonConnections, isMonthYearNA, selectedStartDay, selectedEndDay, dashboardAllowedDay]);
 
     /* ===================== SHOPIFY STORE INFO ===================== */
     useEffect(() => {
@@ -5114,7 +5152,11 @@ export default function DashboardPage() {
             const payload = json?.data?.payload ?? null;
             const isUsablePayload = Boolean(
                 payload?.complete === true &&
-                Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION
+                Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION &&
+                (platform !== "global" || hasConsistentGlobalComparisons(
+                    payload?.data,
+                    payload?.previousSkuwiseGlobalData
+                ))
             );
 
             return {
@@ -7567,6 +7609,7 @@ export default function DashboardPage() {
     const globalTargetCardTotals = useMemo(() => {
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
+        const prevDashboard = previousSkuwiseGlobalData?.dashboard_totals_global || {};
 
         const currentNetSales = toNumber(
             stickyTableTotals.netSales ??
@@ -7576,12 +7619,15 @@ export default function DashboardPage() {
 
         // Previous MTD / same selected period
         const previousNetSales = toNumber(
+            prevDashboard.net_sales ??
+            (data as any)?.dashboard_card_metrics?.net_sales?.previous ??
             prevAligned.total_previous_net_sales ??
             prevDerived.net_sales
         );
 
         // Previous full-month net sales
         const previousNetSalesFullMonth = toNumber(
+            prevDashboard.total_previous_net_sales_full_month ??
             prevAligned.total_previous_net_sales_full_month ??
             previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_net_sales_full_month ??
             prevDerived.total_previous_net_sales_full_month
@@ -7594,6 +7640,7 @@ export default function DashboardPage() {
         );
 
         const previousReimbursement = toNumber(
+            prevDashboard.previous_net_reimbursement ??
             prevAligned.total_previous_rembursement_fee ??
             prevAligned.total_previous_reimbursement_fee ??
             prevDerived.total_previous_rembursement_fee ??
@@ -7620,6 +7667,8 @@ export default function DashboardPage() {
             return biAlignedTotalsHome;
         }
 
+        const prevDashboard = previousSkuwiseGlobalData?.dashboard_totals_global;
+
         return {
             ...(biAlignedTotalsHome || {}),
 
@@ -7642,17 +7691,20 @@ export default function DashboardPage() {
                 stickyTableTotals.costOfAds,
 
             total_previous_advertising:
+                prevDashboard?.advertising_fees ??
                 previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_advertising ?? 0,
 
             total_current_profit:
                 stickyTableTotals.cm2Profit,
 
             total_previous_profit:
+                prevDashboard?.profit ??
                 previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_profit ?? 0,
 
             total_current_platform_fees: 0,
 
             total_previous_platform_fees:
+                prevDashboard?.platform_fee ??
                 previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_platform_fees ?? 0,
         };
     }, [
@@ -8971,11 +9023,11 @@ export default function DashboardPage() {
                 mode: "target_trend",
             },
             sales_metrics_sales_trend: {
-                current: stats_mtdHome,
-                previous: stats_lastMtdHome,
+                current: targets_mtdHome,
+                previous: targets_lastMonthToDateHome,
             },
             sales_metrics_target_trend: {
-                current: stats_mtdHome,
+                current: targets_mtdHome,
                 previous: proratedTargetToDate,
                 basis: stats_targetHome,
                 mode: "basis_percentage",
@@ -9443,40 +9495,48 @@ export default function DashboardPage() {
     const globalPreviousGraphValues = useMemo(() => {
         const prevAligned = previousSkuwiseGlobalData?.aligned_totals_global || {};
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
+        const prevDashboard = previousSkuwiseGlobalData?.dashboard_totals_global || {};
 
         const previousNetSales = toNumber(
+            prevDashboard.net_sales ??
             prevAligned.total_previous_net_sales ??
             prevDerived.net_sales
         );
 
         const previousAdvertising = toNumber(
+            prevDashboard.advertising_fees ??
             prevAligned.total_previous_advertising ??
             prevDerived.advertising_fees
         );
 
         const previousPlatformFees = toNumber(
+            prevDashboard.platform_fee ??
             prevAligned.total_previous_platform_fees ??
             prevDerived.platform_fee ??
             prevDerived.platformfeenew
         );
 
         const previousCm1Profit = toNumber(
+            prevDashboard.profit ??
             prevAligned.total_previous_profit ??
             prevDerived.profit ??
             prevDerived.cm1_profit
         );
 
         const previousCm2Profit = toNumber(
+            prevDashboard.cm2_profit ??
             prevAligned.total_previous_profit_cm2 ??
             prevDerived.cm2_profit
         );
 
         const previousCogs = toNumber(
+            prevDashboard.cogs ??
             prevDerived.cogs ??
             prevDerived.cost_of_unit_sold
         );
 
         const previousMarketplaceFees = toNumber(
+            prevDashboard.amazon_fees ??
             prevDerived.amazon_fees ??
             prevDerived.marketplace_fees ??
             (
@@ -9486,6 +9546,7 @@ export default function DashboardPage() {
         );
 
         const previousTaxAndCredits = toNumber(
+            prevDashboard.tax_and_credits ??
             prevDerived.tax_and_credits ??
             prevDerived.tex_and_credits ??
             (
