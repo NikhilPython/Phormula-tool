@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import SummaryMetricCard from "./SummaryMetricCard";
 
 export type SummaryDestination =
   | "graphs"
@@ -27,6 +28,11 @@ export type SummaryDestination =
 type DeltaMetric = {
   value: number;
   delta?: number;
+  previousValue?: number;
+  perUnit?: number;
+  previousPerUnit?: number;
+  percentage?: number;
+  previousPercentage?: number;
 };
 
 type SkuTableMetric = {
@@ -39,6 +45,7 @@ type SkuTableMetric = {
 
 export type PnlSummaryOverviewData = {
   periodLabel: string;
+  comparisonLabel: string;
   currencySymbol: string;
   financial: {
     netSales: DeltaMetric;
@@ -60,6 +67,7 @@ export type PnlSummaryOverviewData = {
   };
   cashFlow: {
     cashGenerated: number;
+    previousCashGenerated?: number;
     delta?: number;
     loading?: boolean;
   };
@@ -105,6 +113,44 @@ const formatPercentageNumber = (value: number) =>
 
 const formatPercent = (value: number) => `${formatPercentageNumber(value)}%`;
 
+
+const formatMoneyWithPerUnit = (
+  value: number,
+  perUnit: number | undefined,
+  currencySymbol: string
+): React.ReactNode => (
+  <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="text-base 2xl:text-lg font-bold text-charcoal-500">
+      {formatMoney(value, currencySymbol)}
+    </span>
+
+    {typeof perUnit === "number" && Number.isFinite(perUnit) && (
+      <span className="text-[10px] 2xl:text-xs font-normal text-charcoal-500">
+        ({formatMoney(perUnit, currencySymbol)}/unit)
+      </span>
+    )}
+  </span>
+);
+
+const formatMoneyWithPercentage = (
+  value: number,
+  percentage: number | undefined,
+  currencySymbol: string
+): React.ReactNode => (
+  <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+    <span className="text-base 2xl:text-lg font-bold text-charcoal-500">
+      {formatMoney(value, currencySymbol)}
+    </span>
+
+    {typeof percentage === "number" && Number.isFinite(percentage) && (
+      <span className="text-[10px] 2xl:text-xs font-normal text-charcoal-500">
+        ({formatPercent(percentage)})
+      </span>
+    )}
+  </span>
+);
+
+
 const roundFormattedValue = (value: string) =>
   value.replace(/-?\d[\d,]*(?:\.\d+)?/, (match) => {
     const numericValue = Number(match.replace(/,/g, ""));
@@ -144,9 +190,8 @@ const StorageCostDelta = ({
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-xs font-semibold ${
-        deltaPercentage <= 0 ? "text-emerald-600" : "text-red-600"
-      }`}
+      className={`inline-flex items-center gap-1 text-xs font-semibold ${deltaPercentage <= 0 ? "text-emerald-600" : "text-red-600"
+        }`}
       title={
         deltaValue
           ? `Change vs previous month: ${roundFormattedValue(deltaValue)}`
@@ -175,11 +220,10 @@ const MetricTile = ({
   compact?: boolean;
 }) => (
   <div
-    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white p-3.5 shadow-sm sm:p-4 ${
-      compact
-        ? "min-h-[88px] 2xl:min-h-[88px] 2xl:p-3.5"
-        : "min-h-[108px] 2xl:min-h-[132px] 2xl:p-5"
-    } ${accent}`}
+    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white p-3.5 shadow-sm sm:p-4 ${compact
+      ? "min-h-[88px] 2xl:min-h-[88px] 2xl:p-3.5"
+      : "min-h-[108px] 2xl:min-h-[132px] 2xl:p-5"
+      } ${accent}`}
   >
     <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 2xl:text-[11px]">
       {label}
@@ -260,13 +304,12 @@ const SkuPerformanceTable = ({
               {formatMoney(row.netSales, currencySymbol)}
             </span>
             <span
-              className={`text-right text-xs font-semibold 2xl:text-sm ${
-                metricType === "percentage"
-                  ? "inline-flex items-center justify-end gap-1 text-emerald-600"
-                  : row.secondaryValue < 0
-                    ? "text-rose-600"
-                    : "text-charcoal-500"
-              }`}
+              className={`text-right text-xs font-semibold 2xl:text-sm ${metricType === "percentage"
+                ? "inline-flex items-center justify-end gap-1 text-emerald-600"
+                : row.secondaryValue < 0
+                  ? "text-rose-600"
+                  : "text-charcoal-500"
+                }`}
             >
               {metricType === "percentage" ? (
                 <>
@@ -434,68 +477,98 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
     }
 
     if (slide.key === "finance") {
+
+      const financeValue = (
+        value: React.ReactNode,
+        delta?: number,
+        inverse = false
+      ) => (
+        <div className="flex w-full items-baseline justify-between gap-2">
+          <div className="min-w-0">
+            {value}
+          </div>
+
+          <div className="shrink-0 whitespace-nowrap text-[9px] leading-none 2xl:text-[10px]">
+            <Delta value={delta} inverse={inverse} />
+          </div>
+        </div>
+      );
+
+
       return (
-        <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-3">
-          <MetricTile
-            label="Units sold"
-            value={formatWholeNumber(financial.units.value)}
-            trailing={<Delta value={financial.units.delta} />}
-            accent="border-[#FDD36F]"
-            compact
+        <div className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6 2xl:gap-3">
+          <SummaryMetricCard
+            title="Units sold"
+            value={financeValue(
+              formatWholeNumber(financial.units.value),
+              financial.units.delta
+            )}
+            className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white"
           />
 
-          <MetricTile
-            label="Net sales"
-            value={formatMoney(financial.netSales.value, currencySymbol)}
-            trailing={<Delta value={financial.netSales.delta} />}
-            accent="border-[#75BBDA]"
-            compact
+          <SummaryMetricCard
+            title="Net sales"
+            value={financeValue(
+              formatMoneyWithPerUnit(
+                financial.netSales.value,
+                financial.netSales.perUnit,
+                currencySymbol
+              ),
+              financial.netSales.delta
+            )}
+            className="border border-[#75BBDA] border-t-4 border-t-[#75BBDA] bg-white"
           />
 
-          <MetricTile
-            label="CM2 profit"
-            value={
-              <div className="flex items-end gap-1">
-                <span>{formatMoney(financial.cm2Profit.value, currencySymbol)}</span>
 
-                {/* <span className="text-[10px] font-medium text-slate-500 sm:text-xs mb-0.5">
-                  {formatPercent(financial.cm2Margin)}
-                </span> */}
-              </div>
-            }
-            trailing={<Delta value={financial.cm2Profit.delta} />}
-            accent="border-[#B8C78C]"
-            compact
+
+          <SummaryMetricCard
+            title="Marketplace fees"
+            value={financeValue(
+              formatMoneyWithPerUnit(
+                financial.marketplaceFees.value,
+                financial.marketplaceFees.perUnit,
+                currencySymbol
+              ),
+              financial.marketplaceFees.delta,
+              true
+            )}
+            className="border border-[#B75A5A] border-t-4 border-t-[#B75A5A] bg-white"
           />
 
-          <MetricTile
-            label="TACoS"
-            value={formatPercent(financial.tacos.value)}
-            trailing={<Delta value={financial.tacos.delta} inverse />}
-            accent="border-[#3A8EA4]"
-            compact
+          <SummaryMetricCard
+            title="TACoS"
+            value={financeValue(
+              formatPercent(financial.tacos.value),
+              financial.tacos.delta,
+              true
+            )}
+            className="border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4] bg-white"
           />
 
-          <MetricTile
-            label="Marketplace fees"
-            value={formatMoney(financial.marketplaceFees.value, currencySymbol)}
-            trailing={<Delta value={financial.marketplaceFees.delta} inverse />}
-            accent="border-[#B75A5A]"
-            compact
+          <SummaryMetricCard
+            title="CM2 profit"
+            value={financeValue(
+              formatMoneyWithPercentage(
+                financial.cm2Profit.value,
+                financial.cm2Profit.percentage,
+                currencySymbol
+              ),
+              financial.cm2Profit.delta
+            )}
+            className="border border-[#B8C78C] border-t-4 border-t-[#B8C78C] bg-white"
           />
 
-          <MetricTile
-            label="Cash generated"
-            value={
+          <SummaryMetricCard
+            title="Cash generated"
+            value={financeValue(
               data.cashFlow.loading ? (
                 <SkeletonLine className="w-24" />
               ) : (
                 formatMoney(data.cashFlow.cashGenerated, currencySymbol)
-              )
-            }
-            trailing={<Delta value={data.cashFlow.delta} />}
-            accent="border-[#7B9A6D]"
-            compact
+              ),
+              data.cashFlow.delta
+            )}
+            className="border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] bg-white"
           />
         </div>
       );
@@ -720,26 +793,24 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className={`relative flex h-full w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] ${
-              slide.key === "ai"
-                ? "justify-start p-4 sm:p-4 2xl:px-8 2xl:py-6"
-                : isSkuTableSlide
-                  ? "justify-center px-4 py-2 sm:px-6 sm:py-2 2xl:px-8 2xl:py-2"
-                  : isFinanceSlide
+            className={`relative flex h-full w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] ${slide.key === "ai"
+              ? "justify-start p-4 sm:p-4 2xl:px-8 2xl:py-6"
+              : isSkuTableSlide
+                ? "justify-center px-4 py-2 sm:px-6 sm:py-2 2xl:px-8 2xl:py-2"
+                : isFinanceSlide
                   ? "justify-center px-4 py-3 sm:px-6 sm:py-3 2xl:px-8 2xl:py-3"
                   : "justify-center p-4 sm:p-6 2xl:px-8 2xl:py-6"
-            }`}
+              }`}
           >
             {/* <div className={`pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full blur-3xl ${tone.glow}`} /> */}
             <div className={`relative z-10 flex max-w-3xl flex-col items-center text-center ${slide.key === "ai" ? "mb-2" : isSkuTableSlide ? "mb-1.5" : usesCompactHeader ? "mb-2.5" : "mb-4"}`}>
               <div
-                className={`flex items-center justify-center rounded-xl ${
-                  isSkuTableSlide
-                    ? "h-8 w-8 2xl:h-8 2xl:w-8"
-                    : usesCompactHeader
+                className={`flex items-center justify-center rounded-xl ${isSkuTableSlide
+                  ? "h-8 w-8 2xl:h-8 2xl:w-8"
+                  : usesCompactHeader
                     ? "h-8 w-8 2xl:h-9 2xl:w-9"
                     : "h-10 w-10 2xl:h-12 2xl:w-12"
-                } ${tone.icon}`}
+                  } ${tone.icon}`}
               >
                 <SlideIcon size={20} />
               </div>

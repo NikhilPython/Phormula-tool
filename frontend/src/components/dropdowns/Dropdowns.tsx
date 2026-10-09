@@ -4331,6 +4331,7 @@ const DEMO_TARGET_SUMMARY = {
   target_sales: 0,
   shortfall_total: 0,
   cashflow_total: 0,
+  previous_cashflow_total: 0,
   cashflow_delta: 0,
 };
 
@@ -6811,6 +6812,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     target_sales?: number;
     shortfall_total?: number;
     cashflow_total?: number;
+    previous_cashflow_total?: number;
     cashflow_delta?: number;
   } | null>(isDemoMode ? DEMO_TARGET_SUMMARY : null);
 
@@ -8702,6 +8704,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           target_sales: 0,
           shortfall_total: 0,
           cashflow_total: 0,
+          previous_cashflow_total: 0,
           cashflow_delta: undefined,
         });
         return;
@@ -8749,6 +8752,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       setTargetSummary({
         ...totals,
+        previous_cashflow_total: previousCashflowTotal,
         cashflow_delta: cashflowDelta,
       });
     } catch (error) {
@@ -10143,6 +10147,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const overviewData: PnlSummaryOverviewData = (() => {
     const currentMetrics = uploadsData?.card_metrics?.current;
+    const previousMetrics = uploadsData?.card_metrics?.previous;
     const metricDeltas = uploadsData?.card_metrics?.deltas;
     const currentSummary = displayData;
 
@@ -10212,11 +10217,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         netSalesDeltaPercentage: row.netSalesGrowth,
       }));
     const topNetSalesGrowthSkus = [...rankedCm1Skus]
-      .filter(
-        (row) =>
-          typeof row.netSalesGrowth === "number" && row.netSalesGrowth > 0
+      .sort(
+        (a, b) =>
+          (b.netSalesGrowth ?? Number.NEGATIVE_INFINITY) -
+          (a.netSalesGrowth ?? Number.NEGATIVE_INFINITY)
       )
-      .sort((a, b) => (b.netSalesGrowth ?? 0) - (a.netSalesGrowth ?? 0))
       .slice(0, 5)
       .map((row) => ({
         productName: row.productName,
@@ -10257,29 +10262,50 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? `${selectedQuarter} ${selectedYear}`
           : selectedYear;
 
+    const comparisonLabel =
+      range === "monthly"
+        ? getPrevMonthLabel(selectedMonth, Number(selectedYear))
+        : range === "quarterly"
+          ? selectedQuarter
+            ? getPrevQuarterLabel(selectedQuarter, Number(selectedYear))
+            : "Previous quarter"
+          : getPrevYearLabel(Number(selectedYear));
+
     return {
       periodLabel,
+      comparisonLabel,
       currencySymbol,
       financial: {
         netSales: {
           value: currentMetrics?.net_sales ?? currentSummary.total_sales,
           delta: metricDeltas?.net_sales,
+          previousValue: previousMetrics?.net_sales,
+          perUnit: currentMetrics?.net_sales_per_unit,
+          previousPerUnit: previousMetrics?.net_sales_per_unit,
         },
         cm2Profit: {
           value: currentMetrics?.cm2_profit ?? currentSummary.cm2_profit,
           delta: metricDeltas?.cm2_profit,
+          previousValue: previousMetrics?.cm2_profit,
+          percentage: cm2Margin,
+          previousPercentage: previousMetrics?.cm2_margin_pct,
         },
         tacos: {
           value: tacos,
           delta: metricDeltas?.tacos_pct,
+          previousValue: previousMetrics?.tacos_pct,
         },
         units: {
           value: currentMetrics?.units ?? currentSummary.unit_sold,
           delta: metricDeltas?.units,
+          previousValue: previousMetrics?.units,
         },
         marketplaceFees: {
           value: currentMetrics?.marketplace_fees ?? marketplaceFeesFromTable,
           delta: metricDeltas?.marketplace_fees,
+          previousValue: previousMetrics?.marketplace_fees,
+          perUnit: currentMetrics?.marketplace_fees_per_unit,
+          previousPerUnit: previousMetrics?.marketplace_fees_per_unit,
         },
         cm2Margin,
       },
@@ -10295,6 +10321,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       },
       cashFlow: {
         cashGenerated: toNum(targetSummary?.cashflow_total),
+        previousCashGenerated: targetSummary?.previous_cashflow_total,
         delta: targetSummary?.cashflow_delta,
         loading: targetSummaryLoading,
       },
