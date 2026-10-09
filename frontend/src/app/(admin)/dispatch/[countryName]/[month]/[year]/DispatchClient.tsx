@@ -1177,53 +1177,53 @@ export default function DispatchPage({
       const air = Math.max(0, toNumber(row['AIR']))
       const sea = Math.max(0, toNumber(row['SEA']))
       const dispatch = Math.max(0, toNumber(row['To be Dispatch']) || air + sea)
-      const shortfall = Math.max(0, toNumber(row['Shortfall Unit']))
       const projectedSales = Math.max(0, toNumber(row['Projected Sales Total']))
       const coverage = Math.max(0, toNumber(row['Inventory Coverage Ratio Before Dispatch']))
-      const inStock = Math.max(0, toNumber(row['In stock']))
-      const inTransit = Math.max(0, toNumber(row['In transit']))
 
-      return { row, air, sea, dispatch, shortfall, projectedSales, coverage, inStock, inTransit }
+      return { row, air, sea, dispatch, projectedSales, coverage }
     })
 
     const totalAir = enriched.reduce((sum, item) => sum + item.air, 0)
     const totalSea = enriched.reduce((sum, item) => sum + item.sea, 0)
     const totalDispatch = enriched.reduce((sum, item) => sum + item.dispatch, 0)
-    const totalShortfall = enriched.reduce((sum, item) => sum + item.shortfall, 0)
     const totalProjectedSales = enriched.reduce((sum, item) => sum + item.projectedSales, 0)
     const coverageRows = enriched.filter((item) => item.coverage > 0)
-    const averageCoverage = coverageRows.length
-      ? coverageRows.reduce((sum, item) => sum + item.coverage, 0) / coverageRows.length
-      : 0
+    const lowestCoverageItem = coverageRows.length
+      ? [...coverageRows].sort((a, b) => a.coverage - b.coverage)[0]
+      : null
     const ranked = [...enriched].sort((a, b) => {
-      if (b.shortfall !== a.shortfall) return b.shortfall - a.shortfall
+      if (b.dispatch !== a.dispatch) return b.dispatch - a.dispatch
       if (a.coverage && b.coverage && a.coverage !== b.coverage) return a.coverage - b.coverage
-      return b.dispatch - a.dispatch
+      return 0
     })
     const highest = ranked[0]
 
     return {
       title: 'Dispatch plan requires action',
-      description: `${actionFilteredSkuData.length} product${actionFilteredSkuData.length === 1 ? '' : 's'} require air or sea dispatch in the current plan.`,
+      description: 'Products requiring additional inbound stock in the current dispatch plan.',
       metrics: [
         { label: 'Affected products', value: actionFilteredSkuData.length.toLocaleString() },
         { label: 'To dispatch', value: Math.round(totalDispatch).toLocaleString() },
         { label: 'Air units', value: Math.round(totalAir).toLocaleString() },
         { label: 'Sea units', value: Math.round(totalSea).toLocaleString() },
-        { label: 'Shortfall units', value: Math.round(totalShortfall).toLocaleString() },
-        { label: 'Avg pre-dispatch coverage', value: averageCoverage > 0 ? `${averageCoverage.toFixed(2)} mo` : '—', helper: totalProjectedSales > 0 ? `${Math.round(totalProjectedSales).toLocaleString()} projected sales units` : undefined },
+        { label: 'Projected sales', value: Math.round(totalProjectedSales).toLocaleString(), helper: 'units' },
+        {
+          label: 'Lowest pre-dispatch coverage',
+          value: lowestCoverageItem ? `${lowestCoverageItem.coverage.toFixed(2)} mo` : '—',
+          helper: lowestCoverageItem ? productName(lowestCoverageItem.row) : undefined,
+        },
       ],
       whyItMatters:
-        'These products need additional inbound stock in the dispatch plan. The shortfall and pre-dispatch coverage help show which products are most exposed before the planned shipment arrives.',
+        'Low pre-dispatch coverage can create stockout risk before planned inbound stock arrives.',
       recommendedAction: highest
-        ? `Prioritize ${productName(highest.row)} first. Validate the ${Math.round(highest.air).toLocaleString()} AIR / ${Math.round(highest.sea).toLocaleString()} SEA split against its shortfall, coverage and shipment dates before finalizing the dispatch.`
-        : 'Validate the AIR/SEA split against shortfall, coverage and shipment dates before finalizing the dispatch plan.',
+        ? `Prioritize ${productName(highest.row)}: ${Math.round(highest.dispatch).toLocaleString()} units to dispatch (AIR ${Math.round(highest.air).toLocaleString()} / SEA ${Math.round(highest.sea).toLocaleString()}). Confirm the shipment dates and mode split.`
+        : 'Confirm the AIR/SEA split and shipment dates before finalizing the dispatch plan.',
       triggerRule: 'Product has an AIR or SEA dispatch requirement in the current dispatch plan.',
-      riskTitle: 'Largest dispatch gaps',
+      riskTitle: 'Largest dispatch requirements',
       riskItems: ranked.slice(0, 3).map((item) => ({
         name: productName(item.row),
         detail: `${Math.round(item.dispatch).toLocaleString()} units`,
-        secondary: `${Math.round(item.shortfall).toLocaleString()} shortfall • ${item.coverage > 0 ? `${item.coverage.toFixed(2)} mo coverage` : 'coverage n/a'} • AIR ${Math.round(item.air).toLocaleString()} / SEA ${Math.round(item.sea).toLocaleString()}`,
+        secondary: `${item.coverage > 0 ? `${item.coverage.toFixed(2)} mo before dispatch` : 'coverage n/a'} • AIR ${Math.round(item.air).toLocaleString()} / SEA ${Math.round(item.sea).toLocaleString()}`,
       })),
     }
   }, [actionFilteredSkuData, isActionSkuFilterActive])

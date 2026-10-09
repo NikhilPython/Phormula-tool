@@ -969,7 +969,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 metrics: [
                     { label: "Affected products", value: affectedRows.length.toLocaleString() },
                     { label: "Aged 181+ units", value: Math.round(totalAged).toLocaleString() },
-                    { label: "Aged share", value: `${agedShare.toFixed(2)}%`, helper: "Within affected inventory age buckets" },
                     { label: "365+ units", value: Math.round(totalOldest).toLocaleString() },
                     ...(storageCost > 0 ? [{ label: "Est. storage cost", value: `${storageCostCurrencySymbol}${storageCost.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` }] : []),
                     ...(highest ? [{ label: "Largest aged position", value: Math.round(highest.agedUnits).toLocaleString(), helper: highest.row.productName }] : []),
