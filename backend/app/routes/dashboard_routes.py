@@ -3574,6 +3574,41 @@ def cashflow():
             else get_months_to_process(period_type_value, month_name_value)
         )
 
+        # Match YearlySKU: US yearly processing reconciles repeated financial
+        # events and quantities across months. Monthly totals cannot reproduce
+        # that result. Keep the previous-year comparison on its matched months.
+        if (
+            country_value == 'us'
+            and period_type_value == 'yearly'
+            and custom_months_to_process is None
+        ):
+            yearly_table = f"skuwiseyearly_{user_id_value}_us_{year_value}_table"
+            if table_exists(db_session, yearly_table):
+                yearly_df = load_table_dataframe(yearly_table)
+                yearly_totals, yearly_records = extract_totals(yearly_df)
+                if yearly_totals is not None:
+                    processed_months = [
+                        m for m in months_to_process
+                        if find_monthly_table(user_id_value, 'us', year_value, m)
+                    ]
+                    combined_totals = {
+                        key: round(value, 2) for key, value in yearly_totals.items()
+                    }
+                    add_cashflow_summary_fields(combined_totals)
+                    return combined_totals, [{
+                        'country': 'us',
+                        'period_type': 'yearly',
+                        'month': None,
+                        'table': yearly_table,
+                        **combined_totals,
+                        'monthly_details': [],
+                        'data': yearly_records,
+                    }], {
+                        'processed_months': processed_months,
+                        'year_months': processed_months,
+                        'source_table': yearly_table,
+                    }
+
         if not months_to_process:
             return combined_totals, [], {'processed_months': []}
 
