@@ -3574,9 +3574,9 @@ def cashflow():
             else get_months_to_process(period_type_value, month_name_value)
         )
 
-        # Match YearlySKU: US yearly processing reconciles repeated financial
-        # events and quantities across months. Monthly totals cannot reproduce
-        # that result. Keep the previous-year comparison on its matched months.
+        # Match YearlySKU: the US yearly table aggregates finalized months and
+        # recalculates annual rates. Keep the previous-year comparison on its
+        # matched months.
         if (
             country_value == 'us'
             and period_type_value == 'yearly'

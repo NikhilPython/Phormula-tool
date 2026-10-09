@@ -2196,8 +2196,8 @@ def YearlySKU():
             today_year = date.today().year
             current_year_month_limit = max(date.today().month - 1, 0)
 
-            # US yearly processing reconciles events across months. Summing
-            # monthly reports again would restore duplicate released refunds.
+            # The US yearly table already aggregates finalized monthly reports,
+            # including their amounts and recalculated annual rates.
             if country != "us" and selected_year == today_year and current_year_month_limit == 0:
                 current_data = []
                 used_current_tables = []
