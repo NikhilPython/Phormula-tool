@@ -271,8 +271,8 @@ const SkuPerformanceTable = ({
       : "bg-rose-50 text-rose-700";
 
   return (
-    <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm 2xl:max-w-[1320px]">
-      <div className="grid grid-cols-4 items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[minmax(0,1.5fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)] 2xl:gap-3 2xl:px-5 2xl:text-xs">
+    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid grid-cols-4 items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[minmax(0,2fr)_minmax(100px,1fr)_minmax(100px,1fr)_minmax(140px,1fr)] 2xl:gap-3 2xl:px-5 2xl:text-xs">
         <span>{productHeading}</span>
         <span className="text-right">Net sales</span>
         <span className="text-right">{metricHeading}</span>
@@ -496,7 +496,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
 
       return (
-        <div className="grid w-full grid-cols-2 gap-2 lg:grid-cols-6 2xl:gap-3">
+        <div className="grid w-full grid-cols-2 gap-2 lg:grid-cols-3 2xl:gap-3">
           <SummaryMetricCard
             title="Units sold"
             value={financeValue(
@@ -793,36 +793,40 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className={`relative flex h-full w-full flex-col items-center overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] ${slide.key === "ai"
-              ? "justify-start p-4 sm:p-4 2xl:px-8 2xl:py-6"
-              : isSkuTableSlide
-                ? "justify-center px-4 py-2 sm:px-6 sm:py-2 2xl:px-8 2xl:py-2"
-                : isFinanceSlide
-                  ? "justify-center px-4 py-3 sm:px-6 sm:py-3 2xl:px-8 2xl:py-3"
-                  : "justify-center p-4 sm:p-6 2xl:px-8 2xl:py-6"
-              }`}
+            className="relative flex h-full w-full flex-col items-stretch justify-start overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-slate-50/60 via-white to-[#f2f8f6] px-4 py-3 sm:px-6 sm:py-4 2xl:px-8"
+
           >
             {/* <div className={`pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full blur-3xl ${tone.glow}`} /> */}
-            <div className={`relative z-10 flex max-w-3xl flex-col items-center text-center ${slide.key === "ai" ? "mb-2" : isSkuTableSlide ? "mb-1.5" : usesCompactHeader ? "mb-2.5" : "mb-4"}`}>
+
+            {/* Compact horizontal slide header */}
+            <div className="relative z-10 mx-auto mb-3 flex w-full max-w-[1480px] items-center gap-3 border-b border-slate-200/70 pb-3">
+
+              {/* Icon */}
               <div
-                className={`flex items-center justify-center rounded-xl ${isSkuTableSlide
-                  ? "h-8 w-8 2xl:h-8 2xl:w-8"
-                  : usesCompactHeader
-                    ? "h-8 w-8 2xl:h-9 2xl:w-9"
-                    : "h-10 w-10 2xl:h-12 2xl:w-12"
-                  } ${tone.icon}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}
               >
-                <SlideIcon size={20} />
+                <SlideIcon size={18} strokeWidth={2.2} />
               </div>
 
+              {/* Title and description */}
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold leading-6 text-charcoal-500 sm:text-lg">
+                  {slide.title}
+                </h2>
+
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-500 2xl:text-xs">
+                  {slide.description}
+                </p>
+              </div>
+
+              {/* Section label */}
               <span
-                className={`${isSkuTableSlide ? "mt-1 py-0.5" : usesCompactHeader ? "mt-1.5 py-0.5" : "mt-2 py-1"} rounded-full border px-2.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${tone.badge}`}
+                className={`hidden shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${tone.badge}`}
               >
                 {slide.eyebrow}
               </span>
-              <h2 className={`${slide.key === "ai" ? "mt-1.5" : usesCompactHeader ? "mt-1" : "mt-2"} text-xl font-bold leading-tight text-charcoal-500 ${usesCompactHeader ? "sm:text-xl 2xl:text-2xl" : "sm:text-2xl 2xl:text-[28px]"}`}>{slide.title}</h2>
-              <p className={`${isSkuTableSlide ? "mt-0.5 2xl:mt-0 2xl:text-xs 2xl:leading-4" : usesCompactHeader ? "mt-0.5 2xl:mt-1 2xl:text-xs" : "mt-1 2xl:mt-2 2xl:text-sm"} text-[10px] text-slate-500 sm:text-xs 2xl:max-w-sm 2xl:leading-5`}>{slide.description}</p>
             </div>
+
             <div className="relative z-10 w-full 2xl:mx-auto 2xl:max-w-[1480px]">{renderSlideBody()}</div>
           </motion.div>
         </AnimatePresence>
