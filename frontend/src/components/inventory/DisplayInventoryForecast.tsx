@@ -113,6 +113,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const chartRef = useRef<any>(null);
   const forecastHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const forecastTableBoundaryRef = useRef<HTMLDivElement | null>(null);
+  const [forecastScrollbarWidth, setForecastScrollbarWidth] = useState(0);
   const demoMode = Boolean(isDemoMode);
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
@@ -768,6 +769,35 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     !shouldScrollForecastTable
   );
 
+  useEffect(() => {
+    const body = forecastTableBoundaryRef.current;
+
+    if (!shouldScrollForecastTable || !body) {
+      setForecastScrollbarWidth(0);
+      return;
+    }
+
+    const measureScrollbar = () => {
+      const width = body.offsetWidth - body.clientWidth;
+      setForecastScrollbarWidth(width > 0 ? width : 0);
+    };
+
+    measureScrollbar();
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measureScrollbar)
+        : null;
+
+    resizeObserver?.observe(body);
+    window.addEventListener("resize", measureScrollbar);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measureScrollbar);
+    };
+  }, [shouldScrollForecastTable, tableRows.length]);
+
   const forecastTableBodyMaxHeight =
     FORECAST_ROW_HEIGHT * FORECAST_VISIBLE_ROWS;
 
@@ -982,6 +1012,11 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                     top: shouldScrollForecastTable
                       ? undefined
                       : "var(--table-sticky-top, 0px)",
+                    paddingRight:
+                      shouldScrollForecastTable && forecastScrollbarWidth > 0
+                        ? `${forecastScrollbarWidth}px`
+                        : undefined,
+                    boxSizing: "border-box",
                     visibility: isForecastStickyHeaderVisible ? "visible" : "hidden",
                   }}
                 >
@@ -993,7 +1028,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
 
                 <div
                   ref={forecastTableBoundaryRef}
-                  className="w-full overflow-auto [scrollbar-gutter:stable]"
+                  className={[
+                    "w-full",
+                    shouldScrollForecastTable
+                      ? "overflow-auto [scrollbar-gutter:stable]"
+                      : "overflow-x-auto",
+                  ].join(" ")}
                   style={
                     shouldScrollForecastTable
                       ? { maxHeight: `${forecastTableBodyMaxHeight + 40}px` }
