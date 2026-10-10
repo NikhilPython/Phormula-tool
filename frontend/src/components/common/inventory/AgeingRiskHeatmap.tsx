@@ -2032,6 +2032,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                                         ? "cursor-pointer"
                                         : ""
                         }
+                        isTotalRow={(row) => row.isTotalRow === true}
                         onRowClick={(row) => {
                             if (row.isOthersRow && !isExpanded) {
                                 setIsExpanded(true);

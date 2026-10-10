@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FaArrowDownLong } from "react-icons/fa6";
 import { LuArrowUpDown } from "react-icons/lu";
+import useStickyTableHeaderVisibility from "./useStickyTableHeaderVisibility";
 
 /* ---------------- Types ---------------- */
 
@@ -690,6 +691,11 @@ export default function GroupedCollapsibleTable<RowT>({
   const lastScrollLeftRef = useRef(0);
   const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
   const [isStickyLeftDrawerHidden, setIsStickyLeftDrawerHidden] = useState(false);
+  const isPageStickyHeaderVisible = useStickyTableHeaderVisibility(
+    headerScrollContainerRef,
+    bodyTableRef,
+    !bodyMaxHeight
+  );
 
   useEffect(() => {
     const updateZoomAndStickyMeasurements = () => {
@@ -1285,6 +1291,7 @@ export default function GroupedCollapsibleTable<RowT>({
       return (
         <tr
           key={getRowKey?.(row, realIndex) ?? realIndex}
+          data-sticky-header-boundary={isTotalRow?.(row) ? "true" : undefined}
           onClick={(event) => onRowClick?.(row, realIndex, event)}
           className={rowClassName}
         >
@@ -1466,7 +1473,10 @@ export default function GroupedCollapsibleTable<RowT>({
         <div
           ref={headerScrollContainerRef}
           className="sticky z-50 w-full overflow-hidden bg-white"
-          style={{ top: "var(--table-sticky-top, 0px)" }}
+          style={{
+            top: "var(--table-sticky-top, 0px)",
+            visibility: isPageStickyHeaderVisible ? "visible" : "hidden",
+          }}
         >
           <table ref={tableRef} className={tableClassName} style={tableStyle}>
             {renderColGroup()}

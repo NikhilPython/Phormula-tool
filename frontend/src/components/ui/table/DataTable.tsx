@@ -4,6 +4,7 @@ import * as React from "react";
 import clsx from "clsx";
 import Loader from "@/components/loader/Loader";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import useStickyTableHeaderVisibility from "./useStickyTableHeaderVisibility";
 
 export type Row = Record<string, React.ReactNode>;
 
@@ -118,7 +119,13 @@ export default function DataTable<T extends Row>({
   const bodyScrollRef = React.useRef<HTMLDivElement | null>(null);
   const headerScrollRef = React.useRef<HTMLDivElement | null>(null);
   const pinnedRowsScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const tableContainerRef = React.useRef<HTMLDivElement | null>(null);
   const [scrollbarWidth, setScrollbarWidth] = React.useState(0);
+  const isPageStickyHeaderVisible = useStickyTableHeaderVisibility(
+    headerScrollRef,
+    tableContainerRef,
+    !shouldPinTotalRows
+  );
 
   const syncHorizontalScroll = React.useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
@@ -291,6 +298,7 @@ export default function DataTable<T extends Row>({
 
   return (
     <div
+      ref={tableContainerRef}
       className={clsx(
         "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
         "rounded-xl",
@@ -306,10 +314,16 @@ export default function DataTable<T extends Row>({
         {/* Header table */}
         <div
           ref={headerScrollRef}
-          className="sticky z-50 overflow-x-hidden rounded-t-xl bg-white"
+          className={clsx(
+            "overflow-x-hidden rounded-t-xl bg-white",
+            shouldPinTotalRows ? "relative z-20" : "sticky z-50"
+          )}
           style={{
             ...scrollbarCompensationStyle,
-            top: "var(--table-sticky-top, 0px)",
+            top: shouldPinTotalRows
+              ? undefined
+              : "var(--table-sticky-top, 0px)",
+            visibility: isPageStickyHeaderVisible ? "visible" : "hidden",
           }}
         >
           <table
@@ -396,6 +410,7 @@ export default function DataTable<T extends Row>({
                 scrollRows.map((row, ri) => (
                   <tr
                     key={ri}
+                    data-sticky-header-boundary={isTotalRow?.(row) ? "true" : undefined}
                     onClick={(event) =>
                       onRowClick?.(row, (page - 1) * pageSize + ri, event)
                     }
@@ -485,6 +500,7 @@ export default function DataTable<T extends Row>({
                   return (
                     <tr
                       key={`pinned-${ri}`}
+                      data-sticky-header-boundary={isTotalRow?.(row) ? "true" : undefined}
                       onClick={(event) =>
                         onRowClick?.(
                           row,

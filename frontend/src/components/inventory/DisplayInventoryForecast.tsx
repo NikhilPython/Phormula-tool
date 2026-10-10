@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useStickyTableHeaderVisibility from '@/components/ui/table/useStickyTableHeaderVisibility';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -111,6 +112,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const [showToggleModal, setShowToggleModal] = useState(false);
   const chartRef = useRef<any>(null);
   const forecastHeaderScrollRef = useRef<HTMLDivElement | null>(null);
+  const forecastTableBoundaryRef = useRef<HTMLDivElement | null>(null);
   const demoMode = Boolean(isDemoMode);
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
@@ -760,6 +762,12 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const shouldScrollForecastTable =
     showAllForecastRows && tableRows.length > FORECAST_VISIBLE_ROWS;
 
+  const isForecastStickyHeaderVisible = useStickyTableHeaderVisibility(
+    forecastHeaderScrollRef,
+    forecastTableBoundaryRef,
+    !shouldScrollForecastTable
+  );
+
   const forecastTableBodyMaxHeight =
     FORECAST_ROW_HEIGHT * FORECAST_VISIBLE_ROWS;
 
@@ -966,8 +974,16 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               >
                 <div
                   ref={forecastHeaderScrollRef}
-                  className="sticky z-50 w-full overflow-hidden rounded-t-xl bg-white"
-                  style={{ top: "var(--table-sticky-top, 0px)" }}
+                  className={[
+                    "w-full overflow-hidden rounded-t-xl bg-white",
+                    shouldScrollForecastTable ? "relative z-20" : "sticky z-50",
+                  ].join(" ")}
+                  style={{
+                    top: shouldScrollForecastTable
+                      ? undefined
+                      : "var(--table-sticky-top, 0px)",
+                    visibility: isForecastStickyHeaderVisible ? "visible" : "hidden",
+                  }}
                 >
                   <table className={forecastTableClassName}>
                     {renderForecastColGroup()}
@@ -976,6 +992,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                 </div>
 
                 <div
+                  ref={forecastTableBoundaryRef}
                   className="w-full overflow-auto [scrollbar-gutter:stable]"
                   style={
                     shouldScrollForecastTable
@@ -1041,7 +1058,10 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                   </tbody>
 
                   <tfoot>
-                    <tr className="sticky bottom-0 z-30 h-10 bg-[#D9D9D933] text-center font-bold">
+                    <tr
+                      data-sticky-header-boundary="true"
+                      className="sticky bottom-0 z-30 h-10 bg-[#D9D9D933] text-center font-bold"
+                    >
                       <td className={tableTotalCell}></td>
 
                       <td className={tableTotalTextCell}>
