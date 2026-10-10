@@ -1910,7 +1910,7 @@ export default function DashboardProductwisePnlSection({
 
     return (
 
-        <div id="pnl-mtd" className="scroll-mt-[175px] mt-2 md:mt-4 w-full rounded-xl bg-white p-4 sm:p-5 shadow-sm overflow-hidden">
+        <div id="pnl-mtd" className="scroll-mt-[175px] mt-2 md:mt-4 w-full rounded-xl bg-white p-4 sm:p-5 shadow-sm">
 
             <div className="mb-3 relative flex items-center justify-between gap-3">
 
@@ -2237,7 +2237,7 @@ export default function DashboardProductwisePnlSection({
 
                             ? "overflow-hidden"
 
-                            : "overflow-x-auto overflow-y-hidden",
+                            : "overflow-visible",
 
                     ].join(" ")}
 
