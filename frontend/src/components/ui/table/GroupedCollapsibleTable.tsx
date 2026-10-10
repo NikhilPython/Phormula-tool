@@ -683,8 +683,9 @@ export default function GroupedCollapsibleTable<RowT>({
   const stickyLeftCount = stickyLeftCols ? leftCols.length : 0;
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const summaryScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const headerScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const tableRef = useRef<HTMLTableElement | null>(null);
+  const bodyTableRef = useRef<HTMLTableElement | null>(null);
   const scrollStopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScrollLeftRef = useRef(0);
   const [summaryEndColumnWidth, setSummaryEndColumnWidth] = useState<number | null>(null);
@@ -737,7 +738,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
     updateZoomAndStickyMeasurements();
 
-    const table = tableRef.current;
+    const table = bodyTableRef.current ?? tableRef.current;
     const resizeObserver =
       table && typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(updateZoomAndStickyMeasurements)
@@ -807,7 +808,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const endColSpan = 1;
 
   useEffect(() => {
-    const table = tableRef.current;
+    const table = bodyTableRef.current ?? tableRef.current;
 
     if (!table || visibleCount === 0) {
       setSummaryEndColumnWidth(null);
@@ -1049,10 +1050,10 @@ export default function GroupedCollapsibleTable<RowT>({
     const nextScrollLeft = event.currentTarget.scrollLeft;
 
     if (
-      summaryScrollContainerRef.current &&
-      Math.abs(summaryScrollContainerRef.current.scrollLeft - nextScrollLeft) > 0.5
+      headerScrollContainerRef.current &&
+      Math.abs(headerScrollContainerRef.current.scrollLeft - nextScrollLeft) > 0.5
     ) {
-      summaryScrollContainerRef.current.scrollLeft = nextScrollLeft;
+      headerScrollContainerRef.current.scrollLeft = nextScrollLeft;
     }
 
     const didScrollHorizontally =
@@ -1459,65 +1460,47 @@ export default function GroupedCollapsibleTable<RowT>({
     );
   };
 
-  /**
-   * Scroll mode:
-   * - Vertical scrolling wraps product rows, total row, and summary rows together
-   * - Horizontal scrolling stays between the total row and summary rows
-   */
-  if (bodyMaxHeight) {
-    const summaryFooter = renderSummaryFooter();
-
+  if (!bodyMaxHeight) {
     return (
-      <div
-        className="w-full overflow-y-auto overflow-x-hidden"
-        style={{
-          maxHeight: `${bodyMaxHeight}px`,
-        }}
-      >
+      <div className="w-full">
         <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="w-full overflow-x-auto overflow-y-visible"
+          ref={headerScrollContainerRef}
+          className="sticky z-50 w-full overflow-hidden bg-white"
+          style={{ top: "var(--table-sticky-top, 0px)" }}
         >
           <table ref={tableRef} className={tableClassName} style={tableStyle}>
             {renderColGroup()}
+            {renderTableHead()}
+          </table>
+        </div>
 
-            <thead className="sticky top-0 z-20 font-bold">
-              {renderTableHead().props.children}
-            </thead>
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="w-full overflow-x-auto"
+        >
+          <table ref={bodyTableRef} className={tableClassName} style={tableStyle}>
+            {renderColGroup()}
 
             <tbody>
               {renderSignRow()}
               {renderBodyRows(scrollRows)}
-              {pinnedRows.length > 0 &&
-                renderBodyRows(pinnedRows, scrollRows.length)}
+              {pinnedRows.length > 0 && renderBodyRows(pinnedRows, scrollRows.length)}
             </tbody>
+
+            {renderSummaryFooter()}
           </table>
         </div>
-
-        {summaryFooter && (
-          <div
-            ref={summaryScrollContainerRef}
-            className="w-full overflow-x-hidden"
-          >
-            <table className={tableClassName} style={tableStyle}>
-              {renderColGroup()}
-              {summaryFooter}
-            </table>
-          </div>
-        )}
       </div>
     );
   }
-  /**
-   * Normal mode:
-   * Everything stays in one table
-   */
+
   return (
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className="w-full overflow-x-auto"
+      className="w-full overflow-auto"
+      style={{ maxHeight: `${bodyMaxHeight}px` }}
     >
       <table ref={tableRef} className={tableClassName} style={tableStyle}>
         {renderColGroup()}

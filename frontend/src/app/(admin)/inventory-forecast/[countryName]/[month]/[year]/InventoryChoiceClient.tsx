@@ -1715,12 +1715,34 @@ export default function InventoryFlowPage() {
   const forecastInFlightRef = useRef<string | null>(null);
   const latestForecastRequestRef = useRef<string | null>(null);
   const lastPoTriggerRef = useRef<string | null>(null);
+  const stickyPageHeaderRef = useRef<HTMLDivElement | null>(null);
   const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
   const [dispatchAllColumnsExpanded, setDispatchAllColumnsExpanded] = useState(false);
   const [showAllPoRows, setShowAllPoRows] = useState(false);
   const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
   const [outletElement, setOutletElement] =
     useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const header = stickyPageHeaderRef.current;
+    if (!header) return;
+
+    const updateTableStickyTop = () => {
+      document.documentElement.style.setProperty(
+        '--table-sticky-top',
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+
+    updateTableStickyTop();
+    const resizeObserver = new ResizeObserver(updateTableStickyTop);
+    resizeObserver.observe(header);
+
+    return () => {
+      resizeObserver.disconnect();
+      document.documentElement.style.removeProperty('--table-sticky-top');
+    };
+  }, []);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerLoading, setDrawerLoading] = useState(false);
@@ -2469,7 +2491,7 @@ export default function InventoryFlowPage() {
           ref={setOutletElement}
           className="relative flex min-h-[calc(100vh-180px)] flex-col justify-start"
         >
-          <div className="sticky top-0 z-40 w-full bg-[#F7F7F7] pb-2">
+          <div ref={stickyPageHeaderRef} className="sticky top-0 z-40 w-full bg-[#F7F7F7] pb-2">
             <div className="flex flex-col gap-4 pb-1 md:flex-row md:items-center md:justify-between">
               <div className="flex w-full flex-col leading-tight md:w-auto">
                 <div className="flex items-baseline gap-2">

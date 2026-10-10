@@ -110,6 +110,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   });
   const [showToggleModal, setShowToggleModal] = useState(false);
   const chartRef = useRef<any>(null);
+  const forecastHeaderScrollRef = useRef<HTMLDivElement | null>(null);
   const demoMode = Boolean(isDemoMode);
   const forecastData = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
@@ -762,6 +763,57 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   const forecastTableBodyMaxHeight =
     FORECAST_ROW_HEIGHT * FORECAST_VISIBLE_ROWS;
 
+  const forecastTableClassName =
+    "min-w-225 w-full table-fixed border-separate border-spacing-0 text-xs text-slate-700 2xl:text-sm";
+
+  const renderForecastColGroup = () => (
+    <colgroup>
+      <col style={{ width: "70px" }} />
+      <col style={{ width: "200px" }} />
+      <col style={{ width: "220px" }} />
+      {Array.from({ length: 6 }).map((_, index) => (
+        <col key={index} style={{ width: "120px" }} />
+      ))}
+    </colgroup>
+  );
+
+  const renderForecastHeader = () => (
+    <thead>
+      <tr>
+        <th rowSpan={2} className={`w-17.5 ${tableHeaderCell}`}>
+          S.No
+        </th>
+        <th rowSpan={2} className={`w-50 ${tableHeaderCell} text-left`}>
+          Product Name
+        </th>
+        <th rowSpan={2} className={`w-55 ${tableHeaderCell} text-left`}>
+          SKU
+        </th>
+        <th colSpan={3} className={tableHeaderCell}>
+          Last 3 Months
+        </th>
+        <th colSpan={3} className={`${tableHeaderCell} border-r-0`}>
+          Forecasted Months
+        </th>
+      </tr>
+      <tr>
+        {soldLabels.map((label, index) => (
+          <th key={`sold-${index}`} className={`w-30 ${tableHeaderCellNoTop}`}>
+            {label || ""}
+          </th>
+        ))}
+        {forecastLabels.map((label, index) => (
+          <th
+            key={`forecast-${index}`}
+            className={`w-30 ${tableHeaderCellNoTop} ${index === forecastLabels.length - 1 ? "border-r-0" : ""}`}
+          >
+            {label || ""}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
   return (
     <div>
       <div className="flex flex-col gap-6 ">
@@ -907,82 +959,37 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
               )}
           </div>
 
-          <div className="mt-4 rounded-xl w-full overflow-x-auto">
+          <div className="mt-4 w-full rounded-xl">
             {hasRenderableData ? (
               <div
-                className="rounded-xl border border-slate-200 bg-white shadow-sm min-w-225 [scrollbar-gutter:stable]"
-                style={
-                  shouldScrollForecastTable
-                    ? { maxHeight: `${forecastTableBodyMaxHeight + 88 + 40}px` }
-                    : undefined
-                }
+                className="rounded-xl border border-slate-200 bg-white shadow-sm"
               >
-                <table className="w-full 2xl:text-sm text-xs text-slate-700 border-separate border-spacing-0 table-fixed">
-                  <thead>
-                    <tr>
-                      <th
-                        rowSpan={2}
-                        className={`sticky top-0 z-30 w-17.5 ${tableHeaderCell}`}
-                      >
-                        S.No
-                      </th>
+                <div
+                  ref={forecastHeaderScrollRef}
+                  className="sticky z-50 w-full overflow-hidden rounded-t-xl bg-white"
+                  style={{ top: "var(--table-sticky-top, 0px)" }}
+                >
+                  <table className={forecastTableClassName}>
+                    {renderForecastColGroup()}
+                    {renderForecastHeader()}
+                  </table>
+                </div>
 
-                      <th
-                        rowSpan={2}
-                        className={`sticky top-0 z-30 w-50 ${tableHeaderCell} text-left`}
-                      >
-                        Product Name
-                      </th>
-
-                      <th
-                        rowSpan={2}
-                        className={`sticky top-0 z-30 w-55 ${tableHeaderCell} text-left`}
-                      >
-                        SKU
-                      </th>
-
-                      <th
-                        colSpan={3}
-                        className={`sticky top-0 z-30 ${tableHeaderCell}`}
-                      >
-                        Last 3 Months
-                      </th>
-
-                      <th
-                        colSpan={3}
-                        className={`sticky top-0 z-30 ${tableHeaderCell} border-r-0`}
-                      >
-                        Forecasted Months
-                      </th>
-                    </tr>
-
-                    <tr>
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
-                        {soldLabels[0] || ""}
-                      </th>
-
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
-                        {soldLabels[1] || ""}
-                      </th>
-
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
-                        {soldLabels[2] || ""}
-                      </th>
-
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
-                        {forecastLabels[0] || ""}
-                      </th>
-
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop}`}>
-                        {forecastLabels[1] || ""}
-                      </th>
-
-                      <th className={`sticky top-10.25 z-20 w-30 ${tableHeaderCellNoTop} border-r-0`}>
-                        {forecastLabels[2] || ""}
-                      </th>
-                    </tr>
-                  </thead>
-
+                <div
+                  className="w-full overflow-auto [scrollbar-gutter:stable]"
+                  style={
+                    shouldScrollForecastTable
+                      ? { maxHeight: `${forecastTableBodyMaxHeight + 40}px` }
+                      : undefined
+                  }
+                  onScroll={(event) => {
+                    if (forecastHeaderScrollRef.current) {
+                      forecastHeaderScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+                    }
+                  }}
+                >
+                <table className={forecastTableClassName}>
+                  {renderForecastColGroup()}
                   <tbody>
                     {tableRows.map((row, i) => {
                       const isOthersRow =
@@ -1069,6 +1076,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
             ) : (
               <EmptyTableState />

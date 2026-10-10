@@ -45,8 +45,31 @@ export default function DashboardPageHeader<TTab extends string = string>({
     setActiveTab,
     syncTabToHash,
 }: DashboardPageHeaderProps<TTab>) {
+    const stickyHeaderRef = React.useRef<HTMLDivElement | null>(null);
+
+    React.useEffect(() => {
+        const header = stickyHeaderRef.current;
+        if (!header) return;
+
+        const updateTableStickyTop = () => {
+            document.documentElement.style.setProperty(
+                "--table-sticky-top",
+                `${header.getBoundingClientRect().height}px`
+            );
+        };
+
+        updateTableStickyTop();
+        const resizeObserver = new ResizeObserver(updateTableStickyTop);
+        resizeObserver.observe(header);
+
+        return () => {
+            resizeObserver.disconnect();
+            document.documentElement.style.removeProperty("--table-sticky-top");
+        };
+    }, []);
+
     return (
-        <div className="sticky top-0 z-40 bg-[#F7F7F7]">
+        <div ref={stickyHeaderRef} className="sticky top-0 z-40 bg-[#F7F7F7]">
             <div className="bg-[#F7F7F7]">
                <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center lg:justify-between">
 

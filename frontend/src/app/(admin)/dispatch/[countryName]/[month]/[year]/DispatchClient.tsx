@@ -2932,7 +2932,7 @@ export default function DispatchPage({
   .forecast-data {
     // margin-top: 20px;
     width: 100%;
-    overflow-x: auto;
+    overflow-x: visible;
   }
 
   .forecast-data table {
@@ -2959,7 +2959,7 @@ export default function DispatchPage({
 .forecast-data {
   // margin-top: 20px;
   width: 100%;
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 .forecast-data table {

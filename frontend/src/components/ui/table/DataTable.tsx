@@ -293,7 +293,7 @@ export default function DataTable<T extends Row>({
     <div
       className={clsx(
         "relative w-full max-w-full border border-slate-200 bg-white shadow-sm",
-        "rounded-xl overflow-hidden",
+        "rounded-xl",
         scrollY && !shouldPinTotalRows && "overflow-y-auto",
         className
       )}
@@ -301,18 +301,16 @@ export default function DataTable<T extends Row>({
     >
       {/* Horizontal scroll wrapper for header + body + pinned total */}
       <div
-        className={clsx(
-          "w-full [-webkit-overflow-scrolling:touch]",
-          shouldPinTotalRows
-            ? "overflow-x-hidden overflow-y-hidden"
-            : "overflow-x-auto"
-        )}
+        className="w-full [-webkit-overflow-scrolling:touch]"
       >
         {/* Header table */}
         <div
           ref={headerScrollRef}
-          className={shouldPinTotalRows ? "overflow-x-hidden" : undefined}
-          style={scrollbarCompensationStyle}
+          className="sticky z-50 overflow-x-hidden rounded-t-xl bg-white"
+          style={{
+            ...scrollbarCompensationStyle,
+            top: "var(--table-sticky-top, 0px)",
+          }}
         >
           <table
             className={clsx(
@@ -365,9 +363,10 @@ export default function DataTable<T extends Row>({
           ref={bodyScrollRef}
           className={clsx(
             shouldPinTotalRows &&
-            "overflow-auto [scrollbar-gutter:stable]"
+            "overflow-auto [scrollbar-gutter:stable]",
+            !shouldPinTotalRows && "overflow-x-auto"
           )}
-          onScroll={shouldPinTotalRows ? syncHorizontalScroll : undefined}
+          onScroll={syncHorizontalScroll}
           style={bodyScrollStyle}
         >
           <table

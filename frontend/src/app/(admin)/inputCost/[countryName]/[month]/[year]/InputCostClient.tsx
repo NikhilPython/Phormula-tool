@@ -4015,7 +4015,36 @@ export default function InputCostPage({ params }: Params) {
   const [activeTab, setActiveTab] = useState<InputCostTab>('inventory-insights');
   const pageTopRef = useRef<HTMLDivElement | null>(null);
   const tabTopRef = useRef<HTMLDivElement | null>(null);
+  const stickyPageHeaderRef = useRef<HTMLDivElement | null>(null);
+  const stickyTabsHeaderRef = useRef<HTMLDivElement | null>(null);
   const shouldScrollTabTopRef = useRef(false);
+
+  useEffect(() => {
+    const pageHeader = stickyPageHeaderRef.current;
+    const tabsHeader = stickyTabsHeaderRef.current;
+    if (!pageHeader || !tabsHeader) return;
+
+    const updateTableStickyTop = () => {
+      const stickyHeight =
+        pageHeader.getBoundingClientRect().height +
+        tabsHeader.getBoundingClientRect().height;
+
+      document.documentElement.style.setProperty(
+        '--table-sticky-top',
+        `${stickyHeight}px`,
+      );
+    };
+
+    updateTableStickyTop();
+    const resizeObserver = new ResizeObserver(updateTableStickyTop);
+    resizeObserver.observe(pageHeader);
+    resizeObserver.observe(tabsHeader);
+
+    return () => {
+      resizeObserver.disconnect();
+      document.documentElement.style.removeProperty('--table-sticky-top');
+    };
+  }, []);
 
   const INPUT_COST_TAB_HASHES: InputCostTab[] = [
     'inventory-insights',
@@ -7340,7 +7369,7 @@ export default function InputCostPage({ params }: Params) {
         .gross-margin-na { color: #6c757d; font-style: italic; }
       `}</style>
 
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4">
+      <div ref={stickyPageHeaderRef} className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4">
         <div className="flex flex-col leading-tight w-full md:w-auto">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb
@@ -7502,7 +7531,7 @@ export default function InputCostPage({ params }: Params) {
         </div>
       </div>
 
-      <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+      <div ref={stickyTabsHeaderRef} className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
         <SegmentedToggle<InputCostTab>
           value={activeTab}
           onChange={(nextTab) => {
@@ -7688,7 +7717,6 @@ export default function InputCostPage({ params }: Params) {
             <div
               className={[
                 "relative z-0 mt-2 w-full rounded-xl border border-gray-200 bg-white",
-                "overflow-x-auto",
                 "[-webkit-overflow-scrolling:touch]",
               ].join(" ")}
             >
