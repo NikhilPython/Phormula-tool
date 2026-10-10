@@ -26,6 +26,15 @@ type ActionDiagnosisPanelProps = {
     evidenceNote?: string;
 };
 
+const metricAccentClasses = [
+    "border-[#E7B54A]", // amber
+    "border-[#C96B6B]", // red
+    "border-[#6BAED6]", // blue
+    "border-[#C98952]", // orange
+    "border-[#4F9C88]", // green
+    "border-[#D08A43]", // warm orange
+];
+
 export default function ActionDiagnosisPanel({
     title,
     description,
@@ -81,20 +90,48 @@ export default function ActionDiagnosisPanel({
             </div>
 
             {metrics.length > 0 && (
-                <div className="grid grid-cols-2 gap-px bg-[#E6EFEC] sm:grid-cols-3 xl:grid-cols-6">
-                    {metrics.slice(0, 6).map((metric) => (
-                        <div key={metric.label} className="min-w-0 bg-white/90 px-3 py-3 sm:px-4">
-                            <p className="truncate text-[10px] font-medium uppercase tracking-[0.04em] text-[#7B918B]" title={metric.label}>
+                <div className="grid grid-cols-2 gap-3 px-3 py-3 sm:grid-cols-3 sm:px-4 xl:grid-cols-6">
+                    {metrics.slice(0, 6).map((metric, index) => (
+                        <div
+                            key={metric.label}
+                            className={`
+    flex min-w-0 flex-col justify-between
+    rounded-2xl
+    border
+    border-t-[3px]
+    bg-white
+    p-3
+    shadow-[0_2px_5px_rgba(0,0,0,0.08)]
+    transition-all duration-200
+    ${metricAccentClasses[index % metricAccentClasses.length]}
+`}
+                        >
+                            <p
+                                className="truncate text-[10px] font-medium leading-tight text-charcoal-500 2xl:text-xs"
+                                title={metric.label}
+                            >
                                 {metric.label}
                             </p>
-                            <div className="mt-1 truncate text-sm font-semibold tabular-nums text-[#263E38] sm:text-[15px]" title={typeof metric.value === "string" ? metric.value : undefined}>
+
+                            <div
+                                className="mt-1 min-w-0 truncate text-sm font-semibold leading-tight tabular-nums text-charcoal-500 2xl:text-lg"
+                                title={typeof metric.value === "string" ? metric.value : undefined}
+                            >
                                 {metric.value}
                             </div>
-                            {metric.helper && (
-                                <p className="mt-0.5 truncate text-[10px] text-[#91A29D]" title={metric.helper}>
-                                    {metric.helper}
-                                </p>
-                            )}
+
+                            <div className="mt-2 min-h-[24px]">
+                                {metric.helper ? (
+                                    <p
+                                        className="truncate text-[9.5px] leading-tight text-charcoal-400 sm:text-[10px] 2xl:text-xs"
+                                        title={metric.helper}
+                                    >
+                                        {metric.helper}
+                                    </p>
+                                ) : (
+                                    <span className="block h-[12px]" />
+                                )}
+                            </div>
                         </div>
                     ))}
                 </div>
@@ -152,7 +189,7 @@ export default function ActionDiagnosisPanel({
                 </div>
             </div>
 
-            
+
         </section>
     );
 }
