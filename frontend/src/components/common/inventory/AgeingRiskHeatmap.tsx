@@ -5,8 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
     RiCollapseDiagonalFill,
     RiExpandDiagonalFill,
-    RiLayoutColumnFill,
-    RiLayoutColumnLine,
 } from "react-icons/ri";
 import PageBreadcrumb from "../PageBreadCrumb";
 import GroupedCollapsibleTable, {
@@ -746,13 +744,6 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     const areAllCurrentInventoryColumnsExpanded =
         isInventoryDetailsExpanded && isSalesCoverageDetailsExpanded;
 
-    const handleToggleAllCurrentInventoryColumns = () => {
-        const nextExpanded = !areAllCurrentInventoryColumnsExpanded;
-
-        setIsInventoryDetailsExpanded(nextExpanded);
-        setIsSalesCoverageDetailsExpanded(nextExpanded);
-    };
-
     const showSellableBreakdown = useMemo(() => {
         return tableSourceData.some((row) => {
             if (isSummaryHeatmapRow(row)) return false;
@@ -777,6 +768,24 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     }, [tableSourceData, buckets]);
 
     const canCollapse = displayableRowCount > defaultVisibleRows;
+    const areAllTableRowsExpanded =
+        isActionSkuFilterActive || !canCollapse || isExpanded;
+    const isTableFullyExpanded =
+        areAllTableRowsExpanded &&
+        (!useCurrentInventoryTableLayout || areAllCurrentInventoryColumnsExpanded);
+
+    const handleToggleTableExpansion = () => {
+        const nextExpanded = !isTableFullyExpanded;
+
+        if (canCollapse && !isActionSkuFilterActive) {
+            setIsExpanded(nextExpanded);
+        }
+
+        if (useCurrentInventoryTableLayout) {
+            setIsInventoryDetailsExpanded(nextExpanded);
+            setIsSalesCoverageDetailsExpanded(nextExpanded);
+        }
+    };
 
     const displayRows = useMemo<HeatmapTableRow[]>(() => {
         const hasAnyDisplayBucketValue = (row: AgeingRiskHeatmapRow) => {
@@ -1815,42 +1824,26 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {canCollapse && (
+                    {(canCollapse || useCurrentInventoryTableLayout) && (
                         <button
                             type="button"
-                            onClick={() => setIsExpanded((prev) => !prev)}
-                            title={isExpanded ? "Collapse rows" : "Expand rows"}
-                            aria-label={isExpanded ? "Collapse rows" : "Expand rows"}
+                            onClick={handleToggleTableExpansion}
+                            title={
+                                isTableFullyExpanded
+                                    ? "Collapse rows and columns"
+                                    : "Expand rows and columns"
+                            }
+                            aria-label={
+                                isTableFullyExpanded
+                                    ? "Collapse rows and columns"
+                                    : "Expand rows and columns"
+                            }
                             className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
                         >
-                            {isExpanded ? (
+                            {isTableFullyExpanded ? (
                                 <RiCollapseDiagonalFill className="h-4 w-4" />
                             ) : (
                                 <RiExpandDiagonalFill className="h-4 w-4" />
-                            )}
-                        </button>
-                    )}
-
-                    {useCurrentInventoryTableLayout && (
-                        <button
-                            type="button"
-                            onClick={handleToggleAllCurrentInventoryColumns}
-                            title={
-                                areAllCurrentInventoryColumnsExpanded
-                                    ? "Collapse all columns"
-                                    : "Expand all columns"
-                            }
-                            aria-label={
-                                areAllCurrentInventoryColumnsExpanded
-                                    ? "Collapse all columns"
-                                    : "Expand all columns"
-                            }
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-900"
-                        >
-                            {areAllCurrentInventoryColumnsExpanded ? (
-                                <RiLayoutColumnLine className="h-4 w-4" />
-                            ) : (
-                                <RiLayoutColumnFill className="h-4 w-4" />
                             )}
                         </button>
                     )}

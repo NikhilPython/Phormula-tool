@@ -4287,6 +4287,15 @@ export default function InputCostPage({ params }: Params) {
 
   const [showAllReconRows, setShowAllReconRows] = useState(false);
   const [showAllLostCompRows, setShowAllLostCompRows] = useState(false);
+  const [reconCollapsedGroups, setReconCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({
+    beginning: true,
+    units_in_transit: true,
+    units_sold: true,
+    other_items: true,
+    ending: true,
+  });
 
   const [anyExpanded, setAnyExpanded] = useState(false);
   const anyExpandedRef = useRef(false);
@@ -6443,6 +6452,26 @@ export default function InputCostPage({ params }: Params) {
     return reconDisplayRows;
   }, [isNA, reconDisplayRows]);
 
+  const canExpandReconRows =
+    effectiveReconRows.filter((row) => !isTotalRow(row)).length > 9;
+  const areAllReconColumnsExpanded =
+    groups.length > 0 &&
+    groups.every((group) => reconCollapsedGroups[group.id] === false);
+  const isReconTableFullyExpanded =
+    (!canExpandReconRows || showAllReconRows) && areAllReconColumnsExpanded;
+
+  const handleToggleReconTableExpansion = () => {
+    const nextExpanded = !isReconTableFullyExpanded;
+
+    if (canExpandReconRows) {
+      setShowAllReconRows(nextExpanded);
+    }
+
+    setReconCollapsedGroups(
+      Object.fromEntries(groups.map((group) => [group.id, !nextExpanded]))
+    );
+  };
+
   const getReconRowClassName = (row: AnyRow) => {
     const msku = String(row?.msku || '').trim().toUpperCase();
     const isGrand = isTotalRow(row) || msku === 'TOTAL' || row?.__isTotal === true;
@@ -7424,17 +7453,16 @@ export default function InputCostPage({ params }: Params) {
                 />
               )}
 
-              {activeTab === "recon-table" &&
-                effectiveReconRows.filter((r) => !isTotalRow(r)).length > 9 && (
+              {activeTab === "recon-table" && effectiveReconRows.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setShowAllReconRows((prev) => !prev)}
-                    title={showAllReconRows ? "Collapse rows" : "Expand all rows"}
-                    aria-label={showAllReconRows ? "Collapse rows" : "Expand all rows"}
+                    onClick={handleToggleReconTableExpansion}
+                    title={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                    aria-label={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
                     disabled={isNA || reconFetching}
                     className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {showAllReconRows ? (
+                    {isReconTableFullyExpanded ? (
                       <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                     ) : (
                       <RiExpandDiagonalFill size={18} className="font-extrabold" />
@@ -7680,10 +7708,9 @@ export default function InputCostPage({ params }: Params) {
                   groups={groups}
                   singleCols={singleCols}
                   layout={reconTableLayout}
-                  initialCollapsed={{
-                    beginning: true,
-                    ending: true,
-                  }}
+                  initialCollapsed={reconCollapsedGroups}
+                  collapsedState={reconCollapsedGroups}
+                  onCollapsedChange={setReconCollapsedGroups}
                   getValue={getReconValue}
                   getRowClassName={getReconRowClassName}
                   onRowClick={(row) => {

@@ -5,7 +5,7 @@ import React from "react";
 type ComparisonRow = {
   label: string;
   valueText: string;     // already formatted (e.g. "$1,234.00", "12%")
-  deltaText: string;     // already formatted (e.g. "▲ 2.5%" or "-")
+  deltaText: React.ReactNode; // formatted delta text with an optional icon
   deltaClassName?: string; // e.g. "text-emerald-600" / "text-red-600"
 };
 

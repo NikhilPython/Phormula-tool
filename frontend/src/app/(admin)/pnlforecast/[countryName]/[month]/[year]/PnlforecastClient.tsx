@@ -1326,6 +1326,26 @@ const Pnlforecast: React.FC = () => {
   ]);
 
   const tableRows = [...displayProductRows, ...summaryAsRows];
+  const canExpandForecastRows =
+    (normalizedProductRows || []).filter((row) => !isPnlTotalRow(row)).length > 9;
+  const areAllForecastColumnsExpanded =
+    groups.length > 0 &&
+    groups.every((group) => forecastCollapsedGroups[group.id] === false);
+  const isForecastTableFullyExpanded =
+    (!canExpandForecastRows || showAllForecastProductRows) &&
+    areAllForecastColumnsExpanded;
+
+  const handleToggleForecastTableExpansion = () => {
+    const nextExpanded = !isForecastTableFullyExpanded;
+
+    if (canExpandForecastRows) {
+      setShowAllForecastProductRows(nextExpanded);
+    }
+
+    setForecastCollapsedGroups(
+      Object.fromEntries(groups.map((group) => [group.id, !nextExpanded]))
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -1416,16 +1436,16 @@ const Pnlforecast: React.FC = () => {
               textSize="2xl"
             />
 
-            {(normalizedProductRows || []).filter((row) => !isPnlTotalRow(row)).length > 9 && (
+            {groups.length > 0 && (
               <button
                 type="button"
-                onClick={() => setShowAllForecastProductRows((prev) => !prev)}
-                title={showAllForecastProductRows ? "Collapse rows" : "Expand all rows"}
-                aria-label={showAllForecastProductRows ? "Collapse rows" : "Expand all rows"}
+                onClick={handleToggleForecastTableExpansion}
+                title={isForecastTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                aria-label={isForecastTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
                 disabled={isDemoMode || noDataAvailable}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {showAllForecastProductRows ? (
+                {isForecastTableFullyExpanded ? (
                   <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                 ) : (
                   <RiExpandDiagonalFill size={18} className="font-extrabold" />
@@ -1446,6 +1466,7 @@ const Pnlforecast: React.FC = () => {
                   groups={groups}
                   singleCols={[]}
                   initialCollapsed={forecastCollapsedGroups}
+                  collapsedState={forecastCollapsedGroups}
                   onCollapsedChange={setForecastCollapsedGroups}
                   defaultSort={forecastSortConfig}
                   onSortChange={setForecastSortConfig}

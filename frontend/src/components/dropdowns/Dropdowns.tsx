@@ -10188,6 +10188,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         sku: String(row.sku || ""),
         netSales: toNum(row.net_sales),
         cm1Profit: toNum(row.profit),
+        cm1ProfitPercentage:
+          row.profit_percentage === undefined || row.profit_percentage === null
+            ? undefined
+            : toNum(row.profit_percentage),
         netSalesIncrease: toNum(row.net_sales_delta),
         netSalesGrowth:
           row.net_sales_delta_percentage === undefined ||
@@ -10204,6 +10208,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         sku: row.sku,
         netSales: row.netSales,
         secondaryValue: row.cm1Profit,
+        secondaryPercentage: row.cm1ProfitPercentage,
         netSalesDeltaPercentage: row.netSalesGrowth,
       }));
     const leastPerformingSkus = [...rankedCm1Skus]
@@ -10214,9 +10219,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         sku: row.sku,
         netSales: row.netSales,
         secondaryValue: row.cm1Profit,
+        secondaryPercentage: row.cm1ProfitPercentage,
         netSalesDeltaPercentage: row.netSalesGrowth,
       }));
     const topNetSalesGrowthSkus = [...rankedCm1Skus]
+      .filter(
+        (row) =>
+          typeof row.netSalesGrowth === "number" &&
+          Number.isFinite(row.netSalesGrowth) &&
+          row.netSalesGrowth > 0 &&
+          row.netSalesIncrease > 0
+      )
       .sort(
         (a, b) =>
           (b.netSalesGrowth ?? Number.NEGATIVE_INFINITY) -

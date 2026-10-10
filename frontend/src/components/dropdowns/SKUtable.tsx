@@ -18,8 +18,6 @@ import Loader from "../loader/Loader";
 import {
   RiExpandDiagonalFill,
   RiCollapseDiagonalFill,
-  RiLayoutColumnFill,
-  RiLayoutColumnLine,
 } from "react-icons/ri";
 
 const TERM_DEFINITIONS: Record<string, string> = {
@@ -1517,16 +1515,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     [groups]
   );
 
-  const handleToggleAllColumns = useCallback(() => {
-    setAllColumnsExpanded((prev) => {
-      const nextExpanded = !prev;
+  const isTableFullyExpanded = showAllRows && allColumnsExpanded;
 
-      // collapsed = false means expanded
-      setCollapsedGroups(buildAllGroupsCollapsedState(!nextExpanded));
+  const handleToggleTableExpansion = useCallback(() => {
+    const nextExpanded = !(showAllRows && allColumnsExpanded);
 
-      return nextExpanded;
-    });
-  }, [buildAllGroupsCollapsedState]);
+    setShowAllRows(nextExpanded);
+    setAllColumnsExpanded(nextExpanded);
+    setCollapsedGroups(buildAllGroupsCollapsedState(!nextExpanded));
+  }, [allColumnsExpanded, buildAllGroupsCollapsedState, showAllRows]);
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -3013,29 +3010,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
             <button
               type="button"
-              onClick={() => setShowAllRows((prev) => !prev)}
-              title={showAllRows ? "Collapse rows" : "Expand all rows"}
-              aria-label={showAllRows ? "Collapse rows" : "Expand all rows"}
+              onClick={handleToggleTableExpansion}
+              title={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+              aria-label={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
               className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
             >
-              {showAllRows ? (
+              {isTableFullyExpanded ? (
                 <RiCollapseDiagonalFill size={18} className="font-extrabold" />
               ) : (
                 <RiExpandDiagonalFill size={18} className="font-extrabold" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleToggleAllColumns}
-              title={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
-              aria-label={allColumnsExpanded ? "Collapse all columns" : "Expand all columns"}
-              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-            >
-              {allColumnsExpanded ? (
-                <RiLayoutColumnLine size={18} className="font-extrabold" />
-              ) : (
-                <RiLayoutColumnFill size={18} className="font-extrabold" />
               )}
             </button>
 

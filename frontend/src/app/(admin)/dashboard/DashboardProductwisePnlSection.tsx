@@ -21,10 +21,6 @@ import {
 
     RiExpandDiagonalFill,
 
-    RiLayoutColumnFill,
-
-    RiLayoutColumnLine,
-
 } from "react-icons/ri";
 
 
@@ -298,6 +294,32 @@ export default function DashboardProductwisePnlSection({
     const isActionSkuFilterActive =
 
         PNL_ACTION_FILTER_IDS.has(actionItemId) && actionFilterSkus.length > 0;
+
+    const areAllTableRowsExpanded =
+
+        isActionSkuFilterActive || showAllMtdProductwiseRows;
+
+    const isTableFullyExpanded =
+
+        areAllTableRowsExpanded && productwiseAllColumnsExpanded;
+
+    const handleToggleTableExpansion = () => {
+
+        const nextExpanded = !isTableFullyExpanded;
+
+        if (!isActionSkuFilterActive) {
+
+            setShowAllMtdProductwiseRows(nextExpanded);
+
+        }
+
+        if (productwiseAllColumnsExpanded !== nextExpanded) {
+
+            handleToggleProductwiseAllColumns();
+
+        }
+
+    };
 
 
 
@@ -1934,65 +1956,31 @@ export default function DashboardProductwisePnlSection({
 
                 <div className="flex items-center gap-2">
 
-                    {/* Expand / collapse rows */}
-
-                    {!isActionSkuFilterActive && (
-
-                        <button
-
-                            type="button"
-
-                            onClick={() => setShowAllMtdProductwiseRows((prev: boolean) => !prev)}
-
-                            title={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-
-                            aria-label={showAllMtdProductwiseRows ? "Collapse rows" : "Expand all rows"}
-
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-
-                        >
-
-                            {showAllMtdProductwiseRows ? (
-
-                                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-
-                            ) : (
-
-                                <RiExpandDiagonalFill size={18} className="font-extrabold" />
-
-                            )}
-
-                        </button>
-
-                    )}
-
-
-
-                    {/* Expand / collapse all columns */}
+                    {/* Expand / collapse rows and columns */}
 
                     <button
 
                         type="button"
 
-                        onClick={handleToggleProductwiseAllColumns}
+                        onClick={handleToggleTableExpansion}
 
                         title={
 
-                            productwiseAllColumnsExpanded
+                            isTableFullyExpanded
 
-                                ? "Collapse all columns"
+                                ? "Collapse rows and columns"
 
-                                : "Expand all columns"
+                                : "Expand rows and columns"
 
                         }
 
                         aria-label={
 
-                            productwiseAllColumnsExpanded
+                            isTableFullyExpanded
 
-                                ? "Collapse all columns"
+                                ? "Collapse rows and columns"
 
-                                : "Expand all columns"
+                                : "Expand rows and columns"
 
                         }
 
@@ -2000,13 +1988,13 @@ export default function DashboardProductwisePnlSection({
 
                     >
 
-                        {productwiseAllColumnsExpanded ? (
+                        {isTableFullyExpanded ? (
 
-                            <RiLayoutColumnLine size={18} className="font-extrabold" />
+                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
 
                         ) : (
 
-                            <RiLayoutColumnFill size={18} className="font-extrabold" />
+                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
 
                         )}
 

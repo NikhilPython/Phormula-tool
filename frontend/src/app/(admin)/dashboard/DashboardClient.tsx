@@ -4093,12 +4093,19 @@ export default function DashboardPage() {
                         ? "₹"
                         : "¤";
 
+    const inventoryStorageCostCurrencySymbol =
+        platform === "global"
+            ? selectedGlobalInventoryCountry === "uk"
+                ? "£"
+                : "$"
+            : currencySymbol;
+
     const displayedInventoryInsightsData = useMemo(
         () =>
             isMonthYearNA
-                ? createZeroInventoryInsightsData(currencySymbol)
+                ? createZeroInventoryInsightsData(inventoryStorageCostCurrencySymbol)
                 : inventoryInsightsData,
-        [currencySymbol, inventoryInsightsData, isMonthYearNA]
+        [inventoryInsightsData, inventoryStorageCostCurrencySymbol, isMonthYearNA]
     );
 
     const biDailySeriesHome = useMemo<GraphDailySeries | null>(() => {
@@ -13096,7 +13103,7 @@ export default function DashboardPage() {
                         salesLast30DaysLabel={inventoryInsightsSalesLabel}
                         unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
                         useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
-                        storageCostCurrencySymbol={currencySymbol}
+                        storageCostCurrencySymbol={inventoryStorageCostCurrencySymbol}
                     />
                 )}
 

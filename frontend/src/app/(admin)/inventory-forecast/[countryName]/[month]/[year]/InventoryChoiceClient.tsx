@@ -1716,6 +1716,7 @@ export default function InventoryFlowPage() {
   const latestForecastRequestRef = useRef<string | null>(null);
   const lastPoTriggerRef = useRef<string | null>(null);
   const [showAllDispatchRows, setShowAllDispatchRows] = useState(false);
+  const [dispatchAllColumnsExpanded, setDispatchAllColumnsExpanded] = useState(false);
   const [showAllPoRows, setShowAllPoRows] = useState(false);
   const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
   const [outletElement, setOutletElement] =
@@ -2552,7 +2553,12 @@ export default function InventoryFlowPage() {
                     type="button"
                     onClick={() => {
                       if (activeTab === "dispatch") {
-                        setShowAllDispatchRows((prev) => !prev);
+                        const nextExpanded = !(
+                          showAllDispatchRows && dispatchAllColumnsExpanded
+                        );
+
+                        setShowAllDispatchRows(nextExpanded);
+                        setDispatchAllColumnsExpanded(nextExpanded);
                         return;
                       }
 
@@ -2560,18 +2566,18 @@ export default function InventoryFlowPage() {
                     }}
                     title={
                       activeTab === "dispatch"
-                        ? showAllDispatchRows
-                          ? "Collapse rows"
-                          : "Expand all rows"
+                        ? showAllDispatchRows && dispatchAllColumnsExpanded
+                          ? "Collapse rows and columns"
+                          : "Expand rows and columns"
                         : showAllPoRows
                           ? "Collapse rows"
                           : "Expand all rows"
                     }
                     aria-label={
                       activeTab === "dispatch"
-                        ? showAllDispatchRows
-                          ? "Collapse rows"
-                          : "Expand all rows"
+                        ? showAllDispatchRows && dispatchAllColumnsExpanded
+                          ? "Collapse rows and columns"
+                          : "Expand rows and columns"
                         : showAllPoRows
                           ? "Collapse rows"
                           : "Expand all rows"
@@ -2579,7 +2585,7 @@ export default function InventoryFlowPage() {
                     className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                   >
                     {activeTab === "dispatch" ? (
-                      showAllDispatchRows ? (
+                      showAllDispatchRows && dispatchAllColumnsExpanded ? (
                         <RiCollapseDiagonalFill size={18} className="font-extrabold" />
                       ) : (
                         <RiExpandDiagonalFill size={18} className="font-extrabold" />
@@ -2676,6 +2682,8 @@ export default function InventoryFlowPage() {
                         selectedYearProp={sharedYear}
                         showAllRowsProp={showAllDispatchRows}
                         onShowAllRowsChange={setShowAllDispatchRows}
+                        allColumnsExpandedProp={dispatchAllColumnsExpanded}
+                        onAllColumnsExpandedChange={setDispatchAllColumnsExpanded}
                         shipmentDetailsRequestKey={shipmentDetailsRequestKey}
                         onProductNameClick={(productName, sku) =>
                           void openProductDrawer(productName, sku, sharedMonth, sharedYear)

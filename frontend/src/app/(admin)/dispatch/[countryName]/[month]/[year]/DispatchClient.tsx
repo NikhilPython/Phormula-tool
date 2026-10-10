@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
@@ -60,6 +60,8 @@ type DispatchPageProps = {
   selectedYearProp?: string
   showAllRowsProp?: boolean
   onShowAllRowsChange?: React.Dispatch<React.SetStateAction<boolean>>
+  allColumnsExpandedProp?: boolean
+  onAllColumnsExpandedChange?: (expanded: boolean) => void
   shipmentDetailsRequestKey?: number
   onProductNameClick?: (productName: string, sku?: string) => void
 
@@ -1057,6 +1059,8 @@ export default function DispatchPage({
   selectedYearProp,
   showAllRowsProp,
   onShowAllRowsChange,
+  allColumnsExpandedProp,
+  onAllColumnsExpandedChange,
   shipmentDetailsRequestKey,
   onProductNameClick,
   popupContainer,
@@ -1128,6 +1132,11 @@ export default function DispatchPage({
     []
   )
   const [localShowAllDispatchRows, setLocalShowAllDispatchRows] = useState(false)
+  const [dispatchCollapsedGroups, setDispatchCollapsedGroups] = useState<Record<string, boolean>>({
+    in_stock: true,
+    in_transit: true,
+    to_be_dispatched: true,
+  })
   const [awdInputRows, setAwdInputRows] = useState<AwdDispatchInputRow[]>([])
   const [fbaInputRows, setFbaInputRows] = useState<FbaDispatchInputRow[]>([])
   const [inboundInputRows, setInboundInputRows] = useState<InboundDispatchInputRow[]>([])
@@ -2634,6 +2643,46 @@ export default function DispatchPage({
     []
   )
 
+  const canExpandDispatchRows =
+    !isActionSkuFilterActive &&
+    skuData.filter((row) => !isTotalRow(row)).length > 9
+  const areAllDispatchColumnsExpanded =
+    dispatchGroups.length > 0 &&
+    dispatchGroups.every((group) => dispatchCollapsedGroups[group.id] === false)
+  const isDispatchTableFullyExpanded =
+    (!canExpandDispatchRows || showAllDispatchRows) &&
+    areAllDispatchColumnsExpanded
+
+  const setAllDispatchColumnsExpanded = useCallback(
+    (expanded: boolean) => {
+      setDispatchCollapsedGroups(
+        Object.fromEntries(dispatchGroups.map((group) => [group.id, !expanded]))
+      )
+      onAllColumnsExpandedChange?.(expanded)
+    },
+    [dispatchGroups, onAllColumnsExpandedChange]
+  )
+
+  const handleToggleDispatchTableExpansion = () => {
+    const nextExpanded = !isDispatchTableFullyExpanded
+
+    if (canExpandDispatchRows) {
+      setShowAllDispatchRows(nextExpanded)
+    }
+
+    setAllDispatchColumnsExpanded(nextExpanded)
+  }
+
+  useEffect(() => {
+    if (typeof allColumnsExpandedProp !== 'boolean') return
+
+    setDispatchCollapsedGroups(
+      Object.fromEntries(
+        dispatchGroups.map((group) => [group.id, !allColumnsExpandedProp])
+      )
+    )
+  }, [allColumnsExpandedProp, dispatchGroups])
+
   function renderInboundShipmentDetailsPanel(displayMode: ShipmentDetailsDisplayMode) {
     const isInline = displayMode === 'inline'
     const shipmentTableBodyMaxHeight = isInline
@@ -3019,16 +3068,16 @@ export default function DispatchPage({
               </button>
             </div> */}
 
-              {!isActionSkuFilterActive && skuData.filter((row) => !isTotalRow(row)).length > 9 && (
+              {dispatchGroups.length > 0 && skuData.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setShowAllDispatchRows((prev) => !prev)}
-                  title={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
-                  aria-label={showAllDispatchRows ? "Collapse rows" : "Expand all rows"}
+                  onClick={handleToggleDispatchTableExpansion}
+                  title={isDispatchTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                  aria-label={isDispatchTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
                   disabled={loading || noData}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50 lg:h-9 lg:w-9"
                 >
-                  {showAllDispatchRows ? (
+                  {isDispatchTableFullyExpanded ? (
                     <RiCollapseDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
                   ) : (
                     <RiExpandDiagonalFill className="h-4 w-4 font-extrabold lg:h-4.5 lg:w-4.5" />
@@ -3163,6 +3212,14 @@ export default function DispatchPage({
                   singleCols={dispatchSingleCols}
                   layout={dispatchTableLayout}
                   initialCollapsed={dispatchInitialCollapsed}
+                  collapsedState={dispatchCollapsedGroups}
+                  onCollapsedChange={(next) => {
+                    setDispatchCollapsedGroups(next)
+                    onAllColumnsExpandedChange?.(
+                      dispatchGroups.length > 0 &&
+                      dispatchGroups.every((group) => next[group.id] === false)
+                    )
+                  }}
                   getValue={(row, colKey) => row[colKey] ?? ''}
                   getRowClassName={(row, index) => {
                     if (row.__isTotal) return "bg-[#EFEFEF] font-semibold"

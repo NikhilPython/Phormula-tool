@@ -43,6 +43,7 @@ type Props<RowT> = {
   singleCols: LeafCol<RowT>[];
 
   initialCollapsed?: Record<string, boolean>;
+  collapsedState?: Record<string, boolean>;
   onCollapsedChange?: (collapsed: Record<string, boolean>) => void;
 
   getValue: (row: RowT, colKey: string, rowIndex: number) => React.ReactNode;
@@ -90,6 +91,7 @@ export default function GroupedCollapsibleTables<RowT>({
   groups,
   singleCols,
   initialCollapsed,
+  collapsedState,
   onCollapsedChange,
   getValue,
   getRowClassName,
@@ -107,18 +109,23 @@ export default function GroupedCollapsibleTables<RowT>({
   onSortChange,
   bodyMaxHeight,
 }: Props<RowT>) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+  const [internalCollapsed, setInternalCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
     for (const g of groups) base[g.id] = true;
     return { ...base, ...(initialCollapsed || {}) };
   });
 
-  const toggleGroup = (id: string) =>
-    setCollapsed((p) => {
-      const next = { ...p, [id]: !p[id] };
-      onCollapsedChange?.(next);
-      return next;
-    });
+  const collapsed = collapsedState ?? internalCollapsed;
+
+  const toggleGroup = (id: string) => {
+    const next = { ...collapsed, [id]: !collapsed[id] };
+
+    if (!collapsedState) {
+      setInternalCollapsed(next);
+    }
+
+    onCollapsedChange?.(next);
+  };
 
   type SortDirection = "asc" | "desc";
 

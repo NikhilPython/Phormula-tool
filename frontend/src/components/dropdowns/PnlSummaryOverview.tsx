@@ -40,6 +40,7 @@ type SkuTableMetric = {
   sku: string;
   netSales: number;
   secondaryValue: number;
+  secondaryPercentage?: number;
   netSalesDeltaPercentage?: number;
 };
 
@@ -149,6 +150,28 @@ const formatMoneyWithPercentage = (
     )}
   </span>
 );
+
+const formatMoneyWithPerUnitText = (
+  value: number,
+  perUnit: number | undefined,
+  currencySymbol: string
+) =>
+  `${formatMoney(value, currencySymbol)}${
+    typeof perUnit === "number" && Number.isFinite(perUnit)
+      ? ` (${formatMoney(perUnit, currencySymbol)}/unit)`
+      : ""
+  }`;
+
+const formatMoneyWithPercentageText = (
+  value: number,
+  percentage: number | undefined,
+  currencySymbol: string
+) =>
+  `${formatMoney(value, currencySymbol)}${
+    typeof percentage === "number" && Number.isFinite(percentage)
+      ? ` (${formatPercent(percentage)})`
+      : ""
+  }`;
 
 
 const roundFormattedValue = (value: string) =>
@@ -272,18 +295,18 @@ const SkuPerformanceTable = ({
 
   return (
     <div className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid grid-cols-4 items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[minmax(0,2fr)_minmax(100px,1fr)_minmax(100px,1fr)_minmax(140px,1fr)] 2xl:gap-3 2xl:px-5 2xl:text-xs">
+      <div className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 2xl:gap-3 2xl:px-5 2xl:text-xs">
         <span>{productHeading}</span>
-        <span className="text-right">Net sales</span>
-        <span className="text-right">{metricHeading}</span>
-        <span className="text-right">Net Sales Growth (%)</span>
+        <span className="text-center">Net sales</span>
+        <span className="text-center">{metricHeading}</span>
+        <span className="text-center">Net Sales Growth (%)</span>
       </div>
 
       {rows.length ? (
         rows.map((row, index) => (
           <div
             key={`${row.sku}-${row.productName}-${index}`}
-            className="grid grid-cols-4 items-center gap-2 border-b border-slate-100 px-4 py-1 last:border-b-0 md:grid-cols-[minmax(0,1.5fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)_minmax(90px,0.65fr)] 2xl:gap-3 2xl:px-5"
+            className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-center gap-2 border-b border-slate-100 px-4 py-1 last:border-b-0 2xl:gap-3 2xl:px-5"
           >
             <div className="flex min-w-0 items-center gap-2.5">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold 2xl:h-7 2xl:w-7 2xl:text-xs ${badgeClass}`}>
@@ -300,12 +323,12 @@ const SkuPerformanceTable = ({
                 ) : null}
               </div>
             </div>
-            <span className="text-right text-xs font-semibold text-charcoal-500 2xl:text-sm">
+            <span className="text-center text-xs font-semibold text-charcoal-500 2xl:text-sm">
               {formatMoney(row.netSales, currencySymbol)}
             </span>
             <span
-              className={`text-right text-xs font-semibold 2xl:text-sm ${metricType === "percentage"
-                ? "inline-flex items-center justify-end gap-1 text-emerald-600"
+              className={`text-center text-xs font-semibold 2xl:text-sm ${metricType === "percentage"
+                ? "inline-flex items-center justify-center gap-1 text-emerald-600"
                 : row.secondaryValue < 0
                   ? "text-rose-600"
                   : "text-charcoal-500"
@@ -317,10 +340,18 @@ const SkuPerformanceTable = ({
                   {formatPercent(row.secondaryValue)}
                 </>
               ) : (
-                formatMoney(row.secondaryValue, currencySymbol)
+                <span className="inline-flex items-baseline justify-center gap-1 whitespace-nowrap">
+                  <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
+                  {typeof row.secondaryPercentage === "number" &&
+                  Number.isFinite(row.secondaryPercentage) ? (
+                    <span className="text-[9px] font-normal text-slate-500 2xl:text-[11px]">
+                      ({formatPercent(row.secondaryPercentage)})
+                    </span>
+                  ) : null}
+                </span>
               )}
             </span>
-            <span className="flex justify-end text-right text-[10px] 2xl:text-xs">
+            <span className="flex items-center justify-center text-center text-[10px] 2xl:text-xs">
               <Delta value={row.netSalesDeltaPercentage} />
             </span>
           </div>
@@ -379,7 +410,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         label: "Finance Dashboard",
         eyebrow: "Financial performance",
         title: "Profitability at a glance",
-        description: "The headline measures driving this period's result.",
+        description: "Track sales, profitability, expenses, and cash flow for the selected period.",
         icon: CircleDollarSign,
         tone: "sky",
         destination: "graphs" as SummaryDestination,
@@ -477,41 +508,64 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
     }
 
     if (slide.key === "finance") {
-
-      const financeValue = (
-        value: React.ReactNode,
+      const buildComparisonRow = (
+        previousValue: number | undefined,
+        valueText: string,
         delta?: number,
         inverse = false
-      ) => (
-        <div className="flex w-full items-baseline justify-between gap-2">
-          <div className="min-w-0">
-            {value}
-          </div>
+      ) => {
+        const hasPrevious =
+          typeof previousValue === "number" && Number.isFinite(previousValue);
+        const hasDelta = typeof delta === "number" && Number.isFinite(delta);
+        const positive = inverse ? Number(delta) <= 0 : Number(delta) >= 0;
+        const DeltaIcon = Number(delta) >= 0 ? TrendingUp : TrendingDown;
 
-          <div className="shrink-0 whitespace-nowrap text-[9px] leading-none 2xl:text-[10px]">
-            <Delta value={delta} inverse={inverse} />
-          </div>
-        </div>
-      );
-
+        return [
+          {
+            label: formatPeriodLabel(data.comparisonLabel),
+            valueText: hasPrevious ? valueText : "-",
+            deltaText: hasDelta
+              ? (
+                  <span className="inline-flex items-center gap-1">
+                    <DeltaIcon size={13} strokeWidth={2.5} />
+                    {formatPercentageNumber(Math.abs(Number(delta)))}%
+                  </span>
+                )
+              : "-",
+            deltaClassName: !hasDelta
+              ? "text-gray-400"
+              : positive
+                ? "text-emerald-600"
+                : "text-rose-600",
+          },
+        ];
+      };
 
       return (
-        <div className="grid w-full grid-cols-2 gap-2 lg:grid-cols-3 2xl:gap-3">
+        <div className="grid h-full min-h-0 w-full grid-cols-2 grid-rows-3 gap-3 lg:grid-cols-3 lg:grid-rows-2 2xl:gap-4">
           <SummaryMetricCard
             title="Units sold"
-            value={financeValue(
-              formatWholeNumber(financial.units.value),
+            value={formatWholeNumber(financial.units.value)}
+            comparisons={buildComparisonRow(
+              financial.units.previousValue,
+              formatWholeNumber(financial.units.previousValue ?? 0),
               financial.units.delta
             )}
-            className="border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white"
+            className="h-full border border-[#FDD36F] border-t-4 border-t-[#FDD36F] bg-white"
           />
 
           <SummaryMetricCard
             title="Net sales"
-            value={financeValue(
-              formatMoneyWithPerUnit(
-                financial.netSales.value,
-                financial.netSales.perUnit,
+            value={formatMoneyWithPerUnit(
+              financial.netSales.value,
+              financial.netSales.perUnit,
+              currencySymbol
+            )}
+            comparisons={buildComparisonRow(
+              financial.netSales.previousValue,
+              formatMoneyWithPerUnitText(
+                financial.netSales.previousValue ?? 0,
+                financial.netSales.previousPerUnit,
                 currencySymbol
               ),
               financial.netSales.delta
@@ -523,10 +577,16 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <SummaryMetricCard
             title="Marketplace fees"
-            value={financeValue(
-              formatMoneyWithPerUnit(
-                financial.marketplaceFees.value,
-                financial.marketplaceFees.perUnit,
+            value={formatMoneyWithPerUnit(
+              financial.marketplaceFees.value,
+              financial.marketplaceFees.perUnit,
+              currencySymbol
+            )}
+            comparisons={buildComparisonRow(
+              financial.marketplaceFees.previousValue,
+              formatMoneyWithPerUnitText(
+                financial.marketplaceFees.previousValue ?? 0,
+                financial.marketplaceFees.previousPerUnit,
                 currencySymbol
               ),
               financial.marketplaceFees.delta,
@@ -537,8 +597,10 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <SummaryMetricCard
             title="TACoS"
-            value={financeValue(
-              formatPercent(financial.tacos.value),
+            value={formatPercent(financial.tacos.value)}
+            comparisons={buildComparisonRow(
+              financial.tacos.previousValue,
+              formatPercent(financial.tacos.previousValue ?? 0),
               financial.tacos.delta,
               true
             )}
@@ -547,10 +609,16 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <SummaryMetricCard
             title="CM2 profit"
-            value={financeValue(
-              formatMoneyWithPercentage(
-                financial.cm2Profit.value,
-                financial.cm2Profit.percentage,
+            value={formatMoneyWithPercentage(
+              financial.cm2Profit.value,
+              financial.cm2Profit.percentage,
+              currencySymbol
+            )}
+            comparisons={buildComparisonRow(
+              financial.cm2Profit.previousValue,
+              formatMoneyWithPercentageText(
+                financial.cm2Profit.previousValue ?? 0,
+                financial.cm2Profit.previousPercentage,
                 currencySymbol
               ),
               financial.cm2Profit.delta
@@ -560,11 +628,20 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
           <SummaryMetricCard
             title="Cash generated"
-            value={financeValue(
+            value={
               data.cashFlow.loading ? (
                 <SkeletonLine className="w-24" />
               ) : (
                 formatMoney(data.cashFlow.cashGenerated, currencySymbol)
+              )
+            }
+            comparisons={buildComparisonRow(
+              data.cashFlow.loading
+                ? undefined
+                : data.cashFlow.previousCashGenerated,
+              formatMoney(
+                data.cashFlow.previousCashGenerated ?? 0,
+                currencySymbol
               ),
               data.cashFlow.delta
             )}
@@ -820,14 +897,19 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
               </div>
 
               {/* Section label */}
-              <span
+              {/* <span
                 className={`hidden shrink-0 rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide sm:inline-flex ${tone.badge}`}
               >
                 {slide.eyebrow}
-              </span>
+              </span> */}
             </div>
 
-            <div className="relative z-10 w-full 2xl:mx-auto 2xl:max-w-[1480px]">{renderSlideBody()}</div>
+            <div
+              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide ? "flex-1" : ""
+                }`}
+            >
+              {renderSlideBody()}
+            </div>
           </motion.div>
         </AnimatePresence>
       </div>

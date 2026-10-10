@@ -1507,6 +1507,10 @@ export const buildInventoryInsightsFromResponses = (
         inventoryToNum(row?.["estimated-storage-cost-next-month"]) > 0
     );
 
+    const storageCostCountry = isGlobalInventory
+        ? selectedGlobalInventoryCountry
+        : countryName;
+
     const getSkuCountForAgeColumn = (
         rows: InventoryCurrentRow[],
         column: string
@@ -1651,14 +1655,14 @@ export const buildInventoryInsightsFromResponses = (
             count: getUniqueSkuCount(storageCostRows),
             displayValue: formatInventoryStorageCost(
                 storageCostTotal,
-                countryName,
+                storageCostCountry,
                 homeCurrency
             ),
             deltaValue:
                 previousStorageCostTotal > 0
                     ? formatInventoryStorageCost(
                         storageCostDelta,
-                        countryName,
+                        storageCostCountry,
                         homeCurrency
                     )
                     : undefined,
