@@ -67,6 +67,18 @@ const splitSkuValues = (value: unknown) =>
 
         .filter(Boolean);
 
+const normalizeProductFilterValue = (value: unknown) =>
+    String(value ?? "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+
+const splitProductValues = (value: unknown) =>
+    String(value ?? "")
+        .split("|")
+        .map(normalizeProductFilterValue)
+        .filter(Boolean);
+
 
 
 const getOptionalSummaryNumber = (source: unknown, keys: string[]) => {
@@ -291,9 +303,19 @@ export default function DashboardProductwisePnlSection({
 
     );
 
-    const isActionSkuFilterActive =
+    const actionFilterProducts = React.useMemo(
+        () => Array.from(new Set(splitProductValues(searchParams.get("products")))),
+        [searchParams]
+    );
 
-        PNL_ACTION_FILTER_IDS.has(actionItemId) && actionFilterSkus.length > 0;
+    const actionFilterProductSet = React.useMemo(
+        () => new Set(actionFilterProducts),
+        [actionFilterProducts]
+    );
+
+    const isActionSkuFilterActive =
+        PNL_ACTION_FILTER_IDS.has(actionItemId) &&
+        (actionFilterSkus.length > 0 || actionFilterProducts.length > 0);
 
     const areAllTableRowsExpanded =
 
@@ -414,7 +436,7 @@ export default function DashboardProductwisePnlSection({
             window.cancelAnimationFrame(raf2);
             timers.forEach((timer) => window.clearTimeout(timer));
         };
-    }, [isActionSkuFilterActive, actionItemId, actionFilterSkus]);
+    }, [isActionSkuFilterActive, actionItemId, actionFilterSkus, actionFilterProducts]);
     const actionFilteredProductwiseRows = React.useMemo(() => {
 
     // Normal P&L view:
@@ -500,14 +522,17 @@ export default function DashboardProductwisePnlSection({
 
 
             const rowSkus = splitSkuValues(row?.sku);
-
-
-
-            return rowSkus.some((rowSku) =>
-
+            const skuMatches = rowSkus.some((rowSku) =>
                 actionFilterSkuSet.has(rowSku)
-
             );
+
+            // Global rows are aggregated by product_name and can have an empty SKU.
+            // Match the backend-provided affected product names too.
+            const productMatches = actionFilterProductSet.has(
+                normalizeProductFilterValue(row?.product_name)
+            );
+
+            return skuMatches || productMatches;
 
         })
 
@@ -543,7 +568,9 @@ export default function DashboardProductwisePnlSection({
 
     actionFilterSkuSet,
 
-    getSkuwiseDisplayProductName,
+        actionFilterProductSet,
+
+getSkuwiseDisplayProductName,
 
 ]);
 
@@ -901,6 +928,7 @@ export default function DashboardProductwisePnlSection({
         nextParams.delete("actionItem");
 
         nextParams.delete("skus");
+        nextParams.delete("products");
 
 
 

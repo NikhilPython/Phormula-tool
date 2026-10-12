@@ -19,6 +19,7 @@ export type DashboardActionItem = {
   action: string;
   actionHref?: string;
   affected_skus?: string[];
+  affected_products?: string[];
 };
 
 type Priority = ActionItemPriority;
@@ -1627,6 +1628,8 @@ function ActionItemsView({
   const getRouteParam = (value: string | string[] | undefined) =>
     Array.isArray(value) ? value[0] ?? "" : value ?? "";
 
+  // Keep navigation tied to the dashboard route exactly as before.
+  // Global filtering is carried separately in the `products` query param.
   const countryName = getRouteParam(params?.countryName as string | string[] | undefined);
   const month = getRouteParam(params?.month as string | string[] | undefined);
   const year = getRouteParam(params?.year as string | string[] | undefined);
@@ -1655,6 +1658,20 @@ function ActionItemsView({
 
     if (affectedSkus.length > 0) {
       actionSearch.set("skus", affectedSkus.join(","));
+    }
+
+    // Global P&L rows are grouped by product_name and have a blank SKU.
+    // Send product names separately so the focused table can match them safely.
+    const affectedProducts = Array.from(
+      new Set(
+        (item.affected_products || [])
+          .map((product) => String(product || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    if (affectedProducts.length > 0) {
+      actionSearch.set("products", affectedProducts.join("|"));
     }
 
     const actionQuery = actionSearch.toString();
