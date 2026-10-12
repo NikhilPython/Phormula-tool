@@ -107,7 +107,7 @@ import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
-import { CalendarDays } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import CustomerReviewsClient from "@/app/(admin)/customer-reviews/[countryName]/[month]/[year]/CustomerReviewsClient";
 import type {
     AgeingBucket,
@@ -129,6 +129,10 @@ import type {
     ActionLogicItem,
 } from "@/components/common/inventory/ActionBasedDashboard";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
+import PnlSummaryOverview, {
+    type PnlSummaryOverviewData,
+    type SummaryDestination,
+} from "@/components/dropdowns/PnlSummaryOverview";
 
 
 
@@ -1757,6 +1761,7 @@ export default function DashboardPage() {
     const [invRows, setInvRows] = useState<InventoryRow[]>([]);
     const [inventoryAlerts, setInventoryAlerts] = useState<InventoryAlertRecord>({});
     const [activeTab, setActiveTab] = useState<TopTab>("action");
+    const [showDashboardDetails, setShowDashboardDetails] = useState(false);
     const [dismissedSalesDelayNoticeKey, setDismissedSalesDelayNoticeKey] =
         useState<string | null>(null);
     const [summaryLoading, setSummaryLoading] = useState(true);
@@ -3786,7 +3791,7 @@ export default function DashboardPage() {
     }, [inventoryInsightsRequestKey]);
 
     useEffect(() => {
-        if (activeTab !== "inventory") return;
+        if (showDashboardDetails && activeTab !== "inventory") return;
         if (inventoryInsightsData) return;
         if (inventoryInsightsLoading) return;
         if (inventoryUnavailableNotice?.key === inventoryInsightsRequestKey) return;
@@ -3797,6 +3802,7 @@ export default function DashboardPage() {
         });
     }, [
         activeTab,
+        showDashboardDetails,
         inventoryInsightsData,
         inventoryInsightsLoading,
         inventoryUnavailableNotice,
@@ -8757,6 +8763,7 @@ export default function DashboardPage() {
         // the dashboard tab. The destination section itself handles focused
         // scrolling after it has rendered, so we do not reset the page to top.
         setActiveTab(targetTab);
+        setShowDashboardDetails(true);
     }, []);
 
     useEffect(() => {
@@ -8796,6 +8803,49 @@ export default function DashboardPage() {
         // Only update URL. Do not trigger scroll on manual tab switch.
         window.history.replaceState(null, "", nextUrl);
     }, []);
+
+    const returnToOverview = useCallback(() => {
+        setShowDashboardDetails(false);
+        setActiveTab("action");
+
+        if (typeof window === "undefined") return;
+
+        window.history.replaceState(
+            null,
+            "",
+            `${window.location.pathname}${window.location.search}`
+        );
+
+        window.requestAnimationFrame(() => {
+            window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        });
+    }, []);
+
+    const navigateFromOverview = useCallback(
+        (destination: SummaryDestination) => {
+            const destinationTab: Record<SummaryDestination, TopTab> = {
+                graphs: "live",
+                skuBreakdown: "productwise",
+                cashFlow: "productwise",
+                skuwiseProfit: "productwise",
+                businessSummary: "summary",
+                inventoryInsights: "inventory",
+            };
+
+            const nextTab = destinationTab[destination];
+            shouldScrollTabTopRef.current = true;
+            setShowDashboardDetails(true);
+            setActiveTab(nextTab);
+            syncTabToHash(nextTab);
+        },
+        [syncTabToHash]
+    );
+
+    useEffect(() => {
+        if (typeof window !== "undefined" && window.location.hash) return;
+        setActiveTab("action");
+        setShowDashboardDetails(false);
+    }, [countryName]);
 
     const scrollDashboardPageToTop = useCallback(() => {
         if (typeof window === "undefined") return;
@@ -12711,6 +12761,265 @@ export default function DashboardPage() {
         countryName,
     ]);
 
+    const overviewData: PnlSummaryOverviewData = (() => {
+        type OverviewKpi = {
+            current?: number;
+            previous?: number;
+            deltaPct?: number | null;
+            currentPerUnit?: number;
+            previousPerUnit?: number;
+        };
+
+        const getKpi = (label: string) =>
+            (stickyKpiItems.find((item) => item.label === label) || {}) as OverviewKpi;
+
+        const unitsKpi = getKpi("Units");
+        const netSalesKpi = getKpi("Net Sales");
+        const tacosKpi = getKpi("TACoS");
+        const cm2ProfitKpi = getKpi("CM2 Profit");
+
+        const marketplaceFeesIndex = finalBarLabels.indexOf("Marketplace Fees");
+        const marketplaceFeesCurrent = Math.abs(
+            marketplaceFeesIndex >= 0
+                ? toNumber(finalBarValues[marketplaceFeesIndex])
+                : marketplaceFeesFromTable
+        );
+        const marketplaceFeesPrevious = Math.abs(
+            marketplaceFeesIndex >= 0
+                ? toNumber(finalPrevBarValues[marketplaceFeesIndex])
+                : 0
+        );
+        const marketplaceFeesDelta = safeDeltaPct(
+            marketplaceFeesCurrent,
+            marketplaceFeesPrevious
+        );
+
+        // Rank the complete product set. The table-facing rows may already be
+        // limited to nine products and an aggregated "Others" row, depending
+        // on the user's current table sort, which would make the overview omit
+        // valid low-performing SKUs.
+        const overviewSkuRows = attachNetSalesDeltaToLiveRows(
+            monthlySkuwiseRowsDisplay,
+            previousSkuwiseRowsForDelta
+        );
+
+        const rankedSkus = overviewSkuRows
+            .filter((row) => {
+                const sku = String(row.sku || "").trim().toLowerCase();
+                const productName = String(row.product_name || "").trim().toLowerCase();
+
+                return Boolean(
+                    (sku || productName) &&
+                    !row.isTotal &&
+                    !["total", "grand_total", "grand total", "others"].includes(sku) &&
+                    !["total", "grand total", "others"].includes(productName)
+                );
+            })
+            .map((row) => {
+                const netSales = toNumber(row.net_sales);
+                const profit = toNumber(row.cm2_profit);
+                const profitPercentage =
+                    row.cm2_profit_per !== undefined && row.cm2_profit_per !== null
+                        ? toNumber(row.cm2_profit_per)
+                        : netSales !== 0
+                            ? (profit / Math.abs(netSales)) * 100
+                            : 0;
+
+                return {
+                    productName: String(row.product_name || row.sku || "Unnamed product"),
+                    sku: String(row.sku || ""),
+                    netSales,
+                    profit,
+                    profitPercentage,
+                    netSalesIncrease: toNumber(row.net_sales_delta),
+                    netSalesGrowth:
+                        row.net_sales_delta_percentage === undefined ||
+                            row.net_sales_delta_percentage === null
+                            ? undefined
+                            : toNumber(row.net_sales_delta_percentage),
+                };
+            });
+
+        const toOverviewSku = (row: (typeof rankedSkus)[number]) => ({
+            productName: row.productName,
+            sku: row.sku,
+            netSales: row.netSales,
+            secondaryValue: row.profit,
+            secondaryPercentage: row.profitPercentage,
+            netSalesDeltaPercentage: row.netSalesGrowth,
+        });
+
+        const heroSkus = [...rankedSkus]
+            .sort((a, b) => b.profit - a.profit)
+            .slice(0, 5)
+            .map(toOverviewSku);
+
+        const leastPerformingSkus = [...rankedSkus]
+            .sort((a, b) => a.profit - b.profit)
+            .slice(0, 5)
+            .map(toOverviewSku);
+
+        const topNetSalesGrowthSkus = [...rankedSkus]
+            .filter(
+                (row) =>
+                    typeof row.netSalesGrowth === "number" &&
+                    Number.isFinite(row.netSalesGrowth) &&
+                    row.netSalesGrowth > 0 &&
+                    row.netSalesIncrease > 0
+            )
+            .sort(
+                (a, b) =>
+                    (b.netSalesGrowth ?? Number.NEGATIVE_INFINITY) -
+                    (a.netSalesGrowth ?? Number.NEGATIVE_INFINITY)
+            )
+            .slice(0, 5)
+            .map((row) => ({
+                productName: row.productName,
+                sku: row.sku,
+                netSales: row.netSales,
+                secondaryValue: row.netSalesIncrease,
+                netSalesDeltaPercentage: row.netSalesGrowth,
+            }));
+
+        const overviewInventory = displayedInventoryInsightsData;
+        const findInventoryAction = (...keys: string[]) =>
+            overviewInventory?.actions.find((action) => keys.includes(action.key));
+        const healthyAction = findInventoryAction("healthy", "age_0_90");
+        const highAlertAction = findInventoryAction("high_alert");
+        const estimatedStorageAction = findInventoryAction("estimated_storage_cost");
+
+        const normalizeOverviewText = (value: unknown): string => {
+            if (Array.isArray(value)) {
+                return value.map((item) => String(item || "").trim()).find(Boolean) || "";
+            }
+
+            if (value && typeof value === "object") {
+                const source = value as Record<string, unknown>;
+                return String(source.summary_text || source.text || "").trim();
+            }
+
+            return typeof value === "string" || typeof value === "number"
+                ? String(value).trim()
+                : "";
+        };
+
+        const currentTargetSummary =
+            targetSummaries[targetSummaryCountry as keyof typeof targetSummaries] || {};
+        const previousTargetSummary =
+            prevTargetSummaries[
+            targetSummaryCountry as keyof typeof prevTargetSummaries
+            ] || {};
+        const cashGenerated = toNumber(currentTargetSummary.cashflow_total);
+        const previousCashGenerated = toNumber(
+            currentTargetSummary.previous_cashflow_total ??
+            previousTargetSummary.cashflow_total
+        );
+
+        const cm2Margin = isStickyGlobal
+            ? stickyTableTotals.cm2MarginPct
+            : rangeActive
+                ? toNumber(biAlignedTotals?.total_current_profit_percentage)
+                : toNumber(backendDashboardMetric("cm2_profit").current_percentage) ||
+                totalRowCm2Margins;
+        const previousCm2Margin = isStickyGlobal
+            ? stickyPreviousTotals.cm2MarginPct
+            : rangeActive
+                ? toNumber(biAlignedTotals?.total_previous_profit_percentage)
+                : toNumber(backendDashboardMetric("cm2_profit").previous_percentage);
+
+        const aiSummary = normalizeOverviewText(finalLiveBiPayload?.overall_summary);
+        const aiRecommendation =
+            normalizeOverviewText(finalLiveBiPayload?.portfolio_recommendation) ||
+            normalizeOverviewText(finalLiveBiPayload?.overall_actions);
+
+        return {
+            periodLabel: `${currentDisplayMonth.monthName} ${currentDisplayMonth.year}`,
+            comparisonLabel: `${previousDisplayMonth.monthName} ${previousDisplayMonth.year}`,
+            currencySymbol,
+            financial: {
+                netSales: {
+                    value: toNumber(netSalesKpi.current),
+                    previousValue: toNumber(netSalesKpi.previous),
+                    delta: netSalesKpi.deltaPct ?? undefined,
+                    perUnit: toNumber(netSalesKpi.currentPerUnit),
+                    previousPerUnit: toNumber(netSalesKpi.previousPerUnit),
+                },
+                cm2Profit: {
+                    value: toNumber(cm2ProfitKpi.current),
+                    previousValue: toNumber(cm2ProfitKpi.previous),
+                    delta: cm2ProfitKpi.deltaPct ?? undefined,
+                    percentage: cm2Margin,
+                    previousPercentage: previousCm2Margin,
+                },
+                tacos: {
+                    value: toNumber(tacosKpi.current),
+                    previousValue: toNumber(tacosKpi.previous),
+                    delta: tacosKpi.deltaPct ?? undefined,
+                },
+                units: {
+                    value: toNumber(unitsKpi.current),
+                    previousValue: toNumber(unitsKpi.previous),
+                    delta: unitsKpi.deltaPct ?? undefined,
+                },
+                marketplaceFees: {
+                    value: marketplaceFeesCurrent,
+                    previousValue: marketplaceFeesPrevious,
+                    delta: marketplaceFeesDelta ?? undefined,
+                    perUnit:
+                        toNumber(unitsKpi.current) > 0
+                            ? marketplaceFeesCurrent / toNumber(unitsKpi.current)
+                            : undefined,
+                    previousPerUnit:
+                        toNumber(unitsKpi.previous) > 0
+                            ? marketplaceFeesPrevious / toNumber(unitsKpi.previous)
+                            : undefined,
+                },
+                cm2Margin,
+            },
+            ai: {
+                summary: aiSummary,
+                recommendation: aiRecommendation,
+                loading: !finalLiveBiPayload && (biLoading || pageLoading),
+            },
+            pnl: {
+                profitMetric: "CM2",
+                heroSkus,
+                leastPerformingSkus,
+                topNetSalesGrowthSkus,
+            },
+            cashFlow: {
+                cashGenerated,
+                previousCashGenerated,
+                delta:
+                    currentTargetSummary.cashflow_delta ??
+                    safeDeltaPct(cashGenerated, previousCashGenerated) ??
+                    undefined,
+            },
+            inventory: {
+                totalUnits: toNumber(overviewInventory?.donutTotalUnits),
+                healthySkus: toNumber(healthyAction?.skuCount ?? healthyAction?.count),
+                healthyUnits: toNumber(healthyAction?.unitCount),
+                highAlertSkus: toNumber(highAlertAction?.skuCount ?? highAlertAction?.count),
+                highAlertUnits: toNumber(highAlertAction?.unitCount),
+                estimatedStorageCost: String(
+                    estimatedStorageAction?.displayValue ??
+                    `${inventoryStorageCostCurrencySymbol}0`
+                ),
+                estimatedStorageCostDeltaValue:
+                    estimatedStorageAction?.deltaValue === undefined
+                        ? undefined
+                        : String(estimatedStorageAction.deltaValue),
+                estimatedStorageCostDeltaPercentage:
+                    estimatedStorageAction?.deltaPercentage,
+                loading: inventoryInsightsLoading,
+                unavailable: Boolean(
+                    inventoryInsightsError ||
+                    (!inventoryInsightsLoading && !overviewInventory)
+                ),
+            },
+        };
+    })();
+
     const shouldScrollMtdProductwiseTable =
         mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
 
@@ -12780,6 +13089,7 @@ export default function DashboardPage() {
                 shouldScrollTabTopRef={shouldScrollTabTopRef}
                 setActiveTab={setActiveTab}
                 syncTabToHash={syncTabToHash}
+                showTabs={showDashboardDetails}
             />
 
             <PreviewLockedSection
@@ -12789,6 +13099,33 @@ export default function DashboardPage() {
                 buttonText="Complete Setup"
                 onAction={handleConnectAmazonPreview}
             >
+                {!showDashboardDetails ? (
+                    <div className="mt-3 sm:mt-4 2xl:mt-3">
+                        <PnlSummaryOverview
+                            data={overviewData}
+                            onNavigate={navigateFromOverview}
+                        />
+                    </div>
+                ) : (
+                    <>
+                        <div className="mb-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                            <PageBreadcrumb
+                                pageTitle="Detailed Live Dashboard"
+                                textSize="lg"
+                                variant="page"
+                                align="left"
+                            />
+
+                            <button
+                                type="button"
+                                onClick={returnToOverview}
+                                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-4 py-2 text-xs font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:text-sm"
+                            >
+                                <ArrowLeft size={15} />
+                                Back to overview
+                            </button>
+                        </div>
+
                 {["summary", "productwise"].includes(activeTab) && (
                     <DashboardStickyKpis items={stickyKpiItems} />
                 )}
@@ -13109,6 +13446,8 @@ export default function DashboardPage() {
 
                 {activeTab === "reviews" && (
                     <CustomerReviewsClient />
+                )}
+                    </>
                 )}
             </PreviewLockedSection>
 

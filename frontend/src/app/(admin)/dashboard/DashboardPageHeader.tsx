@@ -25,6 +25,7 @@ type DashboardPageHeaderProps<TTab extends string = string> = {
     shouldScrollTabTopRef: React.MutableRefObject<boolean>;
     setActiveTab: (tab: TTab) => void;
     syncTabToHash: (tab: TTab) => void;
+    showTabs?: boolean;
 };
 
 export default function DashboardPageHeader<TTab extends string = string>({
@@ -44,6 +45,7 @@ export default function DashboardPageHeader<TTab extends string = string>({
     shouldScrollTabTopRef,
     setActiveTab,
     syncTabToHash,
+    showTabs = true,
 }: DashboardPageHeaderProps<TTab>) {
     const stickyHeaderRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -135,22 +137,23 @@ export default function DashboardPageHeader<TTab extends string = string>({
 </div>
             </div>
 
-            <div className="bg-[#F7F7F7] border-b border-gray-200 
-    max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
-                <SegmentedToggle<TTab>
-                    value={activeTab}
-                    options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                    onChange={(tab) => {
-                        shouldScrollTabTopRef.current = true;
+            {showTabs && (
+                <div className="border-b border-gray-200 bg-[#F7F7F7] max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
+                    <SegmentedToggle<TTab>
+                        value={activeTab}
+                        options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
+                        onChange={(tab) => {
+                            shouldScrollTabTopRef.current = true;
 
-                        setActiveTab(tab);
-                        syncTabToHash(tab);
-                    }}
-                    className="mt-2 w-full"
-                    compact
-                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                />
-            </div>
+                            setActiveTab(tab);
+                            syncTabToHash(tab);
+                        }}
+                        className="mt-2 w-full"
+                        compact
+                        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                    />
+                </div>
+            )}
         </div>
     );
 }
