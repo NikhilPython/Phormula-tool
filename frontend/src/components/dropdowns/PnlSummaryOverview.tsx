@@ -62,6 +62,7 @@ export type PnlSummaryOverviewData = {
     loading?: boolean;
   };
   pnl: {
+    profitMetric: "CM1" | "CM2";
     heroSkus: SkuTableMetric[];
     leastPerformingSkus: SkuTableMetric[];
     topNetSalesGrowthSkus: SkuTableMetric[];
@@ -420,7 +421,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         label: "Hero SKUs",
         eyebrow: "Leading products",
         title: "Your hero SKUs",
-        description: "The products generating the strongest CM1 profit.",
+        description: `The products generating the strongest ${data.pnl.profitMetric} profit.`,
         icon: TrendingUp,
         tone: "emerald",
         destination: "skuBreakdown" as SummaryDestination,
@@ -430,7 +431,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         label: "Least Performing SKUs",
         eyebrow: "Products to review",
         title: "Least performing SKUs",
-        description: "The products with the weakest CM1 contribution.",
+        description: `The products with the weakest ${data.pnl.profitMetric} contribution.`,
         icon: TrendingDown,
         tone: "rose",
         destination: "skuBreakdown" as SummaryDestination,
@@ -456,7 +457,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         destination: "inventoryInsights" as SummaryDestination,
       },
     ],
-    []
+    [data.pnl.profitMetric]
   );
 
   useEffect(() => {
@@ -656,7 +657,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <SkuPerformanceTable
           rows={data.pnl.heroSkus}
           productHeading="Leading products"
-          metricHeading="CM1 profit"
+          metricHeading={`${data.pnl.profitMetric} profit`}
           metricType="money"
           currencySymbol={currencySymbol}
           tone="positive"
@@ -669,7 +670,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
         <SkuPerformanceTable
           rows={data.pnl.leastPerformingSkus}
           productHeading="Least performing SKUs"
-          metricHeading="CM1 profit"
+          metricHeading={`${data.pnl.profitMetric} profit`}
           metricType="money"
           currencySymbol={currencySymbol}
           tone="negative"

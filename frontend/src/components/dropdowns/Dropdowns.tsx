@@ -1492,7 +1492,8 @@ const getCm2MarginValue = (row: any, _netSales: any, _cm2Profit: any) =>
     row?.cm2_margins,
     row?.cm2_profit_percentage,
     row?.cm2_profit_percent,
-    row?.cm2_profit_percentage_value
+    row?.cm2_profit_percentage_value,
+    row?.cm2_profit_per
   );
 
 const getCm2PerValue = (row: any, _netSales: any, _cm2Profit: any) =>
@@ -10170,7 +10171,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       currentSummary.tacos ??
       calculateTacos(currentSummary.total_sales, costOfAds);
 
-    const rankedCm1Skus = displaySkuRows
+    const useCm2ForSkuProfit =
+      range === "monthly" && hasSkuCm2Data(displaySkuRows);
+
+    const rankedProfitSkus = displaySkuRows
       .filter((row) => {
         const productName = String(row.product_name || "").trim().toLowerCase();
         const sku = String(row.sku || "").trim().toLowerCase();
@@ -10183,46 +10187,54 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           sku !== "others"
         );
       })
-      .map((row) => ({
-        productName: String(row.product_name || row.sku || "Unnamed product"),
-        sku: String(row.sku || ""),
-        netSales: toNum(row.net_sales),
-        cm1Profit: toNum(row.profit),
-        cm1ProfitPercentage:
-          row.profit_percentage === undefined || row.profit_percentage === null
-            ? undefined
-            : toNum(row.profit_percentage),
-        netSalesIncrease: toNum(row.net_sales_delta),
-        netSalesGrowth:
-          row.net_sales_delta_percentage === undefined ||
-          row.net_sales_delta_percentage === null
-            ? undefined
-            : toNum(row.net_sales_delta_percentage),
-      }));
+      .map((row) => {
+        const profitPercentage = useCm2ForSkuProfit
+          ? row.cm2_margins
+          : row.profit_percentage;
 
-    const heroSkus = [...rankedCm1Skus]
-      .sort((a, b) => b.cm1Profit - a.cm1Profit)
+        return {
+          productName: String(row.product_name || row.sku || "Unnamed product"),
+          sku: String(row.sku || ""),
+          netSales: toNum(row.net_sales),
+          profit: useCm2ForSkuProfit
+            ? getProductCm2ProfitValue(row)
+            : toNum(row.profit),
+          profitPercentage:
+            profitPercentage === undefined || profitPercentage === null
+              ? undefined
+              : toNum(profitPercentage),
+          netSalesIncrease: toNum(row.net_sales_delta),
+          netSalesGrowth:
+            row.net_sales_delta_percentage === undefined ||
+            row.net_sales_delta_percentage === null
+              ? undefined
+              : toNum(row.net_sales_delta_percentage),
+        };
+      });
+
+    const heroSkus = [...rankedProfitSkus]
+      .sort((a, b) => b.profit - a.profit)
       .slice(0, 5)
       .map((row) => ({
         productName: row.productName,
         sku: row.sku,
         netSales: row.netSales,
-        secondaryValue: row.cm1Profit,
-        secondaryPercentage: row.cm1ProfitPercentage,
+        secondaryValue: row.profit,
+        secondaryPercentage: row.profitPercentage,
         netSalesDeltaPercentage: row.netSalesGrowth,
       }));
-    const leastPerformingSkus = [...rankedCm1Skus]
-      .sort((a, b) => a.cm1Profit - b.cm1Profit)
+    const leastPerformingSkus = [...rankedProfitSkus]
+      .sort((a, b) => a.profit - b.profit)
       .slice(0, 5)
       .map((row) => ({
         productName: row.productName,
         sku: row.sku,
         netSales: row.netSales,
-        secondaryValue: row.cm1Profit,
-        secondaryPercentage: row.cm1ProfitPercentage,
+        secondaryValue: row.profit,
+        secondaryPercentage: row.profitPercentage,
         netSalesDeltaPercentage: row.netSalesGrowth,
       }));
-    const topNetSalesGrowthSkus = [...rankedCm1Skus]
+    const topNetSalesGrowthSkus = [...rankedProfitSkus]
       .filter(
         (row) =>
           typeof row.netSalesGrowth === "number" &&
@@ -10328,6 +10340,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         loading: aiPanelLoading,
       },
       pnl: {
+        profitMetric: useCm2ForSkuProfit ? "CM2" : "CM1",
         heroSkus,
         leastPerformingSkus,
         topNetSalesGrowthSkus,

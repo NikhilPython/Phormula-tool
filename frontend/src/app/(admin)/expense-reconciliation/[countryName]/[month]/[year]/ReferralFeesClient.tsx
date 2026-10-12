@@ -4582,7 +4582,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                           align="left"
                           className="mb-0 md:mb-4 text-center"
                         />
-                        <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button>
+                        {/* <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button> */}
                         <DownloadButton
                           onClick={handleDownloadExcel}
                           disabled={isPreviewMode}
@@ -4724,7 +4724,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                       align="left"
                       className="mt-4 mb-0 md:mb-4 text-center"
                     />
-                    <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button>
+                    {/* <button type="button" onClick={handleDownloadFbaExcel} disabled={isPreviewMode || loading || !!error || !fbaOrders.length} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium disabled:opacity-50">Download FBA Excel</button> */}
                     <DownloadButton
                       onClick={handleDownloadExcel}
                       disabled={isPreviewMode}
