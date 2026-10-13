@@ -730,12 +730,27 @@ export const buildAgeingTrendDataFromInventoryCurrent = (
         }));
 };
 
+const normalizeInventoryCountryKey = (value: unknown) =>
+    String(value || "").trim().toLowerCase();
+
 const isGlobalInventoryResponse = (res?: InventoryCurrentApiResponse) => {
-    return (
-        String(res?.country_key || "").toLowerCase() === "global" &&
-        !!res?.country_results &&
-        typeof res.country_results === "object"
+    return !!res?.country_results && typeof res.country_results === "object";
+};
+
+const findCountryResult = <T extends { country_key?: string }>(
+    countryResults: Record<string, T> | undefined,
+    selectedCountry: string
+): T | undefined => {
+    const selectedKey = normalizeInventoryCountryKey(selectedCountry);
+    if (!selectedKey || !countryResults) return undefined;
+
+    const matchingEntry = Object.entries(countryResults).find(
+        ([key, value]) =>
+            normalizeInventoryCountryKey(key) === selectedKey ||
+            normalizeInventoryCountryKey(value?.country_key) === selectedKey
     );
+
+    return matchingEntry?.[1];
 };
 
 export const getSelectedCountryInventoryResponse = (
@@ -746,14 +761,12 @@ export const getSelectedCountryInventoryResponse = (
 
     if (!isGlobalInventoryResponse(res)) return res;
 
-    const selectedKey = String(selectedCountry || "uk").toLowerCase();
+    const selectedKey = normalizeInventoryCountryKey(selectedCountry);
+    const countryRes = findCountryResult(res.country_results, selectedKey);
 
-    const countryRes =
-        res.country_results?.[selectedKey] ||
-        res.country_results?.uk ||
-        Object.values(res.country_results || {})[0];
-
-    if (!countryRes) return undefined;
+    // Never substitute another country's payload. Showing no data is safer than
+    // presenting UK inventory as US inventory (or the reverse).
+    if (!countryRes || countryRes.success === false) return undefined;
 
     return {
         ...countryRes,
@@ -765,26 +778,28 @@ export const getSelectedCountryAgeSummaryResponses = (
     responses: InventoryAgeSummaryApiResponse[],
     selectedCountry: string
 ): InventoryAgeSummaryApiResponse[] => {
-    const selectedKey = String(selectedCountry || "uk").toLowerCase();
+    const selectedKey = normalizeInventoryCountryKey(selectedCountry);
 
-    return (responses || []).map((res: any) => {
+    return (responses || []).flatMap((res) => {
         if (
-            String(res?.country_key || "").toLowerCase() === "global" &&
             res?.country_results &&
             typeof res.country_results === "object"
         ) {
-            const countryRes =
-                res.country_results?.[selectedKey] ||
-                res.country_results?.uk ||
-                Object.values(res.country_results || {})[0];
+            const countryRes = findCountryResult(
+                res.country_results as Record<string, InventoryAgeSummaryApiResponse>,
+                selectedKey
+            );
 
-            return {
-                ...(countryRes || {}),
+            if (!countryRes || countryRes.success === false) return [];
+
+            return [{
+                ...countryRes,
                 country_key: selectedKey,
-            };
+            }];
         }
 
-        return res;
+        const responseCountry = normalizeInventoryCountryKey(res?.country_key);
+        return !responseCountry || responseCountry === selectedKey ? [res] : [];
     });
 };
 
@@ -930,7 +945,14 @@ export const buildInventoryInsightsFromResponses = (
     selectedTrendBucketValue: string = "365+ days",
     selectedGlobalInventoryCountry: string = "uk"
 ): InventoryInsightsData => {
-    const validResponses = responses.filter((res) => res?.success);
+    const requestedCountry = normalizeInventoryCountryKey(countryName);
+    const validResponses = responses.filter((res) => {
+        if (!res?.success) return false;
+        if (requestedCountry === "global") return isGlobalInventoryResponse(res);
+
+        const responseCountry = normalizeInventoryCountryKey(res.country_key);
+        return !responseCountry || responseCountry === requestedCountry;
+    });
     const latestRawResponse = validResponses[validResponses.length - 1];
 
     const isGlobalInventory = isGlobalInventoryResponse(latestRawResponse);

@@ -189,7 +189,7 @@ const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
-const DASHBOARD_CACHE_SCHEMA_VERSION = 6;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 7;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -1783,6 +1783,11 @@ export default function DashboardPage() {
 
     const [inventoryInsightsData, setInventoryInsightsData] =
         useState<InventoryInsightsData | null>(null);
+    const [inventoryInsightsDataKey, setInventoryInsightsDataKey] =
+        useState<string | null>(null);
+    const inventoryInsightsAbortControllerRef = useRef<AbortController | null>(null);
+    const inventoryInsightsRequestSequenceRef = useRef(0);
+    const inventoryInsightsActiveKeyRef = useRef("");
 
     const [inventoryInsightResponses, setInventoryInsightResponses] = useState<
         InventoryCurrentApiResponse[]
@@ -3133,6 +3138,30 @@ export default function DashboardPage() {
         [inventoryCountry, invMonthYear.month, invMonthYear.year]
     );
 
+    inventoryInsightsActiveKeyRef.current = inventoryInsightsRequestKey;
+
+    useEffect(() => {
+        inventoryInsightsAbortControllerRef.current?.abort();
+        inventoryInsightsAbortControllerRef.current = null;
+        inventoryInsightsRequestSequenceRef.current += 1;
+
+        // A route/platform change must never keep the previous country's
+        // inventory visible while the new country is loading.
+        setInventoryInsightsData(null);
+        setInventoryInsightsDataKey(null);
+        setInventoryInsightResponses([]);
+        setInventoryAgeSummaryResponses([]);
+        setInventoryInsightsError(null);
+        setInventoryUnavailableNotice(null);
+        setInventoryInsightsLoading(false);
+
+        return () => {
+            inventoryInsightsAbortControllerRef.current?.abort();
+            inventoryInsightsAbortControllerRef.current = null;
+            inventoryInsightsRequestSequenceRef.current += 1;
+        };
+    }, [inventoryInsightsRequestKey]);
+
     useEffect(() => {
         if (shouldShowDummyUi) {
             setDashboardActionItems([]);
@@ -3528,7 +3557,13 @@ export default function DashboardPage() {
         force = false,
     }: { force?: boolean } = {}) => {
         if (isMonthYearNA) {
+            inventoryInsightsAbortControllerRef.current?.abort();
+            inventoryInsightsAbortControllerRef.current = null;
+            inventoryInsightsRequestSequenceRef.current += 1;
             setInventoryInsightsData(null);
+            setInventoryInsightsDataKey(null);
+            setInventoryInsightResponses([]);
+            setInventoryAgeSummaryResponses([]);
             setInventoryInsightsError(null);
             setInventoryUnavailableNotice(null);
             setInventoryInsightsLoading(false);
@@ -3541,11 +3576,20 @@ export default function DashboardPage() {
             return;
         }
 
+        inventoryInsightsAbortControllerRef.current?.abort();
         const ac = new AbortController();
+        inventoryInsightsAbortControllerRef.current = ac;
+        const requestSequence = ++inventoryInsightsRequestSequenceRef.current;
+        const requestKey = inventoryInsightsRequestKey;
+        const isCurrentRequest = () =>
+            !ac.signal.aborted &&
+            requestSequence === inventoryInsightsRequestSequenceRef.current &&
+            requestKey === inventoryInsightsActiveKeyRef.current;
 
         try {
             setInventoryInsightsLoading(true);
             setInventoryInsightsError(null);
+            setInventoryInsightsDataKey(null);
             if (force) {
                 setInventoryUnavailableNotice(null);
             }
@@ -3583,12 +3627,14 @@ export default function DashboardPage() {
                 getInventoryUnavailablePayloadFromResults(inventoryResults);
 
             if (unavailablePayload) {
+                if (!isCurrentRequest()) return;
                 setInventoryInsightResponses([]);
                 setInventoryAgeSummaryResponses([]);
                 setInventoryInsightsData(null);
+                setInventoryInsightsDataKey(null);
                 setInventoryInsightsError(null);
                 setInventoryUnavailableNotice({
-                    key: inventoryInsightsRequestKey,
+                    key: requestKey,
                     country: String(country || "").toUpperCase(),
                     month: selectedInventoryMonth.month,
                     year: selectedInventoryMonth.year,
@@ -3620,6 +3666,8 @@ export default function DashboardPage() {
                 throw new Error("No inventory insights data found");
             }
 
+            if (!isCurrentRequest()) return;
+
             // ✅ Save all months so dropdown/chart rebuild keeps June + previous months
             setInventoryInsightResponses(inventoryResponses);
             setInventoryAgeSummaryResponses(ageSummaryResponses);
@@ -3635,15 +3683,20 @@ export default function DashboardPage() {
             );
 
             setInventoryInsightsData(builtInventoryInsights);
+            setInventoryInsightsDataKey(requestKey);
         } catch (e: any) {
-            if (e?.name === "AbortError") return;
+            if (e?.name === "AbortError" || !isCurrentRequest()) return;
 
             setInventoryInsightsData(null);
+            setInventoryInsightsDataKey(null);
             setInventoryInsightsError(
                 e?.message || "Failed to fetch inventory insights"
             );
         } finally {
-            setInventoryInsightsLoading(false);
+            if (isCurrentRequest()) {
+                inventoryInsightsAbortControllerRef.current = null;
+                setInventoryInsightsLoading(false);
+            }
         }
     }, [
         isMonthYearNA,
@@ -3673,6 +3726,7 @@ export default function DashboardPage() {
         );
 
         setInventoryInsightsData(builtInventoryInsights);
+        setInventoryInsightsDataKey(inventoryInsightsRequestKey);
     }, [
         platform,
         inventoryInsightResponses,
@@ -3681,6 +3735,7 @@ export default function DashboardPage() {
         profileHomeCurrency,
         selectedAgeingTrendBucket,
         selectedGlobalInventoryCountry,
+        inventoryInsightsRequestKey,
     ]);
 
     const handleAgeingTrendBucketChange = useCallback(
@@ -4106,12 +4161,44 @@ export default function DashboardPage() {
                 : "$"
             : currencySymbol;
 
-    const displayedInventoryInsightsData = useMemo(
-        () =>
-            isMonthYearNA
-                ? createZeroInventoryInsightsData(inventoryStorageCostCurrencySymbol)
-                : inventoryInsightsData,
-        [inventoryInsightsData, inventoryStorageCostCurrencySymbol, isMonthYearNA]
+    const displayedInventoryInsightsData = useMemo(() => {
+        if (isMonthYearNA) {
+            return createZeroInventoryInsightsData(inventoryStorageCostCurrencySymbol);
+        }
+
+        if (inventoryInsightsDataKey !== inventoryInsightsRequestKey) return null;
+
+        // Rebuild the selected Global country during render so the data and the
+        // UK/US label switch atomically. The effect below still synchronizes the
+        // stored/cached derived value, but the UI never gets an intermediate
+        // frame containing the previous country's numbers.
+        if (platform === "global" && inventoryInsightResponses.length > 0) {
+            return buildInventoryInsightsFromResponses(
+                inventoryInsightResponses,
+                inventoryAgeSummaryResponses,
+                inventoryCountry,
+                profileHomeCurrency,
+                selectedAgeingTrendBucket,
+                selectedGlobalInventoryCountry
+            );
+        }
+
+        return inventoryInsightsData;
+    },
+        [
+            inventoryInsightsData,
+            inventoryInsightsDataKey,
+            inventoryInsightsRequestKey,
+            inventoryInsightResponses,
+            inventoryAgeSummaryResponses,
+            inventoryCountry,
+            platform,
+            profileHomeCurrency,
+            selectedAgeingTrendBucket,
+            selectedGlobalInventoryCountry,
+            inventoryStorageCostCurrencySymbol,
+            isMonthYearNA,
+        ]
     );
 
     const biDailySeriesHome = useMemo<GraphDailySeries | null>(() => {
@@ -5086,6 +5173,9 @@ export default function DashboardPage() {
         setInvRows(parsed?.invRows ?? []);
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
         setInventoryInsightsData(parsed?.inventoryInsightsData ?? null);
+        setInventoryInsightsDataKey(
+            parsed?.inventoryInsightsData ? inventoryInsightsRequestKey : null
+        );
         setInventoryInsightResponses(parsed?.inventoryInsightResponses ?? []);
         setInventoryAgeSummaryResponses(parsed?.inventoryAgeSummaryResponses ?? []);
         setInventoryInsightsError(parsed?.inventoryInsightsError ?? null);
@@ -5119,7 +5209,7 @@ export default function DashboardPage() {
         setBiLoading(false);
         setSummaryLoading(false);
         setBiError(null);
-    }, [normalizeRefreshTimestamp]);
+    }, [inventoryInsightsRequestKey, normalizeRefreshTimestamp]);
 
 
     const getDashboardCacheFromBackend = useCallback(
@@ -5166,6 +5256,7 @@ export default function DashboardPage() {
             const isUsablePayload = Boolean(
                 payload?.complete === true &&
                 Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION &&
+                payload?.inventoryInsightsRequestKey === inventoryInsightsRequestKey &&
                 (platform !== "global" || hasConsistentGlobalComparisons(
                     payload?.data,
                     payload?.previousSkuwiseGlobalData
@@ -5185,6 +5276,7 @@ export default function DashboardPage() {
         currYear,
         selectedStartDay,
         selectedEndDay,
+        inventoryInsightsRequestKey,
     ]);
 
     const loadRangeFromCache = useCallback(
@@ -8189,6 +8281,7 @@ export default function DashboardPage() {
             inventoryAlerts,
 
             inventoryInsightsData,
+            inventoryInsightsRequestKey,
             inventoryInsightResponses,
             inventoryAgeSummaryResponses,
             inventoryInsightsError,
@@ -8227,6 +8320,7 @@ export default function DashboardPage() {
         invRows,
         inventoryAlerts,
         inventoryInsightsData,
+        inventoryInsightsRequestKey,
         inventoryInsightResponses,
         inventoryAgeSummaryResponses,
         inventoryInsightsError,
