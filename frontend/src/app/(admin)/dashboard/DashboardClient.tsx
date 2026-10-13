@@ -12961,11 +12961,7 @@ export default function DashboardPage() {
                     row.netSalesGrowth > 0 &&
                     row.netSalesIncrease > 0
             )
-            .sort(
-                (a, b) =>
-                    (b.netSalesGrowth ?? Number.NEGATIVE_INFINITY) -
-                    (a.netSalesGrowth ?? Number.NEGATIVE_INFINITY)
-            )
+            .sort((a, b) => b.netSalesIncrease - a.netSalesIncrease)
             .slice(0, 5)
             .map((row) => ({
                 productName: row.productName,
