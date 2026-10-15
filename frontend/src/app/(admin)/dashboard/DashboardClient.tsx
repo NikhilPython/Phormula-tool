@@ -9361,7 +9361,7 @@ export default function DashboardPage() {
             previousPerUnit: isStickyGlobal
                 ? stickyPreviousTotals.netSalesPerUnit
                 : mtdNetSalesPreviousPerUnitDisplay,
-            perUnitFormatter: (val: number) => formatDisplayAmount(val),
+            perUnitFormatter: formatDisplayAmountNoDecimals,
             bottomLabel: prevLabel,
             className: "bg-white border-[#75BBDA] border-t-4 border-t-[#75BBDA]",
         },
@@ -9396,7 +9396,7 @@ export default function DashboardPage() {
                 : isStickyGlobal
                     ? stickyPreviousTotals.costOfAdsPerUnit
                     : mtdCostOfAdsPreviousPerUnitDisplay,
-            perUnitFormatter: (val: number) => formatDisplayAmount(val),
+            perUnitFormatter: formatDisplayAmountNoDecimals,
             loading: !shouldShowDummyUi && (
                 isStickyGlobal
                     ? (loading || shopifyLoading || previousSkuwiseGlobalLoading)
@@ -12069,7 +12069,7 @@ export default function DashboardPage() {
                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         currentPerUnit={c.grossSalesPerUnit}
                         previousPerUnit={c.prevGrossSalesPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         bottomLabel={prevLabel}
                         className="border-[#ED9F50] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -12084,7 +12084,7 @@ export default function DashboardPage() {
                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         currentPerUnit={c.netSalesPerUnit}
                         previousPerUnit={c.prevNetSalesPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && (loading || biLoading)}
@@ -12100,7 +12100,7 @@ export default function DashboardPage() {
                         inverseDelta
                         currentPerUnit={c.adsPerUnit}
                         previousPerUnit={c.prevAdsPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         bottomLabel={prevLabel}
@@ -12187,7 +12187,7 @@ export default function DashboardPage() {
                         previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                         currentPerUnit={c.grossSalesPerUnit}
                         previousPerUnit={c.prevGrossSalesPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         bottomLabel={prevLabel}
                         className="border-[#ED9F50] border-t-4"
                         loading={!shouldShowDummyUi && loading}
@@ -12202,7 +12202,7 @@ export default function DashboardPage() {
                         previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
                         currentPerUnit={c.netSalesPerUnit}
                         previousPerUnit={c.prevNetSalesPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         bottomLabel={prevLabel}
                         className="border-[#6BBDE3] border-t-4"
                         loading={!shouldShowDummyUi && loading}
@@ -12218,7 +12218,7 @@ export default function DashboardPage() {
                         inverseDelta
                         currentPerUnit={c.adsPerUnit}
                         previousPerUnit={c.prevAdsPerUnit}
-                        perUnitFormatter={(val) => formatDisplayAmount(val)}
+                        perUnitFormatter={formatDisplayAmountNoDecimals}
                         formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                         bottomLabel={prevLabel}
@@ -13300,6 +13300,7 @@ export default function DashboardPage() {
                         previousSkuwiseGlobalLoading={previousSkuwiseGlobalLoading}
                         fmtInt={fmtInt}
                         formatDisplayAmount={formatDisplayAmount}
+                        formatDisplayAmountNoDecimals={formatDisplayAmountNoDecimals}
                         prevLabel={prevLabel}
                         fmtPct2={fmtPct2}
                         renderCountryMtdCards={renderCountryMtdCards}
