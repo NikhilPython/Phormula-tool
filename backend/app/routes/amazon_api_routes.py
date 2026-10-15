@@ -4796,277 +4796,192 @@ def finances_mtd_transactions():
 
 
 
+# Live dashboard cache schema is managed by migrations/live_dashboard_cache.sql.
+# No CREATE/ALTER/INDEX statements execute in normal web requests.
+
+def _live_cache_optional_int(raw, name, minimum, maximum):
+    if raw is None or raw == "" or raw == "null":
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(f"{name} must be an integer")
+    try:
+        value = int(str(raw))
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"{name} must be an integer") from None
+    if str(raw).strip() != str(value):
+        raise ValueError(f"{name} must be an integer")
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
+def _live_cache_parameters(values, *, post=False):
+    country_raw = values.get("country")
+    if not isinstance(country_raw, str) or not country_raw.strip():
+        raise ValueError("country is required")
+    aliases = {"gb": "uk", "usa": "us", "canada": "ca"}
+    country = aliases.get(country_raw.strip().lower(), country_raw.strip().lower())
+    if country not in {"uk", "us", "ca", "global"}:
+        raise ValueError("Unsupported country")
+    platform = str(values.get("platform") or "").strip().lower()
+    region = str(values.get("region") or "").strip()
+    if len(platform) > 64 or len(region) > 64:
+        raise ValueError("platform or region is too long")
+    month = _live_cache_optional_int(values.get("month"), "month", 1, 12)
+    year = _live_cache_optional_int(values.get("year"), "year", 2000, 2100)
+    start = _live_cache_optional_int(
+        values.get("startDay", values.get("start_day")), "start_day", 1, 31
+    )
+    end = _live_cache_optional_int(
+        values.get("endDay", values.get("end_day")), "end_day", 1, 31
+    )
+    if (start is None) != (end is None):
+        raise ValueError("start_day and end_day must both be supplied")
+    if start is not None:
+        if month is None or year is None or start > end:
+            raise ValueError("Invalid custom day range")
+        import calendar
+        if end > calendar.monthrange(year, month)[1]:
+            raise ValueError("end_day is outside the selected month")
+    if (month is None) != (year is None):
+        raise ValueError("month and year must both be supplied")
+    cache_key = (
+        f"{values.get('_authenticated_user_id')}:"
+        f"{country}:{platform}:{region}:"
+        f"{year if year is not None else 'na'}:"
+        f"{month if month is not None else 'na'}:"
+        f"{start if start is not None else 'na'}:"
+        f"{end if end is not None else 'na'}"
+    )
+    return dict(country=country, platform=platform, region=region, month=month,
+                year=year, start_day=start, end_day=end, cache_key=cache_key)
+
+
+def _live_cache_json_safe(obj):
+    # Preserve precision and payload fields; convert only non-finite floats,
+    # which are invalid JSON, rather than rounding every numeric data point.
+    if isinstance(obj, dict):
+        return {k: _live_cache_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_live_cache_json_safe(v) for v in obj]
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    return obj
+
+
 @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
 def save_live_dashboard_data():
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
         return jsonify({"success": False, "error": "Missing token"}), 401
-
-    token = auth_header.split(" ")[1]
-
     try:
-        payload, user_id, member_id = get_effective_user_id_from_token(token)
-        user_id = int(user_id or payload.get("user_id"))
+        token = auth_header.split(" ", 1)[1]
+        claims, user_id, member_id = get_effective_user_id_from_token(token)
+        user_id = int(user_id or claims.get("user_id"))
+        if user_id <= 0:
+            raise ValueError("Invalid user")
     except Exception:
         return jsonify({"success": False, "error": "Invalid token"}), 401
 
-    table_name = "live_dashboard_cache"
-
-    create_sql = f"""
-    CREATE TABLE IF NOT EXISTS public.{table_name} (
-        id SERIAL PRIMARY KEY,
-        user_id INT NOT NULL,
-        country TEXT NOT NULL,
-        platform TEXT NOT NULL DEFAULT '',
-        region TEXT NOT NULL DEFAULT '',
-        month INT NULL,
-        year INT NULL,
-        start_day INT NULL,
-        end_day INT NULL,
-        cache_key TEXT NOT NULL UNIQUE,
-        saved_at BIGINT,
-        payload JSONB NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
-    ALTER TABLE public.{table_name}
-        ADD COLUMN IF NOT EXISTS month INT NULL;
-
-    ALTER TABLE public.{table_name}
-        ADD COLUMN IF NOT EXISTS year INT NULL;
-
-    CREATE INDEX IF NOT EXISTS idx_live_dashboard_cache_user_country
-    ON public.{table_name} (user_id, country, platform, region);
-
-    CREATE INDEX IF NOT EXISTS idx_live_dashboard_cache_lookup
-    ON public.{table_name}
-        (user_id, country, platform, region, year, month, start_day, end_day);
-    """
-
-    def build_cache_key(user_id, country, platform, region, month, year, start_day, end_day):
-        return (
-            f"{user_id}:"
-            f"{country}:"
-            f"{platform}:"
-            f"{region}:"
-            f"{year if year is not None else 'na'}:"
-            f"{month if month is not None else 'na'}:"
-            f"{start_day if start_day is not None else 'na'}:"
-            f"{end_day if end_day is not None else 'na'}"
-        )
-
-    if request.method == "POST":
-        body = request.get_json(silent=True) or {}
-
-        country = _safe_ident(body.get("country") or "uk")
-        platform = str(body.get("platform") or "").strip().lower()
-        region = str(body.get("region") or "").strip()
-
-        month = body.get("month")
-        year = body.get("year")
-        month = int(month) if month not in (None, "", "null") else None
-        year = int(year) if year not in (None, "", "null") else None
-
-        start_day = body.get("startDay", body.get("start_day"))
-        end_day = body.get("endDay", body.get("end_day"))
-
-        start_day = int(start_day) if start_day not in (None, "", "null") else None
-        end_day = int(end_day) if end_day not in (None, "", "null") else None
-
-        cache_payload = body.get("cachePayload")
-        if cache_payload is None:
-            return jsonify({"success": False, "error": "cachePayload is required"}), 400
-        cache_payload = _align_live_dashboard_cache_quantities(
-            cache_payload, country, start_day, end_day
-        )
-        cache_payload = _round_dashboard_payload_numbers(cache_payload)
-
-        saved_at = body.get("savedAt") or int(time.time() * 1000)
-
-        cache_key = build_cache_key(
-            user_id=user_id,
-            country=country,
-            platform=platform,
-            region=region,
-            month=month,
-            year=year,
-            start_day=start_day,
-            end_day=end_day,
-        )
-
-        upsert_sql = f"""
-        INSERT INTO public.{table_name}
-            (user_id, country, platform, region, month, year, start_day, end_day, cache_key, saved_at, payload)
-        VALUES
-            (:user_id, :country, :platform, :region, :month, :year, :start_day, :end_day, :cache_key, :saved_at, CAST(:payload AS jsonb))
-        ON CONFLICT (cache_key)
-        DO UPDATE SET
-            payload = EXCLUDED.payload,
-            saved_at = EXCLUDED.saved_at,
-            updated_at = CURRENT_TIMESTAMP
-        RETURNING id, user_id, country, platform, region, month, year, start_day, end_day,
-                  cache_key, saved_at, created_at, updated_at
-        """
-
-        try:
-            with PHORMULA_ENGINE.begin() as conn:
-                conn.execute(text(create_sql))
-                row = conn.execute(
-                    text(upsert_sql),
-                    {
-                        "user_id": user_id,
-                        "country": country,
-                        "platform": platform,
-                        "region": region,
-                        "month": month,
-                        "year": year,
-                        "start_day": start_day,
-                        "end_day": end_day,
-                        "cache_key": cache_key,
-                        "saved_at": saved_at,
-                        "payload": json.dumps(cache_payload),
-                    },
-                ).mappings().first()
-
-            return jsonify({
-                "success": True,
-                "table": table_name,
-                "cache_key": cache_key,
-                "data": dict(row) if row else None,
-            }), 200
-
-        except Exception as e:
-            logging.exception("Failed to save live dashboard cache")
-            return jsonify({
-                "success": False,
-                "error": "Failed to save live dashboard cache",
-                "details": str(e),
-            }), 500
-
-    country = _safe_ident(request.args.get("country") or "uk")
-    platform = str(request.args.get("platform") or "").strip().lower()
-    region = str(request.args.get("region") or "").strip()
-
-    month = request.args.get("month")
-    year = request.args.get("year")
-    month = int(month) if month not in (None, "", "null") else None
-    year = int(year) if year not in (None, "", "null") else None
-
-    start_day = request.args.get("start_day")
-    end_day = request.args.get("end_day")
-
-    start_day = int(start_day) if start_day not in (None, "", "null") else None
-    end_day = int(end_day) if end_day not in (None, "", "null") else None
-
-    cache_key = build_cache_key(
-        user_id=user_id,
-        country=country,
-        platform=platform,
-        region=region,
-        month=month,
-        year=year,
-        start_day=start_day,
-        end_day=end_day,
-    )
-
-    # Default MTD and custom-range snapshots are separate cache entries.
-    # Never let the latest custom range become the default dashboard cache.
-    if start_day is None and end_day is None:
-        select_sql = f"""
-        SELECT id, user_id, country, platform, region, month, year, start_day, end_day,
-               cache_key, saved_at, payload, created_at, updated_at
-        FROM public.{table_name}
-        WHERE user_id = :user_id
-          AND country = :country
-          AND platform = :platform
-          AND region = :region
-          AND month IS NOT DISTINCT FROM :month
-          AND year IS NOT DISTINCT FROM :year
-          AND start_day IS NULL
-          AND end_day IS NULL
-        ORDER BY saved_at DESC NULLS LAST, updated_at DESC, id DESC
-        LIMIT 1
-        """
-        select_params = {
-            "user_id": user_id,
-            "country": country,
-            "platform": platform,
-            "region": region,
-            "month": month,
-            "year": year,
-        }
-    else:
-        select_sql = f"""
-        SELECT id, user_id, country, platform, region, month, year, start_day, end_day,
-               cache_key, saved_at, payload, created_at, updated_at
-        FROM public.{table_name}
-        WHERE cache_key = :cache_key
-        LIMIT 1
-        """
-        select_params = {"cache_key": cache_key}
-
+    body = request.get_json(silent=True) if request.method == "POST" else request.args
+    if request.method == "POST" and not isinstance(body, dict):
+        return jsonify({"success": False, "error": "Expected a JSON object"}), 400
     try:
-        with PHORMULA_ENGINE.begin() as conn:
-            conn.execute(text(create_sql))
-            row = conn.execute(
-                text(select_sql + " FOR UPDATE"),
-                select_params,
-            ).mappings().first()
-            if row:
-                row = dict(row)
-                repaired_payload = _align_live_dashboard_cache_quantities(
-                    row["payload"], country, start_day, end_day
-                )
-                if repaired_payload != row["payload"]:
-                    conn.execute(text(f"""
-                        UPDATE public.{table_name}
-                        SET payload = CAST(:payload AS jsonb)
-                        WHERE id = :id AND user_id = :user_id
-                    """), {
-                        "payload": json.dumps(repaired_payload),
-                        "id": row["id"],
-                        "user_id": user_id,
-                    })
-                    # Preserve refresh timestamps: this repairs the snapshot,
-                    # but does not fetch new transactions from Amazon.
-                    row["payload"] = repaired_payload
+        params = _live_cache_parameters({**dict(body), "_authenticated_user_id": user_id})
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
 
+    table_name = "live_dashboard_cache"
+    if request.method == "POST":
+        snapshot = body.get("cachePayload")
+        if not isinstance(snapshot, dict) or not snapshot:
+            return jsonify({"success": False, "error": "cachePayload must be a non-empty JSON object"}), 400
+        if snapshot.get("complete") is False:
+            return jsonify({"success": False, "error": "Incomplete snapshot not published"}), 422
+        try:
+            snapshot = _align_live_dashboard_cache_quantities(
+                snapshot, params["country"], params["start_day"], params["end_day"]
+            )
+            snapshot = _live_cache_json_safe(snapshot)
+            payload_json = json.dumps(snapshot, ensure_ascii=False, allow_nan=False,
+                                      separators=(",", ":"))
+            max_bytes = int(os.getenv("LIVE_DASHBOARD_CACHE_MAX_BYTES", "20971520"))
+            if len(payload_json.encode("utf-8")) > max_bytes:
+                return jsonify({"success": False, "error": "Dashboard snapshot exceeds configured size limit"}), 413
+            now_ms = int(time.time() * 1000)
+            supplied = body.get("savedAt")
+            saved_at = _live_cache_optional_int(supplied, "savedAt", 1, 99999999999999) if supplied is not None else now_ms
+            if saved_at > now_ms + 300000:
+                raise ValueError("savedAt cannot be more than five minutes in the future")
+        except (TypeError, ValueError) as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
+
+        # Existing API response shape remains unchanged. Conditional UPSERT
+        # prevents an older timestamp from replacing a newer persisted snapshot.
+        upsert_sql = """
+        INSERT INTO public.live_dashboard_cache
+          (user_id, country, platform, region, month, year,
+           start_day, end_day, cache_key, saved_at, payload)
+        VALUES
+          (:user_id, :country, :platform, :region, :month, :year,
+           :start_day, :end_day, :cache_key, :saved_at, CAST(:payload AS jsonb))
+        ON CONFLICT (cache_key) DO UPDATE SET
+          payload = EXCLUDED.payload,
+          saved_at = EXCLUDED.saved_at,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE EXCLUDED.saved_at > COALESCE(live_dashboard_cache.saved_at, 0)
+        RETURNING id, user_id, country, platform, region, month, year,
+                  start_day, end_day, cache_key, saved_at, created_at, updated_at
+        """
+        try:
+            started = time.monotonic()
+            with PHORMULA_ENGINE.begin() as conn:
+                row = conn.execute(text(upsert_sql), {
+                    **params, "user_id": user_id, "saved_at": saved_at,
+                    "payload": payload_json,
+                }).mappings().first()
+            logging.info("live dashboard cache POST country=%s bytes=%s db_ms=%.1f updated=%s",
+                         params["country"], len(payload_json),
+                         (time.monotonic() - started) * 1000, bool(row))
+            return jsonify({"success": True, "table": table_name,
+                            "cache_key": params["cache_key"],
+                            "data": dict(row) if row else None,
+                            "stale_ignored": row is None}), 200
+        except Exception:
+            logging.exception("Failed to save live dashboard cache")
+            return jsonify({"success": False,
+                            "error": "Failed to save live dashboard cache"}), 500
+
+    select_sql = """
+        SELECT id, user_id, country, platform, region, month, year,
+               start_day, end_day, cache_key, saved_at, payload,
+               created_at, updated_at
+        FROM public.live_dashboard_cache
+        WHERE user_id = :user_id AND cache_key = :cache_key
+        LIMIT 1
+    """
+    try:
+        started = time.monotonic()
+        with PHORMULA_ENGINE.connect() as conn:
+            row = conn.execute(text(select_sql), {
+                "user_id": user_id, "cache_key": params["cache_key"],
+            }).mappings().first()
+        logging.info("live dashboard cache GET country=%s db_ms=%.1f hit=%s",
+                     params["country"], (time.monotonic() - started)*1000,
+                     bool(row))
         if not row:
-            return jsonify({
-                "success": True,
-                "found": False,
-                "data": None,
-            }), 200
-
+            return jsonify({"success": True, "found": False, "data": None}), 200
+        # Compatibility with snapshots saved before this patch: align in memory
+        # only; never lock or rewrite JSONB when serving an ordinary GET.
         data = dict(row)
-
-        return jsonify({
-            "success": True,
-            "found": True,
-            "data": {
-                "id": data["id"],
-                "user_id": data["user_id"],
-                "country": data["country"],
-                "platform": data["platform"],
-                "region": data["region"],
-                "month": data["month"],
-                "year": data["year"],
-                "start_day": data["start_day"],
-                "end_day": data["end_day"],
-                "cache_key": data["cache_key"],
-                "saved_at": data["saved_at"],
-                "payload": data["payload"],
-                "created_at": data["created_at"],
-                "updated_at": data["updated_at"],
-            },
-        }), 200
-
-    except Exception as e:
+        data["payload"] = _align_live_dashboard_cache_quantities(
+            data["payload"], params["country"],
+            params["start_day"], params["end_day"]
+        )
+        response = jsonify({"success": True, "found": True, "data": data})
+        response.headers["Cache-Control"] = "private, no-store"
+        return response, 200
+    except Exception:
         logging.exception("Failed to fetch live dashboard cache")
-        return jsonify({
-            "success": False,
-            "error": "Failed to fetch live dashboard cache",
-            "details": str(e),
-        }), 500
-    
+        return jsonify({"success": False,
+                        "error": "Failed to fetch live dashboard cache"}), 500
