@@ -189,7 +189,7 @@ const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
-const DASHBOARD_CACHE_SCHEMA_VERSION = 7;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 8;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -5192,6 +5192,16 @@ export default function DashboardPage() {
         setPreviousSkuwiseGlobalData(parsed?.previousSkuwiseGlobalData ?? null);
         setGlobalCountryPayloads(parsed?.globalCountryPayloads ?? {});
         setDashboardActionItems(parsed?.dashboardActionItems ?? []);
+        const cachedActionSourceMetrics = parsed?.dashboardActionSourceMetrics;
+        setDashboardActionSourceMetrics(
+            cachedActionSourceMetrics && typeof cachedActionSourceMetrics === "object"
+                ? {
+                    tacos: toNumber(cachedActionSourceMetrics.tacos),
+                    ads_spend: toNumber(cachedActionSourceMetrics.ads_spend),
+                    net_sales: toNumber(cachedActionSourceMetrics.net_sales),
+                }
+                : null
+        );
         setDashboardActionItemsError(parsed?.dashboardActionItemsError ?? null);
         setDashboardActionItemsLoading(false);
 
@@ -8298,6 +8308,7 @@ export default function DashboardPage() {
             previousSkuwiseGlobalData,
             globalCountryPayloads,
             dashboardActionItems,
+            dashboardActionSourceMetrics,
             dashboardActionItemsError,
 
             liveBiReady,
@@ -8335,6 +8346,7 @@ export default function DashboardPage() {
         previousSkuwiseGlobalData,
         globalCountryPayloads,
         dashboardActionItems,
+        dashboardActionSourceMetrics,
         dashboardActionItemsError,
         liveBiReady,
         biStatus,
@@ -9095,7 +9107,11 @@ export default function DashboardPage() {
             ? toNumber(dashboardActionSourceMetrics.tacos)
             : rangeActive
                 ? toNumber(biAlignedTotals?.total_current_tacos)
-                : toNumber(backendDashboardMetric("tacos").current);
+                : toNumber(
+                    grandTotalRowRaw?.tacos_total_advertising_cost_of_sale ??
+                    plSummaryTotals.acos ??
+                    0
+                );
 
     const mtdTacosPrevious = shouldShowDummyUi
         ? dummyStatData.tacos.previous
@@ -9252,9 +9268,7 @@ export default function DashboardPage() {
         ? dummyStatData.tacos.deltaPct
         : dashboardActionSourceMetrics?.tacos != null
             ? backendCardDeltas.mtd_tacos ?? null
-            : rangeActive
-                ? toNumber(biAlignedTotals?.tacos_change_percentage)
-                : toNumber(backendDashboardMetric("tacos").change_percentage);
+            : null;
 
     const stickyKpiItems = [
         {
@@ -9410,16 +9424,13 @@ export default function DashboardPage() {
 
         {
             label: "TACoS",
-            // IMPORTANT: use the exact same backend/database source as
-            // /dashboard/action-items. This keeps the Business Scenario TACoS
-            // and the Ads action-item TACoS identical.
+            // Always use the monthly GRAND TOTAL source used by
+            // /dashboard/action-items. The cached fallback resolves from that
+            // same source, so reload cannot briefly show dashboard_card_metrics
+            // before the Action Items request completes.
             current: shouldShowDummyUi
                 ? dummyStatData.tacos.current
-                : dashboardActionSourceMetrics?.tacos ?? (
-                    isStickyGlobal
-                        ? stickyTableTotals.tacos
-                        : mtdTacosCurrent
-                ),
+                : tacosFromDisplayedCardsForSummary,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.tacos.previous
@@ -9433,9 +9444,7 @@ export default function DashboardPage() {
                 ? dummyStatData.tacos.deltaPct
                 : dashboardActionSourceMetrics?.tacos != null
                     ? backendCardDeltas.sticky_tacos ?? null
-                    : isStickyGlobal
-                        ? globalMtdCardData.tacosDelta
-                        : mtdTacosDelta,
+                    : null,
 
             inverseDelta: true,
             loading: !shouldShowDummyUi && (
