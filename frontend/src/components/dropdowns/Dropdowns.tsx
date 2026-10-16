@@ -7236,6 +7236,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const layoutRef = useRef<HTMLDivElement | null>(null);
   const tabTopRef = useRef<HTMLDivElement | null>(null);
+  const financeStickyHeaderRef = useRef<HTMLDivElement | null>(null);
+  const financeStickyTabsRef = useRef<HTMLDivElement | null>(null);
   const [overlayBounds, setOverlayBounds] = useState<{
     left: number;
     width: number;
@@ -10372,6 +10374,53 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const hasAnyContent = !!uploadsData?.summary;
   const initialLoading = loading && !hasAnyContent;
 
+  useEffect(() => {
+    if (initialLoading) return;
+
+    const layout = layoutRef.current;
+    const header = financeStickyHeaderRef.current;
+    if (!layout || !header) return;
+
+    const updateStickyOffsets = () => {
+      const headerHeight = header.getBoundingClientRect().height;
+      const tabs = financeStickyTabsRef.current;
+      const tabsStyle = tabs ? window.getComputedStyle(tabs) : null;
+      const tabsOuterHeight = tabs
+        ? tabs.getBoundingClientRect().height +
+          Number.parseFloat(tabsStyle?.marginTop || "0") +
+          Number.parseFloat(tabsStyle?.marginBottom || "0")
+        : 0;
+
+      layout.style.setProperty(
+        "--finance-sticky-header-height",
+        `${headerHeight}px`
+      );
+      layout.style.setProperty(
+        "--table-sticky-top",
+        `${headerHeight + tabsOuterHeight}px`
+      );
+    };
+
+    updateStickyOffsets();
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(updateStickyOffsets)
+        : null;
+    resizeObserver?.observe(header);
+    if (financeStickyTabsRef.current) {
+      resizeObserver?.observe(financeStickyTabsRef.current);
+    }
+    window.addEventListener("resize", updateStickyOffsets);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateStickyOffsets);
+      layout.style.removeProperty("--finance-sticky-header-height");
+      layout.style.removeProperty("--table-sticky-top");
+    };
+  }, [initialLoading, showDashboardDetails]);
+
   if (initialLoading) {
     return (
       // <Loader fullscreen transparent />
@@ -10513,7 +10562,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   return (
     <div ref={layoutRef} className="space-y-3 relative">
       <div ref={tabTopRef} />
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 ">
+      <div
+        ref={financeStickyHeaderRef}
+        className="sticky top-0 z-40 w-full flex flex-col bg-[#F7F7F7] sm:flex-row md:items-center md:justify-between gap-4 "
+      >
         <div className="flex flex-col leading-tight w-full md:w-auto ">
           <div className="flex items-baseline gap-2">
             <PageBreadcrumb pageTitle="Financial Metrics - Amazon" variant="page" align="left" textSize="2xl" />
@@ -10595,7 +10647,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               </button>
             </div>
 
-            <div className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 mt-3 border-b border-gray-200 bg-[#F7F7F7] max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+            <div
+              ref={financeStickyTabsRef}
+              className="sticky z-30 mt-3 border-b border-gray-200 bg-[#F7F7F7] max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2"
+              style={{ top: "var(--finance-sticky-header-height, 0px)" }}
+            >
               <SegmentedToggle<DashboardTab>
                 value={activeTab}
                 options={TAB_OPTIONS}
