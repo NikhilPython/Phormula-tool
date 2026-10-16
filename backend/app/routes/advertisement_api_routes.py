@@ -2922,34 +2922,10 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
 
         df = pd.DataFrame(rows_all)
 
-        # Delete existing rows safely
-        sd_req = _to_date(start_date, strict=True, field_name="start_date")
-        ed_req = _to_date(end_date, strict=True, field_name="end_date")
-
-        delete_q = db.session.query(amazon_sponsored_display_advertised_products).filter(
-            amazon_sponsored_display_advertised_products.user_id == user_id,
-        )
-
-        if time_unit == "DAILY":
-            # ✅ DAILY reports save one row per day, so delete the whole requested date range
-            delete_q = delete_q.filter(
-                amazon_sponsored_display_advertised_products.start_date >= sd_req,
-                amazon_sponsored_display_advertised_products.start_date <= ed_req,
-            )
-        else:
-            # ✅ SUMMARY reports save one row for the full requested range
-            delete_q = delete_q.filter(
-                amazon_sponsored_display_advertised_products.start_date == sd_req,
-                amazon_sponsored_display_advertised_products.end_date == ed_req,
-            )
-
-        if wanted:
-            delete_q = delete_q.filter(
-                amazon_sponsored_display_advertised_products.country.in_(list(wanted))
-            )
-
-        delete_q.delete(synchronize_session=False)
-        db.session.commit()
+        # Do not delete/commit existing rows before the replacement data is ready.
+        # The UPSERT below is atomic and preserves old rows if the sync fails.
+        _to_date(start_date, strict=True, field_name="start_date")
+        _to_date(end_date, strict=True, field_name="end_date")
 
         # numeric conversions
         for col in ["impressions", "clicks", "cost", "sales", "purchases", "unitsSold"]:
@@ -3006,8 +2982,69 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
                 "roas": _safe_div(sales, cost),
             })
 
-        if inserts:
-            db.session.bulk_insert_mappings(amazon_sponsored_display_advertised_products, inserts)
+        # The live DB constraint is uq_sd_adv_product over these SIX fields.
+        # The incoming report can contain multiple ad groups for one campaign/SKU.
+        # First remove identical repeated report records; then roll up distinct
+        # ad groups into campaign/SKU-day totals matching this database grain.
+        conflict_cols = (
+            "user_id", "start_date", "end_date", "profile_id",
+            "campaign_id", "advertised_sku",
+        )
+        # Same ad group can be duplicated by overlapping report downloads.
+        # Prefer the latest row rather than counting identical ad-group data twice.
+        per_adgroup = {}
+        for row in inserts:
+            if any(row.get(col) in (None, "") for col in conflict_cols):
+                raise ValueError(
+                    "SD report has a missing unique-key field; refusing unsafe upsert: "
+                    + str({col: row.get(col) for col in conflict_cols})
+                )
+            adgroup_key = tuple(row[col] for col in conflict_cols) + (
+                row.get("ad_group_id"), row.get("advertised_asin")
+            )
+            per_adgroup[adgroup_key] = row
+
+        by_key = {}
+        for row in per_adgroup.values():
+            key = tuple(row[col] for col in conflict_cols)
+            if key not in by_key:
+                by_key[key] = dict(row)
+                continue
+            current = by_key[key]
+            # Different ad groups are additive at campaign/SKU/day grain.
+            for metric in ("impressions", "clicks", "spend", "sales_14d",
+                           "orders_14d", "units_14d"):
+                current[metric] = (current.get(metric) or 0) + (row.get(metric) or 0)
+            # One output row represents multiple ad groups; avoid pretending
+            # one particular ad group is the source of the aggregate.
+            current["ad_group_id"] = None
+            current["ad_group_name"] = None
+            if current.get("advertised_asin") != row.get("advertised_asin"):
+                current["advertised_asin"] = None
+            current["cpc"] = _safe_div(current["spend"], current["clicks"])
+            current["ctr"] = _safe_div(current["clicks"], current["impressions"])
+            current["acos"] = _safe_div(current["spend"], current["sales_14d"])
+            current["roas"] = _safe_div(current["sales_14d"], current["spend"])
+
+        clean_inserts = list(by_key.values())
+        if clean_inserts:
+            table = amazon_sponsored_display_advertised_products.__table__
+            update_names = [
+                "updated_at", "time_unit", "country", "campaign_name",
+                "ad_group_id", "ad_group_name", "advertised_asin", "currency",
+                "impressions", "clicks", "spend", "cpc", "ctr",
+                "sales_14d", "orders_14d", "units_14d", "acos", "roas",
+            ]
+            # Batching limits PostgreSQL query size; same logical key never
+            # occurs twice because records were collapsed above.
+            for offset in range(0, len(clean_inserts), 200):
+                batch = clean_inserts[offset:offset + 200]
+                stmt = insert(table).values(batch)
+                stmt = stmt.on_conflict_do_update(
+                    constraint="uq_sd_adv_product",
+                    set_={name: getattr(stmt.excluded, name) for name in update_names},
+                )
+                db.session.execute(stmt)
             db.session.commit()
 
         return jsonify({
@@ -3017,7 +3054,9 @@ def manager_sd_advertised_product_report_sync_one_hit_country_only():
             "time_unit": time_unit,
             "countries": sorted(list(wanted)),
             "profiles_used": len(all_profiles),
-            "rows_saved": len(inserts),
+            "rows_saved": len(clean_inserts),
+            "raw_rows": len(inserts),
+            "duplicate_or_rolled_up_rows": len(inserts) - len(clean_inserts),
         }), 200
 
     except Exception as e:
