@@ -7152,6 +7152,8 @@ def combine_previous_dashboard_totals(uk_totals, us_totals, uk_to_usd_rate):
         "cm2_profit", "promotional_rebates", "previous_net_reimbursement", "cogs",
         "amazon_fees", "tax_and_credits", "misc_transaction", "lost_total",
         "platform_fee_inventory_storage", "platformfeenew", "platform_fee_new",
+        "storage_fee", "shipping_charges", "platform_management_fees",
+        "fba_disposal", "other_adjustment",
     )
     quantity_fields = ("quantity", "return_quantity", "total_quantity")
 

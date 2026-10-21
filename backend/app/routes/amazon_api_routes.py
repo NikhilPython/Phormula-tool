@@ -13,6 +13,7 @@ from flask import Blueprint, jsonify, make_response, request
 from app import db
 from app.models.user_models import amazon_user, Product, CountryProfile, User
 from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.dashboard_card_metrics import calculate_amazon_fees_total
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee, filter_seller_product_rows
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
 _upsert_products_to_db_with_open_date , 
@@ -133,6 +134,10 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
     previous_promotions = first(previous_totals, "promotional_rebates", "total_previous_promotional_rebates")
 
     values = {
+        "Amazon_fees_total": (
+            calculate_amazon_fees_total(current_totals),
+            calculate_amazon_fees_total(previous_totals),
+        ),
         "units": (current_units, previous_units),
         "asp": (
             first(current_totals, "asp") or (_dashboard_number(current_net_sales / current_units) if current_units else 0.0),
@@ -2591,6 +2596,7 @@ def get_current_global_data_for_live_bi(user_id: int):
     )
 
     derived_totals_global = {
+        "lost_total": round(float(total_row.get("lost_total", 0.0) or 0.0), 2),
         # Keep the backend KPI contract self-contained. Per-unit dashboard
         # values (including ad cost per unit) use this as their denominator.
         "total_quantity": round(total_qty, 2),
@@ -3552,6 +3558,7 @@ def finances_mtd_transactions():
     ) if float(net_sales or 0.0) else 0.0
 
     derived_totals = {
+        "lost_total": round(float(lost_total_df["lost_total"].sum()), 2),
         "amazon_fees": round(amazon_fees, 2),
         "platform_fee": round(platform_fee_total, 2),
         "platform_fee_inventory_storage": round(float(platform_fee_inventory_storage_total or 0.0), 2),

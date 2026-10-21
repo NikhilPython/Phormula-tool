@@ -3244,6 +3244,11 @@ def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[
             "lost_total": 0.0,
             "platform_fee_inventory_storage": 0.0,
             "platformfeenew": 0.0,
+            "storage_fee": 0.0,
+            "shipping_charges": 0.0,
+            "platform_management_fees": 0.0,
+            "fba_disposal": 0.0,
+            "other_adjustment": 0.0,
         }
 
     work = df.copy()
@@ -3401,7 +3406,30 @@ def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[
     )
     misc_transaction_total = float(work.loc[misc_mask, "total"].sum())
 
+    unassigned_misc_mask = (
+        ~desc_key.isin(exclude_desc_keys)
+        & ~type_key.isin(exclude_type_keys)
+        & ~misc_mask
+    )
+
     return {
+        "storage_fee": (
+            abs(sum_total_where_desc_contains(["FBAStorageBilling"]))
+            + abs(sum_total_where_desc_contains(["FBALongTermStorageBilling"]))
+        ),
+        "shipping_charges": (
+            abs(sum_total_where_desc_contains(["FBAInboundConvenience", "AWDProcessingFee"]))
+            + abs(sum_total_where_desc_contains(["AGSGlobalInboundTransportation"]))
+            + abs(sum_total_where_desc_contains(["AWDTransportationFee"]))
+        ),
+        "platform_management_fees": abs(sum_total_where_desc_contains([
+            "PaidServicesCharge", "Subscription",
+        ])),
+        "fba_disposal": abs(sum_total_where_desc_contains(["FBADisposal"])),
+        "other_adjustment": (
+            abs(sum_total_where_desc_contains(["FBAStorageFeeAdjustment"]))
+            + abs(float(work.loc[unassigned_misc_mask, "total"].sum()))
+        ),
         "misc_transaction": misc_transaction_total,
         "lost_total": lost_total,
         "platform_fee_inventory_storage": platform_fee_inventory_storage_total,
@@ -3641,6 +3669,13 @@ def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metri
     previous_net_reimbursement = compute_net_reimbursement_from_df(df)
 
     prev_totals = {
+        **{
+            key: round(component_total(key, key), 2)
+            for key in (
+                "storage_fee", "shipping_charges", "platform_management_fees",
+                "fba_disposal", "other_adjustment",
+            )
+        },
         "quantity": round(quantity_total, 2),
         "return_quantity": round(float(return_quantity.sum()), 2),
         "total_quantity": round(total_quantity, 2),

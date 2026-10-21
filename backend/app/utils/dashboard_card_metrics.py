@@ -163,6 +163,27 @@ def _first_non_zero(source: Mapping[str, Any], *keys: str) -> float:
     return fallback
 
 
+def calculate_amazon_fees_total(source: Mapping[str, Any]) -> float:
+    """Combine fee components, preserving signs and rounding only the result.
+
+    Live MTD uses amazon_fees and exposes inventory costs as disposal/loss
+    components; stored SKU reports expose the combined inventory field.
+    """
+    inventory = source.get("inventory_charges_and_reimbursement")
+    if inventory in (None, ""):
+        inventory = abs(_number(source.get("fba_disposal"))) - abs(
+            _number(source.get("lost_total"))
+        )
+    return dashboard_number(
+        _first(source, "amazon_fee", "amazon_fees")
+        + _first(source, "shipping_charges")
+        + _first(source, "storage_fee")
+        + _number(inventory)
+        + _first(source, "platform_management_fees", "platform_managment_fees")
+        - _first(source, "other_adjustment")
+    )
+
+
 def _units(source: Mapping[str, Any]) -> float:
     return _first(source, "total_quantity", "quantity_total", "quantity", "net_quantity")
 
@@ -200,6 +221,7 @@ def add_per_unit_fields(rows: Iterable[MutableMapping[str, Any]] | None):
     """Add the persisted/displayed per-unit values to each response row."""
     materialized = list(rows or [])
     for row in materialized:
+        row["Amazon_fees_total"] = calculate_amazon_fees_total(row)
         units = _units(row)
         marketplace_fees = abs(_first_non_zero(row, "amazon_fee", "amazon_fees"))
         cost_of_ads = _ads(row)
@@ -278,6 +300,7 @@ def _period_values(source: Mapping[str, Any]) -> dict[str, float]:
             _first(source, "net_sales_per_unit") or (net_sales / units if units else 0)
         ),
         "marketplace_fees": dashboard_number(marketplace_fees),
+        "Amazon_fees_total": calculate_amazon_fees_total(source),
         "marketplace_fees_per_unit": dashboard_number(
             _first(source, "marketplace_fees_per_unit")
             or (marketplace_fees / units if units else 0)
