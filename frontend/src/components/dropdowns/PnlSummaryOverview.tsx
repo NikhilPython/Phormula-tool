@@ -33,6 +33,7 @@ type DeltaMetric = {
   previousPerUnit?: number;
   percentage?: number;
   previousPercentage?: number;
+  loading?: boolean;
 };
 
 type SkuTableMetric = {
@@ -55,6 +56,7 @@ export type PnlSummaryOverviewData = {
     units: DeltaMetric;
     marketplaceFees: DeltaMetric;
     cm2Margin: number;
+    target?: DeltaMetric;
   };
   ai: {
     summary: string;
@@ -627,27 +629,51 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             className="border border-[#B8C78C] border-t-4 border-t-[#B8C78C] bg-white"
           />
 
-          <SummaryMetricCard
-            title="Cash generated"
-            value={
-              data.cashFlow.loading ? (
-                <SkeletonLine className="w-24" />
-              ) : (
-                formatMoney(data.cashFlow.cashGenerated, currencySymbol)
-              )
-            }
-            comparisons={buildComparisonRow(
-              data.cashFlow.loading
-                ? undefined
-                : data.cashFlow.previousCashGenerated,
-              formatMoney(
-                data.cashFlow.previousCashGenerated ?? 0,
-                currencySymbol
-              ),
-              data.cashFlow.delta
-            )}
-            className="border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] bg-white"
-          />
+          {financial.target ? (
+            <SummaryMetricCard
+              title="Target"
+              value={
+                financial.target.loading ? (
+                  <SkeletonLine className="w-24" />
+                ) : (
+                  formatMoney(financial.target.value, currencySymbol)
+                )
+              }
+              comparisons={buildComparisonRow(
+                financial.target.loading
+                  ? undefined
+                  : financial.target.previousValue,
+                formatMoney(
+                  financial.target.previousValue ?? 0,
+                  currencySymbol
+                ),
+                financial.target.delta
+              )}
+              className="border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] bg-white"
+            />
+          ) : (
+            <SummaryMetricCard
+              title="Cash generated"
+              value={
+                data.cashFlow.loading ? (
+                  <SkeletonLine className="w-24" />
+                ) : (
+                  formatMoney(data.cashFlow.cashGenerated, currencySymbol)
+                )
+              }
+              comparisons={buildComparisonRow(
+                data.cashFlow.loading
+                  ? undefined
+                  : data.cashFlow.previousCashGenerated,
+                formatMoney(
+                  data.cashFlow.previousCashGenerated ?? 0,
+                  currencySymbol
+                ),
+                data.cashFlow.delta
+              )}
+              className="border border-[#7B9A6D] border-t-4 border-t-[#7B9A6D] bg-white"
+            />
+          )}
         </div>
       );
     }
@@ -880,11 +906,11 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             <div className="relative z-10 mx-auto mb-3 flex w-full max-w-[1480px] items-center gap-3 border-b border-slate-200/70 pb-3">
 
               {/* Icon */}
-              <div
+              {/* <div
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}
               >
                 <SlideIcon size={18} strokeWidth={2.2} />
-              </div>
+              </div> */}
 
               {/* Title and description */}
               <div className="min-w-0 flex-1">

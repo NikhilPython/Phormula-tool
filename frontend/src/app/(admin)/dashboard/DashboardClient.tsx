@@ -12871,6 +12871,7 @@ export default function DashboardPage() {
             deltaPct?: number | null;
             currentPerUnit?: number;
             previousPerUnit?: number;
+            loading?: boolean;
         };
 
         const getKpi = (label: string) =>
@@ -12880,6 +12881,7 @@ export default function DashboardPage() {
         const netSalesKpi = getKpi("Net Sales");
         const tacosKpi = getKpi("TACoS");
         const cm2ProfitKpi = getKpi("CM2 Profit");
+        const targetKpi = getKpi("Target");
 
         const marketplaceFeesIndex = finalBarLabels.indexOf("Marketplace Fees");
         const marketplaceFeesCurrent = Math.abs(
@@ -13074,6 +13076,12 @@ export default function DashboardPage() {
                             : undefined,
                 },
                 cm2Margin,
+                target: {
+                    value: toNumber(targetKpi.current),
+                    previousValue: toNumber(targetKpi.previous),
+                    delta: targetKpi.deltaPct ?? undefined,
+                    loading: targetKpi.loading,
+                },
             },
             ai: {
                 summary: aiSummary,
