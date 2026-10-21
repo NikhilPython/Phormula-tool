@@ -3317,6 +3317,7 @@ def cashflow():
             'advertising_total': 0,
             'amazon_fee': 0,
             'cm2_profit': 0,
+            'total_cm2_profit': 0,
             'cost_of_unit_sold': 0,
             'otherwplatform': 0,
             'taxncredit': 0,
@@ -3433,6 +3434,7 @@ def cashflow():
             'advertising_total': 'advertising_total',
             'amazon_fee': 'amazon_fee',
             'cm2_profit': 'cm2_profit',
+            'total_cm2_profit': 'total_cm2_profit',
             'cost_of_unit_sold': 'cost_of_unit_sold',
             'otherwplatform': 'platform_fee',
             'taxncredit': 'tex_and_credits',
@@ -3488,6 +3490,7 @@ def cashflow():
             'amazon_fee': -abs(amazon_fee_value),
 
             'cm2_profit': get_total('cm2_profit'),
+            'total_cm2_profit': get_total('total_cm2_profit'),
             'cost_of_unit_sold': get_total('cost_of_unit_sold'),
             'rembursement_fee': get_total('rembursement_fee'),
             'taxncredit': get_total('taxncredit'),
@@ -3499,7 +3502,7 @@ def cashflow():
             'cashflow': 0,
         }
 
-        totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+        totals['cashflow'] = totals['cost_of_unit_sold'] + totals['total_cm2_profit']
 
         if 'date' in cashflow_df.columns:
             cashflow_df = cashflow_df.drop(columns=['date'])
@@ -3539,6 +3542,7 @@ def cashflow():
                 'fba_fees',
                 'amazon_fee',
                 'cm2_profit',
+                'total_cm2_profit',
                 'cost_of_unit_sold',
                 'rembursement_fee',
                 'taxncredit',
@@ -3548,7 +3552,7 @@ def cashflow():
             for key in money_keys:
                 totals[key] *= rate
 
-            totals['cashflow'] = totals['cost_of_unit_sold'] + totals['cm2_profit']
+            totals['cashflow'] = totals['cost_of_unit_sold'] + totals['total_cm2_profit']
 
         return totals
 
@@ -3996,6 +4000,7 @@ def target_summary():
             'advertising_total': 0,
             'amazon_fee': 0,
             'cm2_profit': 0,
+            'total_cm2_profit': 0,
             'cost_of_unit_sold': 0,
             'otherwplatform': 0,
             'taxncredit': 0,
@@ -4074,6 +4079,7 @@ def target_summary():
                     'advertising_total',
                     'amazon_fee',
                     'cm2_profit',
+                    'total_cm2_profit',
                     'cost_of_unit_sold',
                     'taxncredit',
                     'rembursement_fee',
@@ -4095,6 +4101,7 @@ def target_summary():
                     advertising_total = float(total_row['advertising_total'].iloc[0]) if 'advertising_total' in total_row.columns else 0
                     amazon_fee_total = float(total_row['amazon_fee'].iloc[0]) if 'amazon_fee' in total_row.columns else 0
                     cm2_profit_total = float(total_row['cm2_profit'].iloc[0]) if 'cm2_profit' in total_row.columns else 0
+                    total_cm2_profit = float(total_row['total_cm2_profit'].iloc[0]) if 'total_cm2_profit' in total_row.columns else 0
                     cost_of_unit_sold_total = float(total_row['cost_of_unit_sold'].iloc[0]) if 'cost_of_unit_sold' in total_row.columns else 0
                     rembursement_fee_total = float(total_row['rembursement_fee'].iloc[0]) if 'rembursement_fee' in total_row.columns else 0
                     quantity_total = float(total_row['total_quantity'].iloc[0]) if 'total_quantity' in total_row.columns else 0
@@ -4107,6 +4114,7 @@ def target_summary():
                     advertising_total = float(cashflow_df['advertising_total'].sum()) if 'advertising_total' in cashflow_df.columns else 0
                     amazon_fee_total = float(cashflow_df['amazon_fee'].sum()) if 'amazon_fee' in cashflow_df.columns else 0
                     cm2_profit_total = float(cashflow_df['cm2_profit'].sum()) if 'cm2_profit' in cashflow_df.columns else 0
+                    total_cm2_profit = float(cashflow_df['total_cm2_profit'].sum()) if 'total_cm2_profit' in cashflow_df.columns else 0
                     cost_of_unit_sold_total = float(cashflow_df['cost_of_unit_sold'].sum()) if 'cost_of_unit_sold' in cashflow_df.columns else 0
                     rembursement_fee_total = float(cashflow_df['rembursement_fee'].sum()) if 'rembursement_fee' in cashflow_df.columns else 0
                     quantity_total = float(cashflow_df['total_quantity'].sum()) if 'total_quantity' in cashflow_df.columns else 0
@@ -4121,6 +4129,7 @@ def target_summary():
                     advertising_total *= gbp_to_usd_rate
                     amazon_fee_total *= gbp_to_usd_rate
                     cm2_profit_total *= gbp_to_usd_rate
+                    total_cm2_profit *= gbp_to_usd_rate
                     cost_of_unit_sold_total *= gbp_to_usd_rate
                     rembursement_fee_total *= gbp_to_usd_rate
                     selling_fees_total *= gbp_to_usd_rate
@@ -4129,13 +4138,14 @@ def target_summary():
                     total_otherwplatform *= gbp_to_usd_rate
                     total_taxncredit_from_upload *= gbp_to_usd_rate
 
-                cashflow_total = cost_of_unit_sold_total + cm2_profit_total
+                cashflow_total = cost_of_unit_sold_total + total_cm2_profit
 
                 combined_totals['net_sales'] += net_sales_total
                 combined_totals['gross_sales'] += gross_sales_total
                 combined_totals['advertising_total'] += advertising_total
                 combined_totals['amazon_fee'] += amazon_fee_total
                 combined_totals['cm2_profit'] += cm2_profit_total
+                combined_totals['total_cm2_profit'] += total_cm2_profit
                 combined_totals['cost_of_unit_sold'] += cost_of_unit_sold_total
                 combined_totals['cashflow'] += cashflow_total
                 combined_totals['rembursement_fee'] += rembursement_fee_total
