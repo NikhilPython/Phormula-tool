@@ -518,9 +518,10 @@ def attach_historical_storage_cost(rows, user_id, country_key, month_name, year)
         return rows
 
     available = {col["name"] for col in inspector.get_columns(table_name, schema="public")}
-    if "storage_fee" not in available:
+    storage_columns = ("storage_fee", "short_term_storage_fee", "long_term_storage_fee")
+    if not available.intersection(storage_columns):
         return rows
-    selected = [name for name in ("sku", "product_name", "storage_fee") if name in available]
+    selected = [name for name in ("sku", "product_name", *storage_columns) if name in available]
     query = text('SELECT ' + ', '.join(f'"{name}"' for name in selected)
                  + f' FROM public."{table_name}"')
     with primary_engine.connect() as connection:
@@ -533,7 +534,15 @@ def attach_historical_storage_cost(rows, user_id, country_key, month_name, year)
     for record in records:
         sku = str(record.get("sku") or "").strip()
         product = str(record.get("product_name") or "").strip().lower()
-        cost = to_number(record.get("storage_fee"))
+        # UK monthly reports persist the two components without storage_fee.
+        # Prefer an explicit combined value (including zero) when available.
+        combined_cost = record.get("storage_fee")
+        cost = (
+            to_number(combined_cost)
+            if combined_cost not in (None, "")
+            else abs(to_number(record.get("short_term_storage_fee")))
+            + abs(to_number(record.get("long_term_storage_fee")))
+        )
         if sku.lower() in {"total", "grand_total", "grand total"} or product in {"total", "grand total"}:
             recorded_total = cost
         else:
