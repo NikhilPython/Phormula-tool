@@ -124,7 +124,7 @@ export default function DataTable<T extends Row>({
   const isPageStickyHeaderVisible = useStickyTableHeaderVisibility(
     headerScrollRef,
     tableContainerRef,
-    !shouldPinTotalRows
+    stickyHeader && !shouldPinTotalRows
   );
 
   const syncHorizontalScroll = React.useCallback(
@@ -316,11 +316,13 @@ export default function DataTable<T extends Row>({
           ref={headerScrollRef}
           className={clsx(
             "overflow-x-hidden rounded-t-xl bg-white",
-            shouldPinTotalRows ? "relative z-20" : "sticky z-50"
+            shouldPinTotalRows || !stickyHeader
+              ? "relative z-20"
+              : "sticky z-50"
           )}
           style={{
             ...scrollbarCompensationStyle,
-            top: shouldPinTotalRows
+            top: shouldPinTotalRows || !stickyHeader
               ? undefined
               : "var(--table-sticky-top, 0px)",
             visibility: isPageStickyHeaderVisible ? "visible" : "hidden",

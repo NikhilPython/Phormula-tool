@@ -10197,6 +10197,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         return {
           productName: String(row.product_name || row.sku || "Unnamed product"),
           sku: String(row.sku || ""),
+          units: toNum(
+            row.total_quantity ??
+            row.net_units_sold ??
+            row.quantity ??
+            row.units_sold
+          ),
           netSales: toNum(row.net_sales),
           profit: useCm2ForSkuProfit
             ? getProductCm2ProfitValue(row)
@@ -10205,6 +10211,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             profitPercentage === undefined || profitPercentage === null
               ? undefined
               : toNum(profitPercentage),
+          previousNetSales:
+            row.previous_net_sales === undefined ||
+            row.previous_net_sales === null
+              ? undefined
+              : toNum(row.previous_net_sales),
+          cm2ProfitDeltaPercentage:
+            row.cm2_profit_growth_pct === undefined ||
+            row.cm2_profit_growth_pct === null
+              ? undefined
+              : toNum(row.cm2_profit_growth_pct),
           netSalesIncrease: toNum(row.net_sales_delta),
           netSalesGrowth:
             row.net_sales_delta_percentage === undefined ||
@@ -10220,10 +10236,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       .map((row) => ({
         productName: row.productName,
         sku: row.sku,
+        units: row.units,
         netSales: row.netSales,
         secondaryValue: row.profit,
         secondaryPercentage: row.profitPercentage,
+        previousNetSales: row.previousNetSales,
         netSalesDeltaPercentage: row.netSalesGrowth,
+        netSalesIncrease: row.netSalesIncrease,
+        cm2ProfitDeltaPercentage: row.cm2ProfitDeltaPercentage,
       }));
     const leastPerformingSkus = [...rankedProfitSkus]
       .sort((a, b) => a.profit - b.profit)
@@ -10231,10 +10251,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       .map((row) => ({
         productName: row.productName,
         sku: row.sku,
+        units: row.units,
         netSales: row.netSales,
         secondaryValue: row.profit,
         secondaryPercentage: row.profitPercentage,
+        previousNetSales: row.previousNetSales,
         netSalesDeltaPercentage: row.netSalesGrowth,
+        netSalesIncrease: row.netSalesIncrease,
+        cm2ProfitDeltaPercentage: row.cm2ProfitDeltaPercentage,
       }));
     const topNetSalesGrowthSkus = [...rankedProfitSkus]
       .filter(
@@ -10249,9 +10273,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       .map((row) => ({
         productName: row.productName,
         sku: row.sku,
+        units: row.units,
         netSales: row.netSales,
-        secondaryValue: row.netSalesIncrease,
+        secondaryValue: row.profit,
+        secondaryPercentage: row.profitPercentage,
+        previousNetSales: row.previousNetSales,
         netSalesDeltaPercentage: row.netSalesGrowth,
+        netSalesIncrease: row.netSalesIncrease,
+        cm2ProfitDeltaPercentage: row.cm2ProfitDeltaPercentage,
       }));
 
     const findInventoryAction = (...keys: string[]) =>

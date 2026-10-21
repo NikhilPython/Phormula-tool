@@ -16,6 +16,10 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import SummaryMetricCard from "./SummaryMetricCard";
+import DataTable, {
+  type ColumnDef,
+  type Row as DataTableRow,
+} from "@/components/ui/table/DataTable";
 
 export type SummaryDestination =
   | "graphs"
@@ -39,10 +43,14 @@ type DeltaMetric = {
 type SkuTableMetric = {
   productName: string;
   sku: string;
+  units: number;
   netSales: number;
+  netSalesIncrease?: number;
   secondaryValue: number;
   secondaryPercentage?: number;
+  previousNetSales?: number;
   netSalesDeltaPercentage?: number;
+  cm2ProfitDeltaPercentage?: number;
 };
 
 export type PnlSummaryOverviewData = {
@@ -183,22 +191,6 @@ const roundFormattedValue = (value: string) =>
     return Number.isFinite(numericValue) ? formatWholeNumber(numericValue) : match;
   });
 
-const Delta = ({ value, inverse = false }: { value?: number; inverse?: boolean }) => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    return <span className="text-slate-400">No comparison</span>;
-  }
-
-  const positive = inverse ? value <= 0 : value >= 0;
-  const Icon = value >= 0 ? TrendingUp : TrendingDown;
-
-  return (
-    <span className={`inline-flex items-center gap-1 font-semibold ${positive ? "text-emerald-600" : "text-rose-600"}`}>
-      <Icon size={13} strokeWidth={2.5} />
-      {formatPercentageNumber(Math.abs(value))}%
-    </span>
-  );
-};
-
 const SkeletonLine = ({ className = "" }: { className?: string }) => (
   <div className={`h-3 animate-pulse rounded-full bg-slate-200 ${className}`} />
 );
@@ -276,74 +268,148 @@ const MetricTile = ({
 
 const SkuPerformanceTable = ({
   rows,
-  productHeading,
   metricHeading,
-  metricType,
   currencySymbol,
-  tone,
   emptyMessage = "No SKU performance data is available for this period.",
+  variant = "profit",
 }: {
   rows: SkuTableMetric[];
-  productHeading: string;
   metricHeading: string;
-  metricType: "money" | "percentage";
   currencySymbol: string;
-  tone: "positive" | "negative";
   emptyMessage?: string;
+  variant?: "profit" | "netSalesGrowth";
 }) => {
-  const badgeClass =
-    tone === "positive"
-      ? "bg-emerald-50 text-emerald-700"
-      : "bg-rose-50 text-rose-700";
+  type SkuPerformanceTableRow = DataTableRow &
+    SkuTableMetric & {
+      rank: number;
+    };
 
-  return (
-    <div className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 2xl:gap-3 2xl:px-5 2xl:text-xs">
-        <span>{productHeading}</span>
-        <span className="text-center">Net sales</span>
-        <span className="text-center">{metricHeading}</span>
-        <span className="text-center">Net Sales Growth (%)</span>
-      </div>
+  const tableRows: SkuPerformanceTableRow[] = rows.map((row, index) => ({
+    ...row,
+    rank: index + 1,
+  }));
+  const isNetSalesGrowthTable = variant === "netSalesGrowth";
 
-      {rows.length ? (
-        rows.map((row, index) => (
-          <div
-            key={`${row.sku}-${row.productName}-${index}`}
-            className="grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))] items-center gap-2 border-b border-slate-100 px-4 py-1 last:border-b-0 2xl:gap-3 2xl:px-5"
-          >
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold 2xl:h-7 2xl:w-7 2xl:text-xs ${badgeClass}`}>
-                {index + 1}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-charcoal-500 2xl:text-sm" title={row.productName}>
-                  {row.productName || "Unnamed product"}
-                </p>
-                {row.sku ? (
-                  <p className="truncate text-[9px] leading-3 text-slate-400 2xl:text-[11px]" title={row.sku}>
-                    {row.sku}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            <span className="text-center text-xs font-semibold text-charcoal-500 2xl:text-sm">
-              {formatMoney(row.netSales, currencySymbol)}
-            </span>
+  const columns: ColumnDef<SkuPerformanceTableRow>[] = [
+    {
+      key: "rank",
+      header: "S.No.",
+      width: isNetSalesGrowthTable ? "6%" : "7%",
+      render: (row) => row.rank,
+    },
+    {
+      key: "productName",
+      header: "Product Name",
+      width: isNetSalesGrowthTable ? "24%" : "28%",
+      cellClassName: "!text-left",
+      render: (row) => {
+        const hasDelta =
+          typeof row.netSalesDeltaPercentage === "number" &&
+          Number.isFinite(row.netSalesDeltaPercentage);
+        const delta = Number(row.netSalesDeltaPercentage);
+        const isPositive = delta >= 0;
+
+        return (
+          <div className="flex w-full min-w-0 items-end justify-between gap-2">
             <span
-              className={`text-center text-xs font-semibold 2xl:text-sm ${metricType === "percentage"
-                ? "inline-flex items-center justify-center gap-1 text-emerald-600"
-                : row.secondaryValue < 0
-                  ? "text-rose-600"
-                  : "text-charcoal-500"
-                }`}
+              className="min-w-0 flex-1 truncate font-normal text-green-500"
+              title={row.productName}
             >
-              {metricType === "percentage" ? (
-                <>
-                  <TrendingUp size={13} strokeWidth={2.5} />
-                  {formatPercent(row.secondaryValue)}
-                </>
+              {row.productName || "Unnamed product"}
+            </span>
+            {hasDelta ? (
+              <span
+                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${
+                  isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+                }`}
+                title={
+                  typeof row.previousNetSales === "number"
+                    ? `Previous Net Sales: ${formatWholeNumber(
+                        Math.abs(row.previousNetSales)
+                      )}`
+                    : "Net sales change vs previous period"
+                }
+              >
+                {isPositive ? "▲" : "▼"} {formatPercentageNumber(Math.abs(delta))}%
+              </span>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
+      key: "sku",
+      header: "SKU",
+      width: isNetSalesGrowthTable ? "15%" : "18%",
+      cellClassName: "!text-left",
+      render: (row) => row.sku || "-",
+    },
+    {
+      key: "units",
+      header: "Units",
+      width: isNetSalesGrowthTable ? "10%" : "12%",
+      render: (row) => formatWholeNumber(row.units),
+    },
+    {
+      key: "netSales",
+      header: "Net sales",
+      width: isNetSalesGrowthTable ? "15%" : "17.5%",
+      render: (row) => formatMoney(row.netSales, currencySymbol),
+    },
+    ...(isNetSalesGrowthTable
+      ? [
+          {
+            key: "netSalesIncrease",
+            header: "Net sales increase",
+            width: "15%",
+            render: (row: SkuPerformanceTableRow) => {
+              const increase = Number(row.netSalesIncrease);
+              const hasIncrease = Number.isFinite(increase);
+
+              return hasIncrease ? (
+                <span className={increase < 0 ? "text-[#FF5C5C]" : "text-charcoal-500"}>
+                  {formatMoney(increase, currencySymbol)}
+                </span>
               ) : (
-                <span className="inline-flex items-baseline justify-center gap-1 whitespace-nowrap">
+                "-"
+              );
+            },
+          },
+          // {
+          //   key: "netSalesDeltaPercentage",
+          //   header: "Net Sales Growth (%)",
+          //   width: "15%",
+          //   render: (row: SkuPerformanceTableRow) => {
+          //     const growth = Number(row.netSalesDeltaPercentage);
+          //     const hasGrowth = Number.isFinite(growth);
+          //     const isPositive = growth >= 0;
+
+          //     return hasGrowth ? (
+          //       <span
+          //         className={`whitespace-nowrap text-xs font-semibold ${
+          //           isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+          //         }`}
+          //       >
+          //         {isPositive ? "▲" : "▼"} {formatPercentageNumber(Math.abs(growth))}%
+          //       </span>
+          //     ) : (
+          //       "-"
+          //     );
+          //   },
+          // },
+        ]
+      : [
+          {
+            key: "secondaryValue",
+            header: metricHeading,
+            width: "17.5%",
+            render: (row: SkuPerformanceTableRow) => (
+              <div className="inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                <span
+                  className={`inline-flex items-baseline gap-1 ${
+                    row.secondaryValue < 0 ? "text-rose-600" : "text-charcoal-500"
+                  }`}
+                >
                   <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
                   {typeof row.secondaryPercentage === "number" &&
                   Number.isFinite(row.secondaryPercentage) ? (
@@ -352,19 +418,42 @@ const SkuPerformanceTable = ({
                     </span>
                   ) : null}
                 </span>
-              )}
-            </span>
-            <span className="flex items-center justify-center text-center text-[10px] 2xl:text-xs">
-              <Delta value={row.netSalesDeltaPercentage} />
-            </span>
-          </div>
-        ))
-      ) : (
-        <div className="px-4 py-8 text-center text-sm text-slate-500">
-          {emptyMessage}
-        </div>
-      )}
-    </div>
+                {typeof row.cm2ProfitDeltaPercentage === "number" &&
+                Number.isFinite(row.cm2ProfitDeltaPercentage) ? (
+                  <span
+                    className={`shrink-0 text-xs font-semibold ${
+                      row.cm2ProfitDeltaPercentage >= 0
+                        ? "text-[#5EA68E]"
+                        : "text-[#FF5C5C]"
+                    }`}
+                    title="Backend-provided CM2 profit change vs previous period"
+                  >
+                    {row.cm2ProfitDeltaPercentage >= 0 ? "▲" : "▼"}{" "}
+                    {formatPercentageNumber(
+                      Math.abs(row.cm2ProfitDeltaPercentage)
+                    )}%
+                  </span>
+                ) : null}
+              </div>
+            ),
+          },
+        ]),
+  ];
+
+  return (
+    <DataTable<SkuPerformanceTableRow>
+      columns={columns}
+      data={tableRows}
+      paginate={false}
+      scrollY={false}
+      stickyHeader={false}
+      emptyMessage={emptyMessage}
+      className="!overflow-hidden !border-gray-300 !shadow-none"
+      rowClassName={(_row, index) =>
+        index % 2 === 0 ? "bg-white" : "bg-gray-50"
+      }
+      tableClassName="w-full table-fixed !text-[12px] !text-[#414042] lg:!text-[12px] min-[1700px]:!text-[14px] [&_th]:!border-gray-300 [&_th]:!bg-[#5EA68E] [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-[#f8edcf] [&_th]:whitespace-normal [&_th]:leading-tight [&_td]:!border-gray-200 [&_td]:!px-3 [&_td]:!py-3"
+    />
   );
 };
 
@@ -521,7 +610,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           typeof previousValue === "number" && Number.isFinite(previousValue);
         const hasDelta = typeof delta === "number" && Number.isFinite(delta);
         const positive = inverse ? Number(delta) <= 0 : Number(delta) >= 0;
-        const DeltaIcon = Number(delta) >= 0 ? TrendingUp : TrendingDown;
+        const deltaSymbol = Number(delta) >= 0 ? "▲" : "▼";
 
         return [
           {
@@ -530,7 +619,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             deltaText: hasDelta
               ? (
                   <span className="inline-flex items-center gap-1">
-                    <DeltaIcon size={13} strokeWidth={2.5} />
+                    <span aria-hidden="true">{deltaSymbol}</span>
                     {formatPercentageNumber(Math.abs(Number(delta)))}%
                   </span>
                 )
@@ -682,11 +771,8 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       return (
         <SkuPerformanceTable
           rows={data.pnl.heroSkus}
-          productHeading="Leading products"
           metricHeading={`${data.pnl.profitMetric} profit`}
-          metricType="money"
           currencySymbol={currencySymbol}
-          tone="positive"
         />
       );
     }
@@ -695,11 +781,8 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       return (
         <SkuPerformanceTable
           rows={data.pnl.leastPerformingSkus}
-          productHeading="Least performing SKUs"
           metricHeading={`${data.pnl.profitMetric} profit`}
-          metricType="money"
           currencySymbol={currencySymbol}
-          tone="negative"
         />
       );
     }
@@ -708,12 +791,10 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       return (
         <SkuPerformanceTable
           rows={data.pnl.topNetSalesGrowthSkus}
-          productHeading="Fastest-growing SKUs"
-          metricHeading="Net sales increase"
-          metricType="money"
+          metricHeading={`${data.pnl.profitMetric} profit`}
           currencySymbol={currencySymbol}
-          tone="positive"
           emptyMessage="No SKUs with positive net sales growth are available for this period."
+          variant="netSalesGrowth"
         />
       );
     }

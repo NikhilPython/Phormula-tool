@@ -180,6 +180,7 @@ export type TableRow = {
   reimbursement_vs_sales?: number;
 
   cm2_profit?: number;
+  cm2_profit_growth_pct?: number;
   total_cm2_margins?: number;
   cm2_margins?: number;
   cm2_profit_percentage?: number;

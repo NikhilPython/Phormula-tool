@@ -6523,6 +6523,11 @@ export default function DashboardPage() {
                 ads_spend: Number(r.ads_spend ?? 0),
                 acos: Number(r.acos ?? 0),
                 cm2_profit: Number(r.cm2_profit ?? 0),
+                cm2_profit_growth_pct:
+                    r.cm2_profit_growth_pct === undefined ||
+                    r.cm2_profit_growth_pct === null
+                        ? undefined
+                        : Number(r.cm2_profit_growth_pct),
 
                 tax,
                 credits,
@@ -12908,6 +12913,44 @@ export default function DashboardPage() {
             previousSkuwiseRowsForDelta
         );
 
+        const readBackendCm2ProfitDelta = (row: any): number | undefined => {
+            const flatValue = row?.cm2_profit_growth_pct;
+            const growthMetricValue = row?.["CM2 Profit Growth (%)"]?.value;
+            const impactMetricValue = row?.["CM2 Profit Impact (%)"]?.value;
+
+            for (const value of [flatValue, growthMetricValue, impactMetricValue]) {
+                if (value === undefined || value === null || value === "") continue;
+
+                const numericValue = Number(value);
+                if (Number.isFinite(numericValue)) return numericValue;
+            }
+
+            return undefined;
+        };
+
+        const normalizeOverviewSkuKey = (value: unknown) =>
+            String(value || "").trim().toLowerCase();
+
+        const backendCm2DeltaBySku = new Map<string, number>();
+        const backendCm2Rows =
+            Array.isArray(finalLiveBiPayload?.all_action_rows) &&
+                finalLiveBiPayload.all_action_rows.length > 0
+            ? finalLiveBiPayload.all_action_rows
+            : Array.isArray(finalLiveBiPayload?.focus_sku_rows)
+                ? finalLiveBiPayload.focus_sku_rows
+                : [];
+
+        backendCm2Rows.forEach((row: any) => {
+            const delta = readBackendCm2ProfitDelta(row);
+            if (delta === undefined) return;
+
+            const skuKey = normalizeOverviewSkuKey(row?.sku);
+            const productKey = normalizeOverviewSkuKey(row?.product_name);
+
+            if (skuKey) backendCm2DeltaBySku.set(skuKey, delta);
+            if (productKey) backendCm2DeltaBySku.set(productKey, delta);
+        });
+
         const rankedSkus = overviewSkuRows
             .filter((row) => {
                 const sku = String(row.sku || "").trim().toLowerCase();
@@ -12929,13 +12972,22 @@ export default function DashboardPage() {
                         : netSales !== 0
                             ? (profit / Math.abs(netSales)) * 100
                             : 0;
+                const cm2ProfitDeltaPercentage =
+                    readBackendCm2ProfitDelta(row) ??
+                    backendCm2DeltaBySku.get(normalizeOverviewSkuKey(row.sku)) ??
+                    backendCm2DeltaBySku.get(
+                        normalizeOverviewSkuKey(row.product_name)
+                    );
 
                 return {
                     productName: String(row.product_name || row.sku || "Unnamed product"),
                     sku: String(row.sku || ""),
+                    units: toNumber(row.total_quantity ?? row.quantity),
                     netSales,
                     profit,
                     profitPercentage,
+                    cm2ProfitDeltaPercentage,
+                    previousNetSales: toNumber(row.previous_net_sales),
                     netSalesIncrease: toNumber(row.net_sales_delta),
                     netSalesGrowth:
                         row.net_sales_delta_percentage === undefined ||
@@ -12948,10 +13000,14 @@ export default function DashboardPage() {
         const toOverviewSku = (row: (typeof rankedSkus)[number]) => ({
             productName: row.productName,
             sku: row.sku,
+            units: row.units,
             netSales: row.netSales,
             secondaryValue: row.profit,
             secondaryPercentage: row.profitPercentage,
+            previousNetSales: row.previousNetSales,
             netSalesDeltaPercentage: row.netSalesGrowth,
+            netSalesIncrease: row.netSalesIncrease,
+            cm2ProfitDeltaPercentage: row.cm2ProfitDeltaPercentage,
         });
 
         const heroSkus = [...rankedSkus]
@@ -12977,9 +13033,14 @@ export default function DashboardPage() {
             .map((row) => ({
                 productName: row.productName,
                 sku: row.sku,
+                units: row.units,
                 netSales: row.netSales,
-                secondaryValue: row.netSalesIncrease,
+                secondaryValue: row.profit,
+                secondaryPercentage: row.profitPercentage,
+                previousNetSales: row.previousNetSales,
                 netSalesDeltaPercentage: row.netSalesGrowth,
+                netSalesIncrease: row.netSalesIncrease,
+                cm2ProfitDeltaPercentage: row.cm2ProfitDeltaPercentage,
             }));
 
         const overviewInventory = displayedInventoryInsightsData;

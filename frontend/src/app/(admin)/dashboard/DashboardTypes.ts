@@ -87,6 +87,7 @@ export type MonthlySkuwiseRow = {
     previous_net_sales?: number;
     net_sales_delta?: number;
     net_sales_delta_percentage?: number | null;
+    cm2_profit_growth_pct?: number | null;
 
     total_cm2_profit?: number;
     total_cm2_margins?: number;
