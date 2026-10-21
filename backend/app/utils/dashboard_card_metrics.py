@@ -163,17 +163,24 @@ def _first_non_zero(source: Mapping[str, Any], *keys: str) -> float:
     return fallback
 
 
-def calculate_amazon_fees_total(source: Mapping[str, Any]) -> float:
+def calculate_amazon_fees_total(
+    source: Mapping[str, Any], *, absolute_inventory: bool = False,
+) -> float:
     """Combine fee components, preserving signs and rounding only the result.
 
     Live MTD uses amazon_fees and exposes inventory costs as disposal/loss
     components; stored SKU reports expose the combined inventory field.
+    MTD's displayed-fee total adds the inventory magnitude, even when net
+    reimbursements exceed disposal costs. Other report totals retain signs.
     """
     inventory = source.get("inventory_charges_and_reimbursement")
     if inventory in (None, ""):
         inventory = abs(_number(source.get("fba_disposal"))) - abs(
             _number(source.get("lost_total"))
         )
+    inventory = _number(inventory)
+    if absolute_inventory:
+        inventory = abs(inventory)
     return dashboard_number(
         _first(source, "amazon_fee", "amazon_fees")
         + _first(source, "shipping_charges")

@@ -135,8 +135,8 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
 
     values = {
         "Amazon_fees_total": (
-            calculate_amazon_fees_total(current_totals),
-            calculate_amazon_fees_total(previous_totals),
+            calculate_amazon_fees_total(current_totals, absolute_inventory=True),
+            calculate_amazon_fees_total(previous_totals, absolute_inventory=True),
         ),
         "units": (current_units, previous_units),
         "asp": (
