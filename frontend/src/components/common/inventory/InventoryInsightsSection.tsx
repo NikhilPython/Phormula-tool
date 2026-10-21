@@ -176,7 +176,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
 
                         {hasDonut && (
                             <SkuAgeingDonutChart
-                                title="Ageing Donut Chart"
+                                title="FBA Ageing Donut Chart"
                                 subtitle="Overall inventory distribution across all SKUs"
                                 data={donutData}
                                 totalUnits={donutTotalUnits}

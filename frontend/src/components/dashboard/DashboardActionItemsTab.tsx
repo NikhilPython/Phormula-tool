@@ -20,6 +20,8 @@ export type DashboardActionItem = {
   actionHref?: string;
   affected_skus?: string[];
   affected_products?: string[];
+  air_dispatch_sku_count?: number;
+  sea_dispatch_sku_count?: number;
 };
 
 type Priority = ActionItemPriority;

@@ -30,7 +30,7 @@ type SkuAgeingDonutChartProps = {
 };
 
 const SkuAgeingDonutChart: React.FC<SkuAgeingDonutChartProps> = ({
-    title = "Ageing Donut Chart",
+    title = "FBA Ageing Donut Chart",
     subtitle = "",
     data,
     totalUnits,

@@ -1812,6 +1812,10 @@ def _load_dispatch_facts(
 
     affected_skus: set[str] = set()
 
+    air_dispatch_skus: set[str] = set()
+
+    sea_dispatch_skus: set[str] = set()
+
 
 
     loaded_files: list[str] = []
@@ -2042,6 +2046,22 @@ def _load_dispatch_facts(
 
 
 
+                    if air_units > 0:
+
+
+
+                        air_dispatch_skus.add(sku.upper())
+
+
+
+                    if sea_units > 0:
+
+
+
+                        sea_dispatch_skus.add(sku.upper())
+
+
+
 
 
 
@@ -2087,6 +2107,14 @@ def _load_dispatch_facts(
 
 
         "affected_skus": sorted(affected_skus),
+
+
+
+        "air_dispatch_sku_count": len(air_dispatch_skus),
+
+
+
+        "sea_dispatch_sku_count": len(sea_dispatch_skus),
 
 
 
@@ -2427,6 +2455,14 @@ def build_action_items(
 
 
             "affected_skus": dispatch.get("affected_skus") or [],
+
+
+
+            "air_dispatch_sku_count": int(_number(dispatch.get("air_dispatch_sku_count"))),
+
+
+
+            "sea_dispatch_sku_count": int(_number(dispatch.get("sea_dispatch_sku_count"))),
 
 
 

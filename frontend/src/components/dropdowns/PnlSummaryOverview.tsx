@@ -86,10 +86,18 @@ export type PnlSummaryOverviewData = {
   };
   inventory: {
     totalUnits: number;
+    inventoryCoverageRatio?: number;
+    ageingInventoryUnits?: number;
     healthySkus: number;
     healthyUnits: number;
     highAlertSkus: number;
     highAlertUnits: number;
+    returnRate?: number;
+    inTransitUnits?: number;
+    seaDispatchUnits?: number;
+    airDispatchUnits?: number;
+    seaDispatchSkus?: number;
+    airDispatchSkus?: number;
     estimatedStorageCost: string;
     estimatedStorageCostDeltaValue?: string;
     estimatedStorageCostDeltaPercentage?: number | null;
@@ -168,10 +176,9 @@ const formatMoneyWithPerUnitText = (
   perUnit: number | undefined,
   currencySymbol: string
 ) =>
-  `${formatMoney(value, currencySymbol)}${
-    typeof perUnit === "number" && Number.isFinite(perUnit)
-      ? ` (${formatMoney(perUnit, currencySymbol)}/unit)`
-      : ""
+  `${formatMoney(value, currencySymbol)}${typeof perUnit === "number" && Number.isFinite(perUnit)
+    ? ` (${formatMoney(perUnit, currencySymbol)}/unit)`
+    : ""
   }`;
 
 const formatMoneyWithPercentageText = (
@@ -179,10 +186,9 @@ const formatMoneyWithPercentageText = (
   percentage: number | undefined,
   currencySymbol: string
 ) =>
-  `${formatMoney(value, currencySymbol)}${
-    typeof percentage === "number" && Number.isFinite(percentage)
-      ? ` (${formatPercent(percentage)})`
-      : ""
+  `${formatMoney(value, currencySymbol)}${typeof percentage === "number" && Number.isFinite(percentage)
+    ? ` (${formatPercent(percentage)})`
+    : ""
   }`;
 
 
@@ -239,17 +245,20 @@ const MetricTile = ({
   compact?: boolean;
 }) => (
   <div
-    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white p-3.5 shadow-sm sm:p-4 ${compact
-      ? "min-h-[88px] 2xl:min-h-[88px] 2xl:p-3.5"
-      : "min-h-[108px] 2xl:min-h-[132px] 2xl:p-5"
+    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white shadow-sm ${compact
+      ? "min-h-[72px] p-2.5 sm:p-3 lg:min-h-0 2xl:p-3"
+      : "min-h-[108px] p-3.5 sm:p-4 2xl:min-h-[132px] 2xl:p-5"
       } ${accent}`}
   >
     <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 2xl:text-[11px]">
       {label}
     </p>
 
-    <div className="mt-2 flex items-center justify-between gap-3">
-      <div className="min-w-0 text-lg font-bold text-charcoal-500 sm:text-xl 2xl:text-2xl">
+    <div className={`${compact ? "mt-1" : "mt-2"} flex items-center justify-between gap-3`}>
+      <div className={`min-w-0 font-bold text-charcoal-500 ${compact
+        ? "text-lg 2xl:text-xl"
+        : "text-lg sm:text-xl 2xl:text-2xl"
+        }`}>
         {value}
       </div>
       {trailing ? (
@@ -266,6 +275,170 @@ const MetricTile = ({
     ) : null}
   </div>
 );
+
+const InventoryInsightsGrid = ({
+  inventory,
+  loading = false,
+}: {
+  inventory: PnlSummaryOverviewData["inventory"];
+  loading?: boolean;
+}) => {
+  const loadingValue = <SkeletonLine className="w-20" />;
+  const blankValue = <span aria-hidden="true">&nbsp;</span>;
+  const value = (content: React.ReactNode) => loading ? loadingValue : content;
+  const optionalUnits = (units?: number) =>
+    typeof units === "number" && Number.isFinite(units)
+      ? `${formatWholeNumber(units)} units`
+      : "-";
+  const optionalPercentage = (percentage?: number) =>
+    typeof percentage === "number" && Number.isFinite(percentage)
+      ? formatPercent(percentage)
+      : "-";
+
+  return (
+    <div className="grid w-full grid-cols-2 gap-2 lg:h-full lg:grid-cols-4 lg:grid-rows-3 2xl:gap-2.5">
+      <MetricTile
+        label="Total inventory"
+        value={value(`${formatWholeNumber(inventory.totalUnits)} units`)}
+        accent="border-[#75BBDA]"
+        compact
+      />
+
+      <MetricTile
+        label="Inventory coverage ratio"
+        value={value(
+          typeof inventory.inventoryCoverageRatio === "number" &&
+            Number.isFinite(inventory.inventoryCoverageRatio)
+            ? `${formatPercentageNumber(inventory.inventoryCoverageRatio)} months`
+            : "-"
+        )}
+        accent="border-[#3A8EA4]"
+        compact
+      />
+
+      <MetricTile
+        label=""
+        value={blankValue}
+        accent="border-slate-200"
+        compact
+      />
+
+      <MetricTile
+        label="Estimated storage cost"
+        value={value(roundFormattedValue(inventory.estimatedStorageCost))}
+        trailing={
+          loading ? null : (
+            <StorageCostDelta
+              deltaValue={inventory.estimatedStorageCostDeltaValue}
+              deltaPercentage={inventory.estimatedStorageCostDeltaPercentage}
+            />
+          )
+        }
+        accent="border-[#EDA153]"
+        compact
+      />
+
+      <MetricTile
+        label="Ageing inventory"
+        value={value(optionalUnits(inventory.ageingInventoryUnits))}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              180+ days
+            </span>
+          )
+        }
+        accent="border-[#B75A5A]"
+        compact
+      />
+
+
+      <MetricTile
+        label="Healthy SKUs"
+        value={value(`${formatWholeNumber(inventory.healthyUnits)} units`)}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {formatWholeNumber(inventory.healthySkus)} SKUs
+            </span>
+          )
+        }
+        accent="border-[#7B9A6D]"
+        compact
+      />
+
+      <MetricTile
+        label="High alert"
+        value={value(`${formatWholeNumber(inventory.highAlertUnits)} units`)}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {formatWholeNumber(inventory.highAlertSkus)} SKUs
+            </span>
+          )
+        }
+        accent="border-[#FF5C5C]"
+        compact
+      />
+
+
+      <MetricTile
+        label="Return rate"
+        value={value(optionalPercentage(inventory.returnRate))}
+        accent="border-[#C49466]"
+        compact
+      />
+
+      <MetricTile
+        label="In transit units"
+        value={value(optionalUnits(inventory.inTransitUnits))}
+        accent="border-[#75BBDA]"
+        compact
+      />
+
+
+      <MetricTile
+        label="Dispatch (Sea)"
+        value={value(optionalUnits(inventory.seaDispatchUnits))}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {typeof inventory.seaDispatchSkus === "number"
+                ? `${formatWholeNumber(inventory.seaDispatchSkus)} SKUs`
+                : "-"}
+            </span>
+          )
+        }
+        accent="border-[#3A8EA4]"
+        compact
+      />
+
+      <MetricTile
+        label="Dispatch (Air)"
+        value={value(optionalUnits(inventory.airDispatchUnits))}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {typeof inventory.airDispatchSkus === "number"
+                ? `${formatWholeNumber(inventory.airDispatchSkus)} SKUs`
+                : "-"}
+            </span>
+          )
+        }
+        accent="border-[#5EA68E]"
+        compact
+      />
+
+
+      <MetricTile
+        label="Purchase order"
+        value={blankValue}
+        accent="border-slate-200"
+        compact
+      />
+    </div>
+  );
+};
 
 const SkuPerformanceTable = ({
   rows,
@@ -320,14 +493,13 @@ const SkuPerformanceTable = ({
             </span>
             {hasDelta ? (
               <span
-                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${
-                  isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
-                }`}
+                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+                  }`}
                 title={
                   typeof row.previousNetSales === "number"
                     ? `Previous Net Sales: ${formatWholeNumber(
-                        Math.abs(row.previousNetSales)
-                      )}`
+                      Math.abs(row.previousNetSales)
+                    )}`
                     : "Net sales change vs previous period"
                 }
               >
@@ -359,86 +531,84 @@ const SkuPerformanceTable = ({
     },
     ...(isNetSalesGrowthTable
       ? [
-          {
-            key: "netSalesIncrease",
-            header: "Net sales increase",
-            width: "15%",
-            render: (row: SkuPerformanceTableRow) => {
-              const increase = Number(row.netSalesIncrease);
-              const hasIncrease = Number.isFinite(increase);
+        {
+          key: "netSalesIncrease",
+          header: "Net sales increase",
+          width: "15%",
+          render: (row: SkuPerformanceTableRow) => {
+            const increase = Number(row.netSalesIncrease);
+            const hasIncrease = Number.isFinite(increase);
 
-              return hasIncrease ? (
-                <span className={increase < 0 ? "text-[#FF5C5C]" : "text-charcoal-500"}>
-                  {formatMoney(increase, currencySymbol)}
-                </span>
-              ) : (
-                "-"
-              );
-            },
+            return hasIncrease ? (
+              <span className={increase < 0 ? "text-[#FF5C5C]" : "text-charcoal-500"}>
+                {formatMoney(increase, currencySymbol)}
+              </span>
+            ) : (
+              "-"
+            );
           },
-          // {
-          //   key: "netSalesDeltaPercentage",
-          //   header: "Net Sales Growth (%)",
-          //   width: "15%",
-          //   render: (row: SkuPerformanceTableRow) => {
-          //     const growth = Number(row.netSalesDeltaPercentage);
-          //     const hasGrowth = Number.isFinite(growth);
-          //     const isPositive = growth >= 0;
+        },
+        // {
+        //   key: "netSalesDeltaPercentage",
+        //   header: "Net Sales Growth (%)",
+        //   width: "15%",
+        //   render: (row: SkuPerformanceTableRow) => {
+        //     const growth = Number(row.netSalesDeltaPercentage);
+        //     const hasGrowth = Number.isFinite(growth);
+        //     const isPositive = growth >= 0;
 
-          //     return hasGrowth ? (
-          //       <span
-          //         className={`whitespace-nowrap text-xs font-semibold ${
-          //           isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
-          //         }`}
-          //       >
-          //         {isPositive ? "▲" : "▼"} {formatPercentageNumber(Math.abs(growth))}%
-          //       </span>
-          //     ) : (
-          //       "-"
-          //     );
-          //   },
-          // },
-        ]
+        //     return hasGrowth ? (
+        //       <span
+        //         className={`whitespace-nowrap text-xs font-semibold ${
+        //           isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
+        //         }`}
+        //       >
+        //         {isPositive ? "▲" : "▼"} {formatPercentageNumber(Math.abs(growth))}%
+        //       </span>
+        //     ) : (
+        //       "-"
+        //     );
+        //   },
+        // },
+      ]
       : [
-          {
-            key: "secondaryValue",
-            header: metricHeading,
-            width: "17.5%",
-            render: (row: SkuPerformanceTableRow) => (
-              <div className="inline-flex items-center justify-center gap-2 whitespace-nowrap">
-                <span
-                  className={`inline-flex items-baseline gap-1 ${
-                    row.secondaryValue < 0 ? "text-rose-600" : "text-charcoal-500"
+        {
+          key: "secondaryValue",
+          header: metricHeading,
+          width: "17.5%",
+          render: (row: SkuPerformanceTableRow) => (
+            <div className="inline-flex items-center justify-center gap-2 whitespace-nowrap">
+              <span
+                className={`inline-flex items-baseline gap-1 ${row.secondaryValue < 0 ? "text-rose-600" : "text-charcoal-500"
                   }`}
-                >
-                  <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
-                  {typeof row.secondaryPercentage === "number" &&
+              >
+                <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
+                {typeof row.secondaryPercentage === "number" &&
                   Number.isFinite(row.secondaryPercentage) ? (
-                    <span className="text-[9px] font-normal text-slate-500 2xl:text-[11px]">
-                      ({formatPercent(row.secondaryPercentage)})
-                    </span>
-                  ) : null}
-                </span>
-                {typeof row.cm2ProfitDeltaPercentage === "number" &&
-                Number.isFinite(row.cm2ProfitDeltaPercentage) ? (
-                  <span
-                    className={`shrink-0 text-xs font-semibold ${
-                      row.cm2ProfitDeltaPercentage >= 0
-                        ? "text-[#5EA68E]"
-                        : "text-[#FF5C5C]"
-                    }`}
-                    title="Backend-provided CM2 profit change vs previous period"
-                  >
-                    {row.cm2ProfitDeltaPercentage >= 0 ? "▲" : "▼"}{" "}
-                    {formatPercentageNumber(
-                      Math.abs(row.cm2ProfitDeltaPercentage)
-                    )}%
+                  <span className="text-[9px] font-normal text-slate-500 2xl:text-[11px]">
+                    ({formatPercent(row.secondaryPercentage)})
                   </span>
                 ) : null}
-              </div>
-            ),
-          },
-        ]),
+              </span>
+              {typeof row.cm2ProfitDeltaPercentage === "number" &&
+                Number.isFinite(row.cm2ProfitDeltaPercentage) ? (
+                <span
+                  className={`shrink-0 text-xs font-semibold ${row.cm2ProfitDeltaPercentage >= 0
+                    ? "text-[#5EA68E]"
+                    : "text-[#FF5C5C]"
+                    }`}
+                  title="Backend-provided CM2 profit change vs previous period"
+                >
+                  {row.cm2ProfitDeltaPercentage >= 0 ? "▲" : "▼"}{" "}
+                  {formatPercentageNumber(
+                    Math.abs(row.cm2ProfitDeltaPercentage)
+                  )}%
+                </span>
+              ) : null}
+            </div>
+          ),
+        },
+      ]),
   ];
 
   return (
@@ -574,6 +744,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
   const tone = toneClasses[slide.tone];
   const isFinanceSlide = slide.key === "finance";
+  const isInventorySlide = slide.key === "inventory";
   const isSkuTableSlide =
     slide.key === "heroSkus" ||
     slide.key === "leastSkus" ||
@@ -619,11 +790,11 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             valueText: hasPrevious ? valueText : "-",
             deltaText: hasDelta
               ? (
-                  <span className="inline-flex items-center gap-1">
-                    <span aria-hidden="true">{deltaSymbol}</span>
-                    {formatPercentageNumber(Math.abs(Number(delta)))}%
-                  </span>
-                )
+                <span className="inline-flex items-center gap-1">
+                  <span aria-hidden="true">{deltaSymbol}</span>
+                  {formatPercentageNumber(Math.abs(Number(delta)))}%
+                </span>
+              )
               : "-",
             deltaClassName: !hasDelta
               ? "text-gray-400"
@@ -801,53 +972,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
     }
 
     if (data.inventory.loading) {
-      return (
-        <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
-          <MetricTile
-            label="Total inventory"
-            value={`${formatWholeNumber(data.inventory.totalUnits)} units`}
-            detail="Inventory included in this view"
-            accent="border-sky-400"
-          />
-
-          <MetricTile
-            label="Healthy"
-            value={`${formatWholeNumber(data.inventory.healthySkus)} SKUs`}
-            trailing={
-              <span className="text-xs font-semibold text-slate-500">
-                {formatWholeNumber(data.inventory.healthyUnits)} units
-              </span>
-            }
-            detail="Within a healthy stock range"
-            accent="border-emerald-400"
-          />
-
-          <MetricTile
-            label="High alert"
-            value={`${formatWholeNumber(data.inventory.highAlertSkus)} SKUs`}
-            trailing={
-              <span className="text-xs font-semibold text-slate-500">
-                {formatWholeNumber(data.inventory.highAlertUnits)} units
-              </span>
-            }
-            detail="Need near-term attention"
-            accent="border-rose-400"
-          />
-
-          <MetricTile
-            label="Estimate Storage Cost"
-            value={roundFormattedValue(data.inventory.estimatedStorageCost)}
-            trailing={
-              <StorageCostDelta
-                deltaValue={data.inventory.estimatedStorageCostDeltaValue}
-                deltaPercentage={data.inventory.estimatedStorageCostDeltaPercentage}
-              />
-            }
-            detail="Monthly storage estimate"
-            accent="border-amber-400"
-          />
-        </div>
-      );
+      return <InventoryInsightsGrid inventory={data.inventory} loading />;
     }
 
     if (data.inventory.unavailable) {
@@ -858,53 +983,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       );
     }
 
-    return (
-      <div className="grid w-full grid-cols-2 gap-3 lg:grid-cols-4 2xl:gap-4">
-        <MetricTile
-          label="Total inventory"
-          value={`${formatWholeNumber(data.inventory.totalUnits)} units`}
-          detail="Inventory included in this view"
-          accent="border-[#75BBDA]"
-        />
-
-        <MetricTile
-          label="Healthy"
-          value={`${formatWholeNumber(data.inventory.healthySkus)} SKUs`}
-          trailing={
-            <span className="text-xs font-semibold text-slate-500">
-              {formatWholeNumber(data.inventory.healthyUnits)} units
-            </span>
-          }
-          detail="Within a healthy stock range"
-          accent="border-[#7B9A6D]"
-        />
-
-        <MetricTile
-          label="High alert"
-          value={`${formatWholeNumber(data.inventory.highAlertSkus)} SKUs`}
-          trailing={
-            <span className="text-xs font-semibold text-slate-500">
-              {formatWholeNumber(data.inventory.highAlertUnits)} units
-            </span>
-          }
-          detail="Need near-term attention"
-          accent="border-[#B75A5A]"
-        />
-
-        <MetricTile
-          label="Estimate Storage Cost"
-          value={roundFormattedValue(data.inventory.estimatedStorageCost)}
-          trailing={
-            <StorageCostDelta
-              deltaValue={data.inventory.estimatedStorageCostDeltaValue}
-              deltaPercentage={data.inventory.estimatedStorageCostDeltaPercentage}
-            />
-          }
-          detail="Monthly storage estimate"
-          accent="border-[#EDA153]"
-        />
-      </div>
-    );
+    return <InventoryInsightsGrid inventory={data.inventory} />;
   };
 
   return (
@@ -1014,7 +1093,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
             </div>
 
             <div
-              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide ? "flex-1" : ""
+              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide || isInventorySlide ? "flex-1" : ""
                 }`}
             >
               {renderSlideBody()}

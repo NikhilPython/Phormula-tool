@@ -3249,8 +3249,8 @@ export default function DashboardPage() {
                 );
                 let referralFeeActionItem: DashboardActionItem | null =
                     apiReferralFeeActionItem && hasPositiveReferralFeeDifference(apiReferralFeeActionItem)
-                    ? { ...apiReferralFeeActionItem, actionHref: referralPageHref }
-                    : null;
+                        ? { ...apiReferralFeeActionItem, actionHref: referralPageHref }
+                        : null;
 
                 if (!referralFeeActionItem) {
                     const userId = decodeJwtUserId(token);
@@ -6525,7 +6525,7 @@ export default function DashboardPage() {
                 cm2_profit: Number(r.cm2_profit ?? 0),
                 cm2_profit_growth_pct:
                     r.cm2_profit_growth_pct === undefined ||
-                    r.cm2_profit_growth_pct === null
+                        r.cm2_profit_growth_pct === null
                         ? undefined
                         : Number(r.cm2_profit_growth_pct),
 
@@ -12898,15 +12898,15 @@ export default function DashboardPage() {
             hasAmazonFeesMetric
                 ? toNumber(amazonFeesMetric.current)
                 : marketplaceFeesIndex >= 0
-                ? toNumber(finalBarValues[marketplaceFeesIndex])
-                : marketplaceFeesFromTable
+                    ? toNumber(finalBarValues[marketplaceFeesIndex])
+                    : marketplaceFeesFromTable
         );
         const marketplaceFeesPrevious = Math.abs(
             hasAmazonFeesMetric
                 ? toNumber(amazonFeesMetric.previous)
                 : marketplaceFeesIndex >= 0
-                ? toNumber(finalPrevBarValues[marketplaceFeesIndex])
-                : 0
+                    ? toNumber(finalPrevBarValues[marketplaceFeesIndex])
+                    : 0
         );
         const marketplaceFeesDelta = hasAmazonFeesMetric
             ? toNumber(amazonFeesMetric.change_percentage)
@@ -12943,10 +12943,10 @@ export default function DashboardPage() {
         const backendCm2Rows =
             Array.isArray(finalLiveBiPayload?.all_action_rows) &&
                 finalLiveBiPayload.all_action_rows.length > 0
-            ? finalLiveBiPayload.all_action_rows
-            : Array.isArray(finalLiveBiPayload?.focus_sku_rows)
-                ? finalLiveBiPayload.focus_sku_rows
-                : [];
+                ? finalLiveBiPayload.all_action_rows
+                : Array.isArray(finalLiveBiPayload?.focus_sku_rows)
+                    ? finalLiveBiPayload.focus_sku_rows
+                    : [];
 
         backendCm2Rows.forEach((row: any) => {
             const delta = readBackendCm2ProfitDelta(row);
@@ -13057,6 +13057,125 @@ export default function DashboardPage() {
         const healthyAction = findInventoryAction("healthy", "age_0_90");
         const highAlertAction = findInventoryAction("high_alert");
         const estimatedStorageAction = findInventoryAction("estimated_storage_cost");
+
+        const parseOverviewMetricNumber = (value: unknown): number | undefined => {
+            if (value === undefined || value === null || value === "") return undefined;
+
+            const numericValue = Number(
+                String(value).replace(/,/g, "").replace(/%/g, "").trim()
+            );
+            return Number.isFinite(numericValue) ? numericValue : undefined;
+        };
+
+        const getActionMetricValue = (itemId: string, metricLabel: string) => {
+            const item = dashboardActionItems.find((action) => action.id === itemId);
+            const metric = item?.metrics.find(
+                (entry) =>
+                    entry.label.trim().toLowerCase() === metricLabel.toLowerCase()
+            );
+
+            return parseOverviewMetricNumber(metric?.value);
+        };
+
+        const airDispatchUnits = getActionMetricValue(
+            "dispatch-required",
+            "Air dispatch"
+        );
+        const seaDispatchUnits = getActionMetricValue(
+            "dispatch-required",
+            "Sea dispatch"
+        );
+
+        const dispatchAction = dashboardActionItems.find(
+            (action) => action.id === "dispatch-required"
+        );
+        const airDispatchSkus = parseOverviewMetricNumber(
+            dispatchAction?.air_dispatch_sku_count
+        );
+        const seaDispatchSkus = parseOverviewMetricNumber(
+            dispatchAction?.sea_dispatch_sku_count
+        );
+
+        const currentBusinessAnalysisRow =
+            businessAnalysisMonthlyData.find(
+                (row) =>
+                    String(row.month || "").toLowerCase() ===
+                    currentDisplayMonth.monthName.toLowerCase() &&
+                    Number(row.year) === currentDisplayMonth.year
+            ) ??
+            businessAnalysisMonthlyData[businessAnalysisMonthlyData.length - 1];
+        const ageingInventoryUnits = parseOverviewMetricNumber(
+            currentBusinessAnalysisRow?.aged_inventory_180_plus
+        );
+        const actionReturnRate = getActionMetricValue(
+            "high-return-rate",
+            "Return rate"
+        );
+        const returnRateBase = parseOverviewMetricNumber(
+            currentBusinessAnalysisRow?.quantity
+        );
+        const returnedUnits = parseOverviewMetricNumber(
+            currentBusinessAnalysisRow?.return_quantity
+        );
+        const returnRate =
+            actionReturnRate ??
+            (returnRateBase && returnedUnits !== undefined
+                ? (Math.abs(returnedUnits) / Math.abs(returnRateBase)) * 100
+                : undefined);
+
+        const inventoryHeatmapRows = overviewInventory?.heatmapData ?? [];
+        const inventoryTotalRow = inventoryHeatmapRows.find((row) => {
+            const productName = String(row.productName || "").trim().toLowerCase();
+            const sku = String(row.sku || "").trim().toLowerCase();
+            return (
+                row.isTotalRow === true ||
+                productName === "total" ||
+                productName === "grand total" ||
+                sku === "total" ||
+                sku === "grand total"
+            );
+        });
+        const readTotalSellableInStock = (
+            row: (typeof inventoryHeatmapRows)[number]
+        ): number | undefined => {
+            const explicitTotal = parseOverviewMetricNumber(row.totalInStock);
+            if (explicitTotal !== undefined) return explicitTotal;
+
+            const currentFba = parseOverviewMetricNumber(row.currentFba);
+            const currentAwd = parseOverviewMetricNumber(row.currentAwd);
+            if (currentFba === undefined && currentAwd === undefined) return undefined;
+
+            return (currentFba ?? 0) + (currentAwd ?? 0);
+        };
+        const sellableInStockRowValues = inventoryHeatmapRows
+            .filter((row) => !row.isPercentageRow && !row.isTotalRow)
+            .map(readTotalSellableInStock)
+            .filter((units): units is number => units !== undefined);
+        const totalInventoryUnits =
+            (inventoryTotalRow
+                ? readTotalSellableInStock(inventoryTotalRow)
+                : undefined) ??
+            (sellableInStockRowValues.length > 0
+                ? sellableInStockRowValues.reduce((total, units) => total + units, 0)
+                : toNumber(overviewInventory?.donutTotalUnits));
+        const readInTransitUnits = (row: (typeof inventoryHeatmapRows)[number]) => {
+            const explicitTotal = parseOverviewMetricNumber(row.totalInTransit);
+            if (explicitTotal !== undefined) return explicitTotal;
+
+            return (
+                (parseOverviewMetricNumber(row.transitFba ?? row.fcTransfer) ?? 0) +
+                (parseOverviewMetricNumber(row.transitAwd ?? row.inboundUnits) ?? 0)
+            );
+        };
+        const inTransitUnits = inventoryTotalRow
+            ? readInTransitUnits(inventoryTotalRow)
+            : inventoryHeatmapRows
+                .filter((row) => !row.isPercentageRow && !row.isTotalRow)
+                .reduce((total, row) => total + readInTransitUnits(row), 0);
+        const inventoryCoverageRatio = parseOverviewMetricNumber(
+            inventoryTotalRow?.coverageCurrentAndTransit ??
+            inventoryTotalRow?.coverageRatio
+        );
 
         const normalizeOverviewText = (value: unknown): string => {
             if (Array.isArray(value)) {
@@ -13175,11 +13294,19 @@ export default function DashboardPage() {
                     undefined,
             },
             inventory: {
-                totalUnits: toNumber(overviewInventory?.donutTotalUnits),
+                totalUnits: totalInventoryUnits,
+                inventoryCoverageRatio,
+                ageingInventoryUnits,
                 healthySkus: toNumber(healthyAction?.skuCount ?? healthyAction?.count),
                 healthyUnits: toNumber(healthyAction?.unitCount),
                 highAlertSkus: toNumber(highAlertAction?.skuCount ?? highAlertAction?.count),
                 highAlertUnits: toNumber(highAlertAction?.unitCount),
+                returnRate,
+                inTransitUnits,
+                seaDispatchUnits,
+                airDispatchUnits,
+                seaDispatchSkus,
+                airDispatchSkus,
                 estimatedStorageCost: String(
                     estimatedStorageAction?.displayValue ??
                     `${inventoryStorageCostCurrencySymbol}0`
@@ -13305,328 +13432,328 @@ export default function DashboardPage() {
                             </button>
                         </div>
 
-                {["summary", "productwise"].includes(activeTab) && (
-                    <DashboardStickyKpis items={stickyKpiItems} />
-                )}
+                        {["summary", "productwise"].includes(activeTab) && (
+                            <DashboardStickyKpis items={stickyKpiItems} />
+                        )}
 
-                {activeTab === "action" && (
-                    <>
-                        {actionTabLoading ? (
-                            <div className="flex min-h-[calc(100vh-300px)] w-full items-center justify-center">
-                                <Loader />
-                            </div>
-                        ) : (
-                            <div className="space-y-7">
-                                {/* ================= BUSINESS ANALYSIS ================= */}
-                                <BusinessAnalysisView
-                                    monthlyData={businessAnalysisMonthlyData}
-                                    unitContributorData={businessAnalysisUnitContributorData}
-                                    currency={displayCurrency}
+                        {activeTab === "action" && (
+                            <>
+                                {actionTabLoading ? (
+                                    <div className="flex min-h-[calc(100vh-300px)] w-full items-center justify-center">
+                                        <Loader />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-7">
+                                        {/* ================= BUSINESS ANALYSIS ================= */}
+                                        <BusinessAnalysisView
+                                            monthlyData={businessAnalysisMonthlyData}
+                                            unitContributorData={businessAnalysisUnitContributorData}
+                                            currency={displayCurrency}
 
-                                    // Loader is handled once at Action Tab level
-                                    loading={false}
-                                />
-
-                                {/* ================= ACTION ITEMS ================= */}
-                                <div className="border-t border-[#E6ECEF] pt-5">
-                                    <div className="mb-4">
-                                        <PageBreadcrumb
-                                            pageTitle="Action Items"
-                                            variant="page"
-                                            align="left"
-                                            textSize="2xl"
+                                            // Loader is handled once at Action Tab level
+                                            loading={false}
                                         />
 
-                                        <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
-                                            Priority actions based on your current business performance.
-                                        </p>
+                                        {/* ================= ACTION ITEMS ================= */}
+                                        <div className="border-t border-[#E6ECEF] pt-5">
+                                            <div className="mb-4">
+                                                <PageBreadcrumb
+                                                    pageTitle="Action Items"
+                                                    variant="page"
+                                                    align="left"
+                                                    textSize="2xl"
+                                                />
+
+                                                <p className="mt-1 min-[1700px]:text-sm text-xs text-[#50627A]">
+                                                    Priority actions based on your current business performance.
+                                                </p>
+                                            </div>
+
+                                            <DashboardActionItemsTab
+                                                actionItems={dashboardActionItems}
+
+                                                // Loader is handled once at Action Tab level
+                                                loading={false}
+
+                                                error={dashboardActionItemsError}
+                                                onRetry={() =>
+                                                    setDashboardActionItemsRefreshKey(
+                                                        (value) => value + 1
+                                                    )
+                                                }
+                                            />
+                                        </div>
                                     </div>
+                                )}
+                            </>
+                        )}
 
-                                    <DashboardActionItemsTab
-                                        actionItems={dashboardActionItems}
+                        {activeTab === "live" && (
+                            <DashboardLiveSalesTab
+                                hasAmazonCard={hasAmazonCard}
+                                platform={platform}
+                                globalMtdViewOptions={globalMtdViewOptions}
+                                globalMtdView={globalMtdView}
+                                setGlobalMtdView={setGlobalMtdView}
+                                showLiveBI={showLiveBI}
+                                isCountryMode={isCountryMode}
+                                selectedStartDay={selectedStartDay}
+                                selectedEndDay={selectedEndDay}
+                                formatAppliedRangeLabel={formatAppliedRangeLabel}
+                                isRangeChangeRef={isRangeChangeRef}
+                                setSelectedStartDay={setSelectedStartDay}
+                                setSelectedEndDay={setSelectedEndDay}
+                                setBiError={setBiError}
+                                loadRangeFromCache={loadRangeFromCache}
+                                fetchLiveBiPayload={fetchLiveBiPayload}
+                                shouldShowDummyUi={shouldShowDummyUi}
+                                dummyStatData={dummyStatData}
+                                globalMtdCardData={globalMtdCardData}
+                                backendCardDeltas={backendCardDeltas}
+                                loading={loading}
+                                shopifyLoading={shopifyLoading}
+                                biLoading={biLoading}
+                                previousSkuwiseGlobalLoading={previousSkuwiseGlobalLoading}
+                                fmtInt={fmtInt}
+                                formatDisplayAmount={formatDisplayAmount}
+                                formatDisplayAmountNoDecimals={formatDisplayAmountNoDecimals}
+                                prevLabel={prevLabel}
+                                fmtPct2={fmtPct2}
+                                renderCountryMtdCards={renderCountryMtdCards}
+                                useBiForAmazonCards={useBiForAmazonCards}
+                                biCardKpis={biCardKpis}
+                                mtdUnitsCurrent={mtdUnitsCurrent}
+                                mtdUnitsPrevious={mtdUnitsPrevious}
+                                mtdUnitsDelta={mtdUnitsDelta}
+                                rangeActive={rangeActive}
+                                convertToDisplayCurrency={convertToDisplayCurrency}
+                                uk={uk}
+                                amazonDataCurrency={amazonDataCurrency}
+                                prev={prev}
+                                deltas={deltas}
+                                mtdGrossSalesCurrentPerUnitDisplay={mtdGrossSalesCurrentPerUnitDisplay}
+                                mtdGrossSalesPreviousPerUnitDisplay={mtdGrossSalesPreviousPerUnitDisplay}
+                                mtdNetSalesCurrentPerUnitDisplay={mtdNetSalesCurrentPerUnitDisplay}
+                                mtdNetSalesPreviousPerUnitDisplay={mtdNetSalesPreviousPerUnitDisplay}
+                                mtdCostOfAdsCurrentDisplay={mtdCostOfAdsCurrentDisplay}
+                                mtdCostOfAdsPreviousDisplay={mtdCostOfAdsPreviousDisplay}
+                                mtdCostOfAdsCurrentPerUnitDisplay={mtdCostOfAdsCurrentPerUnitDisplay}
+                                mtdCostOfAdsPreviousPerUnitDisplay={mtdCostOfAdsPreviousPerUnitDisplay}
+                                mtdCostOfAdsDelta={mtdCostOfAdsDelta}
+                                mtdTacosCurrent={mtdTacosCurrent}
+                                mtdTacosPrevious={mtdTacosPrevious}
+                                mtdTacosDelta={mtdTacosDelta}
+                                mtdCm2ProfitCurrentDisplay={mtdCm2ProfitCurrentDisplay}
+                                mtdCm2ProfitPreviousDisplay={mtdCm2ProfitPreviousDisplay}
+                                mtdCm2ProfitDelta={mtdCm2ProfitDelta}
+                                mtdCm2ProfitPctCurrent={mtdCm2ProfitPctCurrent}
+                                mtdCm2ProfitPctPrevious={mtdCm2ProfitPctPrevious}
+                                mtdPromotionsCurrentDisplay={mtdPromotionsCurrentDisplay}
+                                mtdPromotionsPreviousDisplay={mtdPromotionsPreviousDisplay}
+                                mtdPromotionsDelta={mtdPromotionsDelta}
+                                mtdPromotionsPctCurrent={mtdPromotionsPctCurrent}
+                                mtdPromotionsPctPrevious={mtdPromotionsPctPrevious}
+                                hasShopifyCard={hasShopifyCard}
+                                shopify={shopify}
+                                shopifyDeriv={shopifyDeriv}
+                                shopifyPrevDeriv={shopifyPrevDeriv}
+                                finalBiDailySeriesHome={finalBiDailySeriesHome}
+                                finalBiPeriods={finalBiPeriods}
+                                dashboardAllowedEndISO={dashboardAllowedEndISO}
+                                biUiLoading={biUiLoading}
+                                biError={biError}
+                                currencySymbol={currencySymbol}
+                                regions={regions}
+                                targetRegion={targetRegion}
+                                setTargetRegion={setTargetRegion}
+                                displayCurrency={displayCurrency}
+                                formatDisplayK={formatDisplayK}
+                                finalTargetsTodayHome={finalTargetsTodayHome}
+                                finalTargetsMtdHome={finalTargetsMtdHome}
+                                finalStatsTargetHome={finalStatsTargetHome}
+                                finalTargetsLastMonthTotalHome={finalTargetsLastMonthTotalHome}
+                                finalTargetsLastMonthToDateHome={finalTargetsLastMonthToDateHome}
+                                targets_lastMonthToDateHome={targets_lastMonthToDateHome}
+                                finalStatsSalesTrendPct={finalStatsSalesTrendPct}
+                                finalStatsTargetTrendPct={finalStatsTargetTrendPct}
+                                finalTargetsReimbursement={finalTargetsReimbursement}
+                                biAlignedTotalsHome={biAlignedTotalsHome}
+                                biCardsReady={biCardsReady}
+                                formattedMonthYear={formattedMonthYear}
+                                currentDisplayMonth={currentDisplayMonth}
+                                todaySalesRaw={todaySalesRaw}
+                                stickyTargetHome={stickyTargetHome}
+                                targets_mtdHome={targets_mtdHome}
+                                targets_lastMonthTotalHome={targets_lastMonthTotalHome}
+                                targets_reimbursement={targets_reimbursement}
+                                globalTargetCardTotals={globalTargetCardTotals}
+                                salesTargetBiAlignedTotals={salesTargetBiAlignedTotals}
+                                finalRangeCompletedPct={finalRangeCompletedPct}
+                                lastRefreshAt={lastRefreshAt}
+                                dashboardCompletedTimeZone={dashboardCompletedTimeZone}
+                            />
+                        )}
 
-                                        // Loader is handled once at Action Tab level
-                                        loading={false}
+                        {activeTab === "summary" && (
 
-                                        error={dashboardActionItemsError}
-                                        onRetry={() =>
-                                            setDashboardActionItemsRefreshKey(
-                                                (value) => value + 1
-                                            )
-                                        }
-                                    />
-                                </div>
+                            <div className="w-full overflow-x-hidden">
+                                {(!shouldShowDummyUi && (summaryLoading || !liveBiPayload)) ? (
+                                    <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
+                                        <Loader />
+                                    </div>
+                                ) : (
+                                    showLiveBI && (
+                                        <LiveBusinessClient
+                                            countryName={countryName}
+                                            sourceCountryName={countryName}
+                                            ranged="MTD"
+                                            month={(currMonthName || "").toLowerCase()}
+                                            year={String(currYear)}
+                                            initialData={finalLiveBiPayload}
+                                            disableAutoFetch
+                                            formattedMonthYear={formattedMonthYear}
+                                            onGenerateInsights={async () => {
+                                                if (shouldShowDummyUi) return;
+
+                                                await fetchLiveBiPayload({
+                                                    generateInsights: true,
+                                                    skipLoader: true,
+                                                });
+                                            }}
+
+                                            // ✅ ADD THIS
+                                            onManualAiRefresh={async () => {
+                                                if (shouldShowDummyUi) return null;
+
+                                                const freshPayload = await fetchLiveBiPayload({
+                                                    startDay: selectedStartDay,
+                                                    endDay: selectedEndDay,
+                                                    generateInsights: false,
+                                                    skipLoader: true,
+
+                                                    // ✅ IMPORTANT
+                                                    manualAiRefresh: true,
+
+                                                    // ✅ IMPORTANT
+                                                    dataOnlyRefresh: false,
+                                                });
+
+                                                if (freshPayload) {
+                                                    triggerCachePost();
+                                                }
+
+                                                return freshPayload;
+                                            }}
+                                        />
+                                    )
+                                )}
                             </div>
                         )}
-                    </>
-                )}
 
-                {activeTab === "live" && (
-                    <DashboardLiveSalesTab
-                        hasAmazonCard={hasAmazonCard}
-                        platform={platform}
-                        globalMtdViewOptions={globalMtdViewOptions}
-                        globalMtdView={globalMtdView}
-                        setGlobalMtdView={setGlobalMtdView}
-                        showLiveBI={showLiveBI}
-                        isCountryMode={isCountryMode}
-                        selectedStartDay={selectedStartDay}
-                        selectedEndDay={selectedEndDay}
-                        formatAppliedRangeLabel={formatAppliedRangeLabel}
-                        isRangeChangeRef={isRangeChangeRef}
-                        setSelectedStartDay={setSelectedStartDay}
-                        setSelectedEndDay={setSelectedEndDay}
-                        setBiError={setBiError}
-                        loadRangeFromCache={loadRangeFromCache}
-                        fetchLiveBiPayload={fetchLiveBiPayload}
-                        shouldShowDummyUi={shouldShowDummyUi}
-                        dummyStatData={dummyStatData}
-                        globalMtdCardData={globalMtdCardData}
-                        backendCardDeltas={backendCardDeltas}
-                        loading={loading}
-                        shopifyLoading={shopifyLoading}
-                        biLoading={biLoading}
-                        previousSkuwiseGlobalLoading={previousSkuwiseGlobalLoading}
-                        fmtInt={fmtInt}
-                        formatDisplayAmount={formatDisplayAmount}
-                        formatDisplayAmountNoDecimals={formatDisplayAmountNoDecimals}
-                        prevLabel={prevLabel}
-                        fmtPct2={fmtPct2}
-                        renderCountryMtdCards={renderCountryMtdCards}
-                        useBiForAmazonCards={useBiForAmazonCards}
-                        biCardKpis={biCardKpis}
-                        mtdUnitsCurrent={mtdUnitsCurrent}
-                        mtdUnitsPrevious={mtdUnitsPrevious}
-                        mtdUnitsDelta={mtdUnitsDelta}
-                        rangeActive={rangeActive}
-                        convertToDisplayCurrency={convertToDisplayCurrency}
-                        uk={uk}
-                        amazonDataCurrency={amazonDataCurrency}
-                        prev={prev}
-                        deltas={deltas}
-                        mtdGrossSalesCurrentPerUnitDisplay={mtdGrossSalesCurrentPerUnitDisplay}
-                        mtdGrossSalesPreviousPerUnitDisplay={mtdGrossSalesPreviousPerUnitDisplay}
-                        mtdNetSalesCurrentPerUnitDisplay={mtdNetSalesCurrentPerUnitDisplay}
-                        mtdNetSalesPreviousPerUnitDisplay={mtdNetSalesPreviousPerUnitDisplay}
-                        mtdCostOfAdsCurrentDisplay={mtdCostOfAdsCurrentDisplay}
-                        mtdCostOfAdsPreviousDisplay={mtdCostOfAdsPreviousDisplay}
-                        mtdCostOfAdsCurrentPerUnitDisplay={mtdCostOfAdsCurrentPerUnitDisplay}
-                        mtdCostOfAdsPreviousPerUnitDisplay={mtdCostOfAdsPreviousPerUnitDisplay}
-                        mtdCostOfAdsDelta={mtdCostOfAdsDelta}
-                        mtdTacosCurrent={mtdTacosCurrent}
-                        mtdTacosPrevious={mtdTacosPrevious}
-                        mtdTacosDelta={mtdTacosDelta}
-                        mtdCm2ProfitCurrentDisplay={mtdCm2ProfitCurrentDisplay}
-                        mtdCm2ProfitPreviousDisplay={mtdCm2ProfitPreviousDisplay}
-                        mtdCm2ProfitDelta={mtdCm2ProfitDelta}
-                        mtdCm2ProfitPctCurrent={mtdCm2ProfitPctCurrent}
-                        mtdCm2ProfitPctPrevious={mtdCm2ProfitPctPrevious}
-                        mtdPromotionsCurrentDisplay={mtdPromotionsCurrentDisplay}
-                        mtdPromotionsPreviousDisplay={mtdPromotionsPreviousDisplay}
-                        mtdPromotionsDelta={mtdPromotionsDelta}
-                        mtdPromotionsPctCurrent={mtdPromotionsPctCurrent}
-                        mtdPromotionsPctPrevious={mtdPromotionsPctPrevious}
-                        hasShopifyCard={hasShopifyCard}
-                        shopify={shopify}
-                        shopifyDeriv={shopifyDeriv}
-                        shopifyPrevDeriv={shopifyPrevDeriv}
-                        finalBiDailySeriesHome={finalBiDailySeriesHome}
-                        finalBiPeriods={finalBiPeriods}
-                        dashboardAllowedEndISO={dashboardAllowedEndISO}
-                        biUiLoading={biUiLoading}
-                        biError={biError}
-                        currencySymbol={currencySymbol}
-                        regions={regions}
-                        targetRegion={targetRegion}
-                        setTargetRegion={setTargetRegion}
-                        displayCurrency={displayCurrency}
-                        formatDisplayK={formatDisplayK}
-                        finalTargetsTodayHome={finalTargetsTodayHome}
-                        finalTargetsMtdHome={finalTargetsMtdHome}
-                        finalStatsTargetHome={finalStatsTargetHome}
-                        finalTargetsLastMonthTotalHome={finalTargetsLastMonthTotalHome}
-                        finalTargetsLastMonthToDateHome={finalTargetsLastMonthToDateHome}
-                        targets_lastMonthToDateHome={targets_lastMonthToDateHome}
-                        finalStatsSalesTrendPct={finalStatsSalesTrendPct}
-                        finalStatsTargetTrendPct={finalStatsTargetTrendPct}
-                        finalTargetsReimbursement={finalTargetsReimbursement}
-                        biAlignedTotalsHome={biAlignedTotalsHome}
-                        biCardsReady={biCardsReady}
-                        formattedMonthYear={formattedMonthYear}
-                        currentDisplayMonth={currentDisplayMonth}
-                        todaySalesRaw={todaySalesRaw}
-                        stickyTargetHome={stickyTargetHome}
-                        targets_mtdHome={targets_mtdHome}
-                        targets_lastMonthTotalHome={targets_lastMonthTotalHome}
-                        targets_reimbursement={targets_reimbursement}
-                        globalTargetCardTotals={globalTargetCardTotals}
-                        salesTargetBiAlignedTotals={salesTargetBiAlignedTotals}
-                        finalRangeCompletedPct={finalRangeCompletedPct}
-                        lastRefreshAt={lastRefreshAt}
-                        dashboardCompletedTimeZone={dashboardCompletedTimeZone}
-                    />
-                )}
-
-                {activeTab === "summary" && (
-
-                    <div className="w-full overflow-x-hidden">
-                        {(!shouldShowDummyUi && (summaryLoading || !liveBiPayload)) ? (
-                            <div className="flex min-h-[300px] items-center justify-center py-12 text-center">
-                                <Loader />
-                            </div>
-                        ) : (
-                            showLiveBI && (
-                                <LiveBusinessClient
+                        {activeTab === "productwise" && (
+                            <>
+                                <DashboardProductwisePnlSection
+                                    currencySymbol={currencySymbol}
+                                    adsLoading={adsLoading}
+                                    showAllMtdProductwiseRows={showAllMtdProductwiseRows}
+                                    setShowAllMtdProductwiseRows={setShowAllMtdProductwiseRows}
+                                    productwiseAllColumnsExpanded={productwiseAllColumnsExpanded}
+                                    handleToggleProductwiseAllColumns={handleToggleProductwiseAllColumns}
+                                    handleDownloadPlProductwiseMtd={handleDownloadPlProductwiseMtd}
+                                    shouldShowDummyUi={shouldShowDummyUi}
+                                    loading={loading}
+                                    monthlySkuwiseRows={monthlySkuwiseRows}
+                                    finalMonthlySkuwiseRowsForTable={finalMonthlySkuwiseRowsForTable}
+                                    shouldScrollMtdProductwiseTable={shouldScrollMtdProductwiseTable}
+                                    productwiseHasExpandedGroups={productwiseHasExpandedGroups}
+                                    setProductwiseAnyGroupExpanded={setProductwiseAnyGroupExpanded}
+                                    SKUWISE_LEFT_COLS={SKUWISE_LEFT_COLS}
+                                    SKUWISE_GROUPS={SKUWISE_GROUPS}
+                                    SKUWISE_SINGLE_COLS={SKUWISE_SINGLE_COLS}
+                                    productwiseInitialCollapsed={productwiseInitialCollapsed}
+                                    productwiseCollapsed={productwiseCollapsed}
+                                    setProductwiseCollapsed={setProductwiseCollapsed}
+                                    setProductwiseAllColumnsExpanded={setProductwiseAllColumnsExpanded}
+                                    PRODUCTWISE_GROUP_IDS={PRODUCTWISE_GROUP_IDS}
+                                    plSortConfig={plSortConfig}
+                                    setPlSortConfig={setPlSortConfig}
+                                    getAdsSignForCol={getAdsSignForCol}
+                                    mtdProductwiseTableScrollHeight={mtdProductwiseTableScrollHeight}
+                                    toNumber={toNumber}
+                                    getSkuwiseDisplayProductName={getSkuwiseDisplayProductName}
+                                    openPnlSkuDrawer={openPnlSkuDrawer}
+                                    renderLiveNetSalesDelta={renderLiveNetSalesDelta}
+                                    formatAdsNumber={formatAdsNumber}
+                                    formatAdType={formatAdType}
+                                    costOfAds={costOfAds}
+                                    formatSummaryRounded={formatSummaryRounded}
+                                    sponsoredBrandSpend={sponsoredBrandSpend}
+                                    dealVouchers={dealVouchers}
+                                    platformFee={platformFee}
+                                    plSummaryTotals={plSummaryTotals}
+                                    formatSummaryValue={formatSummaryValue}
+                                    lost_inventory_total={lost_inventory_total}
+                                    otherPlatformFee={otherPlatformFee}
                                     countryName={countryName}
-                                    sourceCountryName={countryName}
-                                    ranged="MTD"
-                                    month={(currMonthName || "").toLowerCase()}
-                                    year={String(currYear)}
-                                    initialData={finalLiveBiPayload}
-                                    disableAutoFetch
-                                    formattedMonthYear={formattedMonthYear}
-                                    onGenerateInsights={async () => {
-                                        if (shouldShowDummyUi) return;
-
-                                        await fetchLiveBiPayload({
-                                            generateInsights: true,
-                                            skipLoader: true,
-                                        });
-                                    }}
-
-                                    // ✅ ADD THIS
-                                    onManualAiRefresh={async () => {
-                                        if (shouldShowDummyUi) return null;
-
-                                        const freshPayload = await fetchLiveBiPayload({
-                                            startDay: selectedStartDay,
-                                            endDay: selectedEndDay,
-                                            generateInsights: false,
-                                            skipLoader: true,
-
-                                            // ✅ IMPORTANT
-                                            manualAiRefresh: true,
-
-                                            // ✅ IMPORTANT
-                                            dataOnlyRefresh: false,
-                                        });
-
-                                        if (freshPayload) {
-                                            triggerCachePost();
-                                        }
-
-                                        return freshPayload;
-                                    }}
+                                    isUsPnlSkuLayout={isUsPnlSkuLayout}
+                                    isUkPnlSkuLayout={isUkPnlSkuLayout}
+                                    getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
+                                    totalRowCm2Profit={totalRowCm2Profit}
+                                    totalRowCm2Margins={totalRowCm2Margins}
+                                    tacosFromDisplayedCardsForSummary={tacosFromDisplayedCardsForSummary}
+                                    reimbursementForSummary={reimbursementForSummary}
+                                    reimbursementVsCm2PctForSummary={reimbursementVsCm2PctForSummary}
+                                    reimbursementVsSalesPctForSummary={reimbursementVsSalesPctForSummary}
                                 />
-                            )
+
+                                <DashboardMtdPlSection
+                                    isMtdPlExpanded={isMtdPlExpanded}
+                                    setIsMtdPlExpanded={setIsMtdPlExpanded}
+                                    chartRef={chartRef}
+                                    countryNameForGraph={countryNameForGraph}
+                                    formattedMonthYear={formattedMonthYear}
+                                    currencySymbol={currencySymbol}
+                                    finalBarLabels={finalBarLabels}
+                                    finalBarValues={finalBarValues}
+                                    finalPrevBarValues={finalPrevBarValues}
+                                    colors={colors}
+                                    shouldShowDummyUi={shouldShowDummyUi}
+                                    loading={loading}
+                                    finalAllValuesZero={finalAllValuesZero}
+                                    isUsingDummyData={isUsingDummyData}
+                                    netSalesPieData={finalNetSalesPieData}
+                                    finalCm1ProfitPieData={finalCm1ProfitPieData}
+                                    cm2ProfitPieData={cm2ProfitPieData}
+                                    displayCurrency={displayCurrency}
+                                />
+                            </>
                         )}
-                    </div>
-                )}
+                        {activeTab === "inventory" && (
+                            <DashboardInventoryInsightsTab
+                                inventoryInsightsLoading={inventoryInsightsLoading}
+                                inventoryInsightsError={inventoryInsightsError}
+                                inventoryUnavailableNotice={inventoryUnavailableNotice}
+                                inventoryInsightsData={displayedInventoryInsightsData}
+                                platform={platform}
+                                selectedGlobalInventoryCountry={selectedGlobalInventoryCountry}
+                                setSelectedGlobalInventoryCountry={setSelectedGlobalInventoryCountry}
+                                globalInventoryCountryOptions={globalInventoryCountryOptions}
+                                selectedAgeingTrendBucket={selectedAgeingTrendBucket}
+                                handleAgeingTrendBucketChange={handleAgeingTrendBucketChange}
+                                handleInventoryInsightsExcelDownload={handleInventoryInsightsExcelDownload}
+                                canDownloadInventoryInsightsExcel={canDownloadInventoryInsightsExcel}
+                                handleHeatmapProductClick={handleHeatmapProductClick}
+                                countryName={countryName}
+                                salesLast30DaysLabel={inventoryInsightsSalesLabel}
+                                unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
+                                useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
+                                storageCostCurrencySymbol={inventoryStorageCostCurrencySymbol}
+                            />
+                        )}
 
-                {activeTab === "productwise" && (
-                    <>
-                        <DashboardProductwisePnlSection
-                            currencySymbol={currencySymbol}
-                            adsLoading={adsLoading}
-                            showAllMtdProductwiseRows={showAllMtdProductwiseRows}
-                            setShowAllMtdProductwiseRows={setShowAllMtdProductwiseRows}
-                            productwiseAllColumnsExpanded={productwiseAllColumnsExpanded}
-                            handleToggleProductwiseAllColumns={handleToggleProductwiseAllColumns}
-                            handleDownloadPlProductwiseMtd={handleDownloadPlProductwiseMtd}
-                            shouldShowDummyUi={shouldShowDummyUi}
-                            loading={loading}
-                            monthlySkuwiseRows={monthlySkuwiseRows}
-                            finalMonthlySkuwiseRowsForTable={finalMonthlySkuwiseRowsForTable}
-                            shouldScrollMtdProductwiseTable={shouldScrollMtdProductwiseTable}
-                            productwiseHasExpandedGroups={productwiseHasExpandedGroups}
-                            setProductwiseAnyGroupExpanded={setProductwiseAnyGroupExpanded}
-                            SKUWISE_LEFT_COLS={SKUWISE_LEFT_COLS}
-                            SKUWISE_GROUPS={SKUWISE_GROUPS}
-                            SKUWISE_SINGLE_COLS={SKUWISE_SINGLE_COLS}
-                            productwiseInitialCollapsed={productwiseInitialCollapsed}
-                            productwiseCollapsed={productwiseCollapsed}
-                            setProductwiseCollapsed={setProductwiseCollapsed}
-                            setProductwiseAllColumnsExpanded={setProductwiseAllColumnsExpanded}
-                            PRODUCTWISE_GROUP_IDS={PRODUCTWISE_GROUP_IDS}
-                            plSortConfig={plSortConfig}
-                            setPlSortConfig={setPlSortConfig}
-                            getAdsSignForCol={getAdsSignForCol}
-                            mtdProductwiseTableScrollHeight={mtdProductwiseTableScrollHeight}
-                            toNumber={toNumber}
-                            getSkuwiseDisplayProductName={getSkuwiseDisplayProductName}
-                            openPnlSkuDrawer={openPnlSkuDrawer}
-                            renderLiveNetSalesDelta={renderLiveNetSalesDelta}
-                            formatAdsNumber={formatAdsNumber}
-                            formatAdType={formatAdType}
-                            costOfAds={costOfAds}
-                            formatSummaryRounded={formatSummaryRounded}
-                            sponsoredBrandSpend={sponsoredBrandSpend}
-                            dealVouchers={dealVouchers}
-                            platformFee={platformFee}
-                            plSummaryTotals={plSummaryTotals}
-                            formatSummaryValue={formatSummaryValue}
-                            lost_inventory_total={lost_inventory_total}
-                            otherPlatformFee={otherPlatformFee}
-                            countryName={countryName}
-                            isUsPnlSkuLayout={isUsPnlSkuLayout}
-                            isUkPnlSkuLayout={isUkPnlSkuLayout}
-                            getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
-                            totalRowCm2Profit={totalRowCm2Profit}
-                            totalRowCm2Margins={totalRowCm2Margins}
-                            tacosFromDisplayedCardsForSummary={tacosFromDisplayedCardsForSummary}
-                            reimbursementForSummary={reimbursementForSummary}
-                            reimbursementVsCm2PctForSummary={reimbursementVsCm2PctForSummary}
-                            reimbursementVsSalesPctForSummary={reimbursementVsSalesPctForSummary}
-                        />
-
-                        <DashboardMtdPlSection
-                            isMtdPlExpanded={isMtdPlExpanded}
-                            setIsMtdPlExpanded={setIsMtdPlExpanded}
-                            chartRef={chartRef}
-                            countryNameForGraph={countryNameForGraph}
-                            formattedMonthYear={formattedMonthYear}
-                            currencySymbol={currencySymbol}
-                            finalBarLabels={finalBarLabels}
-                            finalBarValues={finalBarValues}
-                            finalPrevBarValues={finalPrevBarValues}
-                            colors={colors}
-                            shouldShowDummyUi={shouldShowDummyUi}
-                            loading={loading}
-                            finalAllValuesZero={finalAllValuesZero}
-                            isUsingDummyData={isUsingDummyData}
-                            netSalesPieData={finalNetSalesPieData}
-                            finalCm1ProfitPieData={finalCm1ProfitPieData}
-                            cm2ProfitPieData={cm2ProfitPieData}
-                            displayCurrency={displayCurrency}
-                        />
-                    </>
-                )}
-                {activeTab === "inventory" && (
-                    <DashboardInventoryInsightsTab
-                        inventoryInsightsLoading={inventoryInsightsLoading}
-                        inventoryInsightsError={inventoryInsightsError}
-                        inventoryUnavailableNotice={inventoryUnavailableNotice}
-                        inventoryInsightsData={displayedInventoryInsightsData}
-                        platform={platform}
-                        selectedGlobalInventoryCountry={selectedGlobalInventoryCountry}
-                        setSelectedGlobalInventoryCountry={setSelectedGlobalInventoryCountry}
-                        globalInventoryCountryOptions={globalInventoryCountryOptions}
-                        selectedAgeingTrendBucket={selectedAgeingTrendBucket}
-                        handleAgeingTrendBucketChange={handleAgeingTrendBucketChange}
-                        handleInventoryInsightsExcelDownload={handleInventoryInsightsExcelDownload}
-                        canDownloadInventoryInsightsExcel={canDownloadInventoryInsightsExcel}
-                        handleHeatmapProductClick={handleHeatmapProductClick}
-                        countryName={countryName}
-                        salesLast30DaysLabel={inventoryInsightsSalesLabel}
-                        unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
-                        useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
-                        storageCostCurrencySymbol={inventoryStorageCostCurrencySymbol}
-                    />
-                )}
-
-                {activeTab === "reviews" && (
-                    <CustomerReviewsClient />
-                )}
+                        {activeTab === "reviews" && (
+                            <CustomerReviewsClient />
+                        )}
                     </>
                 )}
             </PreviewLockedSection>
