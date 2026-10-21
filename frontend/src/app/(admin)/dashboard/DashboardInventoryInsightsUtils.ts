@@ -175,7 +175,7 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
     {
         key: "estimated_storage_cost",
         label: "Estimate Storage",
-        description: "Monthly storage estimate",
+        description: "Includes Short Term and Long Term",
         color: "#C49466",
     },
 ];
@@ -221,7 +221,7 @@ const INVENTORY_ACTION_META: Record<
     },
     estimated_storage_cost: {
         label: "Estimate Storage",
-        description: "Monthly storage estimate",
+        description: "Includes Short Term and Long Term",
         color: "#C49466",
         backgroundColor: "#ffffff",
     },

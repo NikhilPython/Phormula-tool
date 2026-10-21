@@ -52,6 +52,8 @@ type InventoryInsightsSectionProps = {
     salesLast30DaysLabel?: string;
     useCurrentInventoryTableLayout?: boolean;
     storageCostCurrencySymbol?: string;
+    showStorageCostColumn?: boolean;
+    storageCostDescription?: string;
     inventoryAgeSummary?: {
         total?: number;
         current_month_units_sold_total?: number;
@@ -113,6 +115,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     inventoryAgeSummary,
     useCurrentInventoryTableLayout = false,
     storageCostCurrencySymbol = "$",
+    showStorageCostColumn = true,
+    storageCostDescription,
 }) => {
     const hasHeatmap = heatmapBuckets.length > 0 && heatmapData.length > 0;
     const hasDonut = donutData.length > 0;
@@ -120,6 +124,20 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
         !!trendSelectedBucket &&
         (trendData.length > 0 || trendAllSeriesData.length > 0);
     const hasActions = actions.length > 0;
+    const displayedActions = storageCostDescription
+        ? actions.map((action) =>
+            action.key === "estimated_storage_cost"
+                ? { ...action, description: storageCostDescription }
+                : action
+        )
+        : actions;
+    const displayedActionLogic = storageCostDescription
+        ? actionLogic.map((item) =>
+            item.key === "estimated_storage_cost"
+                ? { ...item, description: storageCostDescription }
+                : item
+        )
+        : actionLogic;
 
     if (!hasHeatmap && !hasDonut && !hasTrend && !hasActions) {
         return null;
@@ -132,8 +150,8 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                     <ActionBasedDashboard
                         title="Action-Based Dashboard"
                         subtitle=""
-                        actions={actions}
-                        actionLogic={actionLogic}
+                        actions={displayedActions}
+                        actionLogic={displayedActionLogic}
                         onViewDetails={onActionViewDetails}
                     />
                 )}
@@ -161,6 +179,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         unitSalesDataKey={unitSalesDataKey}
                         useCurrentInventoryTableLayout={useCurrentInventoryTableLayout}
                         storageCostCurrencySymbol={storageCostCurrencySymbol}
+                        showStorageCostColumn={showStorageCostColumn}
                     />
                 )}
 

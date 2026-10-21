@@ -99,6 +99,7 @@ type AgeingRiskHeatmapProps = {
     showInventoryAlerts?: boolean;
     useCurrentInventoryTableLayout?: boolean;
     storageCostCurrencySymbol?: string;
+    showStorageCostColumn?: boolean;
 
     showExcelDownload?: boolean;
     excelFilename?: string;
@@ -601,6 +602,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     showInventoryAlerts = true,
     useCurrentInventoryTableLayout = false,
     storageCostCurrencySymbol = "$",
+    showStorageCostColumn = true,
     showExcelDownload = true,
     excelFilename = "ageing-risk-heatmap.xlsx",
     excelTitleLine,
@@ -1232,7 +1234,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const singleCols: LeafCol<HeatmapTableRow>[] = useCurrentInventoryTableLayout
             ? [
                 ...scrollableIdentityCols,
-                makeCol("storageCostUsd", storageCostHeaderLabel, "120px"),
+                ...(showStorageCostColumn
+                    ? [makeCol("storageCostUsd", storageCostHeaderLabel, "120px")]
+                    : []),
                 ...(showAlertsColumn
                     ? [
                         {
@@ -1308,7 +1312,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                 { type: "group" as const, id: "unsellableInventory" },
                 { type: "group" as const, id: "fbaBreakup" },
                 { type: "group" as const, id: "salesCoverage" },
-                { type: "single" as const, key: "storageCostUsd" },
+                ...(showStorageCostColumn
+                    ? [{ type: "single" as const, key: "storageCostUsd" }]
+                    : []),
                 ...(showAlertsColumn
                     ? [{ type: "single" as const, key: "inventoryAlert" }]
                     : []),
@@ -1749,6 +1755,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         unitSalesDataKey,
         useCurrentInventoryTableLayout,
         storageCostHeaderLabel,
+        showStorageCostColumn,
     ]);
 
     const currentInventoryCollapsedState = useMemo(
@@ -1805,6 +1812,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
             useCurrentInventoryTableLayout,
             unitSalesDataKey,
             storageCostCurrencySymbol,
+            showStorageCostColumn,
         });
     };
 

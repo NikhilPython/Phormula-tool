@@ -1757,8 +1757,8 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   },
   {
     key: 'estimated_storage_cost',
-    label: 'Estimate Storage',
-    description: 'Monthly storage estimate',
+    label: 'Storage Cost',
+    description: 'Includes Short Term and Long Term',
     color: '#C49466',
   },
 ];
@@ -3426,7 +3426,7 @@ const buildInventoryInsightsFromResponses = (
 
     {
       key: 'estimated_storage_cost',
-      label: 'Estimate Storage',
+      label: 'Storage Cost',
       count: totalEstimatedStorageCost,
       displayValue: formatInventoryStorageCost(
         totalEstimatedStorageCost,
@@ -3439,7 +3439,7 @@ const buildInventoryInsightsFromResponses = (
       ),
       delta: storageCostDelta,
       deltaPercentage: storageCostDeltaPercentage,
-      description: 'Monthly storage estimate',
+      description: 'Includes Short Term and Long Term',
       color: '#C49466',
       backgroundColor: '#ffffff',
     },
@@ -4207,7 +4207,11 @@ export default function InputCostPage({ params }: Params) {
     () =>
       isNA
         ? createZeroInventoryInsightsData(
-          getCurrencySymbol(getCurrencyForCountry(inventoryInsightsReportCountry))
+          getCurrencySymbol(getCurrencyForCountry(inventoryInsightsReportCountry)),
+          {
+            label: "Storage Cost",
+            description: "Includes Short Term and Long Term",
+          }
         )
         : inventoryInsightsData,
     [inventoryInsightsData, inventoryInsightsReportCountry, isNA]
@@ -6902,6 +6906,7 @@ export default function InputCostPage({ params }: Params) {
       storageCostCurrencySymbol: getCurrencySymbol(
         getCurrencyForCountry(inventoryInsightsReportCountry)
       ),
+      showStorageCostColumn: false,
     });
   };
 
@@ -7639,6 +7644,8 @@ export default function InputCostPage({ params }: Params) {
                     storageCostCurrencySymbol={getCurrencySymbol(
                       getCurrencyForCountry(inventoryInsightsReportCountry)
                     )}
+                    showStorageCostColumn={false}
+                    storageCostDescription="Includes Short Term and Long Term"
                   />
                 </>
               ) : (

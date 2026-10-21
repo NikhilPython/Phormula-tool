@@ -13173,7 +13173,6 @@ export default function DashboardPage() {
                 .filter((row) => !row.isPercentageRow && !row.isTotalRow)
                 .reduce((total, row) => total + readInTransitUnits(row), 0);
         const inventoryCoverageRatio = parseOverviewMetricNumber(
-            inventoryTotalRow?.coverageCurrentAndTransit ??
             inventoryTotalRow?.coverageRatio
         );
 

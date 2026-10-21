@@ -49,8 +49,15 @@ const zeroMonths: AgeingTrendItem[] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
 );
 
 export const createZeroInventoryInsightsData = (
-  storageCostCurrencySymbol = "$"
+  storageCostCurrencySymbol = "$",
+  storageCostCopy: {
+    label?: string;
+    description?: string;
+  } = {}
 ): ZeroInventoryInsightsData => {
+  const storageCostLabel = storageCostCopy.label ?? "Estimate Storage";
+  const storageCostDescription =
+    storageCostCopy.description ?? "Includes Short Term and Long Term";
   const zeroHeatmapValues = {
     zeroToNinety: 0,
     ninetyOneToOneEighty: 0,
@@ -100,7 +107,12 @@ export const createZeroInventoryInsightsData = (
     { key: "high_alert", label: "High Alert", description: "Shipment Required", color: "#B75A5A" },
     { key: "liquidate", label: "Liquidate", description: "Stock older than 180 days", color: "#ED9F50" },
     { key: "unfulfillable", label: "Unfulfillable", description: "Remove or dispose stock", color: "#3A8EA4" },
-    { key: "estimated_storage_cost", label: "Estimate Storage", description: "Monthly storage estimate", color: "#C49466" },
+    {
+      key: "estimated_storage_cost",
+      label: storageCostLabel,
+      description: storageCostDescription,
+      color: "#C49466",
+    },
   ];
 
   const actions: ActionCardItem[] = actionLogic.map((item) => ({

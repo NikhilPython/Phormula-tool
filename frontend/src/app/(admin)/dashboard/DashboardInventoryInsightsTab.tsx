@@ -134,6 +134,7 @@ export default function DashboardInventoryInsightsTab({
                                     unitSalesDataKey={unitSalesDataKey}
                                     useCurrentInventoryTableLayout={useCurrentInventoryTableLayout}
                                     storageCostCurrencySymbol={storageCostCurrencySymbol}
+                                    storageCostDescription="Includes Short Term and Long Term"
                                 />
                             </>
                         ) : (

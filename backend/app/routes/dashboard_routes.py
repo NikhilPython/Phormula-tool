@@ -219,12 +219,9 @@ def getDispatchfile():
         requested_month = month.strip().lower()
         requested_year = int(year)
 
-        current_month = datetime.now().strftime("%B").lower()
-        current_year = datetime.now().year
-
-        # Existing naming behavior preserved
-        effective_month = current_month if requested_year == current_year else requested_month
-        short_month = effective_month[:3].lower()
+        # Dispatch Planning is period-specific. Always resolve the forecast file
+        # from the month requested by the UI, including for the current year.
+        short_month = requested_month[:3].lower()
 
         def fetch_latest_stored_file(user_id: int, ctry: str, short_month: str):
             """
@@ -239,6 +236,7 @@ def getDispatchfile():
                 WHERE user_id = :user_id
                   AND LOWER(country) = LOWER(:country)
                   AND kind = 'inventory_forecast'
+                  AND year = :year
                   AND LOWER(filename) LIKE LOWER(:like_pattern)
                 ORDER BY id DESC
                 LIMIT 1
@@ -248,6 +246,7 @@ def getDispatchfile():
                 row = conn.execute(q, {
                     "user_id": user_id,
                     "country": ctry.lower(),
+                    "year": str(requested_year),
                     "like_pattern": like_pattern
                 }).fetchone()
 

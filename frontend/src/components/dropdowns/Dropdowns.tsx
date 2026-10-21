@@ -35,6 +35,7 @@ import AmazonAdsConnect from "@/features/integration/AmazonAdsConnectLegacy";
 import AmazonFetchSuccessModal from "@/features/integration/AmazonFetchSuccessModal";
 import InventoryInsightsSection from "@/components/common/inventory/InventoryInsightsSection";
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
+import type { DashboardActionItem } from "@/components/dashboard/DashboardActionItemsTab";
 import PnlSummaryOverview, {
   type PnlSummaryOverviewData,
   type SummaryDestination,
@@ -330,6 +331,13 @@ type InventoryInsightsData = {
   actions: ActionCardItem[];
   actionLogic: ActionLogicItem[];
   inventoryAgeSummary?: InventoryCurrentApiResponse["inventory_age_summary"];
+};
+
+type OverviewDispatchSummary = {
+  seaUnits: number;
+  airUnits: number;
+  seaSkus: number;
+  airSkus: number;
 };
 
 type InventoryAgeSummaryItem = {
@@ -1348,6 +1356,111 @@ const toNum = (v: any) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   const n = Number(String(v).replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : 0;
+};
+
+const parseDispatchWorkbookSummary = async (
+  data: ArrayBuffer
+): Promise<OverviewDispatchSummary> => {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(data);
+
+  const worksheet =
+    workbook.worksheets.find(
+      (sheet) => sheet.name.trim().toLowerCase() === "dispatch"
+    ) ?? workbook.worksheets[0];
+
+  if (!worksheet) {
+    throw new Error("Dispatch worksheet not found");
+  }
+
+  let headerRowNumber = 0;
+  const columnByHeader = new Map<string, number>();
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (headerRowNumber) return;
+
+    const candidateHeaders = new Map<string, number>();
+    for (let columnNumber = 1; columnNumber <= row.cellCount; columnNumber += 1) {
+      const header = row.getCell(columnNumber).text.trim().toLowerCase();
+      if (header) candidateHeaders.set(header, columnNumber);
+    }
+
+    if (
+      candidateHeaders.has("product name") &&
+      candidateHeaders.has("sea") &&
+      candidateHeaders.has("air")
+    ) {
+      headerRowNumber = rowNumber;
+      candidateHeaders.forEach((columnNumber, header) => {
+        columnByHeader.set(header, columnNumber);
+      });
+    }
+  });
+
+  if (!headerRowNumber) {
+    throw new Error("Dispatch headers not found");
+  }
+
+  const productColumn = columnByHeader.get("product name") ?? 0;
+  const skuColumn = columnByHeader.get("sku") ?? 0;
+  const seaColumn = columnByHeader.get("sea") ?? 0;
+  const airColumn = columnByHeader.get("air") ?? 0;
+
+  let seaUnits = 0;
+  let airUnits = 0;
+  let totalSeaUnits: number | undefined;
+  let totalAirUnits: number | undefined;
+  const seaSkuSet = new Set<string>();
+  const airSkuSet = new Set<string>();
+
+  const readNumber = (rowNumber: number, columnNumber: number) => {
+    if (!columnNumber) return 0;
+    const cell = worksheet.getRow(rowNumber).getCell(columnNumber);
+    const rawValue = cell.value;
+
+    if (typeof rawValue === "number") return Number.isFinite(rawValue) ? rawValue : 0;
+    if (
+      rawValue &&
+      typeof rawValue === "object" &&
+      "result" in rawValue &&
+      typeof rawValue.result === "number"
+    ) {
+      return Number.isFinite(rawValue.result) ? rawValue.result : 0;
+    }
+
+    return toNum(cell.text);
+  };
+
+  for (let rowNumber = headerRowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const productName = productColumn
+      ? row.getCell(productColumn).text.trim().toLowerCase()
+      : "";
+    const sea = Math.max(0, readNumber(rowNumber, seaColumn));
+    const air = Math.max(0, readNumber(rowNumber, airColumn));
+
+    if (productName === "total" || productName === "grand total") {
+      totalSeaUnits = sea;
+      totalAirUnits = air;
+      continue;
+    }
+
+    seaUnits += sea;
+    airUnits += air;
+
+    const sku = skuColumn ? row.getCell(skuColumn).text.trim().toUpperCase() : "";
+    if (sku && sku !== "-" && sku !== "N/A") {
+      if (sea > 0) seaSkuSet.add(sku);
+      if (air > 0) airSkuSet.add(sku);
+    }
+  }
+
+  return {
+    seaUnits: totalSeaUnits ?? seaUnits,
+    airUnits: totalAirUnits ?? airUnits,
+    seaSkus: seaSkuSet.size,
+    airSkus: airSkuSet.size,
+  };
 };
 
 const calculateTacos = (netSales: any, adsCost: any) => {
@@ -4500,8 +4613,8 @@ const INVENTORY_ACTION_LOGIC: ActionLogicItem[] = [
   },
   {
     key: "estimated_storage_cost",
-    label: "Estimate Storage",
-    description: "Monthly storage estimate",
+    label: "Storage Cost",
+    description: "Includes Short Term and Long Term",
     color: "#C49466",
   },
 ];
@@ -4546,8 +4659,8 @@ const INVENTORY_ACTION_META: Record<
     backgroundColor: "#ffffff",
   },
   estimated_storage_cost: {
-    label: "Estimate Storage",
-    description: "Monthly storage estimate",
+    label: "Storage Cost",
+    description: "Includes Short Term and Long Term",
     color: "#C49466",
     backgroundColor: "#ffffff",
   },
@@ -6380,8 +6493,8 @@ const inventoryActions: ActionCardItem[] = [
   },
   {
     key: "estimated_storage_cost",
-    label: "Estimate Storage",
-    description: "Monthly storage estimate",
+    label: "Storage Cost",
+    description: "Includes Short Term and Long Term",
     count: 11,
     displayValue: "£428.12",
     deltaValue: "£194.42",
@@ -6426,8 +6539,8 @@ const inventoryActionLogic: ActionLogicItem[] = [
   },
   {
     key: "estimated_storage_cost",
-    label: "Estimate Storage",
-    description: "Monthly storage estimate",
+    label: "Storage Cost",
+    description: "Includes Short Term and Long Term",
     color: "#C49466",
   },
 ];
@@ -6621,7 +6734,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [inventoryInsightsData, setInventoryInsightsData] =
     useState<InventoryInsightsData | null>(
       isDemoMode
-        ? createZeroInventoryInsightsData(currencySymbol)
+        ? createZeroInventoryInsightsData(currencySymbol, {
+          label: "Storage Cost",
+          description: "Includes Short Term and Long Term",
+        })
         : null
     );
 
@@ -6631,6 +6747,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     inventory: InventoryCurrentApiResponse[];
     ageSummary: InventoryAgeSummaryApiResponse[];
   } | null>(null);
+  const [overviewActionItems, setOverviewActionItems] = useState<DashboardActionItem[]>([]);
+  const [overviewActionItemsLoading, setOverviewActionItemsLoading] = useState(false);
+  const [overviewDispatchSummary, setOverviewDispatchSummary] =
+    useState<OverviewDispatchSummary | null>(null);
+  const [overviewDispatchLoading, setOverviewDispatchLoading] = useState(false);
 
   // Only show countries that are actually present in the Global inventory response.
   const availableGlobalInventoryCountries = useMemo(() => {
@@ -8598,6 +8719,178 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     "December",
   ];
 
+  const overviewPeriod = (() => {
+    if (range === "monthly") {
+      return {
+        month: String(selectedMonth || "").toLowerCase(),
+        year: String(selectedYear || ""),
+      };
+    }
+
+    if (range === "quarterly" && selectedQuarter) {
+      const quarterMonths = quarterToMonths[selectedQuarter];
+      return {
+        month: String(quarterMonths[quarterMonths.length - 1] || "").toLowerCase(),
+        year: String(selectedYear || ""),
+      };
+    }
+
+    const selectedYearNumber = Number(selectedYear);
+    const now = new Date();
+    if (selectedYearNumber < now.getFullYear()) {
+      return { month: "december", year: String(selectedYearNumber) };
+    }
+    if (selectedYearNumber === now.getFullYear()) {
+      if (now.getMonth() === 0) return { month: "", year: "" };
+      return {
+        month: monthNames[now.getMonth() - 1].toLowerCase(),
+        year: String(selectedYearNumber),
+      };
+    }
+
+    return { month: "", year: "" };
+  })();
+  const overviewActionMonth = overviewPeriod.month;
+  const overviewActionYear = overviewPeriod.year;
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setOverviewActionItems([]);
+      setOverviewActionItemsLoading(false);
+      return;
+    }
+
+    if (!token || !countryName || !overviewActionYear || !overviewActionMonth) {
+      setOverviewActionItems([]);
+      setOverviewActionItemsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const fetchOverviewActionItems = async () => {
+      setOverviewActionItems([]);
+      setOverviewActionItemsLoading(true);
+
+      try {
+        const url = new URL(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/dashboard/action-items`
+        );
+        url.searchParams.set("country_key", String(countryName).toLowerCase());
+        url.searchParams.set("month_name", overviewActionMonth);
+        url.searchParams.set("year", overviewActionYear);
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok || payload?.success === false) {
+          throw new Error(
+            payload?.message ||
+            payload?.error ||
+            `Action items failed: ${response.status}`
+          );
+        }
+
+        setOverviewActionItems(
+          Array.isArray(payload?.items) ? payload.items : []
+        );
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setOverviewActionItems([]);
+      } finally {
+        if (!controller.signal.aborted) {
+          setOverviewActionItemsLoading(false);
+        }
+      }
+    };
+
+    void fetchOverviewActionItems();
+
+    return () => controller.abort();
+  }, [
+    countryName,
+    isDemoMode,
+    overviewActionMonth,
+    overviewActionYear,
+    token,
+  ]);
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setOverviewDispatchSummary(null);
+      setOverviewDispatchLoading(false);
+      return;
+    }
+
+    if (
+      !token ||
+      !countryName ||
+      !overviewPeriod.month ||
+      !overviewPeriod.year
+    ) {
+      setOverviewDispatchSummary(null);
+      setOverviewDispatchLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const fetchOverviewDispatch = async () => {
+      setOverviewDispatchSummary(null);
+      setOverviewDispatchLoading(true);
+
+      try {
+        const url = new URL(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile`
+        );
+        url.searchParams.set("country", countryName);
+        url.searchParams.set("month", overviewPeriod.month);
+        url.searchParams.set("year", overviewPeriod.year);
+
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(
+            payload?.error || `Dispatch Planning failed: ${response.status}`
+          );
+        }
+
+        const summary = await parseDispatchWorkbookSummary(
+          await response.arrayBuffer()
+        );
+        if (!controller.signal.aborted) setOverviewDispatchSummary(summary);
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setOverviewDispatchSummary(null);
+      } finally {
+        if (!controller.signal.aborted) setOverviewDispatchLoading(false);
+      }
+    };
+
+    void fetchOverviewDispatch();
+    return () => controller.abort();
+  }, [
+    countryName,
+    isDemoMode,
+    overviewPeriod.month,
+    overviewPeriod.year,
+    token,
+  ]);
+
   const fetchSingleMonthTargetSummary = async (
     monthName: string,
     yearValue: string | number = selectedYear
@@ -9588,7 +9881,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   useEffect(() => {
     if (isDemoMode) {
       setInventoryRawResponses(null);
-      setInventoryInsightsData(createZeroInventoryInsightsData(currencySymbol));
+      setInventoryInsightsData(
+        createZeroInventoryInsightsData(currencySymbol, {
+          label: "Storage Cost",
+          description: "Includes Short Term and Long Term",
+        })
+      );
 
       return;
     }
@@ -10298,7 +10596,135 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const healthyAction = findInventoryAction("healthy", "age_0_90");
     const highAlertAction = findInventoryAction("high_alert");
+    const liquidateAction = findInventoryAction("liquidate");
     const estimatedStorageAction = findInventoryAction("estimated_storage_cost");
+
+    const parseOverviewNumber = (value: unknown): number | undefined => {
+      if (value === undefined || value === null || value === "") return undefined;
+
+      const numericValue = Number(
+        String(value).replace(/,/g, "").replace(/%/g, "").trim()
+      );
+      return Number.isFinite(numericValue) ? numericValue : undefined;
+    };
+
+    const inventoryHeatmapRows = inventoryInsightsData?.heatmapData ?? [];
+    const inventoryTotalRow = inventoryHeatmapRows.find((row) => {
+      const productName = String(row.productName || "").trim().toLowerCase();
+      const sku = String(row.sku || "").trim().toLowerCase();
+
+      return (
+        row.isTotalRow === true ||
+        productName === "total" ||
+        productName === "grand total" ||
+        sku === "total" ||
+        sku === "grand total"
+      );
+    });
+    const inventoryProductRows = inventoryHeatmapRows.filter(
+      (row) => !row.isTotalRow && !row.isPercentageRow
+    );
+    const resolveInventoryTotal = (
+      readValue: (row: AgeingRiskHeatmapRow) => number | undefined,
+      fallback?: number
+    ): number | undefined => {
+      const totalRowValue = inventoryTotalRow
+        ? readValue(inventoryTotalRow)
+        : undefined;
+      if (totalRowValue !== undefined) return totalRowValue;
+
+      const rowValues = inventoryProductRows
+        .map(readValue)
+        .filter((value): value is number => value !== undefined);
+
+      return rowValues.length > 0
+        ? rowValues.reduce((total, value) => total + value, 0)
+        : fallback;
+    };
+    const readTotalInStock = (row: AgeingRiskHeatmapRow) => {
+      const explicitTotal = parseOverviewNumber(row.totalInStock);
+      if (explicitTotal !== undefined) return explicitTotal;
+
+      const currentFba = parseOverviewNumber(row.currentFba);
+      const currentAwd = parseOverviewNumber(row.currentAwd);
+      if (currentFba === undefined && currentAwd === undefined) return undefined;
+
+      return (currentFba ?? 0) + (currentAwd ?? 0);
+    };
+    const readTotalInTransit = (row: AgeingRiskHeatmapRow) => {
+      const explicitTotal = parseOverviewNumber(row.totalInTransit);
+      if (explicitTotal !== undefined) return explicitTotal;
+
+      const transitFba = parseOverviewNumber(row.transitFba ?? row.fcTransfer);
+      const transitAwd = parseOverviewNumber(row.transitAwd ?? row.inboundUnits);
+      if (transitFba === undefined && transitAwd === undefined) return undefined;
+
+      return (transitFba ?? 0) + (transitAwd ?? 0);
+    };
+    const readAgeingInventory = (row: AgeingRiskHeatmapRow) => {
+      const values = [
+        row.oneEightyOneToTwoSeventy,
+        row.twoSeventyOneToThreeSixtyFive,
+        row.threeSixtyFivePlus,
+      ].map(parseOverviewNumber);
+
+      return values.some((value) => value !== undefined)
+        ? values.reduce<number>((total, value) => total + (value ?? 0), 0)
+        : undefined;
+    };
+
+    const totalInventoryUnits = resolveInventoryTotal(
+      readTotalInStock,
+      toNum(inventoryInsightsData?.donutTotalUnits)
+    );
+    const inTransitUnits = resolveInventoryTotal(readTotalInTransit);
+    const inventoryCoverageRatio = parseOverviewNumber(
+      inventoryTotalRow?.coverageRatio
+    );
+    const ageingInventoryUnits =
+      parseOverviewNumber(liquidateAction?.unitCount) ??
+      resolveInventoryTotal(readAgeingInventory);
+
+    const getOverviewActionMetric = (itemId: string, metricLabel: string) => {
+      const item = overviewActionItems.find((action) => action.id === itemId);
+      const metric = item?.metrics.find(
+        (entry) =>
+          entry.label.trim().toLowerCase() === metricLabel.toLowerCase()
+      );
+
+      return parseOverviewNumber(metric?.value);
+    };
+    const airDispatchUnits = overviewDispatchSummary?.airUnits;
+    const seaDispatchUnits = overviewDispatchSummary?.seaUnits;
+    const airDispatchSkus = overviewDispatchSummary?.airSkus;
+    const seaDispatchSkus = overviewDispatchSummary?.seaSkus;
+
+    const returnTotalRow = displaySkuRows.find((row) => {
+      const productName = String(row.product_name || "").trim().toLowerCase();
+      const sku = String(row.sku || "").trim().toLowerCase();
+      return productName === "total" || sku === "total";
+    });
+    const returnRateRows = returnTotalRow
+      ? [returnTotalRow]
+      : displaySkuRows.filter((row) => {
+        const productName = String(row.product_name || "").trim().toLowerCase();
+        const sku = String(row.sku || "").trim().toLowerCase();
+        return productName !== "total" && sku !== "total";
+      });
+    const historicUnitsSold = returnRateRows.reduce(
+      (total, row) =>
+        total + Math.abs(toNum(row.quantity ?? row.units_sold)),
+      0
+    );
+    const historicReturnedUnits = returnRateRows.reduce(
+      (total, row) =>
+        total + Math.abs(toNum(row.return_quantity ?? row.return_units)),
+      0
+    );
+    const returnRate =
+      historicUnitsSold > 0
+        ? (historicReturnedUnits / historicUnitsSold) * 100
+        : getOverviewActionMetric("high-return-rate", "Return rate");
 
     const summaryLines = (aiPanel?.summaryBullets ?? [])
       .map((line) => String(line || "").trim())
@@ -10403,11 +10829,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         loading: targetSummaryLoading,
       },
       inventory: {
-        totalUnits: toNum(inventoryInsightsData?.donutTotalUnits),
+        totalUnits: toNum(totalInventoryUnits),
+        inventoryCoverageRatio,
+        ageingInventoryUnits,
         healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
         healthyUnits: toNum(healthyAction?.unitCount),
         highAlertSkus: toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
         highAlertUnits: toNum(highAlertAction?.unitCount),
+        returnRate,
+        inTransitUnits,
+        seaDispatchUnits,
+        airDispatchUnits,
+        seaDispatchSkus,
+        airDispatchSkus,
+        storageCostLabel: "Storage Cost",
         estimatedStorageCost: String(
           estimatedStorageAction?.displayValue ??
           formatInventoryStorageCost(0, countryName, homeCurrency)
@@ -10418,7 +10853,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             : String(estimatedStorageAction.deltaValue),
         estimatedStorageCostDeltaPercentage:
           estimatedStorageAction?.deltaPercentage,
-        loading: inventoryInsightsLoading,
+        loading:
+          inventoryInsightsLoading ||
+          overviewActionItemsLoading ||
+          overviewDispatchLoading,
         unavailable: Boolean(inventoryInsightsError || (!inventoryInsightsLoading && !inventoryInsightsData)),
       },
     };
@@ -11767,6 +12205,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
                     useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
                     storageCostCurrencySymbol={currencySymbol}
+                    showStorageCostColumn={false}
+                    storageCostDescription="Includes Short Term and Long Term"
                   />
                 </>
               ) : (

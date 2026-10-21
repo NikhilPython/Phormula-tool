@@ -5226,6 +5226,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
   salesLast30DaysLabel?: string;
   unitSalesDataKey?: AgeingRiskSalesDataKey;
   storageCostCurrencySymbol?: string;
+  showStorageCostColumn?: boolean;
 }) => {
   const {
     wb,
@@ -5245,6 +5246,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
     salesLast30DaysLabel = "Sales Last 30 Days",
     unitSalesDataKey = "salesLast30Days",
     storageCostCurrencySymbol,
+    showStorageCostColumn = true,
   } = params;
 
   const toNum = (value: any) => toNumberLoose(value) ?? 0;
@@ -5493,10 +5495,9 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
   ];
 
   const rightCols = [
-    {
-      key: "storageCostUsd",
-      label: storageCostHeaderLabel,
-    },
+    ...(showStorageCostColumn
+      ? [{ key: "storageCostUsd", label: storageCostHeaderLabel }]
+      : []),
     ...(showInventoryAlerts
       ? [{ key: "inventoryAlert", label: "Alerts" }]
       : []),
@@ -5593,7 +5594,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
         "",
         "",
         "",
-        "",
+        ...(showStorageCostColumn ? [""] : []),
         ...(showInventoryAlerts ? [""] : []),
       ];
     }
@@ -5615,7 +5616,7 @@ const appendCurrentInventoryAgeingRiskSheet = (params: {
       formatNumber(salesValue),
       formatNumber(row.coverageRatio, 2),
       formatNumber(coverageCurrentAndTransit, 2),
-      formatNumber(row.storageCostUsd, 2),
+      ...(showStorageCostColumn ? [formatNumber(row.storageCostUsd, 2)] : []),
       ...(showInventoryAlerts ? [isTotalRow ? "" : row.inventoryAlert || ""] : []),
     ];
   });
@@ -5791,6 +5792,7 @@ export function exportAgeingRiskHeatmapExcel(params: {
   useCurrentInventoryTableLayout?: boolean;
   unitSalesDataKey?: AgeingRiskSalesDataKey;
   storageCostCurrencySymbol?: string;
+  showStorageCostColumn?: boolean;
 }) {
   const {
     filename,
@@ -5814,6 +5816,7 @@ export function exportAgeingRiskHeatmapExcel(params: {
     useCurrentInventoryTableLayout = false,
     unitSalesDataKey = "salesLast30Days",
     storageCostCurrencySymbol,
+    showStorageCostColumn = true,
   } = params;
 
   if (!dataRows?.length) return;
@@ -5839,6 +5842,7 @@ export function exportAgeingRiskHeatmapExcel(params: {
       salesLast30DaysLabel,
       unitSalesDataKey,
       storageCostCurrencySymbol,
+      showStorageCostColumn,
     });
 
     XLSX.writeFile(wb, filename);

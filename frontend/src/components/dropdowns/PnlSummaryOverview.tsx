@@ -98,6 +98,7 @@ export type PnlSummaryOverviewData = {
     airDispatchUnits?: number;
     seaDispatchSkus?: number;
     airDispatchSkus?: number;
+    storageCostLabel?: string;
     estimatedStorageCost: string;
     estimatedStorageCostDeltaValue?: string;
     estimatedStorageCostDeltaPercentage?: number | null;
@@ -324,7 +325,7 @@ const InventoryInsightsGrid = ({
       />
 
       <MetricTile
-        label="Estimated storage cost"
+        label={inventory.storageCostLabel ?? "Estimated storage cost"}
         value={value(roundFormattedValue(inventory.estimatedStorageCost))}
         trailing={
           loading ? null : (
