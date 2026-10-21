@@ -87,6 +87,7 @@ type Summary = {
 };
 
 type PnlCardMetricValues = {
+  Amazon_fees_total?: number;
   units: number;
   asp: number;
   gross_sales: number;
@@ -10153,6 +10154,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const previousMetrics = uploadsData?.card_metrics?.previous;
     const metricDeltas = uploadsData?.card_metrics?.deltas;
     const currentSummary = displayData;
+    const currentAmazonFeesTotal = currentMetrics?.Amazon_fees_total;
+    const previousAmazonFeesTotal = previousMetrics?.Amazon_fees_total;
+    const amazonFeesDelta = metricDeltas?.Amazon_fees_total;
+    const hasCurrentAmazonFeesTotal =
+      typeof currentAmazonFeesTotal === "number" &&
+      Number.isFinite(currentAmazonFeesTotal);
+    const hasPreviousAmazonFeesTotal =
+      typeof previousAmazonFeesTotal === "number" &&
+      Number.isFinite(previousAmazonFeesTotal);
 
     const cm2Margin =
       currentMetrics?.cm2_margin_pct ??
@@ -10353,11 +10363,25 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           previousValue: previousMetrics?.units,
         },
         marketplaceFees: {
-          value: currentMetrics?.marketplace_fees ?? marketplaceFeesFromTable,
-          delta: metricDeltas?.marketplace_fees,
-          previousValue: previousMetrics?.marketplace_fees,
-          perUnit: currentMetrics?.marketplace_fees_per_unit,
-          previousPerUnit: previousMetrics?.marketplace_fees_per_unit,
+          label: hasCurrentAmazonFeesTotal ? "Amazon fees" : "Marketplace fees",
+          value: hasCurrentAmazonFeesTotal
+            ? currentAmazonFeesTotal
+            : currentMetrics?.marketplace_fees ?? marketplaceFeesFromTable,
+          delta:
+            typeof amazonFeesDelta === "number" && Number.isFinite(amazonFeesDelta)
+              ? amazonFeesDelta
+              : metricDeltas?.marketplace_fees,
+          previousValue: hasPreviousAmazonFeesTotal
+            ? previousAmazonFeesTotal
+            : previousMetrics?.marketplace_fees,
+          perUnit:
+            hasCurrentAmazonFeesTotal && Number(currentMetrics?.units) > 0
+              ? currentAmazonFeesTotal / Number(currentMetrics?.units)
+              : currentMetrics?.marketplace_fees_per_unit,
+          previousPerUnit:
+            hasPreviousAmazonFeesTotal && Number(previousMetrics?.units) > 0
+              ? previousAmazonFeesTotal / Number(previousMetrics?.units)
+              : previousMetrics?.marketplace_fees_per_unit,
         },
         cm2Margin,
       },

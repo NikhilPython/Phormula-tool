@@ -30,6 +30,7 @@ export type SummaryDestination =
   | "inventoryInsights";
 
 type DeltaMetric = {
+  label?: string;
   value: number;
   delta?: number;
   previousValue?: number;
@@ -668,7 +669,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
 
           <SummaryMetricCard
-            title="Marketplace fees"
+            title={financial.marketplaceFees.label ?? "Marketplace fees"}
             value={formatMoneyWithPerUnit(
               financial.marketplaceFees.value,
               financial.marketplaceFees.perUnit,

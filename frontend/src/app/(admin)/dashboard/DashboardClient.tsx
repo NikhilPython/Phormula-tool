@@ -12888,21 +12888,29 @@ export default function DashboardPage() {
         const cm2ProfitKpi = getKpi("CM2 Profit");
         const targetKpi = getKpi("Target");
 
+        const amazonFeesMetric = backendDashboardMetric("Amazon_fees_total");
+        const hasAmazonFeesMetric =
+            amazonFeesMetric.current !== undefined &&
+            amazonFeesMetric.current !== null &&
+            Number.isFinite(Number(amazonFeesMetric.current));
         const marketplaceFeesIndex = finalBarLabels.indexOf("Marketplace Fees");
         const marketplaceFeesCurrent = Math.abs(
-            marketplaceFeesIndex >= 0
+            hasAmazonFeesMetric
+                ? toNumber(amazonFeesMetric.current)
+                : marketplaceFeesIndex >= 0
                 ? toNumber(finalBarValues[marketplaceFeesIndex])
                 : marketplaceFeesFromTable
         );
         const marketplaceFeesPrevious = Math.abs(
-            marketplaceFeesIndex >= 0
+            hasAmazonFeesMetric
+                ? toNumber(amazonFeesMetric.previous)
+                : marketplaceFeesIndex >= 0
                 ? toNumber(finalPrevBarValues[marketplaceFeesIndex])
                 : 0
         );
-        const marketplaceFeesDelta = safeDeltaPct(
-            marketplaceFeesCurrent,
-            marketplaceFeesPrevious
-        );
+        const marketplaceFeesDelta = hasAmazonFeesMetric
+            ? toNumber(amazonFeesMetric.change_percentage)
+            : safeDeltaPct(marketplaceFeesCurrent, marketplaceFeesPrevious);
 
         // Rank the complete product set. The table-facing rows may already be
         // limited to nine products and an aggregated "Others" row, depending
@@ -13124,15 +13132,18 @@ export default function DashboardPage() {
                     delta: unitsKpi.deltaPct ?? undefined,
                 },
                 marketplaceFees: {
+                    label: hasAmazonFeesMetric ? "Amazon fees" : "Marketplace fees",
                     value: marketplaceFeesCurrent,
                     previousValue: marketplaceFeesPrevious,
                     delta: marketplaceFeesDelta ?? undefined,
-                    perUnit:
-                        toNumber(unitsKpi.current) > 0
+                    perUnit: hasAmazonFeesMetric
+                        ? toNumber(amazonFeesMetric.current_per_unit)
+                        : toNumber(unitsKpi.current) > 0
                             ? marketplaceFeesCurrent / toNumber(unitsKpi.current)
                             : undefined,
-                    previousPerUnit:
-                        toNumber(unitsKpi.previous) > 0
+                    previousPerUnit: hasAmazonFeesMetric
+                        ? toNumber(amazonFeesMetric.previous_per_unit)
+                        : toNumber(unitsKpi.previous) > 0
                             ? marketplaceFeesPrevious / toNumber(unitsKpi.previous)
                             : undefined,
                 },
