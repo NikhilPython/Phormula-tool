@@ -498,6 +498,60 @@ def construct_skuwise_monthly_table_candidates(user_id, country_key, month_name,
     ]
 
 
+def attach_historical_storage_cost(rows, user_id, country_key, month_name, year):
+    """Use recorded storage fees for completed months, not next-month forecasts.
+
+    Retain the existing response field so the card and SKU table use the same
+    amounts. Missing monthly reports keep the available inventory estimate.
+    """
+    month_number = MONTH_NAME_TO_NUMBER.get(str(month_name or "").lower())
+    today = date.today()
+    if not month_number or (int(year), month_number) >= (today.year, today.month):
+        return rows
+
+    inspector = inspect(primary_engine)
+    existing = set(inspector.get_table_names(schema="public"))
+    table_name = next((name for name in construct_skuwise_monthly_table_candidates(
+        user_id, country_key, month_name, year,
+    ) if is_safe_identifier(name) and name in existing), None)
+    if table_name is None:
+        return rows
+
+    available = {col["name"] for col in inspector.get_columns(table_name, schema="public")}
+    if "storage_fee" not in available:
+        return rows
+    selected = [name for name in ("sku", "product_name", "storage_fee") if name in available]
+    query = text('SELECT ' + ', '.join(f'"{name}"' for name in selected)
+                 + f' FROM public."{table_name}"')
+    with primary_engine.connect() as connection:
+        records = connection.execute(query).mappings().all()
+    if not records:
+        return rows
+
+    by_sku = {}
+    recorded_total = None
+    for record in records:
+        sku = str(record.get("sku") or "").strip()
+        product = str(record.get("product_name") or "").strip().lower()
+        cost = to_number(record.get("storage_fee"))
+        if sku.lower() in {"total", "grand_total", "grand total"} or product in {"total", "grand total"}:
+            recorded_total = cost
+        else:
+            by_sku[sku] = by_sku.get(sku, 0) + cost
+    if recorded_total is None:
+        recorded_total = sum(by_sku.values())
+
+    updated = []
+    for row in rows:
+        row = dict(row)
+        row["estimated-storage-cost-next-month"] = round(
+            recorded_total if is_total_row(row)
+            else by_sku.get(str(row.get("SKU") or "").strip(), 0), 2,
+        )
+        updated.append(row)
+    return updated
+
+
 def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
     """
     Reads monthly SKU sales table and returns units sold by SKU.
@@ -2208,6 +2262,9 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             rows = previous_sales_rank_result["rows"]
             columns = previous_sales_rank_result["columns"]
 
+        rows = attach_historical_storage_cost(
+            rows, user_id, child_country, selected_month_for_units, year,
+        )
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
@@ -2832,6 +2889,9 @@ def get_inventory_current_table():
             rows = previous_sales_rank_result["rows"]
             columns = previous_sales_rank_result["columns"]
 
+        rows = attach_historical_storage_cost(
+            rows, user_id, country_key, selected_month_for_units, year,
+        )
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
