@@ -4,6 +4,7 @@ import React from "react";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import SegmentedToggle from "@/components/ui/SegmentedToggle";
 import { AiButton } from "@/components/ui/button/AiButton";
+import { ArrowLeft } from "lucide-react";
 
 type DashboardPageHeaderProps<TTab extends string = string> = {
     brandName: React.ReactNode;
@@ -26,6 +27,7 @@ type DashboardPageHeaderProps<TTab extends string = string> = {
     setActiveTab: (tab: TTab) => void;
     syncTabToHash: (tab: TTab) => void;
     showTabs?: boolean;
+    onBackToOverview?: () => void;
 };
 
 export default function DashboardPageHeader<TTab extends string = string>({
@@ -46,6 +48,7 @@ export default function DashboardPageHeader<TTab extends string = string>({
     setActiveTab,
     syncTabToHash,
     showTabs = true,
+    onBackToOverview,
 }: DashboardPageHeaderProps<TTab>) {
     const stickyHeaderRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -139,19 +142,34 @@ export default function DashboardPageHeader<TTab extends string = string>({
 
             {showTabs && (
                 <div className="border-b border-gray-200 bg-[#F7F7F7] max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
-                    <SegmentedToggle<TTab>
-                        value={activeTab}
-                        options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
-                        onChange={(tab) => {
-                            shouldScrollTabTopRef.current = true;
+                    <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1 overflow-x-auto">
+                            <SegmentedToggle<TTab>
+                                value={activeTab}
+                                options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
+                                onChange={(tab) => {
+                                    shouldScrollTabTopRef.current = true;
 
-                            setActiveTab(tab);
-                            syncTabToHash(tab);
-                        }}
-                        className="mt-2 w-full"
-                        compact
-                        textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                    />
+                                    setActiveTab(tab);
+                                    syncTabToHash(tab);
+                                }}
+                                className="mt-2 w-full"
+                                compact
+                                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                            />
+                        </div>
+
+                        {onBackToOverview && (
+                            <button
+                                type="button"
+                                onClick={onBackToOverview}
+                                className="mt-2 inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-3 py-2 text-[10px] font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:px-4 sm:text-sm"
+                            >
+                                <ArrowLeft size={15} />
+                                Back to overview
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

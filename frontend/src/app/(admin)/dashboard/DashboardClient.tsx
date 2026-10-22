@@ -107,7 +107,7 @@ import { Toaster, toast } from "sonner";
 import { useHeaderNotifications } from "@/components/context/NotificationContext";
 import InventoryAgeGraphSection from "@/components/dashboard/InventoryAgeGraphSection";
 import SkuRecommendationDrawer from "@/components/dashboard/SkuRecommendationDrawer";
-import { ArrowLeft, CalendarDays } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import CustomerReviewsClient from "@/app/(admin)/customer-reviews/[countryName]/[month]/[year]/CustomerReviewsClient";
 import type {
     AgeingBucket,
@@ -13442,6 +13442,7 @@ export default function DashboardPage() {
                 setActiveTab={setActiveTab}
                 syncTabToHash={syncTabToHash}
                 showTabs={showDashboardDetails}
+                onBackToOverview={returnToOverview}
             />
 
             <PreviewLockedSection
@@ -13460,23 +13461,14 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <>
-                        <div className="mb-4 mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                        {/* <div className="mb-4 mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
                             <PageBreadcrumb
                                 pageTitle="Detailed Live Dashboard"
                                 textSize="lg"
                                 variant="page"
                                 align="left"
                             />
-
-                            <button
-                                type="button"
-                                onClick={returnToOverview}
-                                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-4 py-2 text-xs font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:text-sm"
-                            >
-                                <ArrowLeft size={15} />
-                                Back to overview
-                            </button>
-                        </div>
+                        </div> */}
 
                         {["summary", "productwise"].includes(activeTab) && (
                             <DashboardStickyKpis items={stickyKpiItems} />

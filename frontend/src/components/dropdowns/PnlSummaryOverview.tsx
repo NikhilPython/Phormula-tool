@@ -617,8 +617,7 @@ const SkuPerformanceTable = ({
           render: (row: SkuPerformanceTableRow) => (
             <div className="inline-flex items-center justify-center gap-2 whitespace-nowrap">
               <span
-                className={`inline-flex items-baseline gap-1 ${row.secondaryValue < 0 ? "text-rose-600" : "text-charcoal-500"
-                  }`}
+                className={`inline-flex items-baseline gap-1 text-charcoal-500 `}
               >
                 <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
                 {typeof row.secondaryPercentage === "number" &&

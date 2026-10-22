@@ -11152,57 +11152,61 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           </div>
         ) : (
           <>
-            <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            {/* <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
               <PageBreadcrumb
                 pageTitle="Detailed Financial Metrics"
                 textSize="lg"
                 variant="page"
                 align="left"
               />
-
-              <button
-                type="button"
-                onClick={returnToOverview}
-                className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-4 py-2 text-xs font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:text-sm"
-              >
-                <IoMdArrowBack className="text-sm" />
-                Back to overview
-              </button>
-            </div>
+            </div> */}
 
             <div
               ref={financeStickyTabsRef}
               className="sticky z-30 mt-3 border-b border-gray-200 bg-[#F7F7F7] max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2"
               style={{ top: "var(--finance-sticky-header-height, 0px)" }}
             >
-              <SegmentedToggle<DashboardTab>
-                value={activeTab}
-                options={TAB_OPTIONS}
-                onChange={(t) => {
-                  if (tabsDisabled?.[t]) return;
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  <SegmentedToggle<DashboardTab>
+                    value={activeTab}
+                    options={TAB_OPTIONS}
+                    onChange={(t) => {
+                      if (tabsDisabled?.[t]) return;
 
-                  shouldScrollTabTopRef.current = true;
-                  setActiveTab(t);
+                      shouldScrollTabTopRef.current = true;
+                      setActiveTab(t);
 
-                  if (t === "skuwiseProfit" && range === "monthly") {
-                    setRange("yearly");
-                    setSelectedMonth("");
-                    setSelectedQuarter("");
-                    setUploadsData({
-                      summary: zeroData,
-                      summaryComparisons: zeroComparisons,
-                    });
-                    setSkuRows([]);
-                    setSkuNoDataFound(false);
-                    setSkuRowsError(null);
-                  }
+                      if (t === "skuwiseProfit" && range === "monthly") {
+                        setRange("yearly");
+                        setSelectedMonth("");
+                        setSelectedQuarter("");
+                        setUploadsData({
+                          summary: zeroData,
+                          summaryComparisons: zeroComparisons,
+                        });
+                        setSkuRows([]);
+                        setSkuNoDataFound(false);
+                        setSkuRowsError(null);
+                      }
 
-                  syncTabToHash(t);
-                }}
-                className="w-full"
-                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                compact
-              />
+                      syncTabToHash(t);
+                    }}
+                    className="w-full"
+                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                    compact
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={returnToOverview}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-3 py-2 text-[10px] font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:px-4 sm:text-sm"
+                >
+                  <IoMdArrowBack className="text-sm" />
+                  Back to overview
+                </button>
+              </div>
             </div>
 
         {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
