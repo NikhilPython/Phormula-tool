@@ -1797,6 +1797,7 @@ def build_live_email_high_alert_summary_from_inventory_current(
         print("[WARN] Failed importing inventory current high-alert helpers:", e)
         return {
             "high_alert_sku_count": 0,
+            "high_alert_unit_count": 0,
             "average_coverage_ratio": 0,
             "high_alert_threshold": 0,
             "items": [],
@@ -1816,6 +1817,7 @@ def build_live_email_high_alert_summary_from_inventory_current(
     if not source_result.get("found"):
         return {
             "high_alert_sku_count": 0,
+            "high_alert_unit_count": 0,
             "average_coverage_ratio": 0,
             "high_alert_threshold": 0,
             "items": [],

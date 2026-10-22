@@ -86,6 +86,7 @@ export type PnlSummaryOverviewData = {
   };
   inventory: {
     totalUnits: number;
+    totalSkus?: number;
     inventoryCoverageRatio?: number;
     ageingInventoryUnits?: number;
     healthySkus: number;
@@ -93,7 +94,9 @@ export type PnlSummaryOverviewData = {
     highAlertSkus: number;
     highAlertUnits: number;
     returnRate?: number;
+    returnRateSkus?: number;
     inTransitUnits?: number;
+    inTransitSkus?: number;
     seaDispatchUnits?: number;
     airDispatchUnits?: number;
     seaDispatchSkus?: number;
@@ -212,7 +215,7 @@ const StorageCostDelta = ({
 }) => {
   if (typeof deltaPercentage !== "number") return null;
 
-  const DeltaIcon = deltaPercentage <= 0 ? TrendingDown : TrendingUp;
+  const deltaSymbol = deltaPercentage <= 0 ? "▼" : "▲";
 
   return (
     <span
@@ -224,7 +227,7 @@ const StorageCostDelta = ({
           : "Change vs previous month"
       }
     >
-      <DeltaIcon size={13} strokeWidth={2.5} />
+      <span aria-hidden="true">{deltaSymbol}</span>
       {formatPercentageNumber(Math.abs(deltaPercentage))}%
     </span>
   );
@@ -301,6 +304,15 @@ const InventoryInsightsGrid = ({
       <MetricTile
         label="Total inventory"
         value={value(`${formatWholeNumber(inventory.totalUnits)} units`)}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {typeof inventory.totalSkus === "number"
+                ? `${formatWholeNumber(inventory.totalSkus)} SKUs`
+                : "-"}
+            </span>
+          )
+        }
         accent="border-[#75BBDA]"
         compact
       />
@@ -310,9 +322,16 @@ const InventoryInsightsGrid = ({
         value={value(
           typeof inventory.inventoryCoverageRatio === "number" &&
             Number.isFinite(inventory.inventoryCoverageRatio)
-            ? `${formatPercentageNumber(inventory.inventoryCoverageRatio)} months`
+            ? formatPercentageNumber(inventory.inventoryCoverageRatio)
             : "-"
         )}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              in months
+            </span>
+          )
+        }
         accent="border-[#3A8EA4]"
         compact
       />
@@ -378,7 +397,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#FF5C5C]"
+        accent="border-[#B85C5C]"
         compact
       />
 
@@ -386,6 +405,15 @@ const InventoryInsightsGrid = ({
       <MetricTile
         label="Return rate"
         value={value(optionalPercentage(inventory.returnRate))}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {typeof inventory.returnRateSkus === "number"
+                ? `${formatWholeNumber(inventory.returnRateSkus)} SKUs`
+                : "-"}
+            </span>
+          )
+        }
         accent="border-[#C49466]"
         compact
       />
@@ -393,6 +421,15 @@ const InventoryInsightsGrid = ({
       <MetricTile
         label="In transit units"
         value={value(optionalUnits(inventory.inTransitUnits))}
+        trailing={
+          loading ? null : (
+            <span className="text-xs font-semibold text-slate-500">
+              {typeof inventory.inTransitSkus === "number"
+                ? `${formatWholeNumber(inventory.inTransitSkus)} SKUs`
+                : "-"}
+            </span>
+          )
+        }
         accent="border-[#75BBDA]"
         compact
       />

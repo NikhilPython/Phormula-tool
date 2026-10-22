@@ -257,6 +257,7 @@ type InventoryCurrentApiResponse = {
   high_alert_coverage_summary?: {
     average_coverage_ratio?: number;
     high_alert_sku_count?: number;
+    high_alert_unit_count?: number;
     high_alert_threshold?: number;
     items?: {
       alert?: string;
@@ -264,6 +265,7 @@ type InventoryCurrentApiResponse = {
       high_alert_threshold?: number;
       product_name?: string;
       sku?: string;
+      unit_count?: number;
     }[];
   };
 
@@ -4846,12 +4848,6 @@ const hasOlderThan180Inventory = (row: InventoryCurrentRow) => {
   );
 };
 
-const hasHighAlert = (row: InventoryCurrentRow) => {
-  return String(row?.["Inventory Alerts"] || "")
-    .trim()
-    .toLowerCase() === "high alert";
-};
-
 const getShortMonthLabel = (monthName?: string) => {
   const clean = String(monthName || "").trim();
   return clean ? clean.slice(0, 3) : "-";
@@ -6083,24 +6079,12 @@ const buildInventoryInsightsFromResponses = (
     hasInventoryValue(row, "inv-age-91-to-180-days")
   );
 
-  const highAlertRows = latestRows.filter((row) => hasHighAlert(row));
-
-  // ✅ ADD POINT 3 HERE
+  const highAlertSkuCount =
+    latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ?? 0;
+  const highAlertUnitCount =
+    latestResponse?.high_alert_coverage_summary?.high_alert_unit_count ?? 0;
   const highAlertAvgCoverageRatio =
-    typeof latestResponse?.high_alert_coverage_summary?.average_coverage_ratio === "number"
-      ? latestResponse.high_alert_coverage_summary.average_coverage_ratio
-      : (() => {
-        const validCoverageRows = highAlertRows
-          .map((row) => toNum(row?.["Coverage Ratio (In Months)"]))
-          .filter((value) => value > 0);
-
-        if (!validCoverageRows.length) return 0;
-
-        return (
-          validCoverageRows.reduce((sum, value) => sum + value, 0) /
-          validCoverageRows.length
-        );
-      })();
+    latestResponse?.high_alert_coverage_summary?.average_coverage_ratio ?? 0;
 
   const discountRows = latestRows.filter((row) =>
     hasInventoryValue(row, "inv-age-0-to-180-days")
@@ -6196,15 +6180,10 @@ const buildInventoryInsightsFromResponses = (
           key: "high_alert",
           label: INVENTORY_ACTION_META.high_alert.label,
           description: INVENTORY_ACTION_META.high_alert.description,
-          count: getUniqueSkuCount(highAlertRows),
-          displayValue: getUniqueSkuCount(highAlertRows),
-          skuCount:
-            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-            getUniqueSkuCount(highAlertRows),
-          unitCount: highAlertRows.reduce(
-            (sum, row) => sum + getRowAgeingTotalUnits(row),
-            0
-          ),
+          count: highAlertSkuCount,
+          displayValue: highAlertSkuCount,
+          skuCount: highAlertSkuCount,
+          unitCount: highAlertUnitCount,
 
           avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -6240,15 +6219,10 @@ const buildInventoryInsightsFromResponses = (
           key: "high_alert",
           label: INVENTORY_ACTION_META.high_alert.label,
           description: INVENTORY_ACTION_META.high_alert.description,
-          count: getUniqueSkuCount(highAlertRows),
-          displayValue: getUniqueSkuCount(highAlertRows),
-          skuCount:
-            latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-            getUniqueSkuCount(highAlertRows),
-          unitCount: highAlertRows.reduce(
-            (sum, row) => sum + getRowAgeingTotalUnits(row),
-            0
-          ),
+          count: highAlertSkuCount,
+          displayValue: highAlertSkuCount,
+          skuCount: highAlertSkuCount,
+          unitCount: highAlertUnitCount,
 
           avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -10661,6 +10635,26 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       return (transitFba ?? 0) + (transitAwd ?? 0);
     };
+    const countInventorySkus = (
+      readUnits: (row: AgeingRiskHeatmapRow) => number | undefined
+    ) => {
+      const skuKeys = new Set<string>();
+
+      inventoryProductRows.forEach((row) => {
+        const units = readUnits(row);
+        if (units === undefined || units <= 0) return;
+
+        const sku = String(row.sku || "").trim().toLowerCase();
+        const productName = String(row.productName || "").trim().toLowerCase();
+        if (sku && sku !== "-" && sku !== "n/a") {
+          skuKeys.add(`sku:${sku}`);
+        } else if (productName && productName !== "others") {
+          skuKeys.add(`product:${productName}`);
+        }
+      });
+
+      return skuKeys.size;
+    };
     const readAgeingInventory = (row: AgeingRiskHeatmapRow) => {
       const values = [
         row.oneEightyOneToTwoSeventy,
@@ -10677,7 +10671,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       readTotalInStock,
       toNum(inventoryInsightsData?.donutTotalUnits)
     );
+    const totalInventorySkus = countInventorySkus(readTotalInStock);
     const inTransitUnits = resolveInventoryTotal(readTotalInTransit);
+    const inTransitSkus = countInventorySkus(readTotalInTransit);
     const inventoryCoverageRatio = parseOverviewNumber(
       inventoryTotalRow?.coverageRatio
     );
@@ -10725,6 +10721,39 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       historicUnitsSold > 0
         ? (historicReturnedUnits / historicUnitsSold) * 100
         : getOverviewActionMetric("high-return-rate", "Return rate");
+    const returnRateAction = overviewActionItems.find(
+      (action) => action.id === "high-return-rate"
+    );
+    const affectedReturnSkuCount = returnRateAction?.affected_skus?.length ?? 0;
+    const affectedReturnProductCount =
+      returnRateAction?.affected_products?.length ?? 0;
+    const returnedSkuKeys = new Set(
+      displaySkuRows
+        .filter((row) => {
+          const productName = String(row.product_name || "").trim().toLowerCase();
+          const sku = String(row.sku || "").trim().toLowerCase();
+          return (
+            productName !== "total" &&
+            sku !== "total" &&
+            Math.abs(toNum(row.return_quantity ?? row.return_units)) > 0
+          );
+        })
+        .map((row, index) => {
+          const sku = String(row.sku || "").trim().toLowerCase();
+          const productName = String(row.product_name || "").trim().toLowerCase();
+          return sku && sku !== "-" && sku !== "n/a"
+            ? `sku:${sku}`
+            : productName
+              ? `product:${productName}`
+              : `row:${index}`;
+        })
+    );
+    const returnRateSkus =
+      (affectedReturnSkuCount > 0 ? affectedReturnSkuCount : undefined) ??
+      (affectedReturnProductCount > 0 ? affectedReturnProductCount : undefined) ??
+      getOverviewActionMetric("high-return-rate", "Products") ??
+      getOverviewActionMetric("high-return-rate", "Affected SKUs") ??
+      returnedSkuKeys.size;
 
     const summaryLines = (aiPanel?.summaryBullets ?? [])
       .map((line) => String(line || "").trim())
@@ -10830,6 +10859,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       },
       inventory: {
         totalUnits: toNum(totalInventoryUnits),
+        totalSkus: totalInventorySkus,
         inventoryCoverageRatio,
         ageingInventoryUnits,
         healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
@@ -10837,7 +10867,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         highAlertSkus: toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
         highAlertUnits: toNum(highAlertAction?.unitCount),
         returnRate,
+        returnRateSkus,
         inTransitUnits,
+        inTransitSkus,
         seaDispatchUnits,
         airDispatchUnits,
         seaDispatchSkus,

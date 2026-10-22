@@ -13111,6 +13111,17 @@ export default function DashboardPage() {
             "high-return-rate",
             "Return rate"
         );
+        const returnRateAction = dashboardActionItems.find(
+            (action) => action.id === "high-return-rate"
+        );
+        const affectedReturnSkuCount = returnRateAction?.affected_skus?.length ?? 0;
+        const affectedReturnProductCount =
+            returnRateAction?.affected_products?.length ?? 0;
+        const returnRateSkus =
+            (affectedReturnSkuCount > 0 ? affectedReturnSkuCount : undefined) ??
+            (affectedReturnProductCount > 0 ? affectedReturnProductCount : undefined) ??
+            getActionMetricValue("high-return-rate", "Products") ??
+            getActionMetricValue("high-return-rate", "Affected SKUs");
         const returnRateBase = parseOverviewMetricNumber(
             currentBusinessAnalysisRow?.quantity
         );
@@ -13135,6 +13146,39 @@ export default function DashboardPage() {
                 sku === "grand total"
             );
         });
+        const inventoryProductRows = inventoryHeatmapRows.filter((row) => {
+            const productName = String(row.productName || "").trim().toLowerCase();
+            const sku = String(row.sku || "").trim().toLowerCase();
+            return (
+                !row.isPercentageRow &&
+                !row.isTotalRow &&
+                productName !== "total" &&
+                productName !== "grand total" &&
+                sku !== "total" &&
+                sku !== "grand total"
+            );
+        });
+        const countInventorySkus = (
+            readUnits: (row: (typeof inventoryHeatmapRows)[number]) => number | undefined
+        ) => {
+            const skuKeys = new Set<string>();
+
+            inventoryProductRows.forEach((row) => {
+                const units = readUnits(row);
+                if (units === undefined || units <= 0) return;
+
+                const sku = String(row.sku || "").trim().toLowerCase();
+                const productName = String(row.productName || "").trim().toLowerCase();
+                const key = sku && sku !== "-" && sku !== "n/a"
+                    ? `sku:${sku}`
+                    : productName && productName !== "others"
+                        ? `product:${productName}`
+                        : "";
+                if (key) skuKeys.add(key);
+            });
+
+            return skuKeys.size;
+        };
         const readTotalSellableInStock = (
             row: (typeof inventoryHeatmapRows)[number]
         ): number | undefined => {
@@ -13147,8 +13191,7 @@ export default function DashboardPage() {
 
             return (currentFba ?? 0) + (currentAwd ?? 0);
         };
-        const sellableInStockRowValues = inventoryHeatmapRows
-            .filter((row) => !row.isPercentageRow && !row.isTotalRow)
+        const sellableInStockRowValues = inventoryProductRows
             .map(readTotalSellableInStock)
             .filter((units): units is number => units !== undefined);
         const totalInventoryUnits =
@@ -13158,6 +13201,7 @@ export default function DashboardPage() {
             (sellableInStockRowValues.length > 0
                 ? sellableInStockRowValues.reduce((total, units) => total + units, 0)
                 : toNumber(overviewInventory?.donutTotalUnits));
+        const totalInventorySkus = countInventorySkus(readTotalSellableInStock);
         const readInTransitUnits = (row: (typeof inventoryHeatmapRows)[number]) => {
             const explicitTotal = parseOverviewMetricNumber(row.totalInTransit);
             if (explicitTotal !== undefined) return explicitTotal;
@@ -13169,9 +13213,9 @@ export default function DashboardPage() {
         };
         const inTransitUnits = inventoryTotalRow
             ? readInTransitUnits(inventoryTotalRow)
-            : inventoryHeatmapRows
-                .filter((row) => !row.isPercentageRow && !row.isTotalRow)
+            : inventoryProductRows
                 .reduce((total, row) => total + readInTransitUnits(row), 0);
+        const inTransitSkus = countInventorySkus(readInTransitUnits);
         const inventoryCoverageRatio = parseOverviewMetricNumber(
             inventoryTotalRow?.coverageRatio
         );
@@ -13294,6 +13338,7 @@ export default function DashboardPage() {
             },
             inventory: {
                 totalUnits: totalInventoryUnits,
+                totalSkus: totalInventorySkus,
                 inventoryCoverageRatio,
                 ageingInventoryUnits,
                 healthySkus: toNumber(healthyAction?.skuCount ?? healthyAction?.count),
@@ -13301,7 +13346,9 @@ export default function DashboardPage() {
                 highAlertSkus: toNumber(highAlertAction?.skuCount ?? highAlertAction?.count),
                 highAlertUnits: toNumber(highAlertAction?.unitCount),
                 returnRate,
+                returnRateSkus,
                 inTransitUnits,
+                inTransitSkus,
                 seaDispatchUnits,
                 airDispatchUnits,
                 seaDispatchSkus,

@@ -1958,7 +1958,8 @@ def build_high_alert_coverage_summary(
     high_alert_threshold_override=None,
 ):
     """
-    Calculates average coverage ratio only for High Alert SKUs.
+    Calculates the SKU count, unit count, and average coverage ratio for
+    High Alert SKUs.
 
     High Alert logic:
       coverage_ratio <= (ship_time_weeks + stock_unit_weeks) / 4.345
@@ -1978,6 +1979,7 @@ def build_high_alert_coverage_summary(
 
     high_alert_items = []
     coverage_values = []
+    high_alert_unit_count = 0
 
     for row in rows:
         if is_total_row(row):
@@ -2006,9 +2008,72 @@ def build_high_alert_coverage_summary(
         if coverage_ratio > 0 and coverage_ratio <= high_alert_threshold:
             coverage_values.append(coverage_ratio)
 
+            explicit_total_units = get_first_number(
+                row,
+                [
+                    "total_stock",
+                    "Total Sellable Inventory In Stock",
+                    "Total Sellable In Stock",
+                ],
+                default=None,
+            )
+
+            if explicit_total_units is None or explicit_total_units <= 0:
+                current_fba_units = get_first_number(
+                    row,
+                    [
+                        "Sellable Units",
+                        "sellable_units",
+                        "sellableUnits",
+                        "available",
+                        "Current Inventory FBA",
+                        "current_inventory_fba",
+                        "current-fba",
+                        "fulfillable_quantity",
+                        "available_quantity",
+                    ],
+                )
+                current_awd_units = get_first_number(
+                    row,
+                    [
+                        "total_onhand_quantity",
+                        "Current Inventory AWD",
+                        "current_inventory_awd",
+                        "current-awd",
+                        "available_awd",
+                        "awd_available",
+                    ],
+                )
+                row_unit_count = current_fba_units + current_awd_units
+            else:
+                row_unit_count = explicit_total_units
+
+            if row_unit_count <= 0:
+                split_first_180_units = (
+                    to_number(row.get("inv-age-0-to-90-days"))
+                    + to_number(row.get("inv-age-91-to-180-days"))
+                )
+                combined_first_180_units = to_number(
+                    row.get("inv-age-0-to-180-days")
+                )
+                row_unit_count = (
+                    (
+                        split_first_180_units
+                        if split_first_180_units > 0
+                        else combined_first_180_units
+                    )
+                    + to_number(row.get("inv-age-181-to-270-days"))
+                    + to_number(row.get("inv-age-271-to-365-days"))
+                    + to_number(row.get("inv-age-365-plus-days"))
+                )
+
+            row_unit_count = max(0, row_unit_count)
+            high_alert_unit_count += row_unit_count
+
             high_alert_items.append({
                 "sku": clean_value(sku),
                 "product_name": clean_value(product_name),
+                "unit_count": int(round(row_unit_count)),
                 "coverage_ratio_months": round(float(coverage_ratio), 2),
                 "high_alert_threshold": round(float(high_alert_threshold), 2),
                 "alert": "High alert",
@@ -2022,6 +2087,7 @@ def build_high_alert_coverage_summary(
 
     return {
         "high_alert_sku_count": len(high_alert_items),
+        "high_alert_unit_count": int(round(high_alert_unit_count)),
         "average_coverage_ratio": average_coverage_ratio,
         "high_alert_threshold": round(float(high_alert_threshold), 2),
         "items": high_alert_items,
@@ -2907,6 +2973,7 @@ def get_inventory_current_table():
         high_alert_coverage_summary = (
             {
                 "high_alert_sku_count": 0,
+                "high_alert_unit_count": 0,
                 "average_coverage_ratio": 0,
                 "high_alert_threshold": 0,
                 "items": [],

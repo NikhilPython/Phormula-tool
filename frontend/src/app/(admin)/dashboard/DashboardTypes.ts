@@ -353,6 +353,7 @@ export type InventoryCurrentApiResponse = {
     high_alert_coverage_summary?: {
         average_coverage_ratio?: number;
         high_alert_sku_count?: number;
+        high_alert_unit_count?: number;
         high_alert_threshold?: number;
         items?: {
             alert?: string;
@@ -360,6 +361,7 @@ export type InventoryCurrentApiResponse = {
             high_alert_threshold?: number;
             product_name?: string;
             sku?: string;
+            unit_count?: number;
         }[];
     };
 

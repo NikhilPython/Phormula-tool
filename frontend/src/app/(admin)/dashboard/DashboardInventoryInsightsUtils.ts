@@ -1473,23 +1473,12 @@ export const buildInventoryInsightsFromResponses = (
         hasInventoryValue(row, "inv-age-91-to-180-days")
     );
 
-    const highAlertRows = latestRows.filter((row) => hasHighAlert(row));
-
+    const highAlertSkuCount =
+        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ?? 0;
+    const highAlertUnitCount =
+        latestResponse?.high_alert_coverage_summary?.high_alert_unit_count ?? 0;
     const highAlertAvgCoverageRatio =
-        typeof latestResponse?.high_alert_coverage_summary?.average_coverage_ratio === "number"
-            ? latestResponse.high_alert_coverage_summary.average_coverage_ratio
-            : (() => {
-                const validCoverageRows = highAlertRows
-                    .map((row) => inventoryToNum(row?.["Coverage Ratio (In Months)"]))
-                    .filter((value) => value > 0);
-
-                if (!validCoverageRows.length) return 0;
-
-                return (
-                    validCoverageRows.reduce((sum, value) => sum + value, 0) /
-                    validCoverageRows.length
-                );
-            })();
+        latestResponse?.high_alert_coverage_summary?.average_coverage_ratio ?? 0;
 
     const discountRows = latestRows.filter((row) =>
         hasInventoryValue(row, "inv-age-0-to-180-days")
@@ -1576,15 +1565,10 @@ export const buildInventoryInsightsFromResponses = (
                     key: "high_alert",
                     label: INVENTORY_ACTION_META.high_alert.label,
                     description: INVENTORY_ACTION_META.high_alert.description,
-                    count:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
-                    displayValue:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
-                    skuCount:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
+                    count: highAlertSkuCount,
+                    displayValue: highAlertSkuCount,
+                    skuCount: highAlertSkuCount,
+                    unitCount: highAlertUnitCount,
 
                     avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -1622,15 +1606,10 @@ export const buildInventoryInsightsFromResponses = (
                     key: "high_alert",
                     label: INVENTORY_ACTION_META.high_alert.label,
                     description: INVENTORY_ACTION_META.high_alert.description,
-                    count:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
-                    displayValue:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
-                    skuCount:
-                        latestResponse?.high_alert_coverage_summary?.high_alert_sku_count ??
-                        getUniqueSkuCount(highAlertRows),
+                    count: highAlertSkuCount,
+                    displayValue: highAlertSkuCount,
+                    skuCount: highAlertSkuCount,
+                    unitCount: highAlertUnitCount,
 
                     avgCoverageRatio: highAlertAvgCoverageRatio,
 
@@ -1886,10 +1865,4 @@ const hasOlderThan180Inventory = (row: InventoryCurrentRow) => {
         inventoryToNum(row?.["inv-age-271-to-365-days"]) > 0 ||
         inventoryToNum(row?.["inv-age-365-plus-days"]) > 0
     );
-};
-
-const hasHighAlert = (row: InventoryCurrentRow) => {
-    return String(row?.["Inventory Alerts"] || "")
-        .trim()
-        .toLowerCase() === "high alert";
 };
