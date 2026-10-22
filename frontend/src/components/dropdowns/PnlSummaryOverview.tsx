@@ -845,7 +845,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
       return (
         <div className="grid h-full min-h-0 w-full grid-cols-2 grid-rows-3 gap-3 lg:grid-cols-3 lg:grid-rows-2 2xl:gap-4">
           <SummaryMetricCard
-            title="Units sold"
+            title="Units"
             value={formatWholeNumber(financial.units.value)}
             comparisons={buildComparisonRow(
               financial.units.previousValue,
@@ -856,7 +856,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           />
 
           <SummaryMetricCard
-            title="Net sales"
+            title="Net Sales"
             value={formatMoneyWithPerUnit(
               financial.netSales.value,
               financial.netSales.perUnit,
@@ -877,7 +877,8 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
 
 
           <SummaryMetricCard
-            title={financial.marketplaceFees.label ?? "Marketplace fees"}
+            // title={financial.marketplaceFees.label ?? "Marketplace fees"}
+            title="Marketplace Fees"
             value={formatMoneyWithPerUnit(
               financial.marketplaceFees.value,
               financial.marketplaceFees.perUnit,
@@ -909,7 +910,7 @@ export default function PnlSummaryOverview({ data, onNavigate }: Props) {
           />
 
           <SummaryMetricCard
-            title="CM2 profit"
+            title="CM2 Profit"
             value={formatMoneyWithPercentage(
               financial.cm2Profit.value,
               financial.cm2Profit.percentage,
