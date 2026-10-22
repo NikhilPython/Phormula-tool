@@ -118,7 +118,7 @@ export const createZeroInventoryInsightsData = (
   const actions: ActionCardItem[] = actionLogic.map((item) => ({
     ...item,
     count: 0,
-    displayValue: item.key === "estimated_storage_cost" ? `${storageCostCurrencySymbol}0.00` : 0,
+    displayValue: item.key === "estimated_storage_cost" ? `${storageCostCurrencySymbol}0` : 0,
     skuCount: 0,
     unitCount: 0,
     avgCoverageRatio: item.key === "high_alert" ? 0 : undefined,

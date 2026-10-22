@@ -4755,8 +4755,8 @@ const formatInventoryStorageCost = (
       : getCurrencySymbol(countryName);
 
   return `${symbol}${value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   })}`;
 };
 
@@ -6473,8 +6473,8 @@ const inventoryActions: ActionCardItem[] = [
     label: "Storage Cost",
     description: "Includes Short Term and Long Term",
     count: 11,
-    displayValue: "£428.12",
-    deltaValue: "£194.42",
+    displayValue: "£428",
+    deltaValue: "£194",
     deltaPercentage: 83.19,
     skuCount: 11,
     unitCount: 2877,

@@ -528,8 +528,8 @@ const formatInventoryStorageCost = (
     const symbol = getInventoryCurrencySymbol(countryName, homeCurrency);
 
     return `${symbol}${value.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
     })}`;
 };
 

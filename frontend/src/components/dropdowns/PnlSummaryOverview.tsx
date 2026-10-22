@@ -254,7 +254,7 @@ const MetricTile = ({
       : "min-h-[108px] p-3.5 sm:p-4 2xl:min-h-[132px] 2xl:p-5"
       } ${accent}`}
   >
-    <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500 2xl:text-[11px]">
+    <p className="text-xs font-medium capitalize tracking-wide text-charcoal-500">
       {label}
     </p>
 
@@ -273,7 +273,7 @@ const MetricTile = ({
     </div>
 
     {detail ? (
-      <div className="mt-1.5 text-[10px] leading-relaxed text-slate-500 2xl:mt-2 2xl:text-xs">
+      <div className="mt-1.5 text-[10px] leading-relaxed text-charcoal-500 2xl:mt-2 2xl:text-xs">
         {detail}
       </div>
     ) : null}
@@ -436,7 +436,7 @@ const InventoryInsightsGrid = ({
 
 
       <MetricTile
-        label="Dispatch (Sea)"
+        label="Dispatch (SEA)"
         value={value(optionalUnits(inventory.seaDispatchUnits))}
         trailing={
           loading ? null : (
@@ -452,7 +452,7 @@ const InventoryInsightsGrid = ({
       />
 
       <MetricTile
-        label="Dispatch (Air)"
+        label="Dispatch (AIR)"
         value={value(optionalUnits(inventory.airDispatchUnits))}
         trailing={
           loading ? null : (
