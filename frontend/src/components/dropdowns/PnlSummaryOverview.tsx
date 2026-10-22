@@ -332,7 +332,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#3A8EA4]"
+        accent="border-[#ED9F50]"
         compact
       />
 
@@ -354,7 +354,7 @@ const InventoryInsightsGrid = ({
             />
           )
         }
-        accent="border-[#EDA153]"
+        accent="border-[#C49466]"
         compact
       />
 
@@ -368,7 +368,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#B75A5A]"
+        accent="border-[#B8C78C]"
         compact
       />
 
@@ -414,7 +414,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#C49466]"
+        accent="border-[#3A8EA4]"
         compact
       />
 
@@ -430,7 +430,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#75BBDA]"
+        accent="border-[#FDD36F]"
         compact
       />
 
@@ -447,7 +447,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#3A8EA4]"
+        accent="border-[#75BBDA]"
         compact
       />
 
@@ -463,7 +463,7 @@ const InventoryInsightsGrid = ({
             </span>
           )
         }
-        accent="border-[#5EA68E]"
+        accent="border-[#ED9F50]"
         compact
       />
 

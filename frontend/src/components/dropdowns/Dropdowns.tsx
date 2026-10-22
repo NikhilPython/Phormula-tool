@@ -5588,6 +5588,9 @@ const buildInventoryInsightsFromResponses = (
   const latestRawResponse = validResponses[validResponses.length - 1];
 
   const isGlobalInventory = isGlobalInventoryResponse(latestRawResponse);
+  const selectedInventoryCountry = String(countryName || "").toLowerCase() === "global"
+    ? selectedGlobalInventoryCountry
+    : countryName;
 
   // ✅ Countrywise: latestResponse stays same.
   // ✅ Global: latestResponse becomes only UK or only US based on toggle.
@@ -6269,14 +6272,14 @@ const buildInventoryInsightsFromResponses = (
       count: getUniqueSkuCount(storageCostRows),
       displayValue: formatInventoryStorageCost(
         storageCostTotal,
-        countryName,
+        selectedInventoryCountry,
         homeCurrency
       ),
       deltaValue:
         previousStorageCostTotal > 0
           ? formatInventoryStorageCost(
             storageCostDelta,
-            countryName,
+            selectedInventoryCountry,
             homeCurrency
           )
           : undefined,
@@ -6678,6 +6681,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
     useState<string>("uk");
+  const inventoryInsightsCountry = isGlobalPage
+    ? selectedGlobalInventoryCountry
+    : countryName;
+  const inventoryInsightsCurrencySymbol = getCurrencySymbol(
+    inventoryInsightsCountry
+  );
 
   const [selectedMonth, setSelectedMonth] = useState<string>("");
 
@@ -10877,7 +10886,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         storageCostLabel: "Storage Cost",
         estimatedStorageCost: String(
           estimatedStorageAction?.displayValue ??
-          formatInventoryStorageCost(0, countryName, homeCurrency)
+          formatInventoryStorageCost(
+            0,
+            inventoryInsightsCountry,
+            homeCurrency
+          )
         ),
         estimatedStorageCostDeltaValue:
           estimatedStorageAction?.deltaValue === undefined
@@ -12240,7 +12253,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     salesLast30DaysLabel={salesLast30DaysLabel}
                     unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}
                     useCurrentInventoryTableLayout={showCurrentInventoryTableLayout}
-                    storageCostCurrencySymbol={currencySymbol}
+                    storageCostCurrencySymbol={inventoryInsightsCurrencySymbol}
                     showStorageCostColumn={false}
                     storageCostDescription="Includes Short Term and Long Term"
                   />
