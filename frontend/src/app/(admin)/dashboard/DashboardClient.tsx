@@ -13202,6 +13202,38 @@ export default function DashboardPage() {
                 ? sellableInStockRowValues.reduce((total, units) => total + units, 0)
                 : toNumber(overviewInventory?.donutTotalUnits));
         const totalInventorySkus = countInventorySkus(readTotalSellableInStock);
+        const resolveCurrentInventoryUnits = (
+            readUnits: (row: (typeof inventoryHeatmapRows)[number]) => number | undefined
+        ) => {
+            const totalRowUnits = inventoryTotalRow
+                ? readUnits(inventoryTotalRow)
+                : undefined;
+            if (totalRowUnits !== undefined) return totalRowUnits;
+
+            const rowUnits = inventoryProductRows
+                .map(readUnits)
+                .filter((units): units is number => units !== undefined);
+
+            return rowUnits.length > 0
+                ? rowUnits.reduce((total, units) => total + units, 0)
+                : undefined;
+        };
+        const currentFbaUnits = resolveCurrentInventoryUnits((row) =>
+            parseOverviewMetricNumber(
+                row.currentFba ?? row["Sellable Units"] ?? row.available
+            )
+        );
+        const currentAwdUnits = resolveCurrentInventoryUnits((row) =>
+            parseOverviewMetricNumber(row.currentAwd)
+        );
+        const currentInventoryBreakdownTotal =
+            (currentFbaUnits ?? 0) + (currentAwdUnits ?? 0);
+        const currentFbaPercentage = currentInventoryBreakdownTotal > 0
+            ? ((currentFbaUnits ?? 0) / currentInventoryBreakdownTotal) * 100
+            : undefined;
+        const currentAwdPercentage = currentInventoryBreakdownTotal > 0
+            ? ((currentAwdUnits ?? 0) / currentInventoryBreakdownTotal) * 100
+            : undefined;
         const readInTransitUnits = (row: (typeof inventoryHeatmapRows)[number]) => {
             const explicitTotal = parseOverviewMetricNumber(row.totalInTransit);
             if (explicitTotal !== undefined) return explicitTotal;
@@ -13339,6 +13371,8 @@ export default function DashboardPage() {
             inventory: {
                 totalUnits: totalInventoryUnits,
                 totalSkus: totalInventorySkus,
+                currentFbaPercentage,
+                currentAwdPercentage,
                 inventoryCoverageRatio,
                 ageingInventoryUnits,
                 healthySkus: toNumber(healthyAction?.skuCount ?? healthyAction?.count),
@@ -13457,6 +13491,7 @@ export default function DashboardPage() {
                         <PnlSummaryOverview
                             data={overviewData}
                             onNavigate={navigateFromOverview}
+                            hideSkuColumns={platform === "global"}
                         />
                     </div>
                 ) : (

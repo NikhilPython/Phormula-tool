@@ -10681,6 +10681,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       toNum(inventoryInsightsData?.donutTotalUnits)
     );
     const totalInventorySkus = countInventorySkus(readTotalInStock);
+    const currentFbaUnits = resolveInventoryTotal((row) =>
+      parseOverviewNumber(row.currentFba ?? row["Sellable Units"] ?? row.available)
+    );
+    const currentAwdUnits = resolveInventoryTotal((row) =>
+      parseOverviewNumber(row.currentAwd)
+    );
+    const currentInventoryBreakdownTotal =
+      (currentFbaUnits ?? 0) + (currentAwdUnits ?? 0);
+    const currentFbaPercentage = currentInventoryBreakdownTotal > 0
+      ? ((currentFbaUnits ?? 0) / currentInventoryBreakdownTotal) * 100
+      : undefined;
+    const currentAwdPercentage = currentInventoryBreakdownTotal > 0
+      ? ((currentAwdUnits ?? 0) / currentInventoryBreakdownTotal) * 100
+      : undefined;
     const inTransitUnits = resolveInventoryTotal(readTotalInTransit);
     const inTransitSkus = countInventorySkus(readTotalInTransit);
     const inventoryCoverageRatio = parseOverviewNumber(
@@ -10869,6 +10883,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       inventory: {
         totalUnits: toNum(totalInventoryUnits),
         totalSkus: totalInventorySkus,
+        currentFbaPercentage,
+        currentAwdPercentage,
         inventoryCoverageRatio,
         ageingInventoryUnits,
         healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
@@ -11161,6 +11177,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             <PnlSummaryOverview
               data={overviewData}
               onNavigate={navigateFromOverview}
+              hideSkuColumns={isGlobalPage}
             />
           </div>
         ) : (
