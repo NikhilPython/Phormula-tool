@@ -309,19 +309,17 @@ const InventoryInsightsGrid = ({
         value={value(`${formatWholeNumber(inventory.totalUnits)} units`)}
         trailing={
           loading ? null : (
-            <span className="flex flex-col items-end whitespace-nowrap text-xs font-semibold leading-tight text-slate-500">
-              <span>
-                FBA: {typeof inventory.currentFbaPercentage === "number" &&
-                  Number.isFinite(inventory.currentFbaPercentage)
-                  ? formatPercent(inventory.currentFbaPercentage)
-                  : "-"}
-              </span>
-              <span>
-                AWD: {typeof inventory.currentAwdPercentage === "number" &&
-                  Number.isFinite(inventory.currentAwdPercentage)
-                  ? formatPercent(inventory.currentAwdPercentage)
-                  : "-"}
-              </span>
+            <span className="whitespace-nowrap text-xs font-semibold text-slate-500">
+              {typeof inventory.currentFbaPercentage === "number" &&
+              Number.isFinite(inventory.currentFbaPercentage)
+                ? formatPercent(inventory.currentFbaPercentage)
+                : "-"}{" "}
+              FBA ·{" "}
+              {typeof inventory.currentAwdPercentage === "number" &&
+              Number.isFinite(inventory.currentAwdPercentage)
+                ? formatPercent(inventory.currentAwdPercentage)
+                : "-"}{" "}
+              AWD
             </span>
           )
         }

@@ -599,6 +599,9 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
             "units_by_sku": {},
             "product_by_sku": {},
             "total_units": 0,
+            "gross_units": 0,
+            "returned_units": 0,
+            "returned_sku_count": 0,
             "error": "SKU wise monthly table not found",
         }
 
@@ -608,10 +611,18 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
             "units_by_sku": {},
             "product_by_sku": {},
             "total_units": 0,
+            "gross_units": 0,
+            "returned_units": 0,
+            "returned_sku_count": 0,
             "error": "Invalid SKU wise monthly table name",
         }
 
-    query = text(f'SELECT * FROM "{table_name}" ORDER BY id ASC')
+    table_columns = {
+        column["name"]
+        for column in inspector.get_columns(table_name, schema="public")
+    }
+    order_clause = ' ORDER BY "id" ASC' if "id" in table_columns else ""
+    query = text(f'SELECT * FROM "{table_name}"{order_clause}')
 
     with primary_engine.connect() as connection:
         df = pd.read_sql(query, connection)
@@ -622,6 +633,9 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
             "units_by_sku": {},
             "product_by_sku": {},
             "total_units": 0,
+            "gross_units": 0,
+            "returned_units": 0,
+            "returned_sku_count": 0,
             "error": None,
         }
 
@@ -631,18 +645,28 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
             "units_by_sku": {},
             "product_by_sku": {},
             "total_units": 0,
+            "gross_units": 0,
+            "returned_units": 0,
+            "returned_sku_count": 0,
             "error": "sku column not found",
         }
 
     units_by_sku = {}
     product_by_sku = {}
     total_units = 0
+    gross_units = 0
+    returned_units = 0
+    total_gross_units = None
+    total_returned_units = None
+    returned_skus = set()
 
     for _, row in df.iterrows():
         sku = normalize_sku_key(row.get("sku"))
         product_name = clean_text_value(row.get("product_name"))
 
-        is_total = sku == "" or product_name.lower() in {"total", "grand total"}
+        is_total = sku.lower() in {"", "total", "grand_total", "grand total"} or (
+            product_name.lower() in {"total", "grand total"}
+        )
 
         quantity = to_number(row.get("quantity"))
         return_quantity = to_number(row.get("return_quantity"))
@@ -657,10 +681,17 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
 
         if is_total:
             total_units = units_sold
+            total_gross_units = abs(quantity)
+            total_returned_units = abs(return_quantity)
             continue
 
         if sku:
             units_by_sku[sku] = units_by_sku.get(sku, 0) + units_sold
+            gross_units += abs(quantity)
+            returned_units += abs(return_quantity)
+
+            if abs(return_quantity) > 0:
+                returned_skus.add(sku)
 
             if sku not in product_by_sku:
                 product_by_sku[sku] = product_name
@@ -668,11 +699,20 @@ def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
     if total_units == 0:
         total_units = sum(units_by_sku.values())
 
+    if total_gross_units is not None:
+        gross_units = total_gross_units
+
+    if total_returned_units is not None:
+        returned_units = total_returned_units
+
     return {
         "table_name": table_name,
         "units_by_sku": units_by_sku,
         "product_by_sku": product_by_sku,
         "total_units": total_units,
+        "gross_units": gross_units,
+        "returned_units": returned_units,
+        "returned_sku_count": len(returned_skus),
         "error": None,
     }
 

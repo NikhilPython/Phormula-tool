@@ -58,7 +58,35 @@ from app.routes.inventory_current_routes import (
 
 
 
+    attach_current_month_units_sold,
+
+
+
+    attach_historical_storage_cost,
+
+
+
+    attach_inventory_monthly_qty,
+
+
+
+    attach_zero_to_180_days,
+
+
+
+    fetch_current_month_units_sold_map,
+
+
+
+    fetch_previous_platform_fee_as_storage_cost,
+
+
+
     get_age_summary_for_single_country,
+
+
+
+    get_previous_month_name_year,
 
 
 
@@ -67,6 +95,10 @@ from app.routes.inventory_current_routes import (
 
 
 )
+
+
+
+from app.utils.currency_utils import _get_gbp_to_usd_rate
 
 
 
@@ -462,6 +494,87 @@ def _is_total_row(row: dict[str, Any]) -> bool:
 
 
 
+def _inventory_current_fba(row: dict[str, Any]) -> float:
+    return _first_number(
+        row,
+        "Sellable Units",
+        "available",
+        "Current Inventory FBA",
+        "current_inventory_fba",
+        "current-fba",
+        "fulfillable_quantity",
+        "available_quantity",
+    )
+
+
+def _inventory_current_awd(row: dict[str, Any]) -> float:
+    return _first_number(
+        row,
+        "total_onhand_quantity",
+        "Current Inventory AWD",
+        "current_inventory_awd",
+        "current-awd",
+        "available_awd",
+        "awd_available",
+    )
+
+
+def _inventory_transit_fba(row: dict[str, Any]) -> float:
+    return _first_number(
+        row,
+        "inbound-shipped\r",
+        "inbound-shipped",
+        "In Transit FBA",
+        "in_transit_fba",
+        "in-transit-fba",
+        "fc-transfer",
+        "fc_transfer",
+        "reserved_fc_transfer",
+        "inbound-working",
+    )
+
+
+def _inventory_transit_awd(row: dict[str, Any]) -> float:
+    return _first_number(
+        row,
+        "total_inbound_quantity",
+        "In Transit AWD",
+        "in_transit_awd",
+        "in-transit-awd",
+        "inbound_quantity",
+        "inbound-quantity",
+        "Inbound Units",
+        "inbound_units",
+        "inbound-shipped",
+    )
+
+
+def _inventory_total_in_transit(row: dict[str, Any]) -> float:
+    for key in (
+        "total_transit",
+        "Total Sellable Inventory In Transit",
+        "Total Sellable In Transit",
+    ):
+        if key in row and row.get(key) not in (None, ""):
+            return max(0.0, _number(row.get(key)))
+
+    return max(0.0, _inventory_transit_fba(row)) + max(
+        0.0, _inventory_transit_awd(row)
+    )
+
+
+def _inventory_storage_cost(rows: list[dict[str, Any]]) -> float:
+    total_row = next((row for row in rows if _is_total_row(row)), None)
+    if total_row and "estimated-storage-cost-next-month" in total_row:
+        return abs(_number(total_row.get("estimated-storage-cost-next-month")))
+
+    return sum(
+        abs(_number(row.get("estimated-storage-cost-next-month")))
+        for row in rows
+        if not _is_total_row(row)
+    )
+
+
 def _load_inventory_facts(
 
 
@@ -511,6 +624,24 @@ def _load_inventory_facts(
 
 
     age_inventory_total = 0.0
+
+    current_fba_units = 0.0
+    current_awd_units = 0.0
+    transit_fba_units = 0.0
+    transit_awd_units = 0.0
+    in_transit_units = 0.0
+    healthy_units = 0.0
+    ageing_inventory_units = 0.0
+    current_month_units_sold = 0.0
+    gross_units = 0.0
+    returned_units = 0.0
+    returned_sku_count = 0
+    estimated_storage_cost = 0.0
+    previous_storage_cost = 0.0
+    storage_components: list[dict[str, Any]] = []
+    total_sku_count = 0
+    healthy_sku_count = 0
+    in_transit_sku_count = 0
 
 
 
@@ -588,6 +719,114 @@ def _load_inventory_facts(
 
             rows = source.get("rows") or []
 
+            selected_month = source.get("selected_month") or month
+            units_result = attach_current_month_units_sold(
+                rows=rows,
+                columns=source.get("columns") or [],
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month,
+                year=str(year),
+            )
+            rows = units_result.get("rows") or rows
+            columns = units_result.get("columns") or source.get("columns") or []
+
+            monthly_result = attach_inventory_monthly_qty(
+                rows=rows,
+                columns=columns,
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month,
+                year=str(year),
+                use_currentinventory_sellable=(
+                    source.get("source_type") == "currentinventory_table"
+                ),
+            )
+            rows = monthly_result.get("rows") or rows
+            columns = monthly_result.get("columns") or columns
+
+            zero_to_180_result = attach_zero_to_180_days(
+                rows=rows,
+                columns=columns,
+                use_currentinventory_split=(
+                    source.get("source_type") == "currentinventory_table"
+                ),
+            )
+            rows = zero_to_180_result.get("rows") or rows
+            rows = attach_historical_storage_cost(
+                rows,
+                user_id,
+                child_country,
+                selected_month,
+                str(year),
+            )
+
+            sales_metrics = fetch_current_month_units_sold_map(
+                user_id=user_id,
+                country_key=child_country,
+                month_name=selected_month,
+                year=str(year),
+            )
+            current_month_units_sold += max(
+                0.0,
+                _number(sales_metrics.get("total_units")),
+            )
+            gross_units += max(0.0, _number(sales_metrics.get("gross_units")))
+            returned_units += max(
+                0.0,
+                _number(sales_metrics.get("returned_units")),
+            )
+            returned_sku_count += int(
+                max(0.0, _number(sales_metrics.get("returned_sku_count")))
+            )
+
+            current_storage_cost_native = _inventory_storage_cost(rows)
+            previous_result = fetch_previous_platform_fee_as_storage_cost(
+                user_id=user_id,
+                country_key=child_country,
+                month_number=_month_number(selected_month),
+                year_int=int(year),
+            )
+            previous_storage_cost_native = abs(
+                _number(previous_result.get("value"))
+            )
+
+            current_rate = 1.0
+            previous_rate = 1.0
+
+            if country == "global" and child_country == "uk":
+                try:
+                    current_rate = _get_gbp_to_usd_rate(selected_month, int(year))
+                    previous_month, _previous_month_number, previous_year = (
+                        get_previous_month_name_year(selected_month, int(year))
+                    )
+                    previous_rate = _get_gbp_to_usd_rate(
+                        previous_month or selected_month,
+                        previous_year or int(year),
+                    )
+                except Exception as exc:
+                    errors.append(f"uk storage currency conversion: {exc}")
+
+            current_storage_cost = current_storage_cost_native * current_rate
+            child_previous_storage_cost = (
+                previous_storage_cost_native * previous_rate
+            )
+
+            estimated_storage_cost += current_storage_cost
+            previous_storage_cost += child_previous_storage_cost
+            storage_components.append(
+                {
+                    "country": child_country,
+                    "native_currency": "GBP" if child_country == "uk" else "USD",
+                    "current_native": round(current_storage_cost_native, 2),
+                    "previous_native": round(previous_storage_cost_native, 2),
+                    "current_to_display_rate": round(current_rate, 8),
+                    "previous_to_display_rate": round(previous_rate, 8),
+                    "current_display": round(current_storage_cost, 2),
+                    "previous_display": round(child_previous_storage_cost, 2),
+                }
+            )
+
 
 
 
@@ -619,6 +858,35 @@ def _load_inventory_facts(
 
 
             data_rows = [row for row in rows if not _is_total_row(row)]
+
+            country_current_fba = sum(_inventory_current_fba(row) for row in data_rows)
+            country_current_awd = sum(_inventory_current_awd(row) for row in data_rows)
+            country_transit_fba = sum(_inventory_transit_fba(row) for row in data_rows)
+            country_transit_awd = sum(_inventory_transit_awd(row) for row in data_rows)
+            total_row = next((row for row in rows if _is_total_row(row)), None)
+            country_in_transit = (
+                _inventory_total_in_transit(total_row)
+                if total_row is not None
+                else sum(_inventory_total_in_transit(row) for row in data_rows)
+            )
+
+            current_fba_units += country_current_fba
+            current_awd_units += country_current_awd
+            transit_fba_units += country_transit_fba
+            transit_awd_units += country_transit_awd
+            in_transit_units += country_in_transit
+
+            total_sku_count += sum(
+                1
+                for row in data_rows
+                if _inventory_current_fba(row) + _inventory_current_awd(row) > 0
+            )
+            in_transit_sku_count += sum(
+                1
+                for row in data_rows
+                if _inventory_total_in_transit(row) > 0
+                and _inventory_current_fba(row) + _inventory_current_awd(row) > 0
+            )
 
 
 
@@ -712,6 +980,23 @@ def _load_inventory_facts(
 
             )
 
+            use_split_first_180 = split_first_180 > 0
+            healthy_column = (
+                "inv-age-0-to-90-days"
+                if use_split_first_180
+                else "inv-age-0-to-180-days"
+            )
+            healthy_units += sum(
+                _number(row.get(healthy_column))
+                for row in data_rows
+            )
+            healthy_sku_count += sum(
+                1
+                for row in data_rows
+                if _number(row.get(healthy_column)) > 0
+            )
+            ageing_inventory_units += older_units
+
 
 
 
@@ -771,25 +1056,9 @@ def _load_inventory_facts(
 
 
             high_alert = build_high_alert_coverage_summary(
-
-
-
                 rows,
-
-
-
                 user_id,
-
-
-
                 child_country,
-
-
-
-                high_alert_threshold_override=ACTION_THRESHOLDS["inventory_coverage_months"],
-
-
-
             )
 
 
@@ -1191,6 +1460,31 @@ def _load_inventory_facts(
 
 
         "age_inventory_total": age_inventory_total,
+
+        "current_fba_units": current_fba_units,
+        "current_awd_units": current_awd_units,
+        "transit_fba_units": transit_fba_units,
+        "transit_awd_units": transit_awd_units,
+        "in_transit_units": in_transit_units,
+        "healthy_units": healthy_units,
+        "healthy_sku_count": healthy_sku_count,
+        "ageing_inventory_units": ageing_inventory_units,
+        "current_month_units_sold": current_month_units_sold,
+        "gross_units": gross_units,
+        "returned_units": returned_units,
+        "returned_sku_count": returned_sku_count,
+        "estimated_storage_cost": estimated_storage_cost,
+        "previous_storage_cost": previous_storage_cost,
+        "storage_components": storage_components,
+        "total_sku_count": total_sku_count,
+        "in_transit_sku_count": in_transit_sku_count,
+        "storage_currency": (
+            {"code": "USD", "symbol": "$"}
+            if country in {"global", "us"}
+            else {"code": "GBP", "symbol": "£"}
+            if country == "uk"
+            else {"code": "CAD", "symbol": "$"}
+        ),
 
 
 
@@ -2132,6 +2426,136 @@ def _load_dispatch_facts(
 
 
 
+
+
+def _build_inventory_summary_overview(
+    inventory: dict[str, Any],
+    dispatch: dict[str, Any],
+    action_items: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build the Summary Overview inventory cards entirely on the backend."""
+    current_fba = max(0.0, _number(inventory.get("current_fba_units")))
+    current_awd = max(0.0, _number(inventory.get("current_awd_units")))
+    total_units = current_fba + current_awd
+    transit_units = max(0.0, _number(inventory.get("in_transit_units")))
+    if "in_transit_units" not in inventory:
+        transit_units = max(
+            0.0, _number(inventory.get("transit_fba_units"))
+        ) + max(0.0, _number(inventory.get("transit_awd_units")))
+    units_sold = max(0.0, _number(inventory.get("current_month_units_sold")))
+    gross_units = max(0.0, _number(inventory.get("gross_units")))
+    returned_units = max(0.0, _number(inventory.get("returned_units")))
+
+    coverage_ratio = (
+        (total_units + transit_units) / units_sold if units_sold > 0 else 0.0
+    )
+    return_rate = returned_units / gross_units * 100.0 if gross_units > 0 else 0.0
+    return_rate_skus = int(inventory.get("returned_sku_count") or 0)
+
+    return_action = next(
+        (
+            item
+            for item in action_items or []
+            if item.get("id") == "high-return-rate"
+        ),
+        None,
+    )
+    if return_action:
+        return_rate_metric = next(
+            (
+                metric
+                for metric in return_action.get("metrics") or []
+                if str(metric.get("label") or "").strip().lower()
+                == "return rate"
+            ),
+            None,
+        )
+        if return_rate_metric:
+            return_rate = abs(_number(return_rate_metric.get("value")))
+
+        affected_skus = return_action.get("affected_skus") or []
+        affected_products = return_action.get("affected_products") or []
+        if affected_skus or affected_products:
+            return_rate_skus = len(affected_skus or affected_products)
+
+    storage_cost = max(0.0, _number(inventory.get("estimated_storage_cost")))
+    previous_storage_cost = max(
+        0.0, _number(inventory.get("previous_storage_cost"))
+    )
+    storage_delta_value = storage_cost - previous_storage_cost
+    has_storage_comparison = previous_storage_cost > 0
+    storage_delta_percentage = (
+        storage_delta_value / previous_storage_cost * 100.0
+        if has_storage_comparison
+        else None
+    )
+    storage_currency = inventory.get("storage_currency") or {
+        "code": "USD",
+        "symbol": "$",
+    }
+    storage_symbol = str(storage_currency.get("symbol") or "$")
+
+    high_alert_items = inventory.get("high_alert_items") or []
+    high_alert_units = sum(
+        max(0.0, _number(item.get("unit_count")))
+        for item in high_alert_items
+        if isinstance(item, dict)
+    )
+
+    return {
+        "total_units": int(round(total_units)),
+        "total_skus": int(inventory.get("total_sku_count") or 0),
+        "current_fba_percentage": round(
+            current_fba / total_units * 100.0 if total_units > 0 else 0.0, 2
+        ),
+        "current_awd_percentage": round(
+            current_awd / total_units * 100.0 if total_units > 0 else 0.0, 2
+        ),
+        "inventory_coverage_ratio": round(coverage_ratio, 2),
+        "ageing_inventory_units": int(
+            round(max(0.0, _number(inventory.get("ageing_inventory_units"))))
+        ),
+        "healthy_units": int(
+            round(max(0.0, _number(inventory.get("healthy_units"))))
+        ),
+        "healthy_skus": int(inventory.get("healthy_sku_count") or 0),
+        "high_alert_units": int(round(high_alert_units)),
+        "high_alert_skus": int(inventory.get("high_alert_sku_count") or 0),
+        "return_rate": round(return_rate, 2),
+        "return_rate_skus": return_rate_skus,
+        "in_transit_units": int(round(transit_units)),
+        "in_transit_skus": int(inventory.get("in_transit_sku_count") or 0),
+        "sea_dispatch_units": int(
+            round(max(0.0, _number(dispatch.get("sea_dispatch"))))
+        ),
+        "sea_dispatch_skus": int(dispatch.get("sea_dispatch_sku_count") or 0),
+        "air_dispatch_units": int(
+            round(max(0.0, _number(dispatch.get("air_dispatch"))))
+        ),
+        "air_dispatch_skus": int(dispatch.get("air_dispatch_sku_count") or 0),
+        "estimated_storage_cost": round(storage_cost, 2),
+        "estimated_storage_cost_display": f"{storage_symbol}{storage_cost:,.0f}",
+        "estimated_storage_cost_delta_value": (
+            round(storage_delta_value, 2) if has_storage_comparison else None
+        ),
+        "estimated_storage_cost_delta_display": (
+            f"{storage_symbol}{storage_delta_value:,.0f}"
+            if has_storage_comparison
+            else None
+        ),
+        "estimated_storage_cost_delta_percentage": (
+            round(storage_delta_percentage, 2)
+            if storage_delta_percentage is not None
+            else None
+        ),
+        "storage_currency": storage_currency,
+        "storage_components": inventory.get("storage_components") or [],
+        "calculation_basis": {
+            "coverage": "(current FBA + current AWD + in-transit FBA + in-transit AWD) / current-month units sold",
+            "return_rate": "returned units / gross units",
+            "global_storage": "US USD + (UK GBP × period GBP-to-USD rate)",
+        },
+    }
 
 
 def _sum(rows: Iterable[dict[str, Any]], *keys: str) -> float:
@@ -4125,6 +4549,11 @@ def get_dashboard_action_items(
 
 
     source_metrics = _get_action_item_source_metrics(live)
+    inventory_summary_overview = _build_inventory_summary_overview(
+        inventory,
+        dispatch,
+        items,
+    )
 
 
 
@@ -4173,6 +4602,7 @@ def get_dashboard_action_items(
 
 
         "source_metrics": source_metrics,
+        "inventory_summary_overview": inventory_summary_overview,
 
 
 

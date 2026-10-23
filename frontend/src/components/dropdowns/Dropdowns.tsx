@@ -342,6 +342,32 @@ type OverviewDispatchSummary = {
   airSkus: number;
 };
 
+type BackendInventorySummaryOverview = {
+  total_units: number;
+  total_skus: number;
+  current_fba_percentage: number;
+  current_awd_percentage: number;
+  inventory_coverage_ratio: number;
+  ageing_inventory_units: number;
+  healthy_units: number;
+  healthy_skus: number;
+  high_alert_units: number;
+  high_alert_skus: number;
+  return_rate: number;
+  return_rate_skus: number;
+  in_transit_units: number;
+  in_transit_skus: number;
+  sea_dispatch_units: number;
+  sea_dispatch_skus: number;
+  air_dispatch_units: number;
+  air_dispatch_skus: number;
+  estimated_storage_cost: number;
+  estimated_storage_cost_display: string;
+  estimated_storage_cost_delta_value: number | null;
+  estimated_storage_cost_delta_display: string | null;
+  estimated_storage_cost_delta_percentage: number | null;
+};
+
 type InventoryAgeSummaryItem = {
   month: string;
   month_number?: number;
@@ -6732,6 +6758,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   } | null>(null);
   const [overviewActionItems, setOverviewActionItems] = useState<DashboardActionItem[]>([]);
   const [overviewActionItemsLoading, setOverviewActionItemsLoading] = useState(false);
+  const [backendInventorySummaryOverview, setBackendInventorySummaryOverview] =
+    useState<BackendInventorySummaryOverview | null>(null);
   const [overviewDispatchSummary, setOverviewDispatchSummary] =
     useState<OverviewDispatchSummary | null>(null);
   const [overviewDispatchLoading, setOverviewDispatchLoading] = useState(false);
@@ -8739,12 +8767,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   useEffect(() => {
     if (isDemoMode) {
       setOverviewActionItems([]);
+      setBackendInventorySummaryOverview(null);
       setOverviewActionItemsLoading(false);
       return;
     }
 
     if (!token || !countryName || !overviewActionYear || !overviewActionMonth) {
       setOverviewActionItems([]);
+      setBackendInventorySummaryOverview(null);
       setOverviewActionItemsLoading(false);
       return;
     }
@@ -8753,6 +8783,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const fetchOverviewActionItems = async () => {
       setOverviewActionItems([]);
+      setBackendInventorySummaryOverview(null);
       setOverviewActionItemsLoading(true);
 
       try {
@@ -8785,9 +8816,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         setOverviewActionItems(
           Array.isArray(payload?.items) ? payload.items : []
         );
+        setBackendInventorySummaryOverview(
+          payload?.inventory_summary_overview ?? null
+        );
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setOverviewActionItems([]);
+        setBackendInventorySummaryOverview(null);
       } finally {
         if (!controller.signal.aborted) {
           setOverviewActionItemsLoading(false);
@@ -10777,6 +10812,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       getOverviewActionMetric("high-return-rate", "Products") ??
       getOverviewActionMetric("high-return-rate", "Affected SKUs") ??
       returnedSkuKeys.size;
+    const useBackendGlobalInventorySummary = isGlobalPage;
+    const globalInventorySummary = useBackendGlobalInventorySummary
+      ? backendInventorySummaryOverview
+      : null;
 
     const summaryLines = (aiPanel?.summaryBullets ?? [])
       .map((line) => String(line || "").trim())
@@ -10881,44 +10920,94 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         loading: targetSummaryLoading,
       },
       inventory: {
-        totalUnits: toNum(totalInventoryUnits),
-        totalSkus: totalInventorySkus,
-        currentFbaPercentage,
-        currentAwdPercentage,
-        inventoryCoverageRatio,
-        ageingInventoryUnits,
-        healthySkus: toNum(healthyAction?.skuCount ?? healthyAction?.count),
-        healthyUnits: toNum(healthyAction?.unitCount),
-        highAlertSkus: toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
-        highAlertUnits: toNum(highAlertAction?.unitCount),
-        returnRate,
-        returnRateSkus,
-        inTransitUnits,
-        inTransitSkus,
-        seaDispatchUnits,
-        airDispatchUnits,
-        seaDispatchSkus,
-        airDispatchSkus,
-        storageCostLabel: "Storage Cost",
-        estimatedStorageCost: String(
-          estimatedStorageAction?.displayValue ??
-          formatInventoryStorageCost(
-            0,
-            inventoryInsightsCountry,
-            homeCurrency
-          )
-        ),
+        totalUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.total_units ?? 0
+          : toNum(totalInventoryUnits),
+        totalSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.total_skus ?? 0
+          : totalInventorySkus,
+        currentFbaPercentage: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.current_fba_percentage
+          : currentFbaPercentage,
+        currentAwdPercentage: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.current_awd_percentage
+          : currentAwdPercentage,
+        inventoryCoverageRatio: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.inventory_coverage_ratio
+          : inventoryCoverageRatio,
+        ageingInventoryUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.ageing_inventory_units
+          : ageingInventoryUnits,
+        healthySkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.healthy_skus ?? 0
+          : toNum(healthyAction?.skuCount ?? healthyAction?.count),
+        healthyUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.healthy_units ?? 0
+          : toNum(healthyAction?.unitCount),
+        highAlertSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.high_alert_skus ?? 0
+          : toNum(highAlertAction?.skuCount ?? highAlertAction?.count),
+        highAlertUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.high_alert_units ?? 0
+          : toNum(highAlertAction?.unitCount),
+        returnRate: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.return_rate
+          : returnRate,
+        returnRateSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.return_rate_skus
+          : returnRateSkus,
+        inTransitUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.in_transit_units
+          : inTransitUnits,
+        inTransitSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.in_transit_skus
+          : inTransitSkus,
+        seaDispatchUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.sea_dispatch_units
+          : seaDispatchUnits,
+        airDispatchUnits: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.air_dispatch_units
+          : airDispatchUnits,
+        seaDispatchSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.sea_dispatch_skus
+          : seaDispatchSkus,
+        airDispatchSkus: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.air_dispatch_skus
+          : airDispatchSkus,
+        storageCostLabel: useBackendGlobalInventorySummary
+          ? "Estimated Storage Cost"
+          : "Storage Cost",
+        estimatedStorageCost: useBackendGlobalInventorySummary
+          ? globalInventorySummary?.estimated_storage_cost_display ?? "$0"
+          :
+          String(
+            estimatedStorageAction?.displayValue ??
+            formatInventoryStorageCost(
+              0,
+              inventoryInsightsCountry,
+              homeCurrency
+            )
+          ),
         estimatedStorageCostDeltaValue:
-          estimatedStorageAction?.deltaValue === undefined
-            ? undefined
-            : String(estimatedStorageAction.deltaValue),
+          useBackendGlobalInventorySummary
+            ? globalInventorySummary?.estimated_storage_cost_delta_display ?? undefined
+            : estimatedStorageAction?.deltaValue === undefined
+              ? undefined
+              : String(estimatedStorageAction.deltaValue),
         estimatedStorageCostDeltaPercentage:
-          estimatedStorageAction?.deltaPercentage,
+          useBackendGlobalInventorySummary
+            ? globalInventorySummary?.estimated_storage_cost_delta_percentage
+            : estimatedStorageAction?.deltaPercentage,
         loading:
           inventoryInsightsLoading ||
           overviewActionItemsLoading ||
-          overviewDispatchLoading,
-        unavailable: Boolean(inventoryInsightsError || (!inventoryInsightsLoading && !inventoryInsightsData)),
+          (!globalInventorySummary && overviewDispatchLoading),
+        unavailable: useBackendGlobalInventorySummary
+          ? !overviewActionItemsLoading && !globalInventorySummary
+            : Boolean(
+                inventoryInsightsError ||
+                (!inventoryInsightsLoading && !inventoryInsightsData)
+              ),
       },
     };
   })();

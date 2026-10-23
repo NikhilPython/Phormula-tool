@@ -189,7 +189,7 @@ const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
-const DASHBOARD_CACHE_SCHEMA_VERSION = 8;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 9;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -222,6 +222,32 @@ const MANUAL_LAST_MONTH_USD_CA = Number(
     process.env.NEXT_PUBLIC_MANUAL_LAST_MONTH_USD_CA || "0"
 );
 const LAST_REFRESH_KEY = "live-dashboard-last-refresh";
+
+type BackendInventorySummaryOverview = {
+    total_units: number;
+    total_skus: number;
+    current_fba_percentage: number;
+    current_awd_percentage: number;
+    inventory_coverage_ratio: number;
+    ageing_inventory_units: number;
+    healthy_units: number;
+    healthy_skus: number;
+    high_alert_units: number;
+    high_alert_skus: number;
+    return_rate: number;
+    return_rate_skus: number;
+    in_transit_units: number;
+    in_transit_skus: number;
+    sea_dispatch_units: number;
+    sea_dispatch_skus: number;
+    air_dispatch_units: number;
+    air_dispatch_skus: number;
+    estimated_storage_cost: number;
+    estimated_storage_cost_display: string;
+    estimated_storage_cost_delta_value: number | null;
+    estimated_storage_cost_delta_display: string | null;
+    estimated_storage_cost_delta_percentage: number | null;
+};
 const DASHBOARD_LOAD_CANCELLED_ERROR = "__dashboard_load_cancelled__";
 const isDashboardLoadCancelledError = (error: unknown) =>
     error instanceof Error && error.message === DASHBOARD_LOAD_CANCELLED_ERROR;
@@ -1805,6 +1831,8 @@ export default function DashboardPage() {
     const [inventoryUnavailableNotice, setInventoryUnavailableNotice] =
         useState<InventoryUnavailableNotice | null>(null);
     const [dashboardActionItems, setDashboardActionItems] = useState<DashboardActionItem[]>([]);
+    const [backendInventorySummaryOverview, setBackendInventorySummaryOverview] =
+        useState<BackendInventorySummaryOverview | null>(null);
     const [dashboardActionSourceMetrics, setDashboardActionSourceMetrics] = useState<{
         tacos: number;
         ads_spend: number;
@@ -3165,6 +3193,7 @@ export default function DashboardPage() {
     useEffect(() => {
         if (shouldShowDummyUi) {
             setDashboardActionItems([]);
+            setBackendInventorySummaryOverview(null);
             setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(false);
             setDashboardActionItemsError(null);
@@ -3176,9 +3205,11 @@ export default function DashboardPage() {
         // race ahead and render values from an older table snapshot.
         if (dashboardActionSourcesReadyKey !== inventoryInsightsRequestKey) {
             setDashboardActionItems([]);
+            setBackendInventorySummaryOverview(null);
             setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(true);
             setDashboardActionItemsError(null);
+            setBackendInventorySummaryOverview(null);
             return;
         }
 
@@ -3191,6 +3222,7 @@ export default function DashboardPage() {
 
             if (!token) {
                 setDashboardActionItems([]);
+                setBackendInventorySummaryOverview(null);
                 setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsLoading(false);
                 setDashboardActionItemsError("Authorization token is missing");
@@ -3313,6 +3345,9 @@ export default function DashboardPage() {
                         (item) => item.id !== "referral-fee-variance"
                     ),
                 ]);
+                setBackendInventorySummaryOverview(
+                    payload?.inventory_summary_overview ?? null
+                );
 
                 const sourceMetrics = payload?.source_metrics;
                 setDashboardActionSourceMetrics(
@@ -3327,6 +3362,7 @@ export default function DashboardPage() {
             } catch (error: unknown) {
                 if (error instanceof DOMException && error.name === "AbortError") return;
                 setDashboardActionItems([]);
+                setBackendInventorySummaryOverview(null);
                 setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsError(
                     error instanceof Error
@@ -5192,6 +5228,9 @@ export default function DashboardPage() {
         setPreviousSkuwiseGlobalData(parsed?.previousSkuwiseGlobalData ?? null);
         setGlobalCountryPayloads(parsed?.globalCountryPayloads ?? {});
         setDashboardActionItems(parsed?.dashboardActionItems ?? []);
+        setBackendInventorySummaryOverview(
+            parsed?.backendInventorySummaryOverview ?? null
+        );
         const cachedActionSourceMetrics = parsed?.dashboardActionSourceMetrics;
         setDashboardActionSourceMetrics(
             cachedActionSourceMetrics && typeof cachedActionSourceMetrics === "object"
@@ -8313,6 +8352,7 @@ export default function DashboardPage() {
             previousSkuwiseGlobalData,
             globalCountryPayloads,
             dashboardActionItems,
+            backendInventorySummaryOverview,
             dashboardActionSourceMetrics,
             dashboardActionItemsError,
 
@@ -8351,6 +8391,7 @@ export default function DashboardPage() {
         previousSkuwiseGlobalData,
         globalCountryPayloads,
         dashboardActionItems,
+        backendInventorySummaryOverview,
         dashboardActionSourceMetrics,
         dashboardActionItemsError,
         liveBiReady,
@@ -13295,6 +13336,10 @@ export default function DashboardPage() {
         const aiRecommendation =
             normalizeOverviewText(finalLiveBiPayload?.portfolio_recommendation) ||
             normalizeOverviewText(finalLiveBiPayload?.overall_actions);
+        const useBackendGlobalInventorySummary = platform === "global";
+        const globalInventorySummary = useBackendGlobalInventorySummary
+            ? backendInventorySummaryOverview
+            : null;
 
         return {
             periodLabel: `${currentDisplayMonth.monthName} ${currentDisplayMonth.year}`,
@@ -13369,39 +13414,88 @@ export default function DashboardPage() {
                     undefined,
             },
             inventory: {
-                totalUnits: totalInventoryUnits,
-                totalSkus: totalInventorySkus,
-                currentFbaPercentage,
-                currentAwdPercentage,
-                inventoryCoverageRatio,
-                ageingInventoryUnits,
-                healthySkus: toNumber(healthyAction?.skuCount ?? healthyAction?.count),
-                healthyUnits: toNumber(healthyAction?.unitCount),
-                highAlertSkus: toNumber(highAlertAction?.skuCount ?? highAlertAction?.count),
-                highAlertUnits: toNumber(highAlertAction?.unitCount),
-                returnRate,
-                returnRateSkus,
-                inTransitUnits,
-                inTransitSkus,
-                seaDispatchUnits,
-                airDispatchUnits,
-                seaDispatchSkus,
-                airDispatchSkus,
-                estimatedStorageCost: String(
-                    estimatedStorageAction?.displayValue ??
-                    `${inventoryStorageCostCurrencySymbol}0`
-                ),
+                totalUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.total_units ?? 0
+                    : totalInventoryUnits,
+                totalSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.total_skus ?? 0
+                    : totalInventorySkus,
+                currentFbaPercentage: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.current_fba_percentage
+                    : currentFbaPercentage,
+                currentAwdPercentage: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.current_awd_percentage
+                    : currentAwdPercentage,
+                inventoryCoverageRatio: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.inventory_coverage_ratio
+                    : inventoryCoverageRatio,
+                ageingInventoryUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.ageing_inventory_units
+                    : ageingInventoryUnits,
+                healthySkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.healthy_skus ?? 0
+                    : toNumber(healthyAction?.skuCount ?? healthyAction?.count),
+                healthyUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.healthy_units ?? 0
+                    : toNumber(healthyAction?.unitCount),
+                highAlertSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.high_alert_skus ?? 0
+                    : toNumber(highAlertAction?.skuCount ?? highAlertAction?.count),
+                highAlertUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.high_alert_units ?? 0
+                    : toNumber(highAlertAction?.unitCount),
+                returnRate: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.return_rate
+                    : returnRate,
+                returnRateSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.return_rate_skus
+                    : returnRateSkus,
+                inTransitUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.in_transit_units
+                    : inTransitUnits,
+                inTransitSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.in_transit_skus
+                    : inTransitSkus,
+                seaDispatchUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.sea_dispatch_units
+                    : seaDispatchUnits,
+                airDispatchUnits: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.air_dispatch_units
+                    : airDispatchUnits,
+                seaDispatchSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.sea_dispatch_skus
+                    : seaDispatchSkus,
+                airDispatchSkus: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.air_dispatch_skus
+                    : airDispatchSkus,
+                storageCostLabel: useBackendGlobalInventorySummary
+                    ? "Estimated Storage Cost"
+                    : undefined,
+                estimatedStorageCost: useBackendGlobalInventorySummary
+                    ? globalInventorySummary?.estimated_storage_cost_display ?? "$0"
+                    : String(
+                        estimatedStorageAction?.displayValue ??
+                        `${inventoryStorageCostCurrencySymbol}0`
+                    ),
                 estimatedStorageCostDeltaValue:
-                    estimatedStorageAction?.deltaValue === undefined
-                        ? undefined
-                        : String(estimatedStorageAction.deltaValue),
+                    useBackendGlobalInventorySummary
+                        ? globalInventorySummary?.estimated_storage_cost_delta_display ?? undefined
+                        : estimatedStorageAction?.deltaValue === undefined
+                            ? undefined
+                            : String(estimatedStorageAction.deltaValue),
                 estimatedStorageCostDeltaPercentage:
-                    estimatedStorageAction?.deltaPercentage,
-                loading: inventoryInsightsLoading,
-                unavailable: Boolean(
-                    inventoryInsightsError ||
-                    (!inventoryInsightsLoading && !overviewInventory)
-                ),
+                    useBackendGlobalInventorySummary
+                        ? globalInventorySummary?.estimated_storage_cost_delta_percentage
+                        : estimatedStorageAction?.deltaPercentage,
+                loading:
+                    inventoryInsightsLoading ||
+                    (useBackendGlobalInventorySummary && dashboardActionItemsLoading),
+                unavailable: useBackendGlobalInventorySummary
+                    ? !dashboardActionItemsLoading && !globalInventorySummary
+                    : Boolean(
+                        inventoryInsightsError ||
+                        (!inventoryInsightsLoading && !overviewInventory)
+                    ),
             },
         };
     })();
