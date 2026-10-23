@@ -516,7 +516,10 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
               />
             </div>
 
-            <div className="flex-1 min-w-0 w-full">
+            <div
+              className="flex-1 min-w-0 w-full"
+              style={{ "--table-sticky-top": "0px" } as React.CSSProperties}
+            >
               <DataTable
                 columns={columns}
                 data={rows}
