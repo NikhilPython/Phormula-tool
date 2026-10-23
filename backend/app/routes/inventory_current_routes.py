@@ -561,6 +561,143 @@ def attach_historical_storage_cost(rows, user_id, country_key, month_name, year)
     return updated
 
 
+def fetch_month_storage_cost_for_period(user_id, country_key, month_name, year, existing_tables=None):
+    """Read monthly recorded fees directly; do not require an inventory snapshot.
+
+    For months without recorded fees, use that month's inventory estimate only
+    if an actual same-month snapshot exists. Never substitute another month.
+    """
+    inspector = inspect(primary_engine)
+    existing_tables = existing_tables if existing_tables is not None else set(inspector.get_table_names(schema="public"))
+    table = next((name for name in construct_skuwise_monthly_table_candidates(
+        user_id, country_key, month_name, year
+    ) if is_safe_identifier(name) and name in existing_tables), None)
+    if table:
+        columns = {c["name"] for c in inspector.get_columns(table, schema="public")}
+        fee_cols = ("storage_fee", "short_term_storage_fee", "long_term_storage_fee")
+        if "sku" in columns and any(c in columns for c in fee_cols):
+            selected = [c for c in ("sku", "product_name", *fee_cols) if c in columns]
+            statement = text('SELECT ' + ', '.join('"' + c + '"' for c in selected)
+                             + ' FROM public."' + table + '"')
+            with primary_engine.connect() as conn:
+                records = conn.execute(statement).mappings().all()
+            if records:
+                costs, names = {}, {}
+                total_row_cost = None
+                for record in records:
+                    sku = normalize_sku_key(record.get("sku"))
+                    product = clean_text_value(record.get("product_name"))
+                    combined = record.get("storage_fee")
+                    cost = (to_number(combined) if combined not in (None, "") else
+                            abs(to_number(record.get("short_term_storage_fee"))) +
+                            abs(to_number(record.get("long_term_storage_fee"))))
+                    if sku in ("TOTAL", "GRAND TOTAL", "GRAND_TOTAL") or product.lower() in ("total", "grand total"):
+                        total_row_cost = cost
+                    elif sku:
+                        costs[sku] = costs.get(sku, 0) + cost
+                        if product:
+                            names.setdefault(sku, product)
+                sku_sum = sum(costs.values())
+                # Preserve the monthly report's explicit Total row, if present.
+                if total_row_cost is not None and abs(total_row_cost - sku_sum) > 0.01:
+                    costs["__UNALLOCATED_STORAGE__"] = total_row_cost - sku_sum
+                    names["__UNALLOCATED_STORAGE__"] = "Unallocated storage fee"
+                return {"found": True, "source": table, "by_sku": costs,
+                        "names": names, "total": round(sum(costs.values()), 2),
+                        "source_type": "recorded_sku_fees"}
+
+    # No recorded monthly fees: use only the real snapshot of this very month.
+    result = resolve_inventory_current_source(user_id, country_key, "monthly", month_name, year, None)
+    if result.get("found") and result.get("selected_month") == month_name:
+        costs, names = {}, {}
+        for row in result["rows"]:
+            if is_total_row(row) or is_percentage_row(row):
+                continue
+            sku = normalize_sku_key(get_row_sku(row))
+            if sku:
+                costs[sku] = costs.get(sku, 0) + to_number(row.get("estimated-storage-cost-next-month"))
+                names.setdefault(sku, clean_text_value(row.get("Product Name")) or sku)
+        return {"found": True, "source": result.get("source_name"), "by_sku": costs,
+                "names": names, "total": round(sum(costs.values()), 2),
+                "source_type": "inventory_estimate"}
+    return {"found": False, "source": None, "by_sku": {}, "names": {}, "total": None,
+            "source_type": "missing"}
+
+
+def attach_period_storage_cost(rows, user_id, country_key, range_type, month_name, year, quarter):
+    """Sum real monthly storage data for quarterly and yearly; monthly untouched."""
+    period = str(range_type or "monthly").strip().lower()
+    if period not in ("quarter", "quarterly", "quarter_months", "yearly"):
+        return rows, None
+    year_int = int(year)
+    today = date.today()
+    if period == "yearly":
+        months = list(range(1, 13))
+    else:
+        q = str(quarter or "").strip().lower()
+        if not q and month_name:
+            month_num = MONTH_NAME_TO_NUMBER.get(str(month_name).lower())
+            if month_num:
+                q = "q" + str((month_num - 1) // 3 + 1)
+        if q not in QUARTER_MONTHS:
+            return rows, {"error": "Invalid quarter", "months_included": [], "months_missing": []}
+        months = sorted(MONTH_NAME_TO_NUMBER[m] for m in QUARTER_MONTHS[q])
+
+    # Yearly totals represent COMPLETED months only. In the current year,
+    # including this month's next-month estimate inflates the YTD value.
+    # Quarterly behavior is deliberately unchanged.
+    if period == "yearly":
+        expected = [m for m in months if (year_int, m) < (today.year, today.month)]
+        excluded_in_progress = [
+            calendar_month_name[m].lower()
+            for m in months if (year_int, m) == (today.year, today.month)
+        ]
+    else:
+        expected = [m for m in months if (year_int, m) <= (today.year, today.month)]
+        excluded_in_progress = []
+    future = [calendar_month_name[m].lower() for m in months if (year_int, m) > (today.year, today.month)]
+    storage_key = "estimated-storage-cost-next-month"
+    costs, names, included, missing, breakdown = {}, {}, [], [], []
+    existing = set(inspect(primary_engine).get_table_names(schema="public"))
+    for m in expected:
+        month = calendar_month_name[m].lower()
+        info = fetch_month_storage_cost_for_period(user_id, country_key, month, year_int, existing)
+        breakdown.append({"month": month, "source": info["source"], "source_type": info["source_type"],
+                          "total": info["total"]})
+        if not info["found"]:
+            missing.append(month)
+            continue
+        included.append(month)
+        for sku, cost in info["by_sku"].items():
+            costs[sku] = costs.get(sku, 0) + cost
+        for sku, name in info["names"].items():
+            names.setdefault(sku, name)
+
+    updated, seen = [], set()
+    for row in rows:
+        item = dict(row)
+        if not is_total_row(item) and not is_percentage_row(item):
+            sku = normalize_sku_key(get_row_sku(item))
+            if sku:
+                seen.add(sku)
+            item[storage_key] = round(costs.get(sku, 0), 2)
+        updated.append(item)
+    for sku, cost in costs.items():
+        if sku not in seen:
+            updated.insert(0, {"SKU": sku if not sku.startswith("__UNALLOCATED") else "UNALLOCATED_STORAGE",
+                               "Product Name": names.get(sku, sku), storage_key: round(cost, 2)})
+    total = round(sum(costs.values()), 2)
+    for item in updated:
+        if is_total_row(item):
+            item[storage_key] = total
+    return updated, {"total": total, "months_included": included, "months_missing": missing,
+                     "future_months": future,
+                     "excluded_in_progress_months": excluded_in_progress,
+                     "monthly_breakdown": breakdown,
+                     "partial_period": bool(missing or future or excluded_in_progress),
+                     "error": None}
+
+
 def fetch_current_month_units_sold_map(user_id, country_key, month_name, year):
     """
     Reads monthly SKU sales table and returns units sold by SKU.
@@ -2380,6 +2517,9 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
         rows = attach_historical_storage_cost(
             rows, user_id, child_country, selected_month_for_units, year,
         )
+        rows, storage_period_summary = attach_period_storage_cost(
+            rows, user_id, child_country, range_type, month_name, year, quarter,
+        )
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
@@ -2445,6 +2585,7 @@ def resolve_inventory_current_source_global_separated(user_id, range_type, month
             "total_rows": len(rows),
 
             "categories": categories,
+            "storage_period_summary": storage_period_summary,
             "inventory_age_summary": inventory_age_summary,
             "high_alert_coverage_summary": high_alert_coverage_summary,
             "category_counts": {
@@ -3007,6 +3148,9 @@ def get_inventory_current_table():
         rows = attach_historical_storage_cost(
             rows, user_id, country_key, selected_month_for_units, year,
         )
+        rows, storage_period_summary = attach_period_storage_cost(
+            rows, user_id, country_key, range_type, month_name, year, quarter,
+        )
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
@@ -3104,6 +3248,7 @@ def get_inventory_current_table():
             "total_rows": len(rows),
 
             "categories": categories,
+            "storage_period_summary": storage_period_summary,
             "inventory_age_summary": inventory_age_summary,
             "high_alert_coverage_summary": high_alert_coverage_summary,
             "category_counts": {
