@@ -84,10 +84,14 @@ import { Toaster } from "sonner";
 import { PlatformProvider } from "@/components/context/PlatformContext";
 import MemberRouteGuard from "@/components/auth/MemberRouteGuard";
 import CurrentMonthRouteGuard from "@/components/common/CurrentMonthRouteGuard";
+import Global401Interceptor from "@/components/auth/Global401Interceptor";
 import { Metadata } from "next";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -115,6 +119,8 @@ export default function RootLayout({
     <html lang="en" className={lato.variable}>
       <body className="font-lato dark:bg-gray-900">
         <Providers>
+          <Global401Interceptor />
+
           <ThemeProvider>
             <SidebarProvider>
               <PlatformProvider>
@@ -127,7 +133,11 @@ export default function RootLayout({
           </ThemeProvider>
         </Providers>
 
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster
+          position="top-right"
+          richColors
+          closeButton
+        />
       </body>
     </html>
   );
