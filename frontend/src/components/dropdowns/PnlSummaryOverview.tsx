@@ -306,21 +306,29 @@ const InventoryInsightsGrid = ({
     <div className="grid w-full grid-cols-2 gap-2 lg:h-full lg:grid-cols-4 lg:grid-rows-3 2xl:gap-2.5">
       <MetricTile
         label="Total inventory"
-        value={value(`${formatWholeNumber(inventory.totalUnits)} units`)}
+        value={
+          <span className="whitespace-nowrap">
+            {formatWholeNumber(inventory.totalUnits)} units
+          </span>
+        }
         trailing={
           loading ? null : (
-            <span className="whitespace-nowrap text-xs font-semibold text-slate-500">
-              {typeof inventory.currentFbaPercentage === "number" &&
-              Number.isFinite(inventory.currentFbaPercentage)
-                ? formatPercent(inventory.currentFbaPercentage)
-                : "-"}{" "}
-              FBA ·{" "}
-              {typeof inventory.currentAwdPercentage === "number" &&
-              Number.isFinite(inventory.currentAwdPercentage)
-                ? formatPercent(inventory.currentAwdPercentage)
-                : "-"}{" "}
-              AWD
-            </span>
+            <div className="flex flex-col items-end gap-0.5 whitespace-nowrap text-[10px] font-semibold leading-tight text-slate-500 2xl:text-xs">
+              <span>
+                {typeof inventory.currentFbaPercentage === "number" &&
+                  Number.isFinite(inventory.currentFbaPercentage)
+                  ? formatPercent(inventory.currentFbaPercentage)
+                  : "-"}{" "}
+                FBA
+              </span>
+              <span>
+                {typeof inventory.currentAwdPercentage === "number" &&
+                  Number.isFinite(inventory.currentAwdPercentage)
+                  ? formatPercent(inventory.currentAwdPercentage)
+                  : "-"}{" "}
+                AWD
+              </span>
+            </div>
           )
         }
         accent="border-[#75BBDA]"
