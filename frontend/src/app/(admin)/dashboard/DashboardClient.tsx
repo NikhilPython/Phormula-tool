@@ -13581,7 +13581,7 @@ export default function DashboardPage() {
                 onAction={handleConnectAmazonPreview}
             >
                 {!showDashboardDetails ? (
-                    <div className="mt-3 sm:mt-4 2xl:mt-3">
+                    <div className="mt-3 w-full min-w-0 sm:mt-4 2xl:mt-3">
                         <PnlSummaryOverview
                             data={overviewData}
                             onNavigate={navigateFromOverview}

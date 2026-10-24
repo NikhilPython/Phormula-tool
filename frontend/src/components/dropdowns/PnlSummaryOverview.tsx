@@ -252,26 +252,36 @@ const MetricTile = ({
   compact?: boolean;
 }) => (
   <div
-    className={`relative flex h-full flex-col justify-center overflow-hidden rounded-xl border border-t-4 bg-white shadow-sm ${compact
-      ? "min-h-[72px] p-2.5 sm:p-3 lg:min-h-0 2xl:p-3"
-      : "min-h-[108px] p-3.5 sm:p-4 2xl:min-h-[132px] 2xl:p-5"
-      } ${accent}`}
+    className={`relative flex h-full min-h-[84px] min-w-0 flex-col
+  justify-center rounded-xl border border-t-4 bg-white shadow-sm
+  ${compact
+        ? "p-3 sm:p-3.5 2xl:min-h-[88px] 2xl:p-4"
+        : "min-h-[108px] p-3.5 sm:p-4 2xl:min-h-[132px] 2xl:p-5"
+      }
+  ${accent}`}
   >
-    <p className="text-xs font-medium capitalize tracking-wide text-charcoal-500">
+
+    <p className="text-xs font-medium capitalize leading-snug text-charcoal-500">
       {label}
     </p>
 
+
     <div className={`${compact ? "mt-1" : "mt-2"} flex items-center justify-between gap-3`}>
-      <div className={`min-w-0 font-bold text-charcoal-500 ${compact
-        ? "text-lg 2xl:text-xl"
-        : "text-lg sm:text-xl 2xl:text-2xl"
-        }`}>
+
+      <div
+        className={`min-w-0 font-bold leading-tight text-charcoal-500 ${compact
+          ? "text-base sm:text-lg 2xl:text-xl"
+          : "text-lg sm:text-xl 2xl:text-2xl"
+          }`}
+      >
         {value}
       </div>
+
       {trailing ? (
-        <div className="shrink-0 text-[10px] 2xl:text-xs">
+        <div className="shrink-0 text-[10px] leading-tight 2xl:text-xs">
           {trailing}
         </div>
+
       ) : null}
     </div>
 
@@ -303,7 +313,18 @@ const InventoryInsightsGrid = ({
       : "-";
 
   return (
-    <div className="grid w-full grid-cols-2 gap-2 lg:h-full lg:grid-cols-4 lg:grid-rows-3 2xl:gap-2.5">
+
+
+<div
+  className="
+    grid w-full min-w-0 grid-cols-2 gap-2
+    sm:grid-cols-3
+    lg:grid-cols-3
+    xl:grid-cols-4
+    2xl:gap-4
+  "
+>
+
       <MetricTile
         label="Total inventory"
         value={
@@ -480,7 +501,7 @@ const InventoryInsightsGrid = ({
       />
 
       <MetricTile
-        label="High alert (Less than 2 months of coverage)"
+        label="High alert (Coverage < 2 Months)"
         value={value(`${formatWholeNumber(inventory.highAlertUnits)} units left`)}
         trailing={
           loading ? null : (
@@ -1063,7 +1084,17 @@ export default function PnlSummaryOverview({
   };
 
   return (
-    <section id="summary" className="flex h-[calc(100dvh-260px)] min-h-[440px] max-h-[620px] flex-col overflow-hidden rounded-2xl border border-[#CFE8DF] bg-white shadow-sm 2xl:h-[560px] 2xl:min-h-[560px] 2xl:max-h-[560px]">
+   
+<section
+  id="summary"
+  className={`flex w-full flex-col overflow-hidden rounded-2xl border
+    border-[#CFE8DF] bg-white shadow-sm ${
+      isInventorySlide
+        ? "h-auto min-h-0 max-h-none"
+        : "h-[calc(100dvh-260px)] min-h-[440px] max-h-[620px] 2xl:h-[560px] 2xl:min-h-[560px] 2xl:max-h-[560px]"
+    }`}
+>
+
       <div className="flex min-h-[42px] items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 sm:px-6 2xl:min-h-[48px] 2xl:px-8">
         <div className="flex min-w-0 items-center gap-2">
           <PageBreadcrumb
@@ -1126,7 +1157,13 @@ export default function PnlSummaryOverview({
         ))}
       </nav>
 
-      <div className="relative flex min-h-0 flex-1 overflow-hidden px-4 py-2 sm:px-6 sm:py-3 2xl:px-8 2xl:pb-5 2xl:pt-3">
+    
+<div
+  className={`relative min-w-0 overflow-hidden px-4 py-2 sm:px-6 sm:py-3 2xl:px-8 2xl:pb-5 2xl:pt-3 ${
+    isInventorySlide ? "flex-none" : "flex min-h-0 flex-1"
+  }`}
+>
+
         <AnimatePresence mode="wait">
           <motion.div
             key={slide.key}
@@ -1169,7 +1206,9 @@ export default function PnlSummaryOverview({
             </div>
 
             <div
-              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide || isInventorySlide ? "flex-1" : ""
+              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide || isInventorySlide
+                ? "flex flex-1 flex-col"
+                : ""
                 }`}
             >
               {renderSlideBody()}
