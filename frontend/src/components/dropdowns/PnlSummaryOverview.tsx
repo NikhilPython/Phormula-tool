@@ -313,17 +313,15 @@ const InventoryInsightsGrid = ({
       : "-";
 
   return (
-
-
-<div
-  className="
+    <div
+      className="
     grid w-full min-w-0 grid-cols-2 gap-2
     sm:grid-cols-3
     lg:grid-cols-3
     xl:grid-cols-4
     2xl:gap-4
   "
->
+    >
 
       <MetricTile
         label="Total inventory"
@@ -398,7 +396,7 @@ const InventoryInsightsGrid = ({
       />
 
       <MetricTile
-        label="Ageing inventory"
+        label="FBA Ageing inventory"
         value={value(optionalUnits(inventory.ageingInventoryUnits))}
         trailing={
           loading ? null : (
@@ -413,7 +411,7 @@ const InventoryInsightsGrid = ({
 
 
       <MetricTile
-        label="Healthy SKUs"
+        label="FBA Healthy SKUs"
         value={value(`${formatWholeNumber(inventory.healthyUnits)} units`)}
         trailing={
           loading ? null : (
@@ -844,6 +842,8 @@ export default function PnlSummaryOverview({
     slide.key === "netSalesGrowth";
   const usesCompactHeader = isFinanceSlide || isSkuTableSlide;
 
+
+  
   const renderSlideBody = () => {
     if (slide.key === "ai") {
       return data.ai.loading ? (
@@ -899,7 +899,20 @@ export default function PnlSummaryOverview({
       };
 
       return (
-        <div className="grid h-full min-h-0 w-full grid-cols-2 grid-rows-3 gap-3 lg:grid-cols-3 lg:grid-rows-2 2xl:gap-4">
+
+        <div
+          className="
+  grid w-full min-w-0 flex-1
+  grid-cols-2
+  grid-rows-[repeat(3,minmax(0,1fr))]
+  gap-2
+  lg:grid-cols-3
+  lg:grid-rows-[repeat(2,minmax(0,1fr))]
+  xl:gap-3
+  2xl:gap-4
+"
+        >
+
           <SummaryMetricCard
             title="Units"
             value={formatWholeNumber(financial.units.value)}
@@ -1084,16 +1097,21 @@ export default function PnlSummaryOverview({
   };
 
   return (
-   
-<section
-  id="summary"
-  className={`flex w-full flex-col overflow-hidden rounded-2xl border
-    border-[#CFE8DF] bg-white shadow-sm ${
-      isInventorySlide
-        ? "h-auto min-h-0 max-h-none"
-        : "h-[calc(100dvh-260px)] min-h-[440px] max-h-[620px] 2xl:h-[560px] 2xl:min-h-[560px] 2xl:max-h-[560px]"
-    }`}
->
+
+    <section
+      id="summary"
+    
+className={`flex w-full flex-col overflow-hidden rounded-2xl border
+    border-[#CFE8DF] bg-white shadow-sm ${isInventorySlide
+  ? "h-auto min-h-0 max-h-none"
+  : `h-[clamp(440px,calc(100dvh-220px),680px)] min-h-[440px] min-[1700px]:h-[560px] min-[1700px]:min-h-0 min-[1700px]:max-h-[560px] ${
+      isFinanceSlide
+        ? "[@media(max-height:800px)]:!h-auto [@media(max-height:800px)]:!max-h-none"
+        : ""
+    }`
+}`}
+
+    >
 
       <div className="flex min-h-[42px] items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 sm:px-6 2xl:min-h-[48px] 2xl:px-8">
         <div className="flex min-w-0 items-center gap-2">
@@ -1157,12 +1175,11 @@ export default function PnlSummaryOverview({
         ))}
       </nav>
 
-    
-<div
-  className={`relative min-w-0 overflow-hidden px-4 py-2 sm:px-6 sm:py-3 2xl:px-8 2xl:pb-5 2xl:pt-3 ${
-    isInventorySlide ? "flex-none" : "flex min-h-0 flex-1"
-  }`}
->
+
+      <div
+        className={`relative min-w-0 overflow-hidden px-4 py-2 sm:px-6 sm:py-3 2xl:px-8 2xl:pb-5 2xl:pt-3 ${isInventorySlide ? "flex-none" : "flex min-h-0 flex-1"
+          }`}
+      >
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -1177,7 +1194,7 @@ export default function PnlSummaryOverview({
             {/* <div className={`pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full blur-3xl ${tone.glow}`} /> */}
 
             {/* Compact horizontal slide header */}
-            <div className="relative z-10 mx-auto mb-3 flex w-full max-w-[1480px] items-center gap-3 border-b border-slate-200/70 pb-3">
+            <div className="relative z-10 mx-auto mb-2 flex w-full max-w-none shrink-0 items-center gap-3 border-b border-slate-200/70 pb-2 2xl:mb-2">
 
               {/* Icon */}
               {/* <div
@@ -1188,11 +1205,11 @@ export default function PnlSummaryOverview({
 
               {/* Title and description */}
               <div className="min-w-0 flex-1">
-                <h2 className="text-base font-semibold leading-6 text-charcoal-500 sm:text-lg">
+                <h2 className="text-base font-semibold leading-5 text-charcoal-500 sm:text-lg">
                   {slide.title}
                 </h2>
 
-                <p className="mt-0.5 text-[11px] leading-4 text-slate-500 2xl:text-xs">
+                <p className="mt-0.5 text-[10px] leading-4 text-slate-500 sm:text-[11px] 2xl:text-xs">
                   {slide.description}
                 </p>
               </div>
@@ -1206,9 +1223,11 @@ export default function PnlSummaryOverview({
             </div>
 
             <div
-              className={`relative z-10 w-full min-h-0 2xl:mx-auto 2xl:max-w-[1480px] ${isFinanceSlide || isInventorySlide
-                ? "flex flex-1 flex-col"
-                : ""
+              className={`relative z-10 w-full min-w-0 mx-auto max-w-none ${isFinanceSlide
+                ? "flex min-h-0 flex-1 flex-col"
+                : isInventorySlide
+                  ? "flex flex-1 flex-col"
+                  : ""
                 }`}
             >
               {renderSlideBody()}
