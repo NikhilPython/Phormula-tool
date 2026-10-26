@@ -543,7 +543,7 @@ const SkuPerformanceTable = ({
   }));
   const isNetSalesGrowthTable = variant === "netSalesGrowth";
   const renderProfitMetric = (row: SkuPerformanceTableRow) => (
-    <div className="inline-flex items-center justify-center gap-2 whitespace-nowrap">
+   <div className="inline-flex flex-col items-center justify-center whitespace-nowrap min-[1700px]:flex-row min-[1700px]:gap-2">
       <span className="inline-flex items-baseline gap-1 text-charcoal-500">
         <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
         {typeof row.secondaryPercentage === "number" &&
@@ -710,7 +710,7 @@ const SkuPerformanceTable = ({
       rowClassName={(_row, index) =>
         index % 2 === 0 ? "bg-white" : "bg-gray-50"
       }
-      tableClassName="w-full table-fixed !text-[12px] !text-[#414042] lg:!text-[12px] min-[1700px]:!text-[14px] [&_th]:!border-gray-300 [&_th]:!bg-[#5EA68E] [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-[#f8edcf] [&_th]:whitespace-normal [&_th]:leading-tight [&_td]:!border-gray-200 [&_td]:!px-3 [&_td]:!py-3"
+      tableClassName="lg:!min-w-0 w-full table-fixed !text-[12px] !text-[#414042] lg:!text-[12px] min-[1700px]:!text-[14px] [&_th]:!border-gray-300 [&_th]:!bg-[#5EA68E] [&_th]:!px-3 [&_th]:!py-3 [&_th]:!text-[#f8edcf] [&_th]:whitespace-normal [&_th]:leading-tight [&_td]:!border-gray-200 [&_td]:!px-3 [&_td]:!py-3"
     />
   );
 };
@@ -842,8 +842,8 @@ export default function PnlSummaryOverview({
     slide.key === "netSalesGrowth";
   const usesCompactHeader = isFinanceSlide || isSkuTableSlide;
 
+  const growsOnShortScreens = isFinanceSlide || isSkuTableSlide;
 
-  
   const renderSlideBody = () => {
     if (slide.key === "ai") {
       return data.ai.loading ? (
@@ -1100,16 +1100,14 @@ export default function PnlSummaryOverview({
 
     <section
       id="summary"
-    
-className={`flex w-full flex-col overflow-hidden rounded-2xl border
+      className={`flex w-full flex-col overflow-hidden rounded-2xl border
     border-[#CFE8DF] bg-white shadow-sm ${isInventorySlide
-  ? "h-auto min-h-0 max-h-none"
-  : `h-[clamp(440px,calc(100dvh-220px),680px)] min-h-[440px] min-[1700px]:h-[560px] min-[1700px]:min-h-0 min-[1700px]:max-h-[560px] ${
-      isFinanceSlide
-        ? "[@media(max-height:800px)]:!h-auto [@media(max-height:800px)]:!max-h-none"
-        : ""
-    }`
-}`}
+          ? "h-auto min-h-0 max-h-none"
+          : `h-[clamp(440px,calc(100dvh-220px),680px)] min-h-[440px] min-[1700px]:h-[560px] min-[1700px]:min-h-0 min-[1700px]:max-h-[560px] ${growsOnShortScreens
+            ? "[@media(max-height:800px)]:!h-auto [@media(max-height:800px)]:!max-h-none"
+            : ""
+          }`
+        }`}
 
     >
 
