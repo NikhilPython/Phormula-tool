@@ -205,6 +205,7 @@ export type TableRow = {
   return_quantity?: number;
 
   unit_wise_cm2_profitability?: number;
+  product_status?: string;
 };
 
 type Totals = {
@@ -281,6 +282,27 @@ const isMissingName = (v: unknown) => {
 
   const s = String(v).trim().toLowerCase();
   return s === "" || s === "0" || s === "nan" || s === "none" || s === "null" || s === "undefined";
+};
+
+const isDiscontinuedSkuRow = (row: Partial<TableRow> | any) => {
+  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+  const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+  // Total / Others aggregate rows are never "discontinued"
+  if (
+    name === "total" ||
+    name === "others" ||
+    sku === "total" ||
+    sku === "others"
+  ) {
+    return false;
+  }
+
+  const status = String((row as any)?.product_status ?? "")
+    .trim()
+    .toLowerCase();
+
+  return status === "discontinued" || status === "discontinuous";
 };
 
 const toNumber = (v: any) => {
@@ -722,71 +744,71 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "global",
   ].includes(normalizedCountryName);
 
- 
-const tableData = useMemo(() => {
-  const sourceRows = (isMonthWiseView ? monthWiseRows : rows) || [];
-  const normalizedRows = normalizeRows(sourceRows);
 
-  // Product-wise: keep existing logic unchanged.
-  if (!isMonthWiseView) {
-    return normalizedRows;
-  }
+  const tableData = useMemo(() => {
+    const sourceRows = (isMonthWiseView ? monthWiseRows : rows) || [];
+    const normalizedRows = normalizeRows(sourceRows);
 
-  // Month-wise: filter rows according to selected year.
-  const selectedYear = String(year);
-
-  const filteredRows = normalizedRows.filter((normalizedRow, index) => {
-    const sourceRow: any = sourceRows[index] || {};
-
-    const rowYear =
-      sourceRow.year ??
-      sourceRow.calendar_year ??
-      sourceRow.date_year ??
-      sourceRow.year_month ??
-      sourceRow.month;
-
-    // Keep the row if year information is unavailable.
-    if (rowYear === undefined || rowYear === null || rowYear === "") {
-      return true;
+    // Product-wise: keep existing logic unchanged.
+    if (!isMonthWiseView) {
+      return normalizedRows;
     }
 
-    const yearMatch = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
+    // Month-wise: filter rows according to selected year.
+    const selectedYear = String(year);
 
-    return yearMatch ? yearMatch[0] === selectedYear : true;
-  });
+    const filteredRows = normalizedRows.filter((normalizedRow, index) => {
+      const sourceRow: any = sourceRows[index] || {};
 
-  // Preserve existing CM2 and Ads Spend logic.
-  return filteredRows.map((normalizedRow) => {
-    const sourceRow: any =
-      sourceRows[normalizedRows.indexOf(normalizedRow)] || {};
+      const rowYear =
+        sourceRow.year ??
+        sourceRow.calendar_year ??
+        sourceRow.date_year ??
+        sourceRow.year_month ??
+        sourceRow.month;
 
-    const hasValue = (value: unknown) =>
-      value !== null &&
-      value !== undefined &&
-      value !== "" &&
-      Number.isFinite(Number(value));
+      // Keep the row if year information is unavailable.
+      if (rowYear === undefined || rowYear === null || rowYear === "") {
+        return true;
+      }
 
-    const cm2Value = hasValue(sourceRow.total_cm2_profit)
-      ? Number(sourceRow.total_cm2_profit)
-      : hasValue(sourceRow.cm2_profit_total)
-        ? Number(sourceRow.cm2_profit_total)
-        : hasValue(sourceRow.cm2_profit)
-          ? Number(sourceRow.cm2_profit)
-          : normalizedRow.cm2_profit;
+      const yearMatch = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
 
-    return {
-      ...normalizedRow,
+      return yearMatch ? yearMatch[0] === selectedYear : true;
+    });
 
-      // Month-wise Ads Spend uses total_ads.
-      ads_spend: toNumber(sourceRow.total_ads),
+    // Preserve existing CM2 and Ads Spend logic.
+    return filteredRows.map((normalizedRow) => {
+      const sourceRow: any =
+        sourceRows[normalizedRows.indexOf(normalizedRow)] || {};
 
-      // Existing CM2 logic preserved.
-      cm2_profit: cm2Value,
-      total_cm2_profit: cm2Value,
-      cm2_profit_total: cm2Value,
-    } as TableRow;
-  });
-}, [rows, monthWiseRows, isMonthWiseView, year]);
+      const hasValue = (value: unknown) =>
+        value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        Number.isFinite(Number(value));
+
+      const cm2Value = hasValue(sourceRow.total_cm2_profit)
+        ? Number(sourceRow.total_cm2_profit)
+        : hasValue(sourceRow.cm2_profit_total)
+          ? Number(sourceRow.cm2_profit_total)
+          : hasValue(sourceRow.cm2_profit)
+            ? Number(sourceRow.cm2_profit)
+            : normalizedRow.cm2_profit;
+
+      return {
+        ...normalizedRow,
+
+        // Month-wise Ads Spend uses total_ads.
+        ads_spend: toNumber(sourceRow.total_ads),
+
+        // Existing CM2 logic preserved.
+        cm2_profit: cm2Value,
+        total_cm2_profit: cm2Value,
+        cm2_profit_total: cm2Value,
+      } as TableRow;
+    });
+  }, [rows, monthWiseRows, isMonthWiseView, year]);
 
 
   const hasCm2Data = useMemo(() => {
@@ -2669,10 +2691,18 @@ const tableData = useMemo(() => {
     const isPositive = rawPct >= 0;
     const deltaText = `${isPositive ? "▲" : "▼"} ${Math.abs(rawPct).toFixed(2)}%`;
 
+    // Check if the SKU is discontinued to match the red row tint
+    const isDiscontinued = isDiscontinuedSkuRow(row);
+
+    const colorClass = isDiscontinued
+      ? "text-[#FF5C5C]"
+      : isPositive
+        ? "text-[#5EA68E]"
+        : "text-[#FF5C5C]";
+
     return (
       <span
-        className={`shrink-0 whitespace-nowrap text-[11px] min-[1700px]:text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
-          }`}
+        className={`shrink-0 whitespace-nowrap text-[11px] min-[1700px]:text-xs font-semibold ${colorClass}`}
         title={`Previous Net Sales: ${formatValue(
           row.previous_net_sales,
           "net_sales"
@@ -2721,11 +2751,11 @@ const tableData = useMemo(() => {
     TOTAL_ROW_HEIGHT +
     SUMMARY_ROW_HEIGHT * COLLAPSED_SUMMARY_ROW_COUNT;
 
- const usOtherFees =
-  usSummaryValues.otherAdjustment === null &&
-  usSummaryValues.platformManagementFees === null
-    ? null
-    : Number(usSummaryValues.otherAdjustment ?? 0) -
+  const usOtherFees =
+    usSummaryValues.otherAdjustment === null &&
+      usSummaryValues.platformManagementFees === null
+      ? null
+      : Number(usSummaryValues.otherAdjustment ?? 0) -
       Math.abs(Number(usSummaryValues.platformManagementFees ?? 0));
 
   const skuSummaryRows = isUsCountry
@@ -3251,7 +3281,14 @@ const tableData = useMemo(() => {
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
-                  if (isMonthWiseView && name) return "cursor-pointer ";
+
+                  // Month-wise view uses month names, not SKUs → skip discontinued styling
+                  if (!isMonthWiseView && isDiscontinuedSkuRow(row)) {
+                    // 👈 CHANGED text-[#BE123C] to text-[#FF5C5C]
+                    return "bg-[#FFF1F2] text-[#FF5C5C] [&>td]:!bg-[#FFF1F2] [&>td]:!text-[#FF5C5C]";
+                  }
+
+                  if (isMonthWiseView && name) return "cursor-pointer";
                   if (!showAllRows && name === "others") return "cursor-pointer";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
@@ -3282,11 +3319,12 @@ const tableData = useMemo(() => {
 
                   if (colKey === "product_name") {
                     const displayName = getDisplayProductNameFromRow(row);
+                    const isDiscontinued = !isMonthWiseView && isDiscontinuedSkuRow(row);
+
                     if (isMonthWiseView) {
                       return <span className="font-medium text-green-500">{displayName}</span>;
                     }
 
-                    // ✅ ONLY "Others" in green
                     if (isOthers) {
                       return (
                         <span className="inline-block max-w-[220px] truncate text-green-500">
@@ -3295,12 +3333,13 @@ const tableData = useMemo(() => {
                       );
                     }
 
-                    // clickable products
                     if (!isTotal) {
                       return (
                         <div
                           onClick={() => handleProductClick(row)}
-                          className="flex w-full cursor-pointer items-end justify-between gap-2 text-left text-green-500"
+                          // 👈 CHANGED text-[#BE123C] to text-[#FF5C5C]
+                          className={`flex w-full cursor-pointer items-end justify-between gap-2 text-left ${isDiscontinued ? "text-[#FF5C5C]" : "text-green-500"
+                            }`}
                           title={String(displayName || "")}
                         >
                           <span className="min-w-0 flex-1 whitespace-normal break-words">
@@ -3311,7 +3350,6 @@ const tableData = useMemo(() => {
                       );
                     }
 
-                    // Total row
                     return (
                       <span className="inline-block max-w-[220px] truncate font-semibold">
                         {String(displayName || "-")}
@@ -3463,7 +3501,7 @@ const tableData = useMemo(() => {
             <div className="overflow-x-auto rounded-xl border border-gray-300">
               <table className="w-full table-auto border-collapse">
                 <thead>
-                  <tr className="bg-[#B75A5A] font-bold text-[#f8edcf]">
+                  <tr className="bg-[#FF5C5C] font-bold text-[#f8edcf]">
                     <th className="min-w-[150px] border border-gray-300 px-2 sm:px-3 py-3 text-left text-xs 2xl:text-sm break-words leading-snug">
                       Product Name
                     </th>
