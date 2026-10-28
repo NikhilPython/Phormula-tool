@@ -7771,7 +7771,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   useEffect(() => {
     let cancelled = false;
     const loadMonthWiseTotals = async () => {
-      if (!allDropdownsSelected || !year || !initialCountryName || isDemoMode) {
+      if (!allDropdownsSelected || !selectedYear || !initialCountryName || isDemoMode) {
         setMonthWiseSkuRows([]);
         setMonthWiseSkuLoading(false);
         return;
@@ -7780,15 +7780,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
       const allMonthsForYear = monthNames.map((name) => name.toLowerCase());
       const now = new Date();
-      const selectedYearNumber = Number(year);
-      // For the current year, only show completed months (up to previous month).
-      // Past years can show all 12 months.
+      // Always use the year currently selected in the Yearly filter.
+      const selectedYearNumber = Number(selectedYear);
+      // Current year: only completed months. Past years: all 12 months.
       const months = selectedYearNumber === now.getFullYear()
         ? allMonthsForYear.slice(0, now.getMonth())
         : allMonthsForYear;
       const results = await Promise.all(months.map(async (monthName) => {
         try {
-          const url = buildMonthlySkuUrl(monthName, String(year), isDemoMode ? "global" : initialCountryName);
+          const url = buildMonthlySkuUrl(monthName, String(selectedYear), initialCountryName);
           const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
           if (!response.ok) return null;
           const payload = await response.json();
@@ -7810,7 +7810,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
     void loadMonthWiseTotals();
     return () => { cancelled = true; };
-  }, [allDropdownsSelected, year, initialCountryName, isDemoMode, homeCurrency]);
+  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
