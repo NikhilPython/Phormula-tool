@@ -188,12 +188,43 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
         "product_status",
       ];
 
-      return finalColumns.map((key) => ({
-        key,
-        header:
+      return finalColumns.map((key) => {
+        const header =
           HEADER_LABELS[key] ||
-          (key.startsWith("sku_") ? `SKU_${key.replace(/^sku_/, "").toUpperCase()}` : toTitleCase(key)),
-      }));
+          (key.startsWith("sku_") ? `SKU_${key.replace(/^sku_/, "").toUpperCase()}` : toTitleCase(key));
+
+        // Add custom rendering for the product_status column
+        if (key === "product_status") {
+          return {
+            key,
+            header,
+            render: (row: any) => {
+              // Normalize the status exactly like in your view sheet
+              const currentStatus =
+                row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
+                  ? 'Discontinued'
+                  : 'Active';
+
+              // Use the same styling as your StatusPill component
+              const statusTintClass =
+                currentStatus === 'Active'
+                  ? 'bg-[#EAF7F1] text-[#0E8558]' // Green badge
+                  : 'bg-[#FCEBEC] text-[#B75A5A]'; // Red badge
+
+              return (
+                <div className="flex items-center justify-center">
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusTintClass}`}>
+                    {currentStatus}
+                  </span>
+                </div>
+              );
+            },
+          };
+        }
+
+        // Return default for other columns
+        return { key, header };
+      });
     },
     []
   );

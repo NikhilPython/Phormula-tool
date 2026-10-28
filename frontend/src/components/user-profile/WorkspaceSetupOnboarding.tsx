@@ -715,83 +715,114 @@ export default function WorkspaceSetupOnboarding({
     }
   };
 
-  const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => [
-    { key: "s_no", header: "S. No." },
-    { key: "product_name", header: "Product Name" },
-    { key: "product_barcode", header: "Product Barcode" },
-    { key: "asin", header: "ASIN" },
-    { key: "sku_uk", header: "SKU_UK" },
-    { key: "sku_us", header: "SKU_US" },
-    { key: "sku_canada", header: "SKU_CANADA" },
-    { key: "landing_cost", header: "Landing Cost" },
-    { key: "currency", header: "Currency" },
-    { key: "date", header: "Date" },
-    { key: "local_stock", header: "Local Stock" },
-    { key: "in_transit_units", header: "In Transit Units" },
-    {
-      key: "product_status",
-      header: "Product Status",
-      render: (row: any) => {
-        // 1. Force the value to be exactly "Active" or "Discontinued"
-        const currentStatus: 'Active' | 'Discontinued' =
-          row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
-            ? 'Discontinued'
-            : 'Active';
+  const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => {
+    // Helper to check if a column has valid data (ignores "nan", null, empty strings)
+    const hasData = (key: string) => {
+      if (!currentSkuSheet?.rows || currentSkuSheet.rows.length === 0) return true; // Show all while loading
 
-        const recordId = row.id || row.s_no || row.product_barcode;
-        const isSaving = savingStatusId === String(recordId);
+      return currentSkuSheet.rows.some((row: any) => {
+        const val = row[key];
+        if (val === null || val === undefined) return false;
+        const strVal = String(val).trim().toLowerCase();
+        return strVal !== "" && strVal !== "nan" && strVal !== "null" && strVal !== "undefined";
+      });
+    };
 
-        const statusTintClass =
-          currentStatus === 'Active'
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 focus:ring-emerald-200'
-            : 'border-red-200 bg-red-50 text-red-700 focus:ring-red-200';
+    // Dynamically find all SKU columns from the data, ensuring the default ones are checked
+    const rowSkuKeys = new Set<string>();
+    if (currentSkuSheet?.rows && currentSkuSheet.rows.length > 0) {
+      Object.keys(currentSkuSheet.rows[0]).forEach(k => {
+        if (k.startsWith('sku_')) rowSkuKeys.add(k);
+      });
+    }
+    ['sku_uk', 'sku_us', 'sku_canada'].forEach(k => rowSkuKeys.add(k));
 
-        const cursorClass = isSaving
-          ? 'cursor-wait'
-          : !recordId
-            ? 'cursor-not-allowed'
-            : 'cursor-pointer';
+    // Build the SKU columns, filtering out any that only have "nan" or empty values
+    const skuColumns: ColumnDef<TableRow>[] = Array.from(rowSkuKeys)
+      .filter(key => hasData(key))
+      .map(key => ({
+        key,
+        header: key.replace(/^sku_/i, 'SKU_').toUpperCase()
+      }));
 
-        return (
-          <div className="flex items-center justify-center">
-            <div className="relative w-[130px]">
-              <select
-                className={`
-                  appearance-none w-full box-border rounded-full border py-1.5 pl-4 pr-8
-                  text-xs font-semibold transition-colors duration-150
-                  focus:outline-none focus:ring-1 focus:ring-offset-0
-                  disabled:opacity-60
-                  ${cursorClass}
-                  ${statusTintClass}
-                `}
-                value={currentStatus}
-                disabled={isSaving || !recordId}
-                onChange={(e) => handleUpdateProductStatus(row, e.target.value as 'Active' | 'Discontinued')}
-              >
-                <option value="Active" className="text-emerald-800 bg-white">Active</option>
-                <option value="Discontinued" className="text-red-700 bg-white">Discontinued</option>
-              </select>
+    const baseColumns: ColumnDef<TableRow>[] = [
+      { key: "s_no", header: "S. No." },
+      { key: "product_name", header: "Product Name" },
+      { key: "product_barcode", header: "Product Barcode" },
+      { key: "asin", header: "ASIN" },
+    ];
 
-              <svg
-                aria-hidden="true"
-                className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m4 6 4 4 4-4" />
-              </svg>
+    const endColumns: ColumnDef<TableRow>[] = [
+      { key: "landing_cost", header: "Landing Cost" },
+      { key: "currency", header: "Currency" },
+      { key: "date", header: "Date" },
+      { key: "local_stock", header: "Local Stock" },
+      { key: "in_transit_units", header: "In Transit Units" },
+      {
+        key: "product_status",
+        header: "Product Status",
+        render: (row: any) => {
+          const currentStatus: 'Active' | 'Discontinued' =
+            row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
+              ? 'Discontinued'
+              : 'Active';
+
+          const recordId = row.id || row.s_no || row.product_barcode;
+          const isSaving = savingStatusId === String(recordId);
+
+          const statusTintClass =
+            currentStatus === 'Active'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 focus:ring-emerald-200'
+              : 'border-red-200 bg-red-50 text-red-700 focus:ring-red-200';
+
+          const cursorClass = isSaving
+            ? 'cursor-wait'
+            : !recordId
+              ? 'cursor-not-allowed'
+              : 'cursor-pointer';
+
+          return (
+            <div className="flex items-center justify-center">
+              <div className="relative w-[130px]">
+                <select
+                  className={`
+                    appearance-none w-full box-border rounded-full border py-1.5 pl-4 pr-8
+                    text-xs font-semibold transition-colors duration-150
+                    focus:outline-none focus:ring-1 focus:ring-offset-0
+                    disabled:opacity-60
+                    ${cursorClass}
+                    ${statusTintClass}
+                  `}
+                  value={currentStatus}
+                  disabled={isSaving || !recordId}
+                  onChange={(e) => handleUpdateProductStatus(row, e.target.value as 'Active' | 'Discontinued')}
+                >
+                  <option value="Active" className="text-emerald-800 bg-white">Active</option>
+                  <option value="Discontinued" className="text-red-700 bg-white">Discontinued</option>
+                </select>
+
+                <svg
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m4 6 4 4 4-4" />
+                </svg>
+              </div>
             </div>
-          </div>
-        );
+          );
+        },
       },
-    },
-  ], [savingStatusId, token, getCurrentSkuSheet]);
+    ];
 
-
+    return [...baseColumns, ...skuColumns, ...endColumns];
+  }, [savingStatusId, token, getCurrentSkuSheet, currentSkuSheet]); // 👈 Added currentSkuSheet to dependencies
+  
   return (
     <div className={cx("min-h-full", className)}>
       {loadError && (
