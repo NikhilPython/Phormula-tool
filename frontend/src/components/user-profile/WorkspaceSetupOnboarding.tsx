@@ -783,7 +783,7 @@ export default function WorkspaceSetupOnboarding({
 
           return (
             <div className="flex items-center justify-center">
-              <div className="relative w-[130px]">
+              <div className="relative w-[170px]">
                 <select
                   className={`
                     appearance-none w-full box-border rounded-full border py-1.5 pl-4 pr-8
@@ -822,7 +822,7 @@ export default function WorkspaceSetupOnboarding({
 
     return [...baseColumns, ...skuColumns, ...endColumns];
   }, [savingStatusId, token, getCurrentSkuSheet, currentSkuSheet]); // 👈 Added currentSkuSheet to dependencies
-  
+
   return (
     <div className={cx("min-h-full", className)}>
       {loadError && (
@@ -1433,7 +1433,7 @@ export default function WorkspaceSetupOnboarding({
       <Modal
         isOpen={skuViewModal.isOpen}
         onClose={skuViewModal.closeModal}
-        className="m-4 max-w-4xl border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
+        className="m-4 max-w-6xl w-full border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
       >
         <div className="relative w-full rounded-2xl bg-white p-5 dark:bg-gray-900 lg:p-6">
           <div className="flex items-start justify-between gap-4 border-b border-[#E8ECEA] pb-4">

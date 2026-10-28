@@ -172,75 +172,40 @@ const firstActionNumber = (row: any, keys: string[]) => {
 
 
 export default function DashboardProductwisePnlSection({
-
     currencySymbol,
-
     adsLoading,
-
     showAllMtdProductwiseRows,
-
     setShowAllMtdProductwiseRows,
-
     productwiseAllColumnsExpanded,
-
     handleToggleProductwiseAllColumns,
-
     handleDownloadPlProductwiseMtd,
-
     shouldShowDummyUi,
-
     loading,
-
     monthlySkuwiseRows,
-
     finalMonthlySkuwiseRowsForTable,
-
     shouldScrollMtdProductwiseTable,
-
     productwiseHasExpandedGroups,
-
     setProductwiseAnyGroupExpanded,
-
     SKUWISE_LEFT_COLS,
-
     SKUWISE_GROUPS,
-
     SKUWISE_SINGLE_COLS,
-
     productwiseInitialCollapsed,
-
     productwiseCollapsed,
-
     setProductwiseCollapsed,
-
     setProductwiseAllColumnsExpanded,
-
     PRODUCTWISE_GROUP_IDS,
-
     plSortConfig,
-
     setPlSortConfig,
-
     getAdsSignForCol,
-
     mtdProductwiseTableScrollHeight,
-
     toNumber,
-
     getSkuwiseDisplayProductName,
-
     openPnlSkuDrawer,
-
     renderLiveNetSalesDelta,
-
     formatAdsNumber,
-
     formatAdType,
-
     costOfAds,
-
     formatSummaryRounded,
-
     sponsoredBrandSpend,
 
     dealVouchers,
@@ -274,6 +239,7 @@ export default function DashboardProductwisePnlSection({
     reimbursementVsCm2PctForSummary,
 
     reimbursementVsSalesPctForSummary,
+    skuStatusMap = {},
 
 }: DashboardProductwisePnlSectionProps) {
 
@@ -283,7 +249,23 @@ export default function DashboardProductwisePnlSection({
 
     const router = useRouter();
 
+    const normalizeKeyForStatus = (s: string) =>
+        String(s || "").toLowerCase().trim().replace(/\s+/g, " ").replace(/[^\w\s-]/g, "");
 
+    const isDiscontinuedSkuRow = (row: any) => {
+        const name = String(row?.product_name || "").trim().toLowerCase();
+        const sku = String(row?.sku || "").trim().toLowerCase();
+
+        // Total and Others are aggregate rows, never discontinued
+        if (name === "total" || name === "others" || sku === "total" || sku === "others") {
+            return false;
+        }
+
+        const normalizedName = normalizeKeyForStatus(row?.product_name);
+        const status = String(row?.product_status || skuStatusMap[normalizedName] || "").trim().toLowerCase();
+
+        return status === "discontinued" || status === "discontinuous";
+    };
 
     const actionItemId = String(searchParams.get("actionItem") || "").trim();
 
@@ -439,140 +421,140 @@ export default function DashboardProductwisePnlSection({
     }, [isActionSkuFilterActive, actionItemId, actionFilterSkus, actionFilterProducts]);
     const actionFilteredProductwiseRows = React.useMemo(() => {
 
-    // Normal P&L view:
+        // Normal P&L view:
 
-    // keep existing Top 9 + Others behaviour.
+        // keep existing Top 9 + Others behaviour.
 
-    if (!isActionSkuFilterActive) {
+        if (!isActionSkuFilterActive) {
 
-        return Array.isArray(finalMonthlySkuwiseRowsForTable)
+            return Array.isArray(finalMonthlySkuwiseRowsForTable)
 
-            ? finalMonthlySkuwiseRowsForTable
+                ? finalMonthlySkuwiseRowsForTable
+
+                : [];
+
+        }
+
+
+
+        // Action Item focused view:
+
+        // IMPORTANT:
+
+        // use complete SKU-level source instead of Top 9 + Others table.
+
+        const allRows = Array.isArray(monthlySkuwiseRows)
+
+            ? monthlySkuwiseRows
 
             : [];
 
-    }
+
+
+        let sno = 0;
 
 
 
-    // Action Item focused view:
+        return allRows
 
-    // IMPORTANT:
+            .filter((row: any) => {
 
-    // use complete SKU-level source instead of Top 9 + Others table.
+                const productName = String(row?.product_name || "")
 
-    const allRows = Array.isArray(monthlySkuwiseRows)
+                    .trim()
 
-        ? monthlySkuwiseRows
-
-        : [];
+                    .toLowerCase();
 
 
 
-    let sno = 0;
+                const sku = String(row?.sku || "")
+
+                    .trim()
+
+                    .toUpperCase();
 
 
 
-    return allRows
+                // Exclude Total / Others / summary rows
 
-        .filter((row: any) => {
+                if (
 
-            const productName = String(row?.product_name || "")
+                    row?.isTotal ||
 
-                .trim()
+                    row?.isOthers ||
 
-                .toLowerCase();
+                    sku === "TOTAL" ||
 
+                    sku === "GRAND_TOTAL" ||
 
+                    sku === "OTHERS" ||
 
-            const sku = String(row?.sku || "")
+                    productName === "total" ||
 
-                .trim()
+                    productName === "grand total" ||
 
-                .toUpperCase();
+                    productName === "others"
 
+                ) {
 
+                    return false;
 
-            // Exclude Total / Others / summary rows
-
-            if (
-
-                row?.isTotal ||
-
-                row?.isOthers ||
-
-                sku === "TOTAL" ||
-
-                sku === "GRAND_TOTAL" ||
-
-                sku === "OTHERS" ||
-
-                productName === "total" ||
-
-                productName === "grand total" ||
-
-                productName === "others"
-
-            ) {
-
-                return false;
-
-            }
+                }
 
 
 
-            const rowSkus = splitSkuValues(row?.sku);
-            const skuMatches = rowSkus.some((rowSku) =>
-                actionFilterSkuSet.has(rowSku)
-            );
+                const rowSkus = splitSkuValues(row?.sku);
+                const skuMatches = rowSkus.some((rowSku) =>
+                    actionFilterSkuSet.has(rowSku)
+                );
 
-            // Global rows are aggregated by product_name and can have an empty SKU.
-            // Match the backend-provided affected product names too.
-            const productMatches = actionFilterProductSet.has(
-                normalizeProductFilterValue(row?.product_name)
-            );
+                // Global rows are aggregated by product_name and can have an empty SKU.
+                // Match the backend-provided affected product names too.
+                const productMatches = actionFilterProductSet.has(
+                    normalizeProductFilterValue(row?.product_name)
+                );
 
-            return skuMatches || productMatches;
+                return skuMatches || productMatches;
 
-        })
+            })
 
-        .map((row: any) => ({
+            .map((row: any) => ({
 
-            ...row,
-
-
-
-            // Keep focused result as actual product rows.
-
-            sno: ++sno,
-
-            isOthers: false,
-
-            isTotal: false,
+                ...row,
 
 
 
-            // Normalise display name just like normal table.
+                // Keep focused result as actual product rows.
 
-            product_name: getSkuwiseDisplayProductName(row),
+                sno: ++sno,
 
-        }));
+                isOthers: false,
 
-}, [
+                isTotal: false,
 
-    finalMonthlySkuwiseRowsForTable,
 
-    monthlySkuwiseRows,
 
-    isActionSkuFilterActive,
+                // Normalise display name just like normal table.
 
-    actionFilterSkuSet,
+                product_name: getSkuwiseDisplayProductName(row),
+
+            }));
+
+    }, [
+
+        finalMonthlySkuwiseRowsForTable,
+
+        monthlySkuwiseRows,
+
+        isActionSkuFilterActive,
+
+        actionFilterSkuSet,
 
         actionFilterProductSet,
 
-getSkuwiseDisplayProductName,
+        getSkuwiseDisplayProductName,
 
-]);
+    ]);
 
 
 
@@ -593,7 +575,7 @@ getSkuwiseDisplayProductName,
             return total + Math.max(
                 0,
                 firstActionNumber(row, ["quantity"]) -
-                    firstActionNumber(row, ["return_quantity", "returned_quantity"])
+                firstActionNumber(row, ["return_quantity", "returned_quantity"])
             );
         }, 0);
 
@@ -739,179 +721,179 @@ getSkuwiseDisplayProductName,
             );
         };
 
-       if (actionItemId === "high-return-rate") {
-            const enriched = rows.map((row) => {
-                const sold = Math.abs(
-                    firstActionNumber(row, [
-                        "return_rate_base_quantity",
-                        "quantity",
-                        "total_quantity",
-                    ])
-                );
-                const returned = Math.abs(
-                    firstActionNumber(row, ["return_quantity", "returned_quantity"])
-                );
-                const directRate = Math.abs(
-                    firstActionNumber(row, ["return_rate", "return_rate_percentage"])
-                );
-                const rate = sold > 0 ? (returned / sold) * 100 : directRate;
-                const refundSales = Math.abs(
-                    firstActionNumber(row, ["refund_sales", "refunded_sales"])
-                );
-                return { row, sold, returned, rate, refundSales };
-            });
-            const totalReturned = enriched.reduce((sum, item) => sum + item.returned, 0);
-            const totalSold = enriched.reduce((sum, item) => sum + item.sold, 0);
-            const aggregateRate = totalSold > 0 ? (totalReturned / totalSold) * 100 : 0;
-            const refundSales = enriched.reduce((sum, item) => sum + item.refundSales, 0);
-            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
-            const highest = ranked[0];
-            return {
-                title: "Product returns need investigation",
-                description: "Products above the 2.00% return-rate threshold.",
-                metrics: [
-                    { label: "Affected products", value: rows.length.toLocaleString() },
-                    { label: "Return rate", value: `${aggregateRate.toFixed(2)}%`, helper: "Affected products combined" },
-                    { label: "Return qty", value: Math.round(totalReturned).toLocaleString() },
-                    { label: "Units sold", value: Math.round(totalSold).toLocaleString() },
-                    ...(refundSales > 0 ? [{ label: "Refund sales", value: money(refundSales) }] : []),
-                    ...(highest ? [{ label: "Highest return rate", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
-                ],
-                whyItMatters:
-                    "High returns reduce realized sales and can add refund or fulfilment cost. This view isolates the products contributing to the alert.",
-                recommendedAction: highest
-                    ? `Start with ${productName(highest.row)} at ${highest.rate.toFixed(2)}%. Review return reasons, listing expectations, product quality and fulfilment issues before changing pricing or advertising.`
-                    : "Review return reasons for the affected products and check listing, product-quality and fulfilment issues.",
-                triggerRule: "Product return quantity ÷ sold quantity × 100 > 2.00%.",
-                riskTitle: "Highest return-rate products",
-                riskItems: ranked.slice(0, 3).map((item) => ({
-                    name: productName(item.row),
-                    detail: `${item.rate.toFixed(2)}%`,
-                    secondary: `${Math.round(item.returned).toLocaleString()} returns / ${Math.round(item.sold).toLocaleString()} sold`,
-                })),
-            };
-        }
-        if (actionItemId === "negative-profit-skus") {
-            const enriched = rows.map((row) => ({
-                row,
-                cm2: firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]),
-                netSales: Math.abs(firstActionNumber(row, ["net_sales", "sales"])),
-                adsSpend: adsSpendFor(row),
-            }));
-            const negativeRows = enriched.filter((item) => item.cm2 < 0);
-            const ranked = [...negativeRows].sort((a, b) => a.cm2 - b.cm2);
-            const totalLoss = Math.abs(negativeRows.reduce((sum, item) => sum + item.cm2, 0));
-            const affectedSales = negativeRows.reduce((sum, item) => sum + item.netSales, 0);
-            const affectedAds = negativeRows.reduce((sum, item) => sum + item.adsSpend, 0);
-            const worst = ranked[0];
-            return {
-                title: "Negative CM2 requires margin review",
-                description: "Products currently below zero CM2 profit.",
-                metrics: [
-                    { label: "Affected SKUs", value: negativeRows.length.toLocaleString() },
-                    { label: "Total CM2 loss", value: money(totalLoss) },
-                    ...(worst ? [{ label: "Lowest CM2", value: `-${money(Math.abs(worst.cm2))}`, helper: productName(worst.row) }] : []),
-                    { label: "Affected net sales", value: money(affectedSales) },
-                    { label: "Ad spend", value: money(affectedAds) },
-                ],
-                whyItMatters:
-                    "These products are below zero CM2 after the costs included in the product-level calculation, so continuing the same economics can deepen the loss.",
-                recommendedAction: worst
-                    ? `Start with ${productName(worst.row)}. Review selling price, COGS, Amazon fees, promotions and advertising before deciding whether to reprice, reduce spend or pause.`
-                    : "Review price, COGS, Amazon fees, promotions and advertising for the affected SKUs.",
-                triggerRule: "Product CM2 Profit < 0.",
-                riskTitle: "Largest CM2 losses",
-                riskItems: ranked.slice(0, 3).map((item) => ({
-                    name: productName(item.row),
-                    detail: `-${money(Math.abs(item.cm2))}`,
-                    secondary: `Net sales ${money(item.netSales)} • Ads ${money(item.adsSpend)}`,
-                })),
-            };
-        }
-        if (actionItemId === "promotional-rebates") {
-            const enriched = rows.map((row) => {
-                const promoAmount = Math.abs(
-                    firstActionNumber(row, ["promotional_rebates", "promotion_rebates"])
-                );
-                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
-                const directRate = Math.abs(
-                    firstActionNumber(row, [
-                        "promotional_rebates_percentage",
-                        "promotion_rebates_percentage",
-                    ])
-                );
-                const rate = directRate > 0 ? directRate : netSales > 0 ? (promoAmount / netSales) * 100 : 0;
-                return { row, promoAmount, netSales, rate };
-            });
-            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
-            const promoAmount = enriched.reduce((sum, item) => sum + item.promoAmount, 0);
-            const netSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
-            const highest = ranked[0];
-            return {
-                title: "Promotional rebate leakage",
-                description: "Products with high promotional rebate impact.",
-                metrics: [
-                    { label: "Affected products", value: rows.length.toLocaleString() },
-                    ...(highest ? [{ label: "Highest promo %", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
-                    { label: "Promo rebates", value: money(promoAmount) },
-                    { label: "Net sales", value: money(netSales) },
-                    ...(netSales > 0 ? [{ label: "Focused promo share", value: `${((promoAmount / netSales) * 100).toFixed(2)}%` }] : []),
-                ],
-                whyItMatters:
-                    "Promotional rebates consume a share of product revenue. A high rebate percentage can compress contribution margin even when sales remain healthy.",
-                recommendedAction: highest
-                    ? `Review active promotions for ${productName(highest.row)} first. Confirm the discount is intentional and generating enough incremental sales or strategic value to justify the rebate level.`
-                    : "Review the active promotions and confirm the rebate level is intentional and commercially justified.",
-                triggerRule: "Top product promotional rebate percentage > 10%.",
-                riskTitle: "Highest promotional rebate %",
-                riskItems: ranked.slice(0, 3).map((item) => ({
-                    name: productName(item.row),
-                    detail: `${item.rate.toFixed(2)}%`,
-                    secondary: `Rebates ${money(item.promoAmount)} • Sales ${money(item.netSales)}`,
-                })),
-            };
-        }
-        if (actionItemId === "ads-efficiency") {
-            const enriched = rows.map((row) => {
-                const adsSpend = adsSpendFor(row);
-                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
-                // Keep product TACoS identical to the backend filter and table:
-                // product ad spend / product net sales * 100.
-                const tacos = netSales > 0 ? (adsSpend / netSales) * 100 : 0;
-                const cm2 = firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]);
-                return { row, adsSpend, netSales, tacos, cm2 };
-            });
-            const totalAds = enriched.reduce((sum, item) => sum + item.adsSpend, 0);
-            const totalSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
-            const focusedTacos = totalSales > 0 ? (totalAds / totalSales) * 100 : 0;
-            const ranked = [...enriched].sort((a, b) => b.tacos - a.tacos);
-            const highest = ranked[0];
-            const negativeCm2Count = enriched.filter((item) => item.cm2 < 0).length;
-            return {
-                title: "Advertising efficiency needs attention",
-                description: "Products with TACoS at or above 20%.",
-                metrics: [
-                    { label: "Affected products", value: rows.length.toLocaleString() },
-                    { label: "Focused TACoS", value: `${focusedTacos.toFixed(2)}%`, helper: "Ads ÷ net sales" },
-                    { label: "Ad spend", value: money(totalAds) },
-                    { label: "Net sales", value: money(totalSales) },
-                    ...(highest ? [{ label: "Highest TACoS", value: `${highest.tacos.toFixed(2)}%`, helper: productName(highest.row) }] : []),
-                    ...(negativeCm2Count > 0 ? [{ label: "Negative CM2", value: `${negativeCm2Count} product${negativeCm2Count === 1 ? "" : "s"}` }] : []),
-                ],
-                whyItMatters:
-                    "High TACoS means advertising is consuming a large share of net sales. The product-level view helps separate efficient spend from products where ad cost is putting more pressure on margin.",
-                recommendedAction: highest
-                    ? `Start with ${productName(highest.row)} at ${highest.tacos.toFixed(2)}% TACoS. Review bids, budgets and search-term efficiency together with CM2 before reducing or reallocating spend.`
-                    : "Review bids, budgets and search-term efficiency for the affected products together with their CM2 performance.",
-                triggerRule: "Portfolio TACoS ≥ 20%; focused products are SKUs with product TACoS ≥ 20%.",
-                riskTitle: "Highest product TACoS",
-                riskItems: ranked.slice(0, 3).map((item) => ({
-                    name: productName(item.row),
-                    detail: `${item.tacos.toFixed(2)}%`,
-                    secondary: `Ads ${money(item.adsSpend)} • Sales ${money(item.netSales)}`,
-                })),
-            };
-        }
+        if (actionItemId === "high-return-rate") {
+            const enriched = rows.map((row) => {
+                const sold = Math.abs(
+                    firstActionNumber(row, [
+                        "return_rate_base_quantity",
+                        "quantity",
+                        "total_quantity",
+                    ])
+                );
+                const returned = Math.abs(
+                    firstActionNumber(row, ["return_quantity", "returned_quantity"])
+                );
+                const directRate = Math.abs(
+                    firstActionNumber(row, ["return_rate", "return_rate_percentage"])
+                );
+                const rate = sold > 0 ? (returned / sold) * 100 : directRate;
+                const refundSales = Math.abs(
+                    firstActionNumber(row, ["refund_sales", "refunded_sales"])
+                );
+                return { row, sold, returned, rate, refundSales };
+            });
+            const totalReturned = enriched.reduce((sum, item) => sum + item.returned, 0);
+            const totalSold = enriched.reduce((sum, item) => sum + item.sold, 0);
+            const aggregateRate = totalSold > 0 ? (totalReturned / totalSold) * 100 : 0;
+            const refundSales = enriched.reduce((sum, item) => sum + item.refundSales, 0);
+            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
+            const highest = ranked[0];
+            return {
+                title: "Product returns need investigation",
+                description: "Products above the 2.00% return-rate threshold.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    { label: "Return rate", value: `${aggregateRate.toFixed(2)}%`, helper: "Affected products combined" },
+                    { label: "Return qty", value: Math.round(totalReturned).toLocaleString() },
+                    { label: "Units sold", value: Math.round(totalSold).toLocaleString() },
+                    ...(refundSales > 0 ? [{ label: "Refund sales", value: money(refundSales) }] : []),
+                    ...(highest ? [{ label: "Highest return rate", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                ],
+                whyItMatters:
+                    "High returns reduce realized sales and can add refund or fulfilment cost. This view isolates the products contributing to the alert.",
+                recommendedAction: highest
+                    ? `Start with ${productName(highest.row)} at ${highest.rate.toFixed(2)}%. Review return reasons, listing expectations, product quality and fulfilment issues before changing pricing or advertising.`
+                    : "Review return reasons for the affected products and check listing, product-quality and fulfilment issues.",
+                triggerRule: "Product return quantity ÷ sold quantity × 100 > 2.00%.",
+                riskTitle: "Highest return-rate products",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.rate.toFixed(2)}%`,
+                    secondary: `${Math.round(item.returned).toLocaleString()} returns / ${Math.round(item.sold).toLocaleString()} sold`,
+                })),
+            };
+        }
+        if (actionItemId === "negative-profit-skus") {
+            const enriched = rows.map((row) => ({
+                row,
+                cm2: firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]),
+                netSales: Math.abs(firstActionNumber(row, ["net_sales", "sales"])),
+                adsSpend: adsSpendFor(row),
+            }));
+            const negativeRows = enriched.filter((item) => item.cm2 < 0);
+            const ranked = [...negativeRows].sort((a, b) => a.cm2 - b.cm2);
+            const totalLoss = Math.abs(negativeRows.reduce((sum, item) => sum + item.cm2, 0));
+            const affectedSales = negativeRows.reduce((sum, item) => sum + item.netSales, 0);
+            const affectedAds = negativeRows.reduce((sum, item) => sum + item.adsSpend, 0);
+            const worst = ranked[0];
+            return {
+                title: "Negative CM2 requires margin review",
+                description: "Products currently below zero CM2 profit.",
+                metrics: [
+                    { label: "Affected SKUs", value: negativeRows.length.toLocaleString() },
+                    { label: "Total CM2 loss", value: money(totalLoss) },
+                    ...(worst ? [{ label: "Lowest CM2", value: `-${money(Math.abs(worst.cm2))}`, helper: productName(worst.row) }] : []),
+                    { label: "Affected net sales", value: money(affectedSales) },
+                    { label: "Ad spend", value: money(affectedAds) },
+                ],
+                whyItMatters:
+                    "These products are below zero CM2 after the costs included in the product-level calculation, so continuing the same economics can deepen the loss.",
+                recommendedAction: worst
+                    ? `Start with ${productName(worst.row)}. Review selling price, COGS, Amazon fees, promotions and advertising before deciding whether to reprice, reduce spend or pause.`
+                    : "Review price, COGS, Amazon fees, promotions and advertising for the affected SKUs.",
+                triggerRule: "Product CM2 Profit < 0.",
+                riskTitle: "Largest CM2 losses",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `-${money(Math.abs(item.cm2))}`,
+                    secondary: `Net sales ${money(item.netSales)} • Ads ${money(item.adsSpend)}`,
+                })),
+            };
+        }
+        if (actionItemId === "promotional-rebates") {
+            const enriched = rows.map((row) => {
+                const promoAmount = Math.abs(
+                    firstActionNumber(row, ["promotional_rebates", "promotion_rebates"])
+                );
+                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
+                const directRate = Math.abs(
+                    firstActionNumber(row, [
+                        "promotional_rebates_percentage",
+                        "promotion_rebates_percentage",
+                    ])
+                );
+                const rate = directRate > 0 ? directRate : netSales > 0 ? (promoAmount / netSales) * 100 : 0;
+                return { row, promoAmount, netSales, rate };
+            });
+            const ranked = [...enriched].sort((a, b) => b.rate - a.rate);
+            const promoAmount = enriched.reduce((sum, item) => sum + item.promoAmount, 0);
+            const netSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
+            const highest = ranked[0];
+            return {
+                title: "Promotional rebate leakage",
+                description: "Products with high promotional rebate impact.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    ...(highest ? [{ label: "Highest promo %", value: `${highest.rate.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                    { label: "Promo rebates", value: money(promoAmount) },
+                    { label: "Net sales", value: money(netSales) },
+                    ...(netSales > 0 ? [{ label: "Focused promo share", value: `${((promoAmount / netSales) * 100).toFixed(2)}%` }] : []),
+                ],
+                whyItMatters:
+                    "Promotional rebates consume a share of product revenue. A high rebate percentage can compress contribution margin even when sales remain healthy.",
+                recommendedAction: highest
+                    ? `Review active promotions for ${productName(highest.row)} first. Confirm the discount is intentional and generating enough incremental sales or strategic value to justify the rebate level.`
+                    : "Review the active promotions and confirm the rebate level is intentional and commercially justified.",
+                triggerRule: "Top product promotional rebate percentage > 10%.",
+                riskTitle: "Highest promotional rebate %",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.rate.toFixed(2)}%`,
+                    secondary: `Rebates ${money(item.promoAmount)} • Sales ${money(item.netSales)}`,
+                })),
+            };
+        }
+        if (actionItemId === "ads-efficiency") {
+            const enriched = rows.map((row) => {
+                const adsSpend = adsSpendFor(row);
+                const netSales = Math.abs(firstActionNumber(row, ["net_sales", "sales"]));
+                // Keep product TACoS identical to the backend filter and table:
+                // product ad spend / product net sales * 100.
+                const tacos = netSales > 0 ? (adsSpend / netSales) * 100 : 0;
+                const cm2 = firstActionNumber(row, ["cm2_profit", "total_cm2_profit"]);
+                return { row, adsSpend, netSales, tacos, cm2 };
+            });
+            const totalAds = enriched.reduce((sum, item) => sum + item.adsSpend, 0);
+            const totalSales = enriched.reduce((sum, item) => sum + item.netSales, 0);
+            const focusedTacos = totalSales > 0 ? (totalAds / totalSales) * 100 : 0;
+            const ranked = [...enriched].sort((a, b) => b.tacos - a.tacos);
+            const highest = ranked[0];
+            const negativeCm2Count = enriched.filter((item) => item.cm2 < 0).length;
+            return {
+                title: "Advertising efficiency needs attention",
+                description: "Products with TACoS at or above 20%.",
+                metrics: [
+                    { label: "Affected products", value: rows.length.toLocaleString() },
+                    { label: "Focused TACoS", value: `${focusedTacos.toFixed(2)}%`, helper: "Ads ÷ net sales" },
+                    { label: "Ad spend", value: money(totalAds) },
+                    { label: "Net sales", value: money(totalSales) },
+                    ...(highest ? [{ label: "Highest TACoS", value: `${highest.tacos.toFixed(2)}%`, helper: productName(highest.row) }] : []),
+                    ...(negativeCm2Count > 0 ? [{ label: "Negative CM2", value: `${negativeCm2Count} product${negativeCm2Count === 1 ? "" : "s"}` }] : []),
+                ],
+                whyItMatters:
+                    "High TACoS means advertising is consuming a large share of net sales. The product-level view helps separate efficient spend from products where ad cost is putting more pressure on margin.",
+                recommendedAction: highest
+                    ? `Start with ${productName(highest.row)} at ${highest.tacos.toFixed(2)}% TACoS. Review bids, budgets and search-term efficiency together with CM2 before reducing or reallocating spend.`
+                    : "Review bids, budgets and search-term efficiency for the affected products together with their CM2 performance.",
+                triggerRule: "Portfolio TACoS ≥ 20%; focused products are SKUs with product TACoS ≥ 20%.",
+                riskTitle: "Highest product TACoS",
+                riskItems: ranked.slice(0, 3).map((item) => ({
+                    name: productName(item.row),
+                    detail: `${item.tacos.toFixed(2)}%`,
+                    secondary: `Ads ${money(item.adsSpend)} • Sales ${money(item.netSales)}`,
+                })),
+            };
+        }
 
         return null;
     }, [
@@ -2048,183 +2030,183 @@ getSkuwiseDisplayProductName,
 
             {isActionSkuFilterActive && (
 
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E7E2] bg-white px-3 py-2 shadow-xl">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#D9E7E2] bg-white px-3 py-2 shadow-xl">
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
 
-            {/* Filters button */}
+                        {/* Filters button */}
 
-            <button
+                        <button
 
-                type="button"
+                            type="button"
 
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#D7E3DE] bg-white px-3 text-[11px] font-medium text-[#425E57] transition hover:bg-[#F7FBF9]"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#D7E3DE] bg-white px-3 text-[11px] font-medium text-[#425E57] transition hover:bg-[#F7FBF9]"
 
-            >
+                        >
 
-                <svg
+                            <svg
 
-                    viewBox="0 0 24 24"
+                                viewBox="0 0 24 24"
 
-                    fill="none"
+                                fill="none"
 
-                    stroke="currentColor"
+                                stroke="currentColor"
 
-                    strokeWidth="1.8"
+                                strokeWidth="1.8"
 
-                    strokeLinecap="round"
+                                strokeLinecap="round"
 
-                    strokeLinejoin="round"
+                                strokeLinejoin="round"
 
-                    className="h-3.5 w-3.5"
+                                className="h-3.5 w-3.5"
 
-                    aria-hidden="true"
+                                aria-hidden="true"
 
-                >
+                            >
 
-                    <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
+                                <path d="M4 5h16l-6 7v5l-4 2v-7L4 5Z" />
 
-                </svg>
+                            </svg>
 
-            </button>
+                        </button>
 
 
 
-            {/* Focused view pill */}
+                        {/* Focused view pill */}
 
-            <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#E1ECE8] bg-[#F8FBFA] px-3 text-[11px] font-medium text-[#617972]">
+                        <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#E1ECE8] bg-[#F8FBFA] px-3 text-[11px] font-medium text-[#617972]">
 
-                <span>Focused View</span>
+                            <span>Focused View</span>
 
-                <svg
+                            <svg
 
-                    viewBox="0 0 20 20"
+                                viewBox="0 0 20 20"
 
-                    fill="none"
+                                fill="none"
 
-                    stroke="currentColor"
+                                stroke="currentColor"
 
-                    strokeWidth="1.7"
+                                strokeWidth="1.7"
 
-                    className="h-3.5 w-3.5 text-[#91AAA2]"
+                                className="h-3.5 w-3.5 text-[#91AAA2]"
 
-                    aria-hidden="true"
+                                aria-hidden="true"
 
-                >
+                            >
 
-                    <circle cx="10" cy="10" r="6.5" />
+                                <circle cx="10" cy="10" r="6.5" />
 
-                    <path d="M10 7v3l2 2" />
+                                <path d="M10 7v3l2 2" />
 
-                </svg>
+                            </svg>
 
-            </div>
+                        </div>
 
 
 
-            {/* Selected action chip */}
+                        {/* Selected action chip */}
 
-            <button
+                        <button
 
-                type="button"
+                            type="button"
 
-                onClick={clearActionSkuFilter}
+                            onClick={clearActionSkuFilter}
 
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#CFE5DD] bg-[#EAF6F1] px-3 text-[11px] font-semibold text-[#2D6256] transition hover:bg-[#E2F2EC]"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#CFE5DD] bg-[#EAF6F1] px-3 text-[11px] font-semibold text-[#2D6256] transition hover:bg-[#E2F2EC]"
 
-            >
+                        >
 
-                <span className="truncate max-w-[180px]">
+                            <span className="truncate max-w-[180px]">
 
-                    {ACTION_FILTER_LABELS[actionItemId] || "Action Item"}
+                                {ACTION_FILTER_LABELS[actionItemId] || "Action Item"}
 
-                </span>
+                            </span>
 
-                <svg
+                            <svg
 
-                    viewBox="0 0 20 20"
+                                viewBox="0 0 20 20"
 
-                    fill="none"
+                                fill="none"
 
-                    stroke="currentColor"
+                                stroke="currentColor"
 
-                    strokeWidth="1.8"
+                                strokeWidth="1.8"
 
-                    strokeLinecap="round"
+                                strokeLinecap="round"
 
-                    className="h-3.5 w-3.5"
+                                className="h-3.5 w-3.5"
 
-                    aria-hidden="true"
+                                aria-hidden="true"
 
-                >
+                            >
 
-                    <path d="M6 6l8 8M14 6l-8 8" />
+                                <path d="M6 6l8 8M14 6l-8 8" />
 
-                </svg>
+                            </svg>
 
-            </button>
+                        </button>
 
 
 
-            {/* Product count text */}
+                        {/* Product count text */}
 
-            <span className="text-[11px] font-medium text-[#7B918B]">
+                        <span className="text-[11px] font-medium text-[#7B918B]">
 
-                {actionFilteredProductwiseRows.length} matching product
+                            {actionFilteredProductwiseRows.length} matching product
 
-                {actionFilteredProductwiseRows.length === 1 ? "" : "s"}
+                            {actionFilteredProductwiseRows.length === 1 ? "" : "s"}
 
-            </span>
+                        </span>
 
-        </div>
+                    </div>
 
 
 
-        {/* Reset filters */}
+                    {/* Reset filters */}
 
-        <button
+                    <button
 
-            type="button"
+                        type="button"
 
-            onClick={clearActionSkuFilter}
+                        onClick={clearActionSkuFilter}
 
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#4E9A84] transition hover:text-[#2F7C67]"
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 text-[11px] font-semibold text-[#4E9A84] transition hover:text-[#2F7C67]"
 
-        >
+                    >
 
-            <svg
+                        <svg
 
-                viewBox="0 0 24 24"
+                            viewBox="0 0 24 24"
 
-                fill="none"
+                            fill="none"
 
-                stroke="currentColor"
+                            stroke="currentColor"
 
-                strokeWidth="1.9"
+                            strokeWidth="1.9"
 
-                strokeLinecap="round"
+                            strokeLinecap="round"
 
-                strokeLinejoin="round"
+                            strokeLinejoin="round"
 
-                className="h-3.5 w-3.5"
+                            className="h-3.5 w-3.5"
 
-                aria-hidden="true"
+                            aria-hidden="true"
 
-            >
+                        >
 
-                <path d="M3 12a9 9 0 1 0 3-6.7" />
+                            <path d="M3 12a9 9 0 1 0 3-6.7" />
 
-                <path d="M3 4v5h5" />
+                            <path d="M3 4v5h5" />
 
-            </svg>
+                        </svg>
 
-            Reset filters
+                        Reset filters
 
-        </button>
+                    </button>
 
-    </div>
+                </div>
 
-)}
+            )}
 
 
             {actionDiagnosis && (
@@ -2409,28 +2391,22 @@ getSkuwiseDisplayProductName,
 
                             ]}
 
-
-
-                            // initialCollapsed={{ marketplace_fees: false }}
-
                             getRowClassName={(row, index) => {
-
                                 if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
 
-                                if (row.isOthers) {
-
-                                    return showAllMtdProductwiseRows
-
-                                        ? "bg-white"
-
-                                        : "bg-white cursor-pointer";
-
+                                // Force the pink background and reddish-brown text on all td elements
+                                // including sticky columns using arbitrary variants
+                                if (isDiscontinuedSkuRow(row)) {
+                                    return "bg-[#FFF1F2] text-[#FF5C5C] [&>td]:!bg-[#FFF1F2] [&>td]:!text-[#FF5C5C]";
                                 }
 
+                                if (row.isOthers) {
+                                    return showAllMtdProductwiseRows
+                                        ? "bg-white"
+                                        : "bg-white cursor-pointer";
+                                }
                                 return index % 2 === 0 ? "bg-white" : "bg-gray-50";
-
                             }}
-
                             onRowClick={(row) => {
 
                                 if (!showAllMtdProductwiseRows && row.isOthers) {
@@ -2486,96 +2462,50 @@ getSkuwiseDisplayProductName,
                                 }
 
                                 if (colKey === "product_name") {
-
                                     if (row.isTotal) {
-
                                         return (
-
                                             <span className="inline-block w-full truncate font-semibold">
-
                                                 Total
-
                                             </span>
-
                                         );
-
                                     }
-
-
 
                                     if (row.isOthers) {
-
                                         return (
-
-                                            <span
-
-                                                className="inline-block w-full truncate text-green-500"
-
-                                                title="Aggregated remaining products"
-
-                                            >
-
+                                            <span className="inline-block w-full truncate text-green-500" title="Aggregated remaining products">
                                                 Others
-
                                             </span>
-
                                         );
-
                                     }
 
-
-
-
-
                                     const displayName = getSkuwiseDisplayProductName(row);
-
-
+                                    const isDisc = isDiscontinuedSkuRow(row);
 
                                     return (
-
                                         <button
-
                                             type="button"
-
                                             onClick={() =>
-
                                                 openPnlSkuDrawer({
-
                                                     ...row,
-
                                                     product_name: displayName,
-
                                                 })
-
                                             }
-
-                                            className="flex w-full items-end justify-between gap-2 text-left text-green-500"
-
+                                            className={`flex w-full items-end justify-between gap-2 text-left ${isDisc ? "text-[#FF5C5C]" : "text-green-500"
+                                                }`}
                                             title={String(displayName || "")}
-
                                         >
-
                                             <span className="min-w-0 flex-1 whitespace-normal break-words">
-
                                                 {displayName}
-
                                             </span>
-
                                             {renderLiveNetSalesDelta({
-
                                                 ...row,
-
                                                 product_name: displayName,
-
+                                                // Inject status here so the arrow color matches the row
+                                                product_status: isDisc ? "Discontinued" : row.product_status
                                             })}
-
                                         </button>
-
                                     );
-
                                 }
-
-
 
                                 if (colKey === "quantity")
 

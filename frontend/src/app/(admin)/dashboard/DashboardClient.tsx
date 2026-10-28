@@ -2219,6 +2219,8 @@ export default function DashboardPage() {
         () => (data as any)?.dashboard_card_metrics || {},
         [data]
     );
+
+    const [skuStatusMap, setSkuStatusMap] = useState<Record<string, "Active" | "Discontinued">>({});
     const backendDashboardMetric = useCallback(
         (key: string) => backendDashboardMetrics[key] || {},
         [backendDashboardMetrics]
@@ -2738,6 +2740,45 @@ export default function DashboardPage() {
         platform,
         activeDateRegion,
     ]);
+
+    useEffect(() => {
+        if (shouldShowDummyUi || typeof window === "undefined") return;
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return;
+
+        const fetchSkuStatuses = async () => {
+            try {
+                const res = await fetch(`${baseURL}/skuprice`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    cache: "no-store",
+                });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                const map: Record<string, "Active" | "Discontinued"> = {};
+
+                data.forEach((row: any) => {
+                    // Normalize name to match consistently
+                    const name = String(row.product_name || "")
+                        .trim()
+                        .toLowerCase()
+                        .replace(/\s+/g, " ")
+                        .replace(/[^\w\s-]/g, "");
+
+                    if (!name) return;
+
+                    const raw = String(row.product_status || "").trim().toLowerCase();
+                    map[name] = (raw === "discontinued" || raw === "discontinuous")
+                        ? "Discontinued"
+                        : "Active";
+                });
+                setSkuStatusMap(map);
+            } catch (e) {
+                console.error("Failed to fetch SKU statuses", e);
+            }
+        };
+        fetchSkuStatuses();
+    }, [shouldShowDummyUi]);
 
     useEffect(() => {
         if (activeTab === "summary") {
@@ -12400,10 +12441,20 @@ export default function DashboardPage() {
         const rawPct = toNumber(row.net_sales_delta_percentage);
         const isPositive = rawPct >= 0;
 
+        // Check if the row was flagged as discontinued via props or map
+        const isDiscontinued =
+            String((row as any)?.product_status || "").trim().toLowerCase() === "discontinued" ||
+            String((row as any)?.product_status || "").trim().toLowerCase() === "discontinuous";
+
+        const colorClass = isDiscontinued
+            ? "text-[#FF5C5C]"
+            : isPositive
+                ? "text-[#5EA68E]"
+                : "text-[#FF5C5C]";
+
         return (
             <span
-                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${isPositive ? "text-[#5EA68E]" : "text-[#FF5C5C]"
-                    }`}
+                className={`shrink-0 whitespace-nowrap text-xs font-semibold ${colorClass}`}
                 title={`Previous Net Sales: ${Math.round(
                     Math.abs(toNumber(row.previous_net_sales))
                 ).toLocaleString()}`}
@@ -12412,12 +12463,6 @@ export default function DashboardPage() {
             </span>
         );
     };
-
-    // const MTD_VISIBLE_PRODUCT_ROWS = 8.92;
-
-    // const MTD_HEADER_ROW_HEIGHT = 60;
-    // const MTD_SIGN_ROW_HEIGHT = 45;
-    // const MTD_PRODUCT_ROW_HEIGHT = 45;
 
     const mtdProductRowCount = finalMonthlySkuwiseRowsForTable.filter((row) => {
         const name = String(row?.product_name || "").trim().toLowerCase();
@@ -14218,6 +14263,7 @@ export default function DashboardPage() {
                                     reimbursementForSummary={reimbursementForSummary}
                                     reimbursementVsCm2PctForSummary={reimbursementVsCm2PctForSummary}
                                     reimbursementVsSalesPctForSummary={reimbursementVsSalesPctForSummary}
+                                    skuStatusMap={skuStatusMap}
                                 />
 
                                 <DashboardMtdPlSection
