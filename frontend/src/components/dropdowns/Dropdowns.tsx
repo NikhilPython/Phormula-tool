@@ -6846,6 +6846,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuRows, setSkuRows] = useState<TableRow[]>(
     isDemoMode ? DEMO_SKU_ROWS : []
   );
+  const [monthWiseSkuRows, setMonthWiseSkuRows] = useState<TableRow[]>([]);
+  const [monthWiseSkuLoading, setMonthWiseSkuLoading] = useState(false);
 
   const [skuRowsLoading, setSkuRowsLoading] = useState(false);
   const [skuRowsError, setSkuRowsError] = useState<string | null>(null);
@@ -7746,6 +7748,51 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     return url;
   };
+
+  // Fetch monthly total rows for the optional Month-wise P&L table view.
+  useEffect(() => {
+    let cancelled = false;
+    const loadMonthWiseTotals = async () => {
+      if (!allDropdownsSelected || !year || !initialCountryName || isDemoMode) {
+        setMonthWiseSkuRows([]);
+        setMonthWiseSkuLoading(false);
+        return;
+      }
+      setMonthWiseSkuLoading(true);
+      const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+      const allMonthsForYear = monthNames.map((name) => name.toLowerCase());
+      const now = new Date();
+      const selectedYearNumber = Number(year);
+      // For the current year, only show completed months (up to previous month).
+      // Past years can show all 12 months.
+      const months = selectedYearNumber === now.getFullYear()
+        ? allMonthsForYear.slice(0, now.getMonth())
+        : allMonthsForYear;
+      const results = await Promise.all(months.map(async (monthName) => {
+        try {
+          const url = buildMonthlySkuUrl(monthName, String(year), isDemoMode ? "global" : initialCountryName);
+          const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+          if (!response.ok) return null;
+          const payload = await response.json();
+          const rawRows = payload?.current_data ?? payload?.data ?? [];
+          if (!Array.isArray(rawRows) || rawRows.length === 0) return null;
+          const total = rawRows.find((row: any) => String(row?.product_name ?? "").trim().toLowerCase() === "total" || String(row?.sku ?? "").trim().toLowerCase() === "total") ?? null;
+          if (!total) return null;
+          const numericValues = Object.values(total).some((value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(String(value).replace(/,/g, ""))) && Number(value) !== 0);
+          if (!numericValues) return null;
+          return { ...total, product_name: monthNames[months.indexOf(monthName)], sku: monthName, _month_index: months.indexOf(monthName) };
+        } catch {
+          return null;
+        }
+      }));
+      if (!cancelled) {
+        setMonthWiseSkuRows(results.filter(Boolean).sort((a: any, b: any) => a._month_index - b._month_index) as TableRow[]);
+        setMonthWiseSkuLoading(false);
+      }
+    };
+    void loadMonthWiseTotals();
+    return () => { cancelled = true; };
+  }, [allDropdownsSelected, year, initialCountryName, isDemoMode, homeCurrency]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
@@ -12215,6 +12262,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 countryName={isDemoMode ? "global" : initialCountryName}
                 homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                 rows={displaySkuRows}
+                monthWiseRows={monthWiseSkuRows}
                 loading={displaySkuLoading}
                 error={displaySkuError}
                 noDataFound={displaySkuNoDataFound}
@@ -12225,6 +12273,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 onExportPayloadChange={handleSkuExportPayloadChange}
                 onOrderedRowsChange={handleSkuOrderedRowsChange}
                 onProductDetailClick={openAiProductDrawerByName}
+                onMonthClick={(monthName) => {
+                  const monthKey = String(monthName || "").trim().toLowerCase();
+                  if (!monthKey || monthIndexMap[monthKey] === undefined) return;
+                  setRange("monthly");
+                  setSelectedMonth(monthKey);
+                  setSelectedQuarter("");
+                  setSelectedYear(String(selectedYear));
+                  setUploadsData(null);
+                  setBargraphUploads([]);
+                }}
               />
 
               {!displaySkuNoDataFound && displaySkuRows.length > 0 && (
