@@ -697,7 +697,7 @@ def getDispatchfile():
 
             return cleaned
 
-        def exclude_discontinuous_dispatch_skus(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
+        def exclude_discontinued_dispatch_skus(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
             """Keep discontinued products visible in inventory, but exclude them from dispatch."""
             if df.empty:
                 return df
@@ -725,22 +725,22 @@ def getDispatchfile():
                 text(f'SELECT {quoted_columns} FROM "{sku_table_name}"'),
                 engine,
             )
-            discontinuous = master_df[
-                master_df["product_status"].fillna("Continuous").astype(str).str.strip().str.lower()
-                == "discontinuous"
+            discontinued = master_df[
+                master_df["product_status"].fillna("Active").astype(str).str.strip().str.lower()
+                .isin({"discontinued", "discontinuous"})
             ]
             discontinued_skus = {
                 str(value).strip().upper()
-                for value in discontinuous[country_sku_column].dropna().tolist()
+                for value in discontinued[country_sku_column].dropna().tolist()
                 if str(value).strip()
             }
             discontinued_names = (
                 {
                     str(value).strip().lower()
-                    for value in discontinuous["product_name"].dropna().tolist()
+                    for value in discontinued["product_name"].dropna().tolist()
                     if str(value).strip()
                 }
-                if "product_name" in discontinuous.columns
+                if "product_name" in discontinued.columns
                 else set()
             )
             if not discontinued_skus and not discontinued_names:
@@ -2011,7 +2011,7 @@ def getDispatchfile():
                     continue
 
                 df = read_dispatch_dataframe(data_bytes)
-                df = exclude_discontinuous_dispatch_skus(df, source_country)
+                df = exclude_discontinued_dispatch_skus(df, source_country)
                 df = clean_dispatch_dataframe(df)
                 df = refresh_fba_in_transit_from_db(df, source_country)
                 df = refresh_awd_in_transit_from_db(df, source_country)
@@ -2052,7 +2052,7 @@ def getDispatchfile():
         # df = apply_rolling_dispatch_plan(df, country.lower())
 
         df = read_dispatch_dataframe(data_bytes)
-        df = exclude_discontinuous_dispatch_skus(df, country.lower())
+        df = exclude_discontinued_dispatch_skus(df, country.lower())
 
         # print("\n========== DISPATCH DEBUG ==========")
         # print("Requested month:", requested_month)

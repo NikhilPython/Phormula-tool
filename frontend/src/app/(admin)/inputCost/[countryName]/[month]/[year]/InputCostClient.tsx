@@ -150,7 +150,7 @@ interface SkuRow {
   year?: string | number;
   local_stock?: number;
   in_transit_units?: number;
-  product_status?: 'Continuous' | 'Discontinuous';
+  product_status?: 'Active' | 'Discontinued';
   [key: string]: any;
 }
 
@@ -251,6 +251,16 @@ type ProductBestPerformanceData = {
   cm1_profit?: BestPerformanceMetric;
   unit_wise_profitability?: BestPerformanceMetric;
 };
+
+const PRODUCT_STATUS_OPTIONS: { value: "Active" | "Discontinued"; label: string }[] = [
+  { value: "Active", label: "Active" },
+  { value: "Discontinued", label: "Discontinued" },
+];
+
+const normalizeProductStatus = (value?: string | null): "Active" | "Discontinued" =>
+  value === "Discontinued" || value === "Discontinuous"
+    ? "Discontinued"
+    : "Active";
 
 const normalizeKey = (s: string) =>
   String(s || "")
@@ -5809,12 +5819,15 @@ export default function InputCostPage({ params }: Params) {
             targetCountry,
             row.product_name
           );
-
           exportRow[col] = gm !== 'N/A' ? Number(gm) : '';
         } else if (col === 'price') {
           exportRow.price = updatedPrice ?? '';
         } else if (col === 'month_year') {
           exportRow.month_year = getMonthYearDisplay(row);
+        } else if (col === 'product_status') {
+          exportRow.product_status = row.product_status
+            ? normalizeProductStatus(row.product_status)
+            : '';
         } else {
           exportRow[col] = row[col] ?? '';
         }
@@ -5850,7 +5863,7 @@ export default function InputCostPage({ params }: Params) {
         product_barcode: row.product_barcode ?? '—',
         month_year: getMonthYearDisplay(row),
         price: row.price ?? '',
-        product_status: row.product_status ?? 'Continuous',
+        product_status: normalizeProductStatus(row.product_status),
       };
 
       visibleColumns.forEach((col) => {
@@ -6196,53 +6209,132 @@ export default function InputCostPage({ params }: Params) {
       if (column === 'product_barcode') col.width = '160px';
       if (column === 'month_year') col.width = '140px';
 
+
       if (column === 'product_status') {
         col.width = '170px';
+
         col.render = (tableRow) => {
           const recordId = Number((tableRow as any).sku_record_id);
+
           const originalRow = skuData.find((row) => row.id === recordId);
-          const currentStatus = originalRow?.product_status ?? 'Continuous';
+
+          const currentStatus = normalizeProductStatus(originalRow?.product_status);
+
+          const statusTintClass =
+            currentStatus === 'Active'
+              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 focus:ring-emerald-200'
+              : 'border-rose-200 bg-rose-50/70 text-rose-700 focus:ring-rose-200';
 
           return (
-            <select
-              aria-label={`Product status for ${String(tableRow.product_name)}`}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-[#5EA68E] focus:outline-none"
-              value={currentStatus}
-              disabled={!recordId || savingProductStatusId === recordId}
-              onChange={async (event) => {
-                const nextStatus = event.target.value as 'Continuous' | 'Discontinuous';
-                const token = localStorage.getItem('jwtToken');
-                if (!token || !recordId) return;
 
-                setSavingProductStatusId(recordId);
-                try {
-                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/sku-status`, {
-                    method: 'PATCH',
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ id: recordId, product_status: nextStatus }),
-                  });
-                  const result = await response.json().catch(() => ({}));
-                  if (!response.ok) throw new Error(result.error || 'Could not save product status');
+            <div className="flex items-center justify-center">
+              <div className="relative w-[145px]">
+                <select
+                  aria-label={`Product status for ${String(tableRow.product_name)}`}
+                  className={`
+        appearance-none box-border w-full
+        rounded-full border
+        pl-4 pr-9 py-1.5
+        text-xs font-medium
+        cursor-pointer
+        transition-colors duration-150
+        focus:outline-none focus:ring-1 focus:ring-offset-0
+        ${statusTintClass}
+        disabled:cursor-wait disabled:opacity-60
+      `}
+                  value={currentStatus}
+                  disabled={!recordId || savingProductStatusId === recordId}
+                  onChange={async (event) => {
+                    const nextStatus = event.target.value as
+                      | 'Active'
+                      | 'Discontinued';
 
-                  setSkuData((previous) => previous.map((row) =>
-                    row.id === recordId ? { ...row, product_status: nextStatus } : row
-                  ));
-                } catch (statusError) {
-                  window.alert(statusError instanceof Error ? statusError.message : 'Could not save product status');
-                } finally {
-                  setSavingProductStatusId(null);
-                }
-              }}
-            >
-              <option value="Continuous">Continuous</option>
-              <option value="Discontinuous">Discontinuous</option>
-            </select>
+                    const token = localStorage.getItem('jwtToken');
+
+                    if (!token || !recordId) return;
+
+                    setSavingProductStatusId(recordId);
+
+                    try {
+                      const response = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_BASE_URL}/sku-status`,
+                        {
+                          method: 'PATCH',
+                          headers: {
+                            Authorization: `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            id: recordId,
+                            product_status: nextStatus,
+                          }),
+                        }
+                      );
+
+                      const result = await response.json().catch(() => ({}));
+
+                      if (!response.ok) {
+                        throw new Error(
+                          result.error || 'Could not save product status'
+                        );
+                      }
+
+                      setSkuData((previous) =>
+                        previous.map((row) =>
+                          row.id === recordId
+                            ? { ...row, product_status: nextStatus }
+                            : row
+                        )
+                      );
+                    } catch (statusError) {
+                      window.alert(
+                        statusError instanceof Error
+                          ? statusError.message
+                          : 'Could not save product status'
+                      );
+                    } finally {
+                      setSavingProductStatusId(null);
+                    }
+                  }}
+                >
+
+                  {PRODUCT_STATUS_OPTIONS.map((opt) => {
+                    const isActive = opt.value === 'Active';
+
+                    return (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        style={{
+                          color: isActive ? '#047857' : '#BE123C',
+                          backgroundColor: isActive ? '#ECFDF5' : '#FFF1F2',
+                        }}
+                      >
+                        {opt.label}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <svg
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m4 6 4 4 4-4" />
+                </svg>
+              </div>
+            </div>
+
           );
         };
       }
+
 
       if (column === 'price') {
         col.width = '100px';
@@ -7546,21 +7638,21 @@ export default function InputCostPage({ params }: Params) {
               )}
 
               {activeTab === "recon-table" && effectiveReconRows.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleToggleReconTableExpansion}
-                    title={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
-                    aria-label={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
-                    disabled={isNA || reconFetching}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isReconTableFullyExpanded ? (
-                      <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-                    ) : (
-                      <RiExpandDiagonalFill size={18} className="font-extrabold" />
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleToggleReconTableExpansion}
+                  title={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                  aria-label={isReconTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                  disabled={isNA || reconFetching}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isReconTableFullyExpanded ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )}
+                </button>
+              )}
 
               {activeTab === "lost-compensation" && (
                 <DownloadIconButton
