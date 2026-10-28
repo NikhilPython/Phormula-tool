@@ -1068,6 +1068,16 @@ const tableData = useMemo(() => {
         monthlyTotal.product_name = "Total";
         monthlyTotal.sku = "Total";
         monthlyTotal.asp = resolveAspForRow(monthlyTotal, true);
+
+        // ACoS is a percentage/rate, so the Month-wise Total must show
+        // the average of the monthly ACoS values instead of summing them.
+        const monthlyAcosValues = productRows
+          .map((row) => getAcosPercentage(row))
+          .filter((value) => Number.isFinite(value));
+        monthlyTotal.acos = monthlyAcosValues.length
+          ? monthlyAcosValues.reduce((sum, value) => sum + value, 0) /
+            monthlyAcosValues.length
+          : 0;
       }
       return monthlyTotal ? [...productRows, monthlyTotal] : productRows;
     }
