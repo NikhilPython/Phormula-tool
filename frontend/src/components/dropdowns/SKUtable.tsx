@@ -69,6 +69,7 @@ type SKUtableProps = {
   homeCurrency?: string;
 
   rows: TableRow[];
+  monthWiseRows?: TableRow[];
   loading?: boolean;
   error?: string | null;
   noDataFound?: boolean;
@@ -84,6 +85,7 @@ type SKUtableProps = {
   disableInternalFade?: boolean;
 
   onProductDetailClick?: (productName: string, sku?: string) => void;
+  onMonthClick?: (month: string) => void;
 };
 
 type TopBottomRow = {
@@ -666,6 +668,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   homeCurrency,
 
   rows,
+  monthWiseRows = [],
   loading = false,
   error = null,
   noDataFound = false,
@@ -677,6 +680,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   onDownload,
   disableInternalFade = false,
   onProductDetailClick,
+  onMonthClick,
   // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -689,6 +693,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
     other: true,
   });
   const [showAllRows, setShowAllRows] = useState(false);
+  const [tableView, setTableView] = useState<"product" | "month">("product");
+  const isMonthWiseView = tableView === "month";
   const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean> | undefined>(
     undefined
@@ -716,16 +722,82 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "global",
   ].includes(normalizedCountryName);
 
-  const tableData = useMemo(() => {
-    return normalizeRows(rows || []);
-  }, [rows]);
+ 
+const tableData = useMemo(() => {
+  const sourceRows = (isMonthWiseView ? monthWiseRows : rows) || [];
+  const normalizedRows = normalizeRows(sourceRows);
+
+  // Product-wise: keep existing logic unchanged.
+  if (!isMonthWiseView) {
+    return normalizedRows;
+  }
+
+  // Month-wise: filter rows according to selected year.
+  const selectedYear = String(year);
+
+  const filteredRows = normalizedRows.filter((normalizedRow, index) => {
+    const sourceRow: any = sourceRows[index] || {};
+
+    const rowYear =
+      sourceRow.year ??
+      sourceRow.calendar_year ??
+      sourceRow.date_year ??
+      sourceRow.year_month ??
+      sourceRow.month;
+
+    // Keep the row if year information is unavailable.
+    if (rowYear === undefined || rowYear === null || rowYear === "") {
+      return true;
+    }
+
+    const yearMatch = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
+
+    return yearMatch ? yearMatch[0] === selectedYear : true;
+  });
+
+  // Preserve existing CM2 and Ads Spend logic.
+  return filteredRows.map((normalizedRow) => {
+    const sourceRow: any =
+      sourceRows[normalizedRows.indexOf(normalizedRow)] || {};
+
+    const hasValue = (value: unknown) =>
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      Number.isFinite(Number(value));
+
+    const cm2Value = hasValue(sourceRow.total_cm2_profit)
+      ? Number(sourceRow.total_cm2_profit)
+      : hasValue(sourceRow.cm2_profit_total)
+        ? Number(sourceRow.cm2_profit_total)
+        : hasValue(sourceRow.cm2_profit)
+          ? Number(sourceRow.cm2_profit)
+          : normalizedRow.cm2_profit;
+
+    return {
+      ...normalizedRow,
+
+      // Month-wise Ads Spend uses total_ads.
+      ads_spend: toNumber(sourceRow.total_ads),
+
+      // Existing CM2 logic preserved.
+      cm2_profit: cm2Value,
+      total_cm2_profit: cm2Value,
+      cm2_profit_total: cm2Value,
+    } as TableRow;
+  });
+}, [rows, monthWiseRows, isMonthWiseView, year]);
+
 
   const hasCm2Data = useMemo(() => {
     const currentCountry = String(countryName || "").trim().toLowerCase();
     const currentRange = String(range || "").trim().toLowerCase();
 
-    // Hide Ads + CM2 for US yearly and quarterly, same as UK behavior
+    // Keep Ads + CM2 columns visible in Month-wise mode, even though the
+    // global period selector remains Yearly. Preserve existing behavior for
+    // the normal product-wise yearly/quarterly view.
     if (
+      !isMonthWiseView &&
       (currentRange === "yearly" || currentRange === "quarterly")
     ) {
       return false;
@@ -745,7 +817,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     if (!productRows.length) return false;
 
-    // ✅ Show Ads Spend, ACoS%, CM2 Profit only when at least one SKU has real CM2 impact
+    // The month-wise layout must retain Ads and CM2 columns for every month;
+    // monthly rows already carry their own backend totals.
+    if (isMonthWiseView) return true;
+
+    // Show Ads Spend, ACoS%, CM2 Profit only when at least one SKU has real CM2 impact
     return productRows.some((row: any) => {
       const adsSpend = toNumber(row.ads_spend ?? row.advertising_total);
       const backendAcos = toNumber(row.acos);
@@ -764,7 +840,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         cm2DiffersFromCm1
       );
     });
-  }, [tableData, countryName, range]);
+  }, [tableData, countryName, range, isMonthWiseView]);
 
   const getCm2PerUnit = (row: Partial<TableRow>) => {
     const cm2 = toNumber((row as any).cm2_profit);
@@ -983,6 +1059,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const productRows = tableData.filter((row) => !isTotalRow(row));
 
+    // Month-wise view: keep one row per month and append a calculated Total row.
+    if (isMonthWiseView) {
+      const monthlyTotal = productRows.length
+        ? (sumRows(productRows, { product_name: "Total", sku: "Total" }) as TableRow)
+        : null;
+      if (monthlyTotal) {
+        monthlyTotal.product_name = "Total";
+        monthlyTotal.sku = "Total";
+        monthlyTotal.asp = resolveAspForRow(monthlyTotal, true);
+      }
+      return monthlyTotal ? [...productRows, monthlyTotal] : productRows;
+    }
+
     const sorted = [...productRows].sort((a, b) => {
       const aValue = getSortableValue(a, tableSort.key);
       const bValue = getSortableValue(b, tableSort.key);
@@ -1022,10 +1111,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow]);
+  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow, isMonthWiseView]);
 
   const excelRows = useMemo(() => {
     if (!tableData?.length) return [];
+    if (isMonthWiseView) return tableData;
 
     const isTotalRow = (row: TableRow) => {
       const name = String((row as any)?.product_name || "").trim().toLowerCase();
@@ -1056,7 +1146,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
 
     return totalRow ? [...sorted, totalRow] : sorted;
-  }, [tableData, tableSort, getSortableValue, resolveAspForRow]);
+  }, [tableData, tableSort, getSortableValue, resolveAspForRow, isMonthWiseView]);
 
   useEffect(() => {
     onOrderedRowsChange?.(excelRows);
@@ -1072,14 +1162,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       },
       {
         key: "product_name",
-        label: "Product Name",
-        info: <InfoTip text={TERM_DEFINITIONS.product_name} />,
+        label: isMonthWiseView ? "Month" : "Product Name",
+        info: isMonthWiseView ? undefined : <InfoTip text={TERM_DEFINITIONS.product_name} />,
         align: "left",
         width: "17%",
         tdClassName: "!whitespace-normal !text-clip break-words align-middle",
       },
     ],
-    []
+    [isMonthWiseView]
   );
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
@@ -3011,6 +3101,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-50 p-1" role="group" aria-label="P&L table view">
+              <button type="button" onClick={() => setTableView("product")} aria-pressed={!isMonthWiseView} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${!isMonthWiseView ? "bg-[#5EA68E] text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>Product-wise</button>
+              <button type="button" onClick={() => setTableView("month")} aria-pressed={isMonthWiseView} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${isMonthWiseView ? "bg-[#5EA68E] text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>Month-wise</button>
+            </div>
             <button
               type="button"
               onClick={handleToggleTableExpansion}
@@ -3157,13 +3251,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const name = String((row as any)?.product_name || "").trim().toLowerCase();
 
                   if (name === "total") return "bg-[#EFEFEF] font-semibold";
+                  if (isMonthWiseView && name) return "cursor-pointer ";
                   if (!showAllRows && name === "others") return "cursor-pointer";
 
                   return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                 }}
                 onRowClick={(row) => {
-                  const name = String((row as any)?.product_name || "").trim().toLowerCase();
+                  const rawName = String((row as any)?.product_name || "").trim();
+                  const name = rawName.toLowerCase();
                   const sku = String((row as any)?.sku || "").trim().toLowerCase();
+
+                  if (isMonthWiseView && rawName && name !== "total") {
+                    onMonthClick?.(rawName);
+                    return;
+                  }
 
                   if (!showAllRows && (name === "others" || sku === "others")) {
                     setShowAllRows(true);
@@ -3181,6 +3282,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   if (colKey === "product_name") {
                     const displayName = getDisplayProductNameFromRow(row);
+                    if (isMonthWiseView) {
+                      return <span className="font-medium text-green-500">{displayName}</span>;
+                    }
 
                     // ✅ ONLY "Others" in green
                     if (isOthers) {
@@ -3256,9 +3360,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                 }}
                 summary={{
-                  enabled: !noDataFound && mainColCount > 0,
+                  enabled: !isMonthWiseView && !noDataFound && mainColCount > 0,
 
-                  rows: skuSummaryRows,
+                  rows: isMonthWiseView ? [] : skuSummaryRows,
 
                   valueCols: 2,
                   boldSectionsByDefault: false,
