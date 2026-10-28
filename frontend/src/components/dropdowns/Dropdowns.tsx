@@ -1594,25 +1594,22 @@ const getAdvertisingTotalValue = (row: any, hasCm2Columns = true) =>
     : getNoCm2AdvertisingValue(row);
 
 const getAdvertisingBaseValue = (row: any, hasCm2Columns = true) => {
+  const visibilityAds = hasCm2Columns
+    ? pickFirstNonZeroNum(row?.brand_spend, row?.visible_ads)
+    : pickFirstNonZeroNum(row?.visible_ads, row?.brand_spend);
+  const dealsAds = toNum(
+    row?.dealsvouchar_ads ??
+    row?.dealvouchars_ads ??
+    row?.dealsvoucher_ads ??
+    row?.deals_voucher_ads
+  );
+  const childTotal = Math.abs(visibilityAds) + Math.abs(dealsAds);
+
+  // When the breakdown components are available, they are the canonical total.
+  if (childTotal !== 0) return childTotal;
   if (!hasCm2Columns) return getNoCm2AdvertisingValue(row);
 
-  const directValue = pickFirstNonZeroNum(
-    row?.advertising_total,
-    row?.cost_of_advertisement
-  );
-
-  if (directValue !== 0) return directValue;
-
-  const childTotal =
-    toNum(row?.brand_spend) +
-    toNum(
-      row?.dealsvouchar_ads ??
-      row?.dealvouchars_ads ??
-      row?.dealsvoucher_ads ??
-      row?.deals_voucher_ads
-    );
-
-  return childTotal !== 0 ? childTotal : directValue;
+  return pickFirstNonZeroNum(row?.advertising_total, row?.cost_of_advertisement);
 };
 
 const getProductCm2ProfitValue = (row: Partial<TableRow> | null | undefined) =>
@@ -7888,8 +7885,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   ): UploadHistoryResponse => {
     const currentTotal = getSkuTotalRow(data?.current_data);
     const previousTotal = getSkuTotalRow(data?.previous_data);
-    const currentHasCm2 = hasSkuCm2Data(data?.current_data ?? []);
-    const previousHasCm2 = hasSkuCm2Data(data?.previous_data ?? []);
+    // SKUtable hides Ads Spend/CM2 for quarterly and yearly periods, so use
+    // the same visibility rule when mapping their summary totals.
+    const currentHasCm2 = rangeType === "monthly" &&
+      hasSkuCm2Data(data?.current_data ?? []);
+    const previousHasCm2 = rangeType === "monthly" &&
+      hasSkuCm2Data(data?.previous_data ?? []);
 
     return {
       summary: mapSkuTotalToSummary(currentTotal, currentHasCm2),
@@ -11358,23 +11359,32 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   })}`;
                 };
 
-                const costOfAds =
-                  currentCardMetrics?.cost_of_ads ??
-                  summary.advertising_total_final ??
-                  summary.advertising_total ??
-                  0;
+                const hasAdsSpendColumn = range === "monthly" &&
+                  hasSkuCm2Data((uploadsData?.current_data as any[]) ?? []);
+                // When the SKU table exposes its Ads Spend column, preserve the
+                // backend card calculation. Otherwise match the P&L breakdown's
+                // Cost of Advertisement total.
+                const costOfAds = Math.abs(toNum(
+                  hasAdsSpendColumn
+                    ? currentCardMetrics?.cost_of_ads ?? summary.advertising_total_final ?? summary.advertising_total
+                    : summary.advertising_total ?? summary.advertising_total_final
+                ));
+                const costOfAdsPerUnit = hasAdsSpendColumn
+                  ? currentCardMetrics?.cost_of_ads_per_unit ?? 0
+                  : summary.unit_sold > 0 ? costOfAds / summary.unit_sold : 0;
 
                 const getRoas = (s?: Summary) => {
                   const ns = s?.total_sales ?? 0;            // net sales
-                  const ads =
-                    s?.advertising_total_final ??
-                    s?.advertising_total ??
-                    0;                                      // final cost of ads
+                  const ads = Math.abs(toNum(
+                    s?.advertising_total ?? s?.advertising_total_final
+                  ));                                      // same ads total as P&L breakdown
                   return ns > 0 ? (ads / ns) * 100 : 0;
                 };
 
 
-                const roas = currentCardMetrics?.tacos_pct ?? getRoas(summary);
+                const roas = hasAdsSpendColumn && currentCardMetrics?.tacos_pct !== undefined
+                  ? currentCardMetrics.tacos_pct
+                  : netSales > 0 ? (costOfAds / netSales) * 100 : getRoas(summary);
 
                 const formatRoas = (val: number) =>
                   `${val.toLocaleString(undefined, {
@@ -11529,6 +11539,53 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   }];
                 };
 
+                const previousSummary = range === "monthly"
+                  ? uploadsData?.summaryComparisons?.lastMonth
+                  : range === "quarterly"
+                    ? uploadsData?.summaryComparisons?.lastQuarter
+                    : uploadsData?.summaryComparisons?.lastYear;
+                const previousAds = previousSummary
+                  ? Math.abs(toNum(
+                      previousSummary.advertising_total ?? previousSummary.advertising_total_final
+                    ))
+                  : undefined;
+                const previousAdsPerUnit = previousSummary && previousSummary.unit_sold > 0
+                  ? previousAds! / previousSummary.unit_sold
+                  : 0;
+                const adsDelta = previousAds && previousAds !== 0
+                  ? ((costOfAds - previousAds) / previousAds) * 100
+                  : undefined;
+                const adsDeltaClassName = typeof adsDelta !== "number" || adsDelta === 0
+                  ? "text-gray-400"
+                  : adsDelta < 0 ? "text-emerald-600" : "text-red-600";
+                const previousTacos = previousSummary && previousSummary.total_sales > 0 && previousAds !== undefined
+                  ? (previousAds / previousSummary.total_sales) * 100
+                  : undefined;
+                const adsComparisons = !hasAdsSpendColumn && previousSummary
+                  ? [{
+                      label: getBackendComparisonLabel(),
+                      valueText: formatWholeMoneyWithPerUnit(previousAds!, previousAdsPerUnit),
+                      deltaText: typeof adsDelta === "number"
+                        ? `${adsDelta >= 0 ? "▲" : "▼"} ${Math.abs(adsDelta).toFixed(2)}%`
+                        : "-",
+                      deltaClassName: adsDeltaClassName,
+                    }]
+                  : buildBackendComparisonRow(
+                      "cost_of_ads",
+                      formatWholeMoneyWithPerUnit(
+                        previousCardMetrics?.cost_of_ads ?? 0,
+                        previousCardMetrics?.cost_of_ads_per_unit ?? 0
+                      ),
+                      true
+                    );
+                const tacosComparisons = !hasAdsSpendColumn && previousTacos !== undefined
+                  ? buildBackendComparisonRow("tacos_pct", formatRoas(previousTacos), true)
+                  : buildBackendComparisonRow(
+                      "tacos_pct",
+                      formatRoas(previousCardMetrics?.tacos_pct ?? 0),
+                      true
+                    );
+
                 const cards = [
                   {
                     key: "units",
@@ -11595,18 +11652,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     title: "Cost of Advertisement",
                     value: renderMoneyWithPerUnit(
                       roundMoney(costOfAds),
-                      currentCardMetrics?.cost_of_ads_per_unit ?? 0,
+                      costOfAdsPerUnit,
                       0
                     ),
                     className: "bg-white border border-[#C49466] border-t-4 border-t-[#C49466]",
-                    comparisons: buildBackendComparisonRow(
-                      "cost_of_ads",
-                      formatWholeMoneyWithPerUnit(
-                        previousCardMetrics?.cost_of_ads ?? 0,
-                        previousCardMetrics?.cost_of_ads_per_unit ?? 0
-                      ),
-                      true
-                    ),
+                    comparisons: adsComparisons,
                   },
                   {
                     key: "tacos",
@@ -11614,11 +11664,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     value: formatRoas(roas),
                     // className: "border border-[#3A8EA4] bg-[#3A8EA44D]",
                     className: "bg-white border border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]",
-                    comparisons: buildBackendComparisonRow(
-                      "tacos_pct",
-                      formatRoas(previousCardMetrics?.tacos_pct ?? 0),
-                      true
-                    ),
+                    comparisons: tacosComparisons,
                   },
                   {
                     key: "cm2",

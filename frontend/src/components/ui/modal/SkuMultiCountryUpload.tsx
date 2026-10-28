@@ -34,6 +34,7 @@ const HEADER_LABELS: Record<string, string> = {
   date: "Date",
   local_stock: "Local Stock",
   in_transit_units: "In Transit Units",
+  product_status: "Product Status",
 };
 
 function toTitleCase(value: string) {
@@ -79,6 +80,10 @@ function normalizeHeader(key: string): string {
     in_transit_units: "in_transit_units",
     in_transit: "in_transit_units",
     transit_units: "in_transit_units",
+    product_status: "product_status",
+    productstatus: "product_status",
+    sku_status: "product_status",
+    status: "product_status",
   };
 
   const mapped = aliases[raw] || raw;
@@ -180,6 +185,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
         "date",
         "local_stock",
         "in_transit_units",
+        "product_status",
       ];
 
       return finalColumns.map((key) => ({
@@ -237,6 +243,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
           "date",
           "local_stock",
           "in_transit_units",
+          "product_status",
         ];
 
         allColumns.forEach((col) => {

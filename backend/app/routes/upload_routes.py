@@ -1542,6 +1542,7 @@ def multiCountry():
         # ✅ NEW
         Column('local_stock', Integer, nullable=True, server_default=text("0")),
         Column('in_transit_units', Integer, nullable=True, server_default=text("0")),
+        Column('product_status', String(32), nullable=True, server_default=text("'Continuous'")),
 
         Column('month', String(20), nullable=True),
         Column('year', String(20), nullable=True),
@@ -1724,11 +1725,17 @@ def multiCountry():
             # ✅ NEW: read stock columns (support different headers)
             local_stock = _safe_int(_pick(row, ['local_stock', 'local stock', 'Local Stock']), default=0)
             in_transit_units = _safe_int(_pick(row, ['in_transit_units', 'in transit units', 'In Transit Units']), default=0)
+            raw_status = _pick(row, ['product_status', 'status', 'sku_status', 'product status'])
+            product_status = str(raw_status or 'Continuous').strip().lower()
+            status_aliases = {'continuous': 'Continuous', 'active': 'Continuous', 'discontinuous': 'Discontinuous', 'discontinued': 'Discontinuous', 'discontinue': 'Discontinuous'}
+            if product_status not in status_aliases:
+                raise ValueError(f"Invalid product status '{raw_status}'. Use Continuous or Discontinuous.")
+            product_status = status_aliases[product_status]
 
             # Skip fully empty lines (include stock too)
             if not any([
                 s_no, product_name, product_barcode, asin, sku_uk, sku_us, sku_canada,
-                price_value, currency, month, year, local_stock, in_transit_units
+                price_value, currency, month, year, local_stock, in_transit_units, raw_status
             ]):
                 continue
 
@@ -1747,6 +1754,7 @@ def multiCountry():
                 # ✅ NEW
                 'local_stock': local_stock,
                 'in_transit_units': in_transit_units,
+                'product_status': product_status,
 
                 'month': _s(month),
                 'year': _s(year),
@@ -1840,7 +1848,8 @@ def get_current_sku_sheet():
                 month,
                 year,
                 local_stock,
-                in_transit_units
+                in_transit_units,
+                {"COALESCE(product_status, 'Continuous') AS product_status" if 'product_status' in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Continuous' AS product_status"}
             FROM {table_name}
             WHERE user_id = :user_id
             ORDER BY s_no NULLS LAST
@@ -1939,7 +1948,8 @@ def download_current_sku_sheet():
                 month,
                 year,
                 local_stock,
-                in_transit_units
+                in_transit_units,
+                {"COALESCE(product_status, 'Continuous') AS product_status" if 'product_status' in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Continuous' AS product_status"}
             FROM {table_name}
             WHERE user_id = :user_id
             ORDER BY s_no NULLS LAST
@@ -1995,6 +2005,7 @@ def download_current_sku_sheet():
             "date",
             "local_stock",
             "in_transit_units",
+            "product_status",
         ]
         df = df[[column for column in column_order if column in df.columns]]
 
@@ -2011,6 +2022,7 @@ def download_current_sku_sheet():
             "date": "Date",
             "local_stock": "Local Stock",
             "in_transit_units": "In Transit Units",
+            "product_status": "Product Status",
         }, inplace=True)
 
         output = BytesIO()

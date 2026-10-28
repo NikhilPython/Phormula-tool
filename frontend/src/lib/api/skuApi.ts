@@ -25,6 +25,7 @@ export type SkuSheetRow = {
   date?: string | null;
   local_stock?: number | null;
   in_transit_units?: number | null;
+  product_status?: "Continuous" | "Discontinuous" | null;
 };
 
 export type CurrentSkuSheetRes = {

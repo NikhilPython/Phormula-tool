@@ -433,7 +433,7 @@ def return_saved_current_inventory_table(user_id, country_key, month_name, year,
             "original_error": str(error_msg) if error_msg else None,
             "table_name": table_name,
         }), 500
-    
+
 
 def generate_inventory_for_country(user_id, country_key, month_name, year):
     SessionLocal = sessionmaker(bind=db.engine)
@@ -1256,5 +1256,3 @@ def current_inventory():
     except Exception as e:
         logger.exception("Current inventory generation failed")
         return jsonify({"error": str(e)}), 500
-    
-    

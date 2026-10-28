@@ -834,12 +834,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [hasCm2Data, totals.brand_spend, totals.visible_ads]);
 
   const costOfAdvertisementValue = useMemo(() => {
-    if (hasCm2Data) {
-      const childTotal =
-        toNumber(visibilityAdsValue) + toNumber(totals.dealsvouchar_ads);
+    const childTotal =
+      Math.abs(toNumber(visibilityAdsValue)) +
+      Math.abs(toNumber(totals.dealsvouchar_ads));
 
-      return toNumber(totals.advertising_total) || childTotal;
-    }
+    // The visible breakdown components are authoritative for every period,
+    // including stored yearly and quarterly summaries.
+    if (childTotal !== 0) return childTotal;
+    if (hasCm2Data) return Math.abs(toNumber(totals.advertising_total));
 
     const requestedAdSpend =
       nonZeroOrNull(totals.advertising_fees) ??
@@ -848,7 +850,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       nonZeroOrNull(totals.advertising_total_final) ??
       nonZeroOrNull(totals.advertising_total);
 
-    if (requestedAdSpend !== null) return requestedAdSpend;
+    if (requestedAdSpend !== null) return Math.abs(requestedAdSpend);
 
     const hasRequestedAdField =
       rawTotalRow &&

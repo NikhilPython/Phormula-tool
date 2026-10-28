@@ -2147,6 +2147,47 @@ def get_previous_year_monthly_aggregated_data(
     return previous_data, used_previous_tables
 
 
+def _sync_total_advertising_components(rows):
+    """Keep period total-row ad fields consistent with their displayed components."""
+    for row in rows or []:
+        sku = str(row.get("sku") or "").strip().lower()
+        product_name = str(row.get("product_name") or "").strip().lower()
+        if sku not in {"total", "totals", "grand_total"} and product_name not in {
+            "total", "totals", "grand total"
+        }:
+            continue
+
+        def number(*values):
+            for value in values:
+                try:
+                    if value not in (None, ""):
+                        return float(value)
+                except (TypeError, ValueError):
+                    continue
+            return 0.0
+
+        visibility_ads = abs(
+            number(row.get("visible_ads")) or number(row.get("brand_spend"))
+        )
+        deals_ads = abs(
+            number(row.get("dealsvouchar_ads"))
+            or number(row.get("dealsvoucher_ads"))
+            or number(row.get("dealvouchars_ads"))
+        )
+        if not visibility_ads and not deals_ads:
+            continue
+
+        total_ads = visibility_ads + deals_ads
+        row["visible_ads"] = visibility_ads
+        row["advertising_total"] = visibility_ads
+        row["advertising_total_final"] = total_ads
+        row["advertising_fees"] = total_ads
+        row["total_ads"] = total_ads
+        row["ads_spend"] = visibility_ads
+
+    return rows
+
+
 @product_bp.route('/YearlySKU', methods=['GET'])
 def YearlySKU():
     country = (request.args.get('country') or '').lower()
@@ -2188,6 +2229,7 @@ def YearlySKU():
 
         # 🔒 Normalize all rows so the UI gets true numbers, not strings
         current_data = [_normalize_sku_row(dict(row)) for row in results]
+        current_data = _sync_total_advertising_components(current_data)
         current_data = add_per_unit_fields(current_data)
         used_current_tables = [table_name]
 
@@ -2424,6 +2466,7 @@ def quarterlyskutable():
                 ).mappings().all()
 
             current_data = [_normalize_sku_row(dict(row)) for row in results]
+            current_data = _sync_total_advertising_components(current_data)
             current_data = add_per_unit_fields(current_data)
             try:
                 persist_per_unit_fields(engine, table_name, current_data)
@@ -2452,6 +2495,7 @@ def quarterlyskutable():
                     ).mappings().all()
 
                 previous_data = [_normalize_sku_row(dict(row)) for row in prev_results]
+                previous_data = _sync_total_advertising_components(previous_data)
                 previous_data = add_per_unit_fields(previous_data)
                 try:
                     persist_per_unit_fields(engine, previous_table_name, previous_data)
@@ -2876,6 +2920,57 @@ def update_prices():
 
 
 
+@product_bp.route('/sku-status', methods=['PATCH'])
+def update_sku_product_status():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    try:
+        _, user_id, _ = get_effective_user_id_from_token(auth_header.split(' ')[1])
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    data = request.get_json(silent=True) or {}
+    try:
+        record_id = int(data.get('id'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'A valid SKU record id is required'}), 400
+
+    requested_status = str(data.get('product_status') or '').strip().lower()
+    status = {
+        'continuous': 'Continuous',
+        'discontinuous': 'Discontinuous',
+        'discontinued': 'Discontinuous',
+    }.get(requested_status)
+    if not status:
+        return jsonify({'error': 'Product status must be Continuous or Discontinuous'}), 400
+
+    table_name = f"sku_{user_id}_data_table"
+    try:
+        if not inspect(user_engine).has_table(table_name):
+            return jsonify({'error': 'SKU table was not found'}), 404
+
+        with user_engine.begin() as conn:
+            conn.execute(text(
+                f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS product_status VARCHAR(32) DEFAULT \'Continuous\''
+            ))
+            result = conn.execute(
+                text(f'UPDATE "{table_name}" SET product_status = :status WHERE id = :id AND user_id = :user_id'),
+                {'status': status, 'id': record_id, 'user_id': user_id},
+            )
+            if result.rowcount == 0:
+                return jsonify({'error': 'SKU record was not found'}), 404
+
+        return jsonify({'success': True, 'id': record_id, 'product_status': status}), 200
+    except SQLAlchemyError as e:
+        return jsonify({'error': 'Database error', 'message': str(e)}), 500
+    except Exception as e:
+        return jsonify({'error': 'Failed to update product status', 'message': str(e)}), 500
+
+
 @product_bp.route('/skuprice', methods=['GET'])
 def skuprice():
     auth_header = request.headers.get('Authorization')
@@ -3238,6 +3333,41 @@ def skutableprofit():
 
         metadata = MetaData(schema='public')
 
+        # Resolve discontinued SKUs from the user's SKU master. Older SKU
+        # tables have no status column and remain Continuous by default.
+        discontinued_skus = set()
+        discontinued_product_names = set()
+        sku_master_name = f"sku_{user_id}_data_table"
+        if sku_master_name in existing_tables:
+            sku_master = Table(sku_master_name, MetaData(), autoload_with=engine)
+            if "product_status" in sku_master.c:
+                # Product status is product-wide. Monthly P&L rows may use a
+                # marketplace SKU different from the currently selected one,
+                # so match every known marketplace mapping.
+                sku_columns = ["sku_uk", "sku_us", "sku_canada"]
+                selected_columns = [sku_master.c.product_status] + (
+                    [sku_master.c.product_name]
+                    if "product_name" in sku_master.c
+                    else []
+                ) + [
+                    sku_master.c[column]
+                    for column in sku_columns
+                    if column in sku_master.c
+                ]
+                if len(selected_columns) > 1:
+                    with engine.connect() as conn:
+                        master_rows = conn.execute(select(*selected_columns)).mappings().all()
+                    for master_row in master_rows:
+                        if str(master_row.get("product_status") or "Continuous").strip().lower() != "discontinuous":
+                            continue
+                        product_name = str(master_row.get("product_name") or "").strip().lower()
+                        if product_name:
+                            discontinued_product_names.add(product_name)
+                        for column in sku_columns:
+                            sku_value = str(master_row.get(column) or "").strip().lower()
+                            if sku_value:
+                                discontinued_skus.add(sku_value)
+
 
         def safe_divide(numerator, denominator):
             numerator = safe_float(numerator)
@@ -3486,6 +3616,56 @@ def skutableprofit():
                     row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
 
                     break
+
+            # Remove discontinued detail rows and subtract their additive
+            # metrics from the precomputed total row before returning it.
+            if discontinued_skus or discontinued_product_names:
+                kept_rows = []
+                removed_rows = []
+                total_row = None
+                for item in final_data:
+                    sku_value = str(item.get("sku") or "").strip().lower()
+                    product_name_value = str(item.get("product_name") or "").strip().lower()
+                    if sku_value == "total" or product_name_value == "total":
+                        total_row = item
+                        kept_rows.append(item)
+                    elif (
+                        sku_value in discontinued_skus
+                        or product_name_value in discontinued_product_names
+                    ):
+                        removed_rows.append(item)
+                    else:
+                        kept_rows.append(item)
+
+                if total_row is not None and removed_rows:
+                    non_additive_tokens = (
+                        "percentage", "margin", "_per", "per_unit", "acos", "roas", "tacos", "rate", "asp"
+                    )
+                    for key, total_value in list(total_row.items()):
+                        normalized_key = str(key).lower()
+                        if not isinstance(total_value, (int, float, Decimal)):
+                            continue
+                        if any(token in normalized_key for token in non_additive_tokens):
+                            continue
+                        try:
+                            adjusted_total = safe_float(total_value) - sum(
+                                safe_float(removed.get(key)) for removed in removed_rows
+                            )
+                            total_row[key] = round(adjusted_total, 2)
+                        except Exception:
+                            continue
+
+                    net_sales_total = safe_float(total_row.get("net_sales"))
+                    total_units = safe_float(total_row.get("total_quantity"))
+                    total_row["profit_percentage"] = round(safe_divide(total_row.get("profit"), net_sales_total) * 100, 2)
+                    total_row["cm2_margins"] = round(safe_divide(total_row.get("cm2_profit_total"), net_sales_total) * 100, 2)
+                    total_row["cm2_profit_percentage"] = total_row["cm2_margins"]
+                    total_row["cm2_profit_per"] = total_row["cm2_margins"]
+                    total_row["cm2_profit_per_unit"] = round(safe_divide(total_row.get("cm2_profit"), total_units), 2)
+                    total_row["acos"] = round(safe_divide(total_row.get("ads_spend"), net_sales_total) * 100, 2)
+                    total_row["promotional_rebates_percentage"] = round(safe_divide(total_row.get("promotional_rebates"), net_sales_total) * 100, 2)
+
+                final_data = kept_rows
 
             return add_per_unit_fields(final_data)
 

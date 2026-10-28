@@ -136,6 +136,7 @@ interface Params {
 }
 
 interface SkuRow {
+  id?: number;
   s_no: number;
   product_name: string;
   sku_uk?: string;
@@ -149,6 +150,7 @@ interface SkuRow {
   year?: string | number;
   local_stock?: number;
   in_transit_units?: number;
+  product_status?: 'Continuous' | 'Discontinuous';
   [key: string]: any;
 }
 
@@ -3949,6 +3951,7 @@ export default function InputCostPage({ params }: Params) {
   const yearParam = decodeURIComponent(yearRaw ?? '');
 
   const [skuData, setSkuData] = useState<SkuRow[]>([]);
+  const [savingProductStatusId, setSavingProductStatusId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -4623,9 +4626,11 @@ export default function InputCostPage({ params }: Params) {
       'product_barcode',
       'month_year',
       'price',
+      'product_status',
     ];
 
     const visibleOtherColumns = otherColumns.filter((col) => {
+      if (col === 'product_status') return true;
       if (col === 'month_year') {
         return data.some((row) => row.month || row.year);
       }
@@ -4655,6 +4660,8 @@ export default function InputCostPage({ params }: Params) {
         return 'Month / Year';
       case 'price':
         return 'Landing Cost';
+      case 'product_status':
+        return 'Product Status';
       default:
         if (column.startsWith('sku_')) {
           if (countryName !== 'global') return 'SKU';
@@ -5833,6 +5840,7 @@ export default function InputCostPage({ params }: Params) {
     return skuData.map((row, index) => {
       const item: TableRow = {
         id: `${row.product_name}-${index}`,
+        sku_record_id: row.id,
         s_no: row.s_no ?? index + 1,
         product_name: row.product_name ?? '—',
         sku_uk: isEmptyCellValue(row.sku_uk) ? '—' : row.sku_uk,
@@ -5842,6 +5850,7 @@ export default function InputCostPage({ params }: Params) {
         product_barcode: row.product_barcode ?? '—',
         month_year: getMonthYearDisplay(row),
         price: row.price ?? '',
+        product_status: row.product_status ?? 'Continuous',
       };
 
       visibleColumns.forEach((col) => {
@@ -6187,6 +6196,54 @@ export default function InputCostPage({ params }: Params) {
       if (column === 'product_barcode') col.width = '160px';
       if (column === 'month_year') col.width = '140px';
 
+      if (column === 'product_status') {
+        col.width = '170px';
+        col.render = (tableRow) => {
+          const recordId = Number((tableRow as any).sku_record_id);
+          const originalRow = skuData.find((row) => row.id === recordId);
+          const currentStatus = originalRow?.product_status ?? 'Continuous';
+
+          return (
+            <select
+              aria-label={`Product status for ${String(tableRow.product_name)}`}
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm focus:border-[#5EA68E] focus:outline-none"
+              value={currentStatus}
+              disabled={!recordId || savingProductStatusId === recordId}
+              onChange={async (event) => {
+                const nextStatus = event.target.value as 'Continuous' | 'Discontinuous';
+                const token = localStorage.getItem('jwtToken');
+                if (!token || !recordId) return;
+
+                setSavingProductStatusId(recordId);
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/sku-status`, {
+                    method: 'PATCH',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ id: recordId, product_status: nextStatus }),
+                  });
+                  const result = await response.json().catch(() => ({}));
+                  if (!response.ok) throw new Error(result.error || 'Could not save product status');
+
+                  setSkuData((previous) => previous.map((row) =>
+                    row.id === recordId ? { ...row, product_status: nextStatus } : row
+                  ));
+                } catch (statusError) {
+                  window.alert(statusError instanceof Error ? statusError.message : 'Could not save product status');
+                } finally {
+                  setSavingProductStatusId(null);
+                }
+              }}
+            >
+              <option value="Continuous">Continuous</option>
+              <option value="Discontinuous">Discontinuous</option>
+            </select>
+          );
+        };
+      }
+
       if (column === 'price') {
         col.width = '100px';
         col.render = (tableRow) => {
@@ -6233,6 +6290,7 @@ export default function InputCostPage({ params }: Params) {
     editedPrices,
     countryName,
     openAiProductDrawerByName,
+    savingProductStatusId,
   ]);
 
   const periodLabel = useMemo(() => {

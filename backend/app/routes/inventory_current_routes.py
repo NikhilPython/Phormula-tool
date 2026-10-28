@@ -261,6 +261,74 @@ def is_percentage_row(row):
     )
 
 
+def filter_discontinuous_inventory_rows(rows, user_id, country_key):
+    table_name = f"sku_{user_id}_data_table"
+    inspector = inspect(primary_engine)
+    if not inspector.has_table(table_name):
+        return rows
+
+    master_df = pd.read_sql_table(table_name, primary_engine)
+    if "product_status" not in master_df.columns:
+        return rows
+
+    sku_column = f"sku_{country_key}"
+    if sku_column not in master_df.columns:
+        return rows
+
+    discontinued_df = master_df[
+        master_df["product_status"].fillna("Continuous").astype(str).str.strip().str.lower()
+        == "discontinuous"
+    ]
+    discontinued_skus = {
+        str(value).strip().lower()
+        for value in discontinued_df[sku_column].dropna().tolist()
+        if str(value).strip()
+    }
+    discontinued_products = (
+        {
+            str(value).strip().lower()
+            for value in discontinued_df["product_name"].dropna().tolist()
+            if str(value).strip()
+        }
+        if "product_name" in discontinued_df.columns
+        else set()
+    )
+    if not discontinued_skus and not discontinued_products:
+        return rows
+
+    kept_rows = []
+    removed_rows = []
+    total_row = None
+    for row in rows:
+        if is_percentage_row(row):
+            continue
+        sku_value = str(
+            row.get("SKU") or row.get("sku") or row.get("seller_sku") or row.get("msku") or ""
+        ).strip().lower()
+        product_value = str(row.get("Product Name") or row.get("product_name") or "").strip().lower()
+        if sku_value == "total" or product_value == "total":
+            total_row = row
+            kept_rows.append(row)
+        elif sku_value in discontinued_skus or product_value in discontinued_products:
+            removed_rows.append(row)
+        else:
+            kept_rows.append(row)
+
+    if total_row is not None and removed_rows:
+        for key, value in list(total_row.items()):
+            if key in {"SKU", "sku", "Product Name", "product_name", "Sno.", "id"}:
+                continue
+            key_lower = str(key).lower()
+            if any(term in key_lower for term in ("ratio", "percentage", "rate", "per_unit")):
+                continue
+            try:
+                total_row[key] = to_number(value) - sum(to_number(item.get(key)) for item in removed_rows)
+            except Exception:
+                continue
+
+    return kept_rows
+
+
 def build_inventory_item(row, trigger_columns):
     item = {
         "sku": clean_value(row.get("SKU")),
@@ -3151,6 +3219,7 @@ def get_inventory_current_table():
         rows, storage_period_summary = attach_period_storage_cost(
             rows, user_id, country_key, range_type, month_name, year, quarter,
         )
+
         categories = build_inventory_categories(rows)
         inventory_age_summary = build_inventory_age_summary(rows)
 
