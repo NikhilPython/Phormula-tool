@@ -761,6 +761,7 @@ export default function WorkspaceSetupOnboarding({
       {
         key: "product_status",
         header: "Product Status",
+        width: "170px",
         render: (row: any) => {
           const currentStatus: 'Active' | 'Discontinued' =
             row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
@@ -782,8 +783,8 @@ export default function WorkspaceSetupOnboarding({
               : 'cursor-pointer';
 
           return (
-            <div className="flex items-center justify-center">
-              <div className="relative w-[170px]">
+            <div className="flex w-full min-w-0 items-center justify-center">
+              <div className="relative w-full min-w-0 max-w-[150px]">
                 <select
                   className={`
                     appearance-none w-full box-border rounded-full border py-1.5 pl-4 pr-8
@@ -1508,13 +1509,15 @@ export default function WorkspaceSetupOnboarding({
                 emptyMessage="No SKU data found."
                 className="my-4 w-full max-w-full min-w-0"
                 tableClassName="
-                  [&_th]:whitespace-nowrap
-                  [&_td]:whitespace-nowrap
-                  [&_th]:overflow-hidden
-                  [&_th]:text-ellipsis
-                  [&_td]:overflow-hidden
-                  [&_td]:text-ellipsis
-                "
+  [&_table]:w-full
+  [&_table]:table-fixed
+  [&_th]:whitespace-nowrap
+  [&_td]:whitespace-nowrap
+  [&_th]:overflow-hidden
+  [&_th]:text-ellipsis
+  [&_td]:overflow-hidden
+  [&_td]:text-ellipsis
+"
               />
             </div>
           )}
