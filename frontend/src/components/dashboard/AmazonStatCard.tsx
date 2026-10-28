@@ -18,6 +18,7 @@ export type AmazonStatCardProps = {
   currentPerUnit?: number | null;
   previousPerUnit?: number | null;
   perUnitFormatter?: (v: number) => React.ReactNode;
+  hidePrevious?: boolean;
 };
 
 export default function AmazonStatCard({
@@ -34,6 +35,7 @@ export default function AmazonStatCard({
   currentPerUnit,
   previousPerUnit,
   perUnitFormatter = formatter,
+  hidePrevious = false,
 }: AmazonStatCardProps) {
   const currVal = toNumberSafe(current);
   const prevVal = previous != null ? toNumberSafe(previous) : 0;
@@ -85,23 +87,28 @@ export default function AmazonStatCard({
         </ValueOrSkeleton>
       </div>
 
-      <div className="mt-2 flex items-end justify-between gap-2 text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight text-charcoal-500 min-w-0">
-        <div className="flex flex-col min-w-0">
-          <span className="truncate">{bottomLabel}:</span>
-          <span className="font-medium inline-flex items-baseline gap-1 truncate">
-            {previous == null ? "\u2014" : previousFormatter(prevVal)}
-            {previous != null && previousPerUnit != null && (
-              <span className="text-charcoal-400 font-normal">
-                ({perUnitFormatter(toNumberSafe(previousPerUnit))}/unit)
-              </span>
-            )}
-          </span>
-        </div>
+      {/* 👇 REMOVED THE DUPLICATE UNCONDITIONAL ROW HERE 👇 */}
 
-        <div className={`shrink-0 inline-flex items-center font-semibold ${deltaColor}`}>
-          {deltaContent}
+      {/* Only render the previous row if hidePrevious is false */}
+      {!hidePrevious && (
+        <div className="mt-2 flex items-end justify-between gap-2 text-[9.5px] sm:text-[10px] 2xl:text-xs leading-tight text-charcoal-500 min-w-0">
+          <div className="flex flex-col min-w-0">
+            <span className="truncate">{bottomLabel}:</span>
+            <span className="font-medium inline-flex items-baseline gap-1 truncate">
+              {previous == null ? "\u2014" : previousFormatter(prevVal)}
+              {previous != null && previousPerUnit != null && (
+                <span className="text-charcoal-400 font-normal">
+                  ({perUnitFormatter(toNumberSafe(previousPerUnit))}/unit)
+                </span>
+              )}
+            </span>
+          </div>
+
+          <div className={`shrink-0 inline-flex items-center font-semibold ${deltaColor}`}>
+            {deltaContent}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -51,22 +51,6 @@ const CURRENCY_OPTIONS = ["USD"];
 const inputClass =
   "!h-9 2xl:!h-11 w-full rounded-xl border border-[#DDE5E1] bg-white px-3 !text-[12px] 2xl:!text-[14px] text-[#273140] outline-none transition placeholder:text-[#9AA5A0] focus:border-green-500 focus:ring-4 focus:ring-green-500/10 disabled:bg-[#F5F7F6] disabled:text-[#7E8984]";
 
-
-const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = [
-  { key: "s_no", header: "S. No." },
-  { key: "product_name", header: "Product Name" },
-  { key: "product_barcode", header: "Product Barcode" },
-  { key: "asin", header: "ASIN" },
-  { key: "sku_uk", header: "SKU_UK" },
-  { key: "sku_us", header: "SKU_US" },
-  { key: "sku_canada", header: "SKU_CANADA" },
-  { key: "landing_cost", header: "Landing Cost" },
-  { key: "currency", header: "Currency" },
-  { key: "date", header: "Date" },
-  { key: "local_stock", header: "Local Stock" },
-  { key: "in_transit_units", header: "In Transit Units" },
-];
-
 type FormState = {
   name: string;
   phone_number: string;
@@ -146,12 +130,13 @@ function StatusPill({
   tone = "green",
 }: {
   children: React.ReactNode;
-  tone?: "green" | "blue" | "gray";
+  tone?: "green" | "blue" | "gray" | "red"; // ✅ Added red
 }) {
   const styles = {
     green: "bg-[#EAF7F1] text-[#0E8558]",
     blue: "bg-[#EEF5FA] text-[#41708F]",
     gray: "bg-[#F1F3F2] text-[#74807A]",
+    red: "bg-[#FCEBEC] text-[#B75A5A]", // ✅ Added red style
   };
 
   return (
@@ -254,6 +239,7 @@ export default function WorkspaceSetupOnboarding({
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
 
   const companySectionRef = useRef<HTMLDivElement | null>(null);
   const productSectionRef = useRef<HTMLDivElement | null>(null);
@@ -692,6 +678,120 @@ export default function WorkspaceSetupOnboarding({
       <p className="mt-1.5 text-xs text-[#B75A5A]">{companyErrors[key]}</p>
     ) : null;
 
+  const handleUpdateProductStatus = async (row: any, newStatus: 'Active' | 'Discontinued') => {
+    const recordId = row.id || row.s_no || row.product_barcode;
+
+    if (!recordId) {
+      window.alert("Cannot update status: A valid ID was not found for this row.");
+      return;
+    }
+
+    setSavingStatusId(String(recordId));
+
+    try {
+      const res = await fetch(`${API_BASE}/sku-status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: recordId,
+          product_status: newStatus, // 👈 Sends "Active" or "Discontinued"
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to update status");
+      }
+
+      await getCurrentSkuSheet().unwrap();
+    } catch (error: any) {
+      window.alert(error.message || "Failed to update product status");
+      void getCurrentSkuSheet();
+    } finally {
+      setSavingStatusId(null);
+    }
+  };
+
+  const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => [
+    { key: "s_no", header: "S. No." },
+    { key: "product_name", header: "Product Name" },
+    { key: "product_barcode", header: "Product Barcode" },
+    { key: "asin", header: "ASIN" },
+    { key: "sku_uk", header: "SKU_UK" },
+    { key: "sku_us", header: "SKU_US" },
+    { key: "sku_canada", header: "SKU_CANADA" },
+    { key: "landing_cost", header: "Landing Cost" },
+    { key: "currency", header: "Currency" },
+    { key: "date", header: "Date" },
+    { key: "local_stock", header: "Local Stock" },
+    { key: "in_transit_units", header: "In Transit Units" },
+    {
+      key: "product_status",
+      header: "Product Status",
+      render: (row: any) => {
+        // 1. Force the value to be exactly "Active" or "Discontinued"
+        const currentStatus: 'Active' | 'Discontinued' =
+          row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
+            ? 'Discontinued'
+            : 'Active';
+
+        const recordId = row.id || row.s_no || row.product_barcode;
+        const isSaving = savingStatusId === String(recordId);
+
+        const statusTintClass =
+          currentStatus === 'Active'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800 focus:ring-emerald-200'
+            : 'border-red-200 bg-red-50 text-red-700 focus:ring-red-200';
+
+        const cursorClass = isSaving
+          ? 'cursor-wait'
+          : !recordId
+            ? 'cursor-not-allowed'
+            : 'cursor-pointer';
+
+        return (
+          <div className="flex items-center justify-center">
+            <div className="relative w-[130px]">
+              <select
+                className={`
+                  appearance-none w-full box-border rounded-full border py-1.5 pl-4 pr-8
+                  text-xs font-semibold transition-colors duration-150
+                  focus:outline-none focus:ring-1 focus:ring-offset-0
+                  disabled:opacity-60
+                  ${cursorClass}
+                  ${statusTintClass}
+                `}
+                value={currentStatus}
+                disabled={isSaving || !recordId}
+                onChange={(e) => handleUpdateProductStatus(row, e.target.value as 'Active' | 'Discontinued')}
+              >
+                <option value="Active" className="text-emerald-800 bg-white">Active</option>
+                <option value="Discontinued" className="text-red-700 bg-white">Discontinued</option>
+              </select>
+
+              <svg
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m4 6 4 4 4-4" />
+              </svg>
+            </div>
+          </div>
+        );
+      },
+    },
+  ], [savingStatusId, token, getCurrentSkuSheet]);
+
+
   return (
     <div className={cx("min-h-full", className)}>
       {loadError && (
@@ -891,158 +991,158 @@ export default function WorkspaceSetupOnboarding({
               className={cx(
                 "overflow-hidden transition-all duration-300",
                 guideStep === "company" &&
-                  "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]"
+                "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]"
               )}
             >
-            <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">2. Company info</h2>
+              <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">2. Company info</h2>
 
-                  {guideStep === "company" ? (
-                    <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                      Step 1 · Start here
-                    </span>
-                  ) : (
-                    <StatusPill tone={isCompanyComplete ? "green" : "blue"}>
-                      {isCompanyComplete ? "Completed" : "In progress"}
-                    </StatusPill>
-                  )}
+                    {guideStep === "company" ? (
+                      <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
+                        Step 1 · Start here
+                      </span>
+                    ) : (
+                      <StatusPill tone={isCompanyComplete ? "green" : "blue"}>
+                        {isCompanyComplete ? "Completed" : "In progress"}
+                      </StatusPill>
+                    )}
+                  </div>
+
+                  <p className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
+                    {guideStep === "company"
+                      ? "Complete your company information first. This will unlock SKU sheet upload."
+                      : "Tell us about your business."}
+                  </p>
                 </div>
 
-                <p className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
-                  {guideStep === "company"
-                    ? "Complete your company information first. This will unlock SKU sheet upload."
-                    : "Tell us about your business."}
-                </p>
+                {!isCompanyEditing ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCompanyEditing(true)}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
+                  >
+                    <FiEdit3 size={14} /> {isCompanyComplete ? "Edit details" : "Add details"}
+                  </button>
+                ) : (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleSaveCompany}
+                      disabled={isSaving}
+                    >
+                      <FiCheck className="mr-1" />
+                      {isSaving ? "Saving…" : "Save"}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsCompanyEditing(false);
+                        void fetchUserData();
+                      }}
+                      disabled={isSaving}
+                    >
+                      <FiX className="mr-1" /> Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {!isCompanyEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsCompanyEditing(true)}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
-                >
-                  <FiEdit3 size={14} /> {isCompanyComplete ? "Edit details" : "Add details"}
-                </button>
-              ) : (
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleSaveCompany}
-                    disabled={isSaving}
-                  >
-                    <FiCheck className="mr-1" />
-                    {isSaving ? "Saving…" : "Save"}
-                  </Button>
+              <div className="p-4 2xl:p-5">
+                {isLoading ? (
+                  <div className="grid min-h-[220px] 2xl:min-h-[250px] place-items-center text-xs 2xl:text-sm text-[#78847E]">
+                    Loading profile…
+                  </div>
+                ) : isCompanyEditing ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
+                      <div>
+                        <Label>Company Name <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.company_name} onChange={handleCompanyChange("company_name")} onBlur={() => markCompanyTouched("company_name")} maxLength={80} error={Boolean(companyTouched.company_name && companyErrors.company_name)} />
+                        {showCompanyError("company_name")}
+                      </div>
+                      <div>
+                        <Label>Brand Name <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.brand_name} onChange={handleCompanyChange("brand_name")} onBlur={() => markCompanyTouched("brand_name")} maxLength={80} error={Boolean(companyTouched.brand_name && companyErrors.brand_name)} />
+                        {showCompanyError("brand_name")}
+                      </div>
+                      <div>
+                        <Label>Home Currency <span className="text-[#B75A5A]">*</span></Label>
+                        <select value={form.homeCurrency} onChange={handleCompanyChange("homeCurrency")} onBlur={() => markCompanyTouched("homeCurrency")} className={inputClass}>
+                          <option value="">Select Currency</option>
+                          {CURRENCY_OPTIONS.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                        </select>
+                        {showCompanyError("homeCurrency")}
+                      </div>
+                      <div>
+                        <Label>GST No.</Label>
+                        <Input type="text" value={form.gst_no} onChange={handleCompanyChange("gst_no")} onBlur={() => markCompanyTouched("gst_no")} maxLength={15} error={Boolean(companyTouched.gst_no && companyErrors.gst_no)} />
+                        {showCompanyError("gst_no")}
+                      </div>
+                      <div>
+                        <Label>PAN No.</Label>
+                        <Input type="text" value={form.pan_no} onChange={handleCompanyChange("pan_no")} onBlur={() => markCompanyTouched("pan_no")} maxLength={10} error={Boolean(companyTouched.pan_no && companyErrors.pan_no)} />
+                        {showCompanyError("pan_no")}
+                      </div>
+                      <div>
+                        <Label>Building No. <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.address_building} onChange={handleCompanyChange("address_building")} onBlur={() => markCompanyTouched("address_building")} maxLength={120} error={Boolean(companyTouched.address_building && companyErrors.address_building)} />
+                        {showCompanyError("address_building")}
+                      </div>
+                      <div>
+                        <Label>City <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.address_city} onChange={handleCompanyChange("address_city")} onBlur={() => markCompanyTouched("address_city")} maxLength={60} error={Boolean(companyTouched.address_city && companyErrors.address_city)} />
+                        {showCompanyError("address_city")}
+                      </div>
+                      <div>
+                        <Label>State <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.address_state} onChange={handleCompanyChange("address_state")} onBlur={() => markCompanyTouched("address_state")} maxLength={60} error={Boolean(companyTouched.address_state && companyErrors.address_state)} />
+                        {showCompanyError("address_state")}
+                      </div>
+                      <div>
+                        <Label>Country / Region <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.address_country} onChange={handleCompanyChange("address_country")} onBlur={() => markCompanyTouched("address_country")} maxLength={60} error={Boolean(companyTouched.address_country && companyErrors.address_country)} />
+                        {showCompanyError("address_country")}
+                      </div>
+                      <div>
+                        <Label>Zipcode <span className="text-[#B75A5A]">*</span></Label>
+                        <Input type="text" value={form.address_zipcode} onChange={handleCompanyChange("address_zipcode")} onBlur={() => markCompanyTouched("address_zipcode")} maxLength={12} error={Boolean(companyTouched.address_zipcode && companyErrors.address_zipcode)} />
+                        {showCompanyError("address_zipcode")}
+                      </div>
+                    </div>
 
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setIsCompanyEditing(false);
-                      void fetchUserData();
-                    }}
-                    disabled={isSaving}
-                  >
-                    <FiX className="mr-1" /> Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
 
-            <div className="p-4 2xl:p-5">
-              {isLoading ? (
-                <div className="grid min-h-[220px] 2xl:min-h-[250px] place-items-center text-xs 2xl:text-sm text-[#78847E]">
-                  Loading profile…
-                </div>
-              ) : isCompanyEditing ? (
-                <>
-                  <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
-                    <div>
-                      <Label>Company Name <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.company_name} onChange={handleCompanyChange("company_name")} onBlur={() => markCompanyTouched("company_name")} maxLength={80} error={Boolean(companyTouched.company_name && companyErrors.company_name)} />
-                      {showCompanyError("company_name")}
-                    </div>
-                    <div>
-                      <Label>Brand Name <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.brand_name} onChange={handleCompanyChange("brand_name")} onBlur={() => markCompanyTouched("brand_name")} maxLength={80} error={Boolean(companyTouched.brand_name && companyErrors.brand_name)} />
-                      {showCompanyError("brand_name")}
-                    </div>
-                    <div>
-                      <Label>Home Currency <span className="text-[#B75A5A]">*</span></Label>
-                      <select value={form.homeCurrency} onChange={handleCompanyChange("homeCurrency")} onBlur={() => markCompanyTouched("homeCurrency")} className={inputClass}>
-                        <option value="">Select Currency</option>
-                        {CURRENCY_OPTIONS.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
-                      </select>
-                      {showCompanyError("homeCurrency")}
-                    </div>
-                    <div>
-                      <Label>GST No.</Label>
-                      <Input type="text" value={form.gst_no} onChange={handleCompanyChange("gst_no")} onBlur={() => markCompanyTouched("gst_no")} maxLength={15} error={Boolean(companyTouched.gst_no && companyErrors.gst_no)} />
-                      {showCompanyError("gst_no")}
-                    </div>
-                    <div>
-                      <Label>PAN No.</Label>
-                      <Input type="text" value={form.pan_no} onChange={handleCompanyChange("pan_no")} onBlur={() => markCompanyTouched("pan_no")} maxLength={10} error={Boolean(companyTouched.pan_no && companyErrors.pan_no)} />
-                      {showCompanyError("pan_no")}
-                    </div>
-                    <div>
-                      <Label>Building No. <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.address_building} onChange={handleCompanyChange("address_building")} onBlur={() => markCompanyTouched("address_building")} maxLength={120} error={Boolean(companyTouched.address_building && companyErrors.address_building)} />
-                      {showCompanyError("address_building")}
-                    </div>
-                    <div>
-                      <Label>City <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.address_city} onChange={handleCompanyChange("address_city")} onBlur={() => markCompanyTouched("address_city")} maxLength={60} error={Boolean(companyTouched.address_city && companyErrors.address_city)} />
-                      {showCompanyError("address_city")}
-                    </div>
-                    <div>
-                      <Label>State <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.address_state} onChange={handleCompanyChange("address_state")} onBlur={() => markCompanyTouched("address_state")} maxLength={60} error={Boolean(companyTouched.address_state && companyErrors.address_state)} />
-                      {showCompanyError("address_state")}
-                    </div>
-                    <div>
-                      <Label>Country / Region <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.address_country} onChange={handleCompanyChange("address_country")} onBlur={() => markCompanyTouched("address_country")} maxLength={60} error={Boolean(companyTouched.address_country && companyErrors.address_country)} />
-                      {showCompanyError("address_country")}
-                    </div>
-                    <div>
-                      <Label>Zipcode <span className="text-[#B75A5A]">*</span></Label>
-                      <Input type="text" value={form.address_zipcode} onChange={handleCompanyChange("address_zipcode")} onBlur={() => markCompanyTouched("address_zipcode")} maxLength={12} error={Boolean(companyTouched.address_zipcode && companyErrors.address_zipcode)} />
-                      {showCompanyError("address_zipcode")}
+                  </>
+                ) : (
+                  <div className="rounded-2xl px-1 py-1">
+                    <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
+                      <ReadOnlyField label="Company name" value={form.company_name} />
+                      <ReadOnlyField label="Brand name" value={form.brand_name} />
+                      <ReadOnlyField label="Home currency" value={form.homeCurrency} />
+                      <ReadOnlyField label="GST No." value={form.gst_no || "-"} />
+                      <ReadOnlyField label="PAN No." value={form.pan_no || "-"} />
+                      <ReadOnlyField
+                        label="Business address"
+                        className="min-w-0"
+                        value={[
+                          form.address_building,
+                          form.address_city,
+                          form.address_state,
+                          form.address_country,
+                          form.address_zipcode,
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      />
                     </div>
                   </div>
-
-
-                </>
-              ) : (
-                <div className="rounded-2xl px-1 py-1">
-                  <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
-                    <ReadOnlyField label="Company name" value={form.company_name} />
-                    <ReadOnlyField label="Brand name" value={form.brand_name} />
-                    <ReadOnlyField label="Home currency" value={form.homeCurrency} />
-                    <ReadOnlyField label="GST No." value={form.gst_no || "-"} />
-                    <ReadOnlyField label="PAN No." value={form.pan_no || "-"} />
-                    <ReadOnlyField
-                      label="Business address"
-                      className="min-w-0"
-                      value={[
-                        form.address_building,
-                        form.address_city,
-                        form.address_state,
-                        form.address_country,
-                        form.address_zipcode,
-                      ]
-                        .filter(Boolean)
-                        .join(", ")}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
             </Panel>
           </div>
         </div>
@@ -1054,107 +1154,107 @@ export default function WorkspaceSetupOnboarding({
               className={cx(
                 "relative overflow-hidden transition-all duration-300",
                 guideStep === "sku" &&
-                  "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
+                "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
                 !canAccessProductControls && "bg-[#FAFBFA]"
               )}
             >
-            <div className="flex h-full flex-col p-5">
-              <div className="flex gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">3. Product & inventory controls</h2>
+              <div className="flex h-full flex-col p-5">
+                <div className="flex gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">3. Product & inventory controls</h2>
 
-                    {guideStep === "sku" ? (
-                      <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                        Step 2 · Next step
-                      </span>
-                    ) : (
-                      <StatusPill tone={hasSkuSheet ? "green" : canAccessProductControls ? "blue" : "gray"}>
-                        {hasSkuSheet ? "SKU uploaded" : canAccessProductControls ? "Ready" : "Locked"}
-                      </StatusPill>
-                    )}
+                      {guideStep === "sku" ? (
+                        <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
+                          Step 2 · Next step
+                        </span>
+                      ) : (
+                        <StatusPill tone={hasSkuSheet ? "green" : canAccessProductControls ? "blue" : "gray"}>
+                          {hasSkuSheet ? "SKU uploaded" : canAccessProductControls ? "Ready" : "Locked"}
+                        </StatusPill>
+                      )}
+                    </div>
+
+                    <p className="mt-2 text-xs 2xl:text-sm font-bold text-[#33413A]">
+                      {hasSkuSheet
+                        ? "Your SKU sheet is ready"
+                        : guideStep === "sku"
+                          ? "Upload your SKU sheet to continue"
+                          : "SKU upload is locked"}
+                    </p>
+
+                    <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-[#78847E]">
+                      {hasSkuSheet
+                        ? "Your product data is available. You can replace the sheet whenever you need to update your catalog."
+                        : guideStep === "sku"
+                          ? "Company information is complete. Upload your product sheet now to unlock marketplace integrations."
+                          : "Complete Company Info first. SKU upload will unlock automatically after that."}
+                    </p>
                   </div>
-
-                  <p className="mt-2 text-xs 2xl:text-sm font-bold text-[#33413A]">
-                    {hasSkuSheet
-                      ? "Your SKU sheet is ready"
-                      : guideStep === "sku"
-                        ? "Upload your SKU sheet to continue"
-                        : "SKU upload is locked"}
-                  </p>
-
-                  <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-[#78847E]">
-                    {hasSkuSheet
-                      ? "Your product data is available. You can replace the sheet whenever you need to update your catalog."
-                      : guideStep === "sku"
-                        ? "Company information is complete. Upload your product sheet now to unlock marketplace integrations."
-                        : "Complete Company Info first. SKU upload will unlock automatically after that."}
-                  </p>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                disabled={!canAccessProductControls}
-                onClick={skuModal.openModal}
-                className={cx(
-                  "mt-5 flex min-h-[150px] flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-5 text-center transition",
-                  canAccessProductControls
-                    ? "border-[#B9D8C9] bg-[#FBFEFC] hover:border-green-500 hover:bg-[#F4FBF7]"
-                    : "cursor-not-allowed border-[#DDE2DF] bg-[#F5F6F5] opacity-70"
-                )}
-              >
-                {canAccessProductControls ? (
-                  <FiCloud className="text-green-500" size={28} />
-                ) : (
-                  <FiLock className="text-[#8D9792]" size={23} />
-                )}
-                <span className="mt-2 text-[12px] 2xl:text-[14px] font-bold text-[#37455F]">
-                  {hasSkuSheet
-                    ? "Replace or update your SKU sheet"
-                    : canAccessProductControls
-                      ? "Upload SKU sheet"
-                      : "SKU upload locked"}
-                </span>
-                <span className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
-                  {canAccessProductControls
-                    ? "Click to browse · .xlsx, .xls, .csv"
-                    : "Complete Company Info to unlock"}
-                </span>
-
-                {!canAccessProductControls && (
-                  <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#F1F3F2] px-3 py-1 text-[10px] font-bold text-[#74807A]">
-                    <FiLock size={11} /> Locked until Step 1 is complete
-                  </span>
-                )}
-              </button>
-
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
                 <button
                   type="button"
-                  onClick={handleDownloadSkuTemplate}
-                  className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
+                  disabled={!canAccessProductControls}
+                  onClick={skuModal.openModal}
+                  className={cx(
+                    "mt-5 flex min-h-[150px] flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-5 text-center transition",
+                    canAccessProductControls
+                      ? "border-[#B9D8C9] bg-[#FBFEFC] hover:border-green-500 hover:bg-[#F4FBF7]"
+                      : "cursor-not-allowed border-[#DDE2DF] bg-[#F5F6F5] opacity-70"
+                  )}
                 >
-                  Download format here
-                  <FiDownload size={14} />
+                  {canAccessProductControls ? (
+                    <FiCloud className="text-green-500" size={28} />
+                  ) : (
+                    <FiLock className="text-[#8D9792]" size={23} />
+                  )}
+                  <span className="mt-2 text-[12px] 2xl:text-[14px] font-bold text-[#37455F]">
+                    {hasSkuSheet
+                      ? "Replace or update your SKU sheet"
+                      : canAccessProductControls
+                        ? "Upload SKU sheet"
+                        : "SKU upload locked"}
+                  </span>
+                  <span className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
+                    {canAccessProductControls
+                      ? "Click to browse · .xlsx, .xls, .csv"
+                      : "Complete Company Info to unlock"}
+                  </span>
+
+                  {!canAccessProductControls && (
+                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#F1F3F2] px-3 py-1 text-[10px] font-bold text-[#74807A]">
+                      <FiLock size={11} /> Locked until Step 1 is complete
+                    </span>
+                  )}
                 </button>
 
-                {hasSkuSheet && (
-                  <>
-                    <span className="h-4 w-px bg-[#DDE5E1]" />
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleDownloadSkuTemplate}
+                    className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
+                  >
+                    Download format here
+                    <FiDownload size={14} />
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={handleViewSkuSheet}
-                      className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#41708F] transition hover:text-[#315c78]"
-                    >
-                      View your sheet
-                      <FiEye size={14} />
-                    </button>
-                  </>
-                )}
+                  {hasSkuSheet && (
+                    <>
+                      <span className="h-4 w-px bg-[#DDE5E1]" />
+
+                      <button
+                        type="button"
+                        onClick={handleViewSkuSheet}
+                        className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#41708F] transition hover:text-[#315c78]"
+                      >
+                        View your sheet
+                        <FiEye size={14} />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
             </Panel>
           </div>
 
@@ -1163,7 +1263,7 @@ export default function WorkspaceSetupOnboarding({
               className={cx(
                 "relative overflow-hidden transition-all duration-300",
                 guideStep === "integration" &&
-                  "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
+                "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
                 !canAccessIntegrations && "bg-[#FAFBFA]"
               )}
             >

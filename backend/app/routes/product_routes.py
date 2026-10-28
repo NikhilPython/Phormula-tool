@@ -2941,12 +2941,11 @@ def update_sku_product_status():
 
     requested_status = str(data.get('product_status') or '').strip().lower()
     status = {
-        'continuous': 'Continuous',
-        'discontinuous': 'Discontinuous',
-        'discontinued': 'Discontinuous',
+        'active': 'Active',
+        'discontinued': 'Discontinued',
     }.get(requested_status)
     if not status:
-        return jsonify({'error': 'Product status must be Continuous or Discontinuous'}), 400
+        return jsonify({'error': 'Product status must be Active or Discontinued'}), 400
 
     table_name = f"sku_{user_id}_data_table"
     try:
@@ -2955,7 +2954,7 @@ def update_sku_product_status():
 
         with user_engine.begin() as conn:
             conn.execute(text(
-                f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS product_status VARCHAR(32) DEFAULT \'Continuous\''
+                f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS product_status VARCHAR(32) DEFAULT \'Active\''
             ))
             result = conn.execute(
                 text(f'UPDATE "{table_name}" SET product_status = :status WHERE id = :id AND user_id = :user_id'),
@@ -3334,7 +3333,7 @@ def skutableprofit():
         metadata = MetaData(schema='public')
 
         # Resolve discontinued SKUs from the user's SKU master. Older SKU
-        # tables have no status column and remain Continuous by default.
+        # tables have no status column and remain Active by default.
         discontinued_skus = set()
         discontinued_product_names = set()
         sku_master_name = f"sku_{user_id}_data_table"
@@ -3358,7 +3357,7 @@ def skutableprofit():
                     with engine.connect() as conn:
                         master_rows = conn.execute(select(*selected_columns)).mappings().all()
                     for master_row in master_rows:
-                        if str(master_row.get("product_status") or "Continuous").strip().lower() != "discontinuous":
+                        if str(master_row.get("product_status") or "Active").strip().lower() not in {"discontinued", "discontinuous"}:
                             continue
                         product_name = str(master_row.get("product_name") or "").strip().lower()
                         if product_name:

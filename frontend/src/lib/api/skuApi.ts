@@ -13,7 +13,8 @@ export type UploadSkuMultiCountryRes = {
 };
 
 export type SkuSheetRow = {
-  s_no?: number | null;
+   id?: number | string;
+   s_no?: number | null;
   product_name?: string | null;
   product_barcode?: string | null;
   asin?: string | null;
@@ -25,7 +26,7 @@ export type SkuSheetRow = {
   date?: string | null;
   local_stock?: number | null;
   in_transit_units?: number | null;
-  product_status?: "Continuous" | "Discontinuous" | null;
+  product_status?: "Active" | "Discontinued" | null;
 };
 
 export type CurrentSkuSheetRes = {

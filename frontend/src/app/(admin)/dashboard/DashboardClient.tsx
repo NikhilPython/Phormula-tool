@@ -134,7 +134,11 @@ import PnlSummaryOverview, {
     type SummaryDestination,
 } from "@/components/dropdowns/PnlSummaryOverview";
 
+import MonthlyRecapModal, { type MonthlyRecapData } from "@/components/dashboard/MonthlyRecapModal";
 
+import MidMonthTargetReminderModal, {
+    type MidMonthTargetReminderData,
+} from "@/components/dashboard/MidMonthTargetReminderModal";
 
 /** Reject saved Global cards whose comparisons came from product-only totals. */
 function hasConsistentGlobalComparisons(data: any, previousData: any): boolean {
@@ -1530,6 +1534,14 @@ export default function DashboardPage() {
     const [isMtdPlExpanded, setIsMtdPlExpanded] = useState(false);
     const [profitPieType, setProfitPieType] = useState<"cm1" | "cm2">("cm1");
     const shouldShowDummyUi = isMonthYearNA;
+
+    // Mid-month target reminder modal state
+    const [midMonthReminderOpen, setMidMonthReminderOpen] = useState(false);
+    const [midMonthObjective, setMidMonthObjective] = useState<{
+        growth_intent: "conservative" | "balanced" | "aggressive";
+        profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
+        inventory_clearance_priority: boolean;
+    } | null>(null);
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -3107,6 +3119,58 @@ export default function DashboardPage() {
         fetchPrevTargetSummary();
     }, [platform, fetchTargetSummary, fetchPrevTargetSummary]);
 
+    // ─── Mid-month reminder: hydrate the current country's objective so the
+    // modal pre-fills the user's existing selections instead of resetting
+    // them to defaults. Mirrors ObjectivesPageClient's GET /objective call.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (shouldShowDummyUi) return;
+
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return;
+
+        const now = new Date();
+        const objectiveMonth = `${now.getFullYear()}-${String(
+            now.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+        const controller = new AbortController();
+
+        fetch(
+            `${baseURL}/objective?country=${encodeURIComponent(
+                targetSummaryCountry
+            )}&month=${encodeURIComponent(objectiveMonth)}`,
+            {
+                headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                signal: controller.signal,
+            }
+        )
+            .then((r) => (r.ok ? r.json() : null))
+            .then((json) => {
+                const obj = json?.objective;
+                setMidMonthObjective(
+                    obj
+                        ? {
+                            growth_intent: obj.growth_intent ?? "balanced",
+                            profit_priority:
+                                obj.profit_priority ?? "protect_growth",
+                            inventory_clearance_priority:
+                                obj.inventory_clearance_priority ?? false,
+                        }
+                        : null
+                );
+            })
+            .catch(() => {
+                // 404 is expected for users who never set objectives.
+                // Leave midMonthObjective as-is (null → modal uses defaults).
+            });
+
+        return () => controller.abort();
+    }, [targetSummaryCountry, shouldShowDummyUi]);
+
 
     const inventoryCountry = useMemo(() => {
         if (platform === "global") return "global";
@@ -3117,6 +3181,8 @@ export default function DashboardPage() {
 
         return "global";
     }, [platform, graphRegionToUse]);
+
+
 
     const inventoryMarketplaceIds = useMemo(() => {
         const inventoryConnections = (amazonConnections || []) as Array<{
@@ -13500,6 +13566,192 @@ export default function DashboardPage() {
         };
     })();
 
+    const [recapOpen, setRecapOpen] = useState(false);
+
+
+    // A recap is about the month that just closed. The dashboard KPIs are MTD,
+    // so deliberately use their `previous` values here rather than `current`.
+    const recapMetrics = useMemo(
+        () =>
+            stickyKpiItems
+                .filter((item) =>
+                    ["Units", "ASP", "Net Sales", "Cost of Ads", "TACoS", "CM2 Profit"].includes(item.label)
+                )
+                .map((item) => ({
+                    label: item.label,
+                    value: item.previous,
+                    formatter: item.previousFormatter ?? item.formatter,
+                    loading: item.loading,
+                })),
+        [stickyKpiItems]
+    );
+
+    const monthlyRecapData = useMemo<MonthlyRecapData | null>(() => {
+        if (shouldShowDummyUi) return null;
+
+        const summary = prevTargetSummaries[targetSummaryCountry as keyof typeof prevTargetSummaries];
+        const summaryNet = toNumberSafe(summary?.net_sales_total);
+        const actual = summaryNet > 0
+            ? convertToDisplayCurrency(summaryNet, currencyForCountry(targetSummaryCountry))
+            : prevFullMonthNetSalesDisp;
+        const target = prevMonthTargetHome;
+
+        if (!actual && !target) return null;
+
+        // This already selects the correct previous-period source for the
+        // platform (including Global), so use it for both the Hero SKU and its
+        // sales-share calculation.
+        const sourceSkuRows: Array<{
+            sku?: unknown;
+            product_name?: unknown;
+            product_title?: unknown;
+            name?: unknown;
+            net_sales?: unknown;
+            net_quantity?: unknown;
+            quantity?: unknown;
+            total_quantity?: unknown;
+            sales_mix?: number;
+        }> = Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
+
+        const skuRows = sourceSkuRows.filter((r) => {
+            const sku = String(r?.sku || "").trim().toUpperCase();
+            const name = String(r?.product_name || r?.product_title || r?.name || "").trim().toLowerCase();
+            return (
+                (sku || name) && sku !== "TOTAL" && sku !== "GRAND_TOTAL" &&
+                name !== "total" && name !== "grand total" && name !== "others"
+            );
+        });
+
+        // Calculate total net for share percentage
+        const totalNet = skuRows.reduce((sum, row) => sum + toNumber(row.net_sales), 0);
+
+        const best = [...skuRows].sort((a, b) => toNumber(b.net_sales) - toNumber(a.net_sales))[0];
+
+        const topSku = best
+            ? {
+                name: getSkuwiseDisplayProductName(best),
+                sku: platform === "global" ? undefined : String(best.sku || ""),
+                // ✅ FIX: net_quantity is used in previous_period.sku_metrics
+                units: toNumber(best.net_quantity ?? best.quantity ?? best.total_quantity),
+                netSales: convertToDisplayCurrency(toNumber(best.net_sales), amazonDataCurrency),
+                // Use API sales_mix if available, else calculate
+                sharePct: best.sales_mix ?? (totalNet > 0 ? (toNumber(best.net_sales) / totalNet) * 100 : undefined),
+            }
+            : null;
+
+        const objectiveContext = liveBiPayload?.objective_context;
+        const titleCase = (value: unknown) =>
+            String(value ?? "")
+                .replace(/[_-]+/g, " ")
+                .replace(/\b\w/g, (letter) => letter.toUpperCase())
+                .trim();
+        const objectives = [
+            objectiveContext?.growth_intent && `Growth focus: ${titleCase(objectiveContext.growth_intent)}`,
+            objectiveContext?.profit_priority && `Profit focus: ${titleCase(objectiveContext.profit_priority)}`,
+            objectiveContext?.inventory_clearance_priority && "Prioritise clearing ageing inventory",
+            ...(Array.isArray(objectiveContext?.journey_summary) ? objectiveContext.journey_summary : []),
+            objectiveContext?.recommendation,
+        ]
+            .filter((objective): objective is string => typeof objective === "string" && Boolean(objective.trim()))
+            .slice(0, 4);
+
+        return {
+            monthLabel: `${previousDisplayMonth.monthName} ${previousDisplayMonth.year}`,
+            target,
+            actual,
+            topSku,
+            objectives,
+            formatMoney: formatDisplayAmountNoDecimals,
+            metrics: recapMetrics,
+        };
+    }, [
+        shouldShowDummyUi, prevTargetSummaries, targetSummaryCountry, convertToDisplayCurrency,
+        prevFullMonthNetSalesDisp, prevMonthTargetHome, previousSkuwiseRowsForDelta, platform,
+        amazonDataCurrency, liveBiPayload, previousDisplayMonth, formatDisplayAmountNoDecimals,
+        recapMetrics,
+    ]);
+
+    const midMonthTargetReminderData = useMemo<MidMonthTargetReminderData | null>(() => {
+        if (shouldShowDummyUi) return null;
+
+        const mtd = toNumber(targets_mtdHome);
+        const last = toNumber(targets_lastMonthTotalHome);
+
+        const summary = targetSummaries[targetSummaryCountry as keyof typeof targetSummaries];
+        const rawNativeTarget = toNumber(summary?.target_sales);
+
+        if (!mtd && !last && !rawNativeTarget) return null;
+
+        const nativeCurrency = currencyForCountry(targetSummaryCountry);
+
+        return {
+            country: targetSummaryCountry,
+            monthName: currentDisplayMonth.monthName,
+            year: currentDisplayMonth.year,
+            monthLabel: `${currentDisplayMonth.monthName} ${currentDisplayMonth.year}`,
+            homeCurrency: displayCurrency,
+            nativeCurrency,
+            mtdNetSalesHome: mtd,
+            lastMonthNetSalesHome: last,
+            currentTargetNative: rawNativeTarget,
+            initialGrowthIntent: midMonthObjective?.growth_intent ?? "balanced",
+            initialProfitPriority: midMonthObjective?.profit_priority ?? "protect_growth",
+            initialInventoryClearance:
+                midMonthObjective?.inventory_clearance_priority ?? false,
+        };
+    }, [
+        shouldShowDummyUi,
+        targets_mtdHome,
+        targets_lastMonthTotalHome,
+        targetSummaries,
+        targetSummaryCountry,
+        currentDisplayMonth,
+        displayCurrency,
+        midMonthObjective,
+    ]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!midMonthTargetReminderData || pageLoading || shouldShowDummyUi || unauthorized) return;
+        if (getDayOfMonthByRegion(activeDateRegion) !== 15) return;
+
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return;
+
+        const userId = decodeJwtUserId(token) || "unknown";
+        const key = `midmonth_target_reminder_seen_${userId}_${currentDisplayMonth.year}_${currentDisplayMonth.monthName}`;
+        if (localStorage.getItem(key) === "1") return;
+
+        localStorage.setItem(key, "1"); // marked seen the moment it's displayed
+        setMidMonthReminderOpen(true);
+    }, [
+        midMonthTargetReminderData,
+        pageLoading,
+        shouldShowDummyUi,
+        unauthorized,
+        currentDisplayMonth,
+        activeDateRegion,
+    ]);
+
+    // Show once per user on the first calendar day of each month, using the
+    // selected dashboard region so US/UK users see it at their local midnight.
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!monthlyRecapData || pageLoading || shouldShowDummyUi || unauthorized) return;
+        if (getDayOfMonthByRegion(activeDateRegion) !== 1) return;
+
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return;
+
+        const userId = decodeJwtUserId(token) || "unknown";
+        const key = `monthly_recap_seen_${userId}_${currentDisplayMonth.year}_${currentDisplayMonth.monthName}`;
+        if (localStorage.getItem(key) === "1") return;
+
+        localStorage.setItem(key, "1"); // marked as seen the moment it's displayed
+        setRecapOpen(true);
+    }, [monthlyRecapData, pageLoading, shouldShowDummyUi, unauthorized, currentDisplayMonth, activeDateRegion]);
+
+
     const shouldScrollMtdProductwiseTable =
         mtdProductRowCount > MTD_PRODUCTWISE_VISIBLE_PRODUCT_ROWS;
 
@@ -13551,6 +13803,101 @@ export default function DashboardPage() {
                 show={shouldShowSalesDelayNotice}
                 onExploreOtherTabs={handleExploreOtherTabsFromSalesDelay}
             />
+
+            <MonthlyRecapModal
+                open={recapOpen}
+                data={monthlyRecapData}
+                onClose={() => setRecapOpen(false)}
+                onViewBreakdown={() => {
+                    setRecapOpen(false);
+                    navigateFromOverview("skuBreakdown");
+                }}
+            />
+
+            {/* TEMP: recap modal test controls, remove after testing */}
+            {process.env.NODE_ENV !== "production" && (
+                <div className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setRecapOpen(true)}
+                        className="rounded-md bg-[#ED9F50] px-3 py-1.5 text-xs font-semibold text-white shadow-md"
+                    >
+                        Test recap
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            Object.keys(localStorage)
+                                .filter((k) => k.startsWith("monthly_recap_seen_"))
+                                .forEach((k) => localStorage.removeItem(k));
+                            window.location.reload();
+                        }}
+                        className="rounded-md bg-[#37455F] px-3 py-1.5 text-xs font-semibold text-white shadow-md"
+                    >
+                        Reset seen &amp; reload
+                    </button>
+                </div>
+            )}
+
+            <MidMonthTargetReminderModal
+                open={midMonthReminderOpen}
+                data={midMonthTargetReminderData}
+                onClose={() => setMidMonthReminderOpen(false)}
+                onViewPerformance={() => {
+                    setMidMonthReminderOpen(false);
+                    navigateFromOverview("graphs");
+                }}
+                onSaved={() => {
+                    // Refresh target summaries so KPI cards + "Target" card update
+                    void fetchTargetSummary();
+                    void fetchPrevTargetSummary();
+
+                    // Re-save the cache snapshot so a page reload shows the new target
+                    triggerCachePost();
+
+                    // Sync the local objective state so the next modal-open shows updated values
+                    void (async () => {
+                        const token = localStorage.getItem("jwtToken");
+                        if (!token) return;
+                        const now = new Date();
+                        const objectiveMonth = `${now.getFullYear()}-${String(
+                            now.getMonth() + 1
+                        ).padStart(2, "0")}`;
+                        const r = await fetch(
+                            `${baseURL}/objective?country=${encodeURIComponent(
+                                targetSummaryCountry
+                            )}&month=${encodeURIComponent(objectiveMonth)}`,
+                            {
+                                headers: {
+                                    Accept: "application/json",
+                                    Authorization: `Bearer ${token}`,
+                                },
+                            }
+                        );
+                        if (!r.ok) return;
+                        const json = await r.json().catch(() => null);
+                        const obj = json?.objective;
+                        setMidMonthObjective(
+                            obj
+                                ? {
+                                    growth_intent: obj.growth_intent ?? "balanced",
+                                    profit_priority: obj.profit_priority ?? "protect_growth",
+                                    inventory_clearance_priority:
+                                        obj.inventory_clearance_priority ?? false,
+                                }
+                                : null
+                        );
+                    })();
+                }}
+            />
+
+            <button
+                type="button"
+                onClick={() => setMidMonthReminderOpen(true)}
+                className="rounded-md bg-[#ED9F50] px-3 py-1.5 text-xs font-semibold text-white shadow-md"
+            >
+                Test mid-month reminder
+            </button>
 
             <DashboardPageHeader
                 brandName={brandName}
