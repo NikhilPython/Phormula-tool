@@ -1087,9 +1087,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const productRows = tableData.filter((row) => !isTotalRow(row));
 
-    // Month-wise: use the same backend Total row as Product-wise so both
-    // views agree for the active filters. Only the three KPI-backed fields
-    // are overridden with the currently filtered KPI card values.
+    // Month-wise uses the same backend Total row as Product-wise. Only the
+    // three KPI-backed fields are overridden with current filter-aware KPI values.
     if (isMonthWiseView) {
       const backendTotalRow = rows.find(isTotalRow);
       const monthlyTotal = backendTotalRow
@@ -1105,6 +1104,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         if (monthWiseKpiValues?.adsSpend !== undefined) {
           monthlyTotal.ads_spend = toNumber(monthWiseKpiValues.adsSpend);
+          monthlyTotal.total_ads = toNumber(monthWiseKpiValues.adsSpend);
+          monthlyTotal.advertising_total = toNumber(monthWiseKpiValues.adsSpend);
         }
         if (monthWiseKpiValues?.acos !== undefined) {
           monthlyTotal.acos = toNumber(monthWiseKpiValues.acos);
@@ -2100,7 +2101,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   );
 
   const buildSkuSheetModel = useCallback(
-    (opts?: { allRows?: boolean }) => {
+    (opts?: { allRows?: boolean; sourceRows?: TableRow[] }) => {
       const excelCols = buildExcelColumnsFromUI();
       const colKeys = excelCols.map((c) => c.key);
 
@@ -2129,7 +2130,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "fba_disposal",
       ]);
 
-      const sourceRows = excelRows;
+      // Export can explicitly provide Product-wise rows so switching the UI to
+      // Month-wise never leaks month labels into Product Name or SKU columns.
+      const sourceRows = Array.isArray(opts?.sourceRows) ? opts.sourceRows : excelRows;
 
       const rowsForExcel = sourceRows.map((row, rowIndex) => {
         const out: Record<string, string | number> = {};
@@ -2656,12 +2659,207 @@ const SKUtable: React.FC<SKUtableProps> = ({
   );
 
   const handleDownloadExcel = useCallback(async () => {
-    const model = buildSkuSheetModel({ allRows: true });
-
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("SKU Profitability");
 
-    buildSkuWorksheetFromModel(ws, model);
+    // Always build Product-wise from the Product-wise backend rows, regardless
+    // of which table tab is currently selected in the UI.
+    const rawProductRows = normalizeRows(Array.isArray(rows) ? rows : []);
+    const isTotalExportRow = (row: TableRow) => {
+      const name = String(row?.product_name ?? "").trim().toLowerCase();
+      const sku = String(row?.sku ?? "").trim().toLowerCase();
+      return name === "total" || sku === "total";
+    };
+    const productTotalRow = rawProductRows.find(isTotalExportRow) ||
+      (isTotalLikeRow(rawTotalRow) ? normalizeRows([rawTotalRow])[0] : undefined);
+    const productRowsOnly = rawProductRows.filter((row) => !isTotalExportRow(row));
+    const productExportRows = [
+      ...productRowsOnly,
+      ...(productTotalRow ? [{ ...productTotalRow, product_name: "Total", sku: "Total" } as TableRow] : []),
+    ];
+    const productModel = buildSkuSheetModel({ allRows: true, sourceRows: productExportRows });
+    const productWs = wb.addWorksheet("Product-wise");
+    buildSkuWorksheetFromModel(productWs, productModel);
+
+    // Build the Month-wise worksheet from the same backend month rows used by
+    // the Month-wise table, independent of which table tab is currently open.
+    const rawMonthRows = Array.isArray(monthWiseRows) ? monthWiseRows : [];
+    const selectedYear = String(year);
+    const filteredMonthRows = rawMonthRows.filter((sourceRow: any) => {
+      const rowYear =
+        sourceRow?.year ??
+        sourceRow?.calendar_year ??
+        sourceRow?.date_year ??
+        sourceRow?.year_month ??
+        sourceRow?.month;
+      if (rowYear === undefined || rowYear === null || rowYear === "") return true;
+      const match = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
+      return match ? match[0] === selectedYear : true;
+    });
+
+    const normalizedMonthRows = normalizeRows(filteredMonthRows).map((row: any, index) => {
+      const sourceRow: any = filteredMonthRows[index] || {};
+      const cm2Value =
+        sourceRow.total_cm2_profit ??
+        sourceRow.cm2_profit_total ??
+        sourceRow.cm2_profit ??
+        row.cm2_profit ??
+        0;
+      return {
+        ...row,
+        product_name:
+          sourceRow.month_name ??
+          sourceRow.month_label ??
+          sourceRow.month ??
+          sourceRow.month_name_short ??
+          (String(sourceRow.product_name ?? "").trim() && String(sourceRow.product_name).trim() !== "-"
+            ? sourceRow.product_name
+            : row.product_name ?? "-"),
+        ads_spend: toNumber(sourceRow.total_ads ?? sourceRow.ads_spend ?? sourceRow.advertising_total),
+        product_spend: toNumber(sourceRow.product_spend ?? sourceRow.sponsored_product),
+        display_spend: toNumber(sourceRow.display_spend ?? sourceRow.sponsored_display),
+        acos: toNumber(sourceRow.acos) || (toNumber(row.net_sales) !== 0
+          ? (toNumber(sourceRow.total_ads ?? sourceRow.ads_spend ?? sourceRow.advertising_total) / toNumber(row.net_sales)) * 100
+          : 0),
+        cm2_profit: toNumber(cm2Value),
+        cm2_profit_total: toNumber(cm2Value),
+        total_cm2_profit: toNumber(cm2Value),
+        unit_wise_cm2_profitability: toNumber(row.net_units_sold) > 0
+          ? toNumber(cm2Value) / toNumber(row.net_units_sold)
+          : 0,
+        cm2_margins: toNumber(sourceRow.cm2_margins ?? sourceRow.cm2_profit_percentage) || (toNumber(row.net_sales) !== 0
+          ? (toNumber(cm2Value) / toNumber(row.net_sales)) * 100
+          : 0),
+      } as TableRow;
+    });
+
+    // Always append one Total row to Month-wise export. Use the backend
+    // Product-wise total row as the source for shared financial columns, then
+    // override the three KPI-driven fields with the same values shown in KPI cards.
+    const monthRowsWithoutTotal = normalizedMonthRows.filter((row: any) => {
+      const name = String(row?.product_name ?? row?.month_name ?? "").trim().toLowerCase();
+      const sku = String(row?.sku ?? "").trim().toLowerCase();
+      return name !== "total" && sku !== "total";
+    });
+    const backendTotalBase = normalizeRows([rawTotalRow])[0] as TableRow | undefined;
+    const monthTotalRow: TableRow = {
+      ...(backendTotalBase || ({} as TableRow)),
+      product_name: "Total",
+      sku: "Total",
+      ads_spend: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
+      total_ads: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
+      advertising_total: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
+      acos: toNumber(monthWiseKpiValues?.acos ?? frontendTacos),
+      cm2_profit: toNumber(monthWiseKpiValues?.cm2Profit ?? totals.total_cm2_profit),
+      cm2_profit_total: toNumber(monthWiseKpiValues?.cm2Profit ?? totals.total_cm2_profit),
+      total_cm2_profit: toNumber(monthWiseKpiValues?.cm2Profit ?? totals.total_cm2_profit),
+      cm2_margins: getCm2Percentage(backendTotalBase || {}),
+      unit_wise_cm2_profitability: getCm2PerUnit(backendTotalBase || {}),
+      asp: resolveAspForRow(backendTotalBase || ({} as TableRow), true),
+    } as TableRow;
+    const monthRowsForExport = [...monthRowsWithoutTotal, monthTotalRow];
+
+    const monthColumns = buildExcelColumnsFromUI()
+      .filter((column) => column.key !== "sku")
+      .map((column) => column.key === "product_name"
+        ? { ...column, label: "Month", excelLabel: "Month" }
+        : column);
+
+    // Month-wise always includes the three KPI-related columns and CM2 fields,
+    // including when the global range selector is set to yearly.
+    const requiredMonthColumns: LeafCol<TableRow>[] = [
+      { key: "product_spend", label: "Sponsored Product", align: "center" },
+      { key: "display_spend", label: "Sponsored Display", align: "center" },
+      { key: "ads_spend", label: "Ads Spend", align: "center" },
+      { key: "acos", label: "ACoS %", align: "center" },
+      { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" },
+      { key: "cm2_margins", label: "CM2 Profit %", align: "center" },
+      { key: "cm2_profit", label: "CM2 Profit", align: "center" },
+    ];
+    const monthColumnKeys = new Set(monthColumns.map((column) => column.key));
+    requiredMonthColumns.forEach((column) => {
+      if (!monthColumnKeys.has(column.key)) monthColumns.push(column);
+    });
+
+    const monthColumnKeysOrdered = monthColumns.map((column) => column.key);
+    const monthHeaderRow: Record<string, string> = {};
+    monthColumns.forEach((column) => {
+      monthHeaderRow[column.key] = column.excelLabel ?? (typeof column.label === "string" ? column.label : column.key);
+    });
+    const monthSignRow: Record<string, string> = {};
+    monthColumnKeysOrdered.forEach((key) => {
+      const sign = getSignForCol(key);
+      if (sign?.text) monthSignRow[key] = sign.text;
+    });
+
+    const monthExportRows = monthRowsForExport.map((row: any, index) => {
+      const out: Record<string, string | number> = {};
+      monthColumnKeysOrdered.forEach((key) => {
+        let value: any = row[key];
+        if (key === "sno") {
+          const name = String(row.product_name ?? "").trim().toLowerCase();
+          value = name === "total" ? "" : index + 1;
+        } else if (key === "product_name") {
+          value = row.product_name ?? row.month_name ?? row.month ?? "-";
+        } else if (key === "product_sales") {
+          value = row.product_sales ?? row.gross_sales ?? 0;
+        } else if (key === "other_transactions") {
+          value = getBackendOtherTransactionsValue(row);
+        } else if (key === "ads_spend") {
+          value = row.ads_spend ?? row.total_ads ?? row.advertising_total ?? 0;
+        } else if (key === "acos") {
+          value = getAcosPercentage(row);
+        } else if (key === "unit_wise_cm2_profitability") {
+          value = getCm2PerUnit(row);
+        } else if (key === "cm2_margins") {
+          value = getCm2Percentage(row);
+        } else if (key === "cm2_profit") {
+          value = row.total_cm2_profit ?? row.cm2_profit_total ?? row.cm2_profit ?? 0;
+        } else if (key === "asp") {
+          value = resolveAspForRow(row, String(row.product_name).trim().toLowerCase() === "total");
+        }
+        if (typeof value === "number") {
+          if (Math.abs(value) < 1e-10) value = 0;
+          if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) {
+            value = Math.trunc(value);
+          } else {
+            value = Number(value.toFixed(2));
+          }
+        }
+        if (["profit_percentage", "promotional_rebates_percentage", "acos", "cm2_margins"].includes(key) && typeof value === "number") {
+          value = value / 100;
+        }
+        out[key] = typeof value === "number" && Number.isNaN(value) ? "-" : value ?? "-";
+      });
+      return out;
+    });
+
+    const monthFormats: Record<string, "int" | "money" | "percent" | "text"> = {};
+    monthColumnKeysOrdered.forEach((key) => {
+      if (key === "product_name") monthFormats[key] = "text";
+      else if (["profit_percentage", "promotional_rebates_percentage", "acos", "cm2_margins"].includes(key)) monthFormats[key] = "percent";
+      else if (["sno", "units_sold", "return_units", "net_units_sold", "quantity"].includes(key)) monthFormats[key] = "int";
+      else monthFormats[key] = "money";
+    });
+
+    const monthModel = {
+      columns: monthColumnKeysOrdered as readonly string[],
+      extraRows: [
+        [`${userData?.brand_name || "N/A"}`],
+        [`${userData?.company_name || "N/A"}`],
+        ["P&L Month-wise Breakdown"],
+        [`Currency:  ${currencySymbol}`],
+        [`Country: ${isGlobalPage ? "GLOBAL" : (countryName || "").toUpperCase()}`],
+        ["Platform: Amazon"],
+      ],
+      headerRow: monthHeaderRow,
+      signRow: monthSignRow,
+      rows: monthExportRows,
+      summaryRows: [],
+      formats: monthFormats,
+      summaryValueKey: "cm2_profit",
+    };
+    const monthWs = wb.addWorksheet("Month-wise");
+    buildSkuWorksheetFromModel(monthWs, monthModel);
 
     const formattedMonthYear =
       range === "monthly"
@@ -2671,9 +2869,35 @@ const SKUtable: React.FC<SKUtableProps> = ({
           : `${year}`;
 
     const filename = `Amazon-PnL-${formattedMonthYear}.xlsx`;
-
     await downloadWorkbookAsXlsx(wb, filename);
-  }, [buildSkuSheetModel, range, month, quarter, year, yearShort, onDownload]);
+    onDownload?.();
+  }, [
+    buildSkuSheetModel,
+    buildExcelColumnsFromUI,
+    monthWiseRows,
+    monthWiseKpiValues,
+    rawTotalRow,
+    costOfAdvertisementValue,
+    frontendTacos,
+    totals.total_cm2_profit,
+    year,
+    range,
+    month,
+    quarter,
+    yearShort,
+    onDownload,
+    getSignForCol,
+    getBackendOtherTransactionsValue,
+    getAcosPercentage,
+    getCm2PerUnit,
+    getCm2Percentage,
+    resolveAspForRow,
+    userData?.brand_name,
+    userData?.company_name,
+    currencySymbol,
+    isGlobalPage,
+    countryName,
+  ]);
 
 
   /* --------- Render guards --------- */
