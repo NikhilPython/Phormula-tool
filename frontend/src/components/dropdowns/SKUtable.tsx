@@ -70,6 +70,11 @@ type SKUtableProps = {
 
   rows: TableRow[];
   monthWiseRows?: TableRow[];
+  monthWiseKpiValues?: {
+    adsSpend?: number;
+    acos?: number;
+    cm2Profit?: number;
+  };
   loading?: boolean;
   error?: string | null;
   noDataFound?: boolean;
@@ -691,6 +696,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   rows,
   monthWiseRows = [],
+  monthWiseKpiValues,
   loading = false,
   error = null,
   noDataFound = false,
@@ -1081,26 +1087,35 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const productRows = tableData.filter((row) => !isTotalRow(row));
 
-    // Month-wise view: keep one row per month and append a calculated Total row.
+    // Month-wise: use the same backend Total row as Product-wise so both
+    // views agree for the active filters. Only the three KPI-backed fields
+    // are overridden with the currently filtered KPI card values.
     if (isMonthWiseView) {
-      const monthlyTotal = productRows.length
-        ? (sumRows(productRows, { product_name: "Total", sku: "Total" }) as TableRow)
-        : null;
+      const backendTotalRow = rows.find(isTotalRow);
+      const monthlyTotal = backendTotalRow
+        ? ({ ...backendTotalRow } as TableRow)
+        : productRows.length
+          ? (sumRows(productRows, { product_name: "Total", sku: "Total" }) as TableRow)
+          : null;
+
       if (monthlyTotal) {
         monthlyTotal.product_name = "Total";
         monthlyTotal.sku = "Total";
         monthlyTotal.asp = resolveAspForRow(monthlyTotal, true);
 
-        // ACoS is a percentage/rate, so the Month-wise Total must show
-        // the average of the monthly ACoS values instead of summing them.
-        const monthlyAcosValues = productRows
-          .map((row) => getAcosPercentage(row))
-          .filter((value) => Number.isFinite(value));
-        monthlyTotal.acos = monthlyAcosValues.length
-          ? monthlyAcosValues.reduce((sum, value) => sum + value, 0) /
-            monthlyAcosValues.length
-          : 0;
+        if (monthWiseKpiValues?.adsSpend !== undefined) {
+          monthlyTotal.ads_spend = toNumber(monthWiseKpiValues.adsSpend);
+        }
+        if (monthWiseKpiValues?.acos !== undefined) {
+          monthlyTotal.acos = toNumber(monthWiseKpiValues.acos);
+        }
+        if (monthWiseKpiValues?.cm2Profit !== undefined) {
+          monthlyTotal.cm2_profit = toNumber(monthWiseKpiValues.cm2Profit);
+          monthlyTotal.total_cm2_profit = toNumber(monthWiseKpiValues.cm2Profit);
+          monthlyTotal.cm2_profit_total = toNumber(monthWiseKpiValues.cm2Profit);
+        }
       }
+
       return monthlyTotal ? [...productRows, monthlyTotal] : productRows;
     }
 
@@ -1143,7 +1158,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow, isMonthWiseView]);
+  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow, isMonthWiseView, rows, monthWiseKpiValues]);
 
   const excelRows = useMemo(() => {
     if (!tableData?.length) return [];

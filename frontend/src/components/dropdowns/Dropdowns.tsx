@@ -12331,6 +12331,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
+                    monthWiseKpiValues={{
+                      adsSpend: Math.abs(toNum(
+                        range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
+                          ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
+                          : displayData?.advertising_total ?? displayData?.advertising_total_final
+                      )),
+                      acos: range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? []) &&
+                        uploadsData?.card_metrics?.current?.tacos_pct !== undefined
+                        ? toNum(uploadsData.card_metrics.current.tacos_pct)
+                        : (toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales) > 0
+                          ? (Math.abs(toNum(
+                              range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
+                                ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
+                                : displayData?.advertising_total ?? displayData?.advertising_total_final
+                            )) / toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales)) * 100
+                          : 0),
+                      cm2Profit: toNum(uploadsData?.card_metrics?.current?.cm2_profit ?? displayData?.cm2_profit),
+                    }}
                     loading={displaySkuLoading}
                     error={displaySkuError}
                     noDataFound={displaySkuNoDataFound}
