@@ -419,89 +419,48 @@ export default function DashboardProductwisePnlSection({
             timers.forEach((timer) => window.clearTimeout(timer));
         };
     }, [isActionSkuFilterActive, actionItemId, actionFilterSkus, actionFilterProducts]);
+
     const actionFilteredProductwiseRows = React.useMemo(() => {
-
         // Normal P&L view:
-
         // keep existing Top 9 + Others behaviour.
-
         if (!isActionSkuFilterActive) {
-
             return Array.isArray(finalMonthlySkuwiseRowsForTable)
-
                 ? finalMonthlySkuwiseRowsForTable
-
                 : [];
-
         }
 
-
-
         // Action Item focused view:
-
         // IMPORTANT:
-
         // use complete SKU-level source instead of Top 9 + Others table.
-
         const allRows = Array.isArray(monthlySkuwiseRows)
-
             ? monthlySkuwiseRows
-
             : [];
-
-
 
         let sno = 0;
 
-
-
-        return allRows
-
+        // 👇 1. REMOVED `return` HERE AND ASSIGNED TO `filtered`
+        const filtered = allRows
             .filter((row: any) => {
-
                 const productName = String(row?.product_name || "")
-
                     .trim()
-
                     .toLowerCase();
-
-
-
                 const sku = String(row?.sku || "")
-
                     .trim()
-
                     .toUpperCase();
 
-
-
                 // Exclude Total / Others / summary rows
-
                 if (
-
                     row?.isTotal ||
-
                     row?.isOthers ||
-
                     sku === "TOTAL" ||
-
                     sku === "GRAND_TOTAL" ||
-
                     sku === "OTHERS" ||
-
                     productName === "total" ||
-
                     productName === "grand total" ||
-
                     productName === "others"
-
                 ) {
-
                     return false;
-
                 }
-
-
 
                 const rowSkus = splitSkuValues(row?.sku);
                 const skuMatches = rowSkus.some((rowSku) =>
@@ -515,48 +474,33 @@ export default function DashboardProductwisePnlSection({
                 );
 
                 return skuMatches || productMatches;
-
             })
-
             .map((row: any) => ({
-
                 ...row,
-
-
-
                 // Keep focused result as actual product rows.
-
                 sno: ++sno,
-
                 isOthers: false,
-
                 isTotal: false,
-
-
-
                 // Normalise display name just like normal table.
-
                 product_name: getSkuwiseDisplayProductName(row),
-
             }));
 
+        // 👇 2. NOW RETURN THE SORTED ARRAY
+        return filtered.sort((a: any, b: any) => {
+            const aDisc = isDiscontinuedSkuRow(a);
+            const bDisc = isDiscontinuedSkuRow(b);
+            if (aDisc && !bDisc) return 1;
+            if (!aDisc && bDisc) return -1;
+            return 0;
+        });
     }, [
-
         finalMonthlySkuwiseRowsForTable,
-
         monthlySkuwiseRows,
-
         isActionSkuFilterActive,
-
         actionFilterSkuSet,
-
         actionFilterProductSet,
-
         getSkuwiseDisplayProductName,
-
     ]);
-
-
 
     const actionFocusedTotalRow = React.useMemo(() => {
         if (!isActionSkuFilterActive || !actionFilteredProductwiseRows.length) {
@@ -2256,17 +2200,11 @@ export default function DashboardProductwisePnlSection({
                     <div className="w-full max-w-full">
 
                         <GroupedCollapsibleTable<any>
-
                             rows={actionTableRows}
-
                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
-
                             tableClassName={[
-
                                 "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
-
                                 productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
-
                             ].join(" ")}
 
                             getRowKey={(row, idx) =>
@@ -2391,6 +2329,28 @@ export default function DashboardProductwisePnlSection({
 
                             ]}
 
+                            getSortValue={(row: any, colKey: string) => {
+                                const direction = plSortConfig.direction;
+
+                                // 1. Pin Total to the absolute bottom
+                                if (row.isTotal) {
+                                    return direction === "desc" ? -Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+                                }
+
+                                // 2. Pin Others just above Total
+                                if (row.isOthers) {
+                                    return direction === "desc" ? -Number.MAX_SAFE_INTEGER + 1 : Number.MAX_SAFE_INTEGER - 1;
+                                }
+
+                                // 3. Pin Discontinued above Others
+                                if (isDiscontinuedSkuRow(row)) {
+                                    return direction === "desc" ? -Number.MAX_SAFE_INTEGER + 2 : Number.MAX_SAFE_INTEGER - 2;
+                                }
+
+                                // 4. Normal sorting for all Active SKUs
+                                const val = (row as any)[colKey];
+                                return typeof val === "number" ? val : String(val || "").toLowerCase();
+                            }}
                             getRowClassName={(row, index) => {
                                 if (row.isTotal) return "bg-[#EFEFEF] font-semibold";
 
@@ -2416,6 +2376,7 @@ export default function DashboardProductwisePnlSection({
                                 }
 
                             }}
+
 
                             getValue={(row, colKey) => {
 

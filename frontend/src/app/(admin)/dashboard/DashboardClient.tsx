@@ -2244,6 +2244,30 @@ export default function DashboardPage() {
     const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
     const [loadingStartedAt, setLoadingStartedAt] = useState<number | null>(null);
 
+    const isDiscontinuedSkuRow = useCallback((row: any) => {
+        const name = String(row?.product_name || "").trim().toLowerCase();
+        const sku = String(row?.sku || "").trim().toLowerCase();
+
+        // Total and Others are aggregate rows, never discontinued
+        if (name === "total" || name === "others" || sku === "total" || sku === "others") {
+            return false;
+        }
+
+        const normalizedName = String(row?.product_name || "")
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, " ")
+            .replace(/[^\w\s-]/g, "");
+
+        const status = String(
+            row?.product_status || skuStatusMap[normalizedName] || ""
+        )
+            .trim()
+            .toLowerCase();
+
+        return status === "discontinued" || status === "discontinuous";
+    }, [skuStatusMap]);
+
     const forcedRegion: RegionKey = useMemo(() => {
         switch (platform) {
             case "amazon-uk":
@@ -7638,6 +7662,13 @@ export default function DashboardPage() {
         };
 
         const sorted = [...bodyRows].sort((a, b) => {
+            // 1. Pin Discontinued SKUs to the bottom BEFORE slicing the top 9
+            const aDisc = isDiscontinuedSkuRow(a);
+            const bDisc = isDiscontinuedSkuRow(b);
+            if (aDisc && !bDisc) return 1;
+            if (!aDisc && bDisc) return -1;
+
+            // 2. Normal sorting for all Active SKUs
             const aValue = getSortValue(a, plSortConfig.key);
             const bValue = getSortValue(b, plSortConfig.key);
 
@@ -7792,6 +7823,7 @@ export default function DashboardPage() {
         plSortConfig,
         showAllMtdProductwiseRows,
         getProductwiseOtherTransactionsTotal,
+        isDiscontinuedSkuRow,
     ]);
 
     const globalMtdCardData = useMemo(() => {

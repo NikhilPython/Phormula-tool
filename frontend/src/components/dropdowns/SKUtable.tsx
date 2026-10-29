@@ -1098,13 +1098,25 @@ const SKUtable: React.FC<SKUtableProps> = ({
           .filter((value) => Number.isFinite(value));
         monthlyTotal.acos = monthlyAcosValues.length
           ? monthlyAcosValues.reduce((sum, value) => sum + value, 0) /
-            monthlyAcosValues.length
+          monthlyAcosValues.length
           : 0;
       }
       return monthlyTotal ? [...productRows, monthlyTotal] : productRows;
     }
 
     const sorted = [...productRows].sort((a, b) => {
+      // const aValue = getSortableValue(a, tableSort.key);
+      // const bValue = getSortableValue(b, tableSort.key);
+
+      // return tableSort.direction === "asc"
+      //   ? aValue - bValue
+      //   : bValue - aValue;
+
+      const aDisc = isDiscontinuedSkuRow(a);
+      const bDisc = isDiscontinuedSkuRow(b);
+      if (aDisc && !bDisc) return 1;
+      if (!aDisc && bDisc) return -1;
+
       const aValue = getSortableValue(a, tableSort.key);
       const bValue = getSortableValue(b, tableSort.key);
 
@@ -3213,6 +3225,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 stickyLeftHorizontalBorderMode="border"
                 onSortChange={setTableSort}
                 getSortValue={(row, colKey) => {
+                  const direction = tableSort.direction;
+
+                  // 👇 Pin Total/Discontinued to the bottom
+                  if (String((row as any)?.product_name || "").toLowerCase() === "total") {
+                    return direction === "desc" ? -Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+                  }
+                  if (isDiscontinuedSkuRow(row)) {
+                    return direction === "desc" ? -Number.MAX_SAFE_INTEGER + 1 : Number.MAX_SAFE_INTEGER - 1;
+                  }
                   if (colKey === "net_units_sold") return toNumber((row as any).net_units_sold);
                   if (colKey === "net_sales") return toNumber((row as any).net_sales);
                   if (colKey === "profit") return toNumber((row as any).profit);

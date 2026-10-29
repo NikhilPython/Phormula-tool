@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Target, X, CalendarDays, CheckCircle2, Info } from "lucide-react";
+import { X, CheckCircle2, Info } from "lucide-react";
 import Button from "@/components/ui/button/Button";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
+import { createPortal } from "react-dom";
 
 export type MidMonthTargetReminderData = {
   country: string;
@@ -33,6 +34,9 @@ const money = (amount: number, currency: string) =>
     maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0);
 
+// Quick-fill chips: percentage uplift applied on last month's net sales
+const QUICK_FILL_UPLIFTS = [10, 20];
+
 export default function MidMonthTargetReminderModal({
   open,
   data,
@@ -41,6 +45,7 @@ export default function MidMonthTargetReminderModal({
 }: Props) {
   const [mounted, setMounted] = useState(false);
 
+  // Digits only (e.g. "9999"). Formatting (9,999) happens at render time.
   const [targetDraft, setTargetDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -49,7 +54,8 @@ export default function MidMonthTargetReminderModal({
 
   useEffect(() => {
     if (!open || !data) return;
-    setTargetDraft(String(data.currentTargetNative || ""));
+    const initial = Math.round(Number(data.currentTargetNative) || 0);
+    setTargetDraft(initial > 0 ? String(initial) : "");
     setSaveError(null);
     setSaving(false);
   }, [open, data]);
@@ -73,13 +79,51 @@ export default function MidMonthTargetReminderModal({
     return d.toLocaleString("en-US", { month: "long" });
   }, [data]);
 
+  // Currency symbol derived from Intl so every currency works (not just USD/GBP/CAD)
+  const currencySymbol = React.useMemo(() => {
+    if (!data?.nativeCurrency) return "";
+    try {
+      return (
+        new Intl.NumberFormat(undefined, {
+          style: "currency",
+          currency: data.nativeCurrency,
+        })
+          .formatToParts(0)
+          .find((p) => p.type === "currency")?.value ?? data.nativeCurrency
+      );
+    } catch {
+      return data.nativeCurrency;
+    }
+  }, [data?.nativeCurrency]);
+
+  const draftNumber = Number(targetDraft) || 0;
+  const displayValue = targetDraft ? draftNumber.toLocaleString() : "";
+
+  const progressPct =
+    data && draftNumber > 0
+      ? Math.round((data.mtdNetSalesHome / draftNumber) * 100)
+      : null;
+
+  const handleDraftChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, "").slice(0, 12);
+    setTargetDraft(digits);
+    if (saveError) setSaveError(null);
+  };
+
+  const applyQuickFill = (uplift: number) => {
+    if (!data) return;
+    const next = Math.round(data.lastMonthNetSalesHome * (1 + uplift / 100));
+    setTargetDraft(String(next));
+    if (saveError) setSaveError(null);
+  };
+
   const handleSave = useCallback(async (forcedValue?: number) => {
     if (!data) return;
 
     const nextTarget = forcedValue !== undefined ? forcedValue : Number(targetDraft);
 
     if (!Number.isFinite(nextTarget) || nextTarget < 0) {
-      setSaveError("Please enter a valid target.");
+      setSaveError("Enter a valid target.");
       return;
     }
 
@@ -125,7 +169,7 @@ export default function MidMonthTargetReminderModal({
       onClose();
     } catch (err: any) {
       console.error("Failed to save mid-month target:", err);
-      setSaveError(err?.message || "Failed to save. Please try again.");
+      setSaveError(err?.message || "Failed to save. Try again.");
     } finally {
       setSaving(false);
     }
@@ -133,15 +177,15 @@ export default function MidMonthTargetReminderModal({
 
   if (!mounted || !open || !data) return null;
 
-  const mtdDisplay = money(data.mtdNetSalesHome, data.homeCurrency);
   const lastMonthDisplay = money(data.lastMonthNetSalesHome, data.homeCurrency);
+  const canSave = !saving && draftNumber > 0;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="midmonth-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 px-4 py-6 backdrop-blur-[2px]"
+      className="fixed top-0 right-0 bottom-0 left-0 z-[2147483647] flex items-center justify-center bg-black/40 px-4 py-6"
       onClick={() => {
         if (!saving) onClose();
       }}
@@ -177,19 +221,6 @@ export default function MidMonthTargetReminderModal({
         </div>
 
         {/* Performance Snapshot Row */}
-        {/* <div className="mb-5 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-500">MTD Net Sales:</span>
-            <span className="font-semibold text-[#37455F]">{mtdDisplay}</span>
-          </div>
-          <div className="h-4 w-px bg-slate-200" />
-          <div className="flex items-center gap-3">
-            <span className="text-slate-500">{prevMonthName} Total:</span>
-            <span className="font-semibold text-[#37455F]">{lastMonthDisplay}</span>
-          </div>
-        </div> */}
-
-        {/* Performance Snapshot Row (Replaced with Cards) */}
         <div className="mb-5 grid grid-cols-2 gap-4">
           <AmazonStatCard
             label="MTD Net Sales"
@@ -197,7 +228,7 @@ export default function MidMonthTargetReminderModal({
             previous={null}
             deltaPct={null}
             bottomLabel=""
-            hidePrevious={true} // 👈 This will now perfectly hide the bottom row
+            hidePrevious={true}
             loading={false}
             formatter={(val) => money(val, data.homeCurrency)}
             className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
@@ -209,10 +240,10 @@ export default function MidMonthTargetReminderModal({
             previous={null}
             deltaPct={null}
             bottomLabel=""
-            hidePrevious={true} // 👈 Hides the bottom row for the previous metric
+            hidePrevious={true}
             loading={false}
             formatter={(val) => money(val, data.homeCurrency)}
-            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]" // Example color for the 2nd card
+            className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
           />
         </div>
 
@@ -239,31 +270,105 @@ export default function MidMonthTargetReminderModal({
           </div>
         )}
 
-        {/* Input Section */}
-        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
-          <label className="mb-2 block text-sm font-semibold text-[#37455F]">
-            {hasTarget ? "Update your target" : "Or set a custom target"} ({data.nativeCurrency})
+        {/* Target input: hero input + quick-fill chips + progress */}
+        <div className="mb-5">
+          <label
+            htmlFor="midmonth-target-input"
+            className="mb-2 block text-sm font-semibold capitalize text-slate-500"
+          >
+            {hasTarget
+              ? `Your ${data.monthName} target`
+              : `Custom ${data.monthName} target`}
           </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-              {data.nativeCurrency === "USD" ? "$" : data.nativeCurrency === "GBP" ? "£" : data.nativeCurrency === "CAD" ? "C$" : ""}
+
+          <div
+            className={`flex items-center gap-2 rounded-xl border bg-white px-4 py-3 transition ${saveError
+              ? "border-red-300 focus-within:border-red-400"
+              : "border-slate-300 focus-within:border-green-500"
+              } ${saving ? "opacity-60" : ""}`}
+          >
+            <span
+              className="text-lg font-medium leading-none text-slate-400"
+              aria-hidden="true"
+            >
+              {currencySymbol}
             </span>
             <input
-              type="number"
-              min={0}
-              step={1}
-              value={targetDraft}
-              onChange={(e) => setTargetDraft(e.target.value)}
-              placeholder="Enter target amount"
+              id="midmonth-target-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={displayValue}
+              onChange={(e) => handleDraftChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && canSave) handleSave();
+              }}
+              placeholder="0"
               disabled={saving}
-              className="w-full rounded-md border border-slate-300 bg-white py-2.5 pl-8 pr-3 text-sm font-medium outline-none focus:border-[#37455F] disabled:opacity-60"
+              aria-invalid={!!saveError}
+              aria-describedby={saveError ? "midmonth-target-error" : undefined}
+              className="w-full min-w-0 bg-transparent text-lg font-semibold leading-tight text-charcoal-500 outline-none placeholder:text-slate-300"
             />
           </div>
 
-          {saveError && (
-            <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+          {/* Quick-fill chips */}
+          {data.lastMonthNetSalesHome > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => applyQuickFill(0)}
+                disabled={saving}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#37455F] transition hover:border-[#2E3A59] hover:bg-slate-50 disabled:opacity-50"
+              >
+                Same as {prevMonthName}
+              </button>
+              {QUICK_FILL_UPLIFTS.map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => applyQuickFill(pct)}
+                  disabled={saving}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#37455F] transition hover:border-[#2E3A59] hover:bg-slate-50 disabled:opacity-50"
+                >
+                  +{pct}%
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Progress / error */}
+          {saveError ? (
+            <p
+              id="midmonth-target-error"
+              role="alert"
+              className="mt-3 text-xs font-medium text-red-600"
+            >
               {saveError}
             </p>
+          ) : (
+            <div className="mt-4">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-green-500 transition-[width] duration-300"
+                  style={{
+                    width: `${progressPct === null ? 0 : Math.min(progressPct, 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {progressPct === null ? (
+                  "Enter a target to see your progress."
+                ) : (
+                  <>
+                    You&apos;re at{" "}
+                    <span className="font-semibold text-[#37455F]">
+                      {progressPct}%
+                    </span>{" "}
+                    of this target so far.
+                  </>
+                )}
+              </p>
+            </div>
           )}
         </div>
 
@@ -301,7 +406,7 @@ export default function MidMonthTargetReminderModal({
             <Button
               type="button"
               onClick={() => handleSave()}
-              disabled={saving || !targetDraft || Number(targetDraft) <= 0}
+              disabled={!canSave}
               className="rounded-md bg-[#2E3A59] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
             >
               {saving ? "Saving…" : `Set ${data.monthName} target`}
@@ -309,6 +414,7 @@ export default function MidMonthTargetReminderModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
