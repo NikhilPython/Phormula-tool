@@ -722,7 +722,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
   });
   const [showAllRows, setShowAllRows] = useState(false);
   const [tableView, setTableView] = useState<"product" | "month">("product");
-  const isMonthWiseView = tableView === "month";
+  const isMonthWiseView =
+    range !== "monthly" && tableView === "month";
   const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean> | undefined>(
     undefined
@@ -761,6 +762,32 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
 
     // Month-wise: filter rows according to selected year.
+    const quarterMonthIndexes: Record<string, number[]> = {
+      Q1: [0, 1, 2],
+      Q2: [3, 4, 5],
+      Q3: [6, 7, 8],
+      Q4: [9, 10, 11],
+    };
+
+    const selectedQuarterMonths =
+      range === "quarterly"
+        ? quarterMonthIndexes[String(quarter).toUpperCase()]
+        : undefined;
+
+    const monthLabels = [
+      "january",
+      "february",
+      "march",
+      "april",
+      "may",
+      "june",
+      "july",
+      "august",
+      "september",
+      "october",
+      "november",
+      "december",
+    ];
     const selectedYear = String(year);
 
     const filteredRows = normalizedRows.filter((normalizedRow, index) => {
@@ -773,14 +800,54 @@ const SKUtable: React.FC<SKUtableProps> = ({
         sourceRow.year_month ??
         sourceRow.month;
 
-      // Keep the row if year information is unavailable.
-      if (rowYear === undefined || rowYear === null || rowYear === "") {
-        return true;
+      // Keep the existing selected-year filtering.
+      if (
+        rowYear !== undefined &&
+        rowYear !== null &&
+        rowYear !== ""
+      ) {
+        const yearMatch = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
+
+        if (yearMatch && yearMatch[0] !== String(year)) {
+          return false;
+        }
       }
 
-      const yearMatch = String(rowYear).match(/\b(?:19|20)\d{2}\b/);
+      // Apply quarter filtering only to the Month-wise table.
+      if (selectedQuarterMonths) {
+        const rawMonthIndex = Number(sourceRow._month_index);
 
-      return yearMatch ? yearMatch[0] === selectedYear : true;
+        const monthValue = String(
+          sourceRow.product_name ??
+          sourceRow.month_name ??
+          sourceRow.month ??
+          sourceRow.sku ??
+          ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const monthIndex =
+          Number.isInteger(rawMonthIndex) &&
+            rawMonthIndex >= 0 &&
+            rawMonthIndex <= 11
+            ? rawMonthIndex
+            : monthLabels.findIndex(
+              (name) =>
+                name === monthValue ||
+                name.slice(0, 3) === monthValue
+            );
+
+        // Keep rows whose month cannot be identified unchanged.
+        if (
+          monthIndex !== -1 &&
+          !selectedQuarterMonths.includes(monthIndex)
+        ) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     // Preserve existing CM2 and Ads Spend logic.
@@ -3392,10 +3459,37 @@ const SKUtable: React.FC<SKUtableProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
-            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-50 p-1" role="group" aria-label="P&L table view">
-              <button type="button" onClick={() => setTableView("product")} aria-pressed={!isMonthWiseView} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${!isMonthWiseView ? "bg-[#5EA68E] text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>Product-wise</button>
-              <button type="button" onClick={() => setTableView("month")} aria-pressed={isMonthWiseView} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${isMonthWiseView ? "bg-[#5EA68E] text-white shadow-sm" : "text-slate-600 hover:bg-white"}`}>Month-wise</button>
-            </div>
+            {range !== "monthly" && (
+              <div
+                className="inline-flex rounded-lg border border-slate-300 bg-slate-50 p-1"
+                role="group"
+                aria-label="P&L table view"
+              >
+                <button
+                  type="button"
+                  onClick={() => setTableView("product")}
+                  aria-pressed={!isMonthWiseView}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${!isMonthWiseView
+                    ? "bg-[#5EA68E] text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white"
+                    }`}
+                >
+                  Product-wise
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTableView("month")}
+                  aria-pressed={isMonthWiseView}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${isMonthWiseView
+                    ? "bg-[#5EA68E] text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white"
+                    }`}
+                >
+                  Month-wise
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={handleToggleTableExpansion}
@@ -3592,6 +3686,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     const isDiscontinued = !isMonthWiseView && isDiscontinuedSkuRow(row);
 
                     if (isMonthWiseView) {
+                      if (isTotal) {
+                        return <span className="font-semibold">{displayName}</span>;
+                      }
                       return <span className="font-medium text-green-500">{displayName}</span>;
                     }
 
