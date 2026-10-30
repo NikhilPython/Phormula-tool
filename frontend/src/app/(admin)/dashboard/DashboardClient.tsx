@@ -4163,7 +4163,14 @@ export default function DashboardPage() {
                 : toNumberSafe(amount ?? 0);
             const pctToShow = Math.abs(toNumberSafe(pct ?? 0));
 
-            return `${formatDisplayAmount(amountToShow, amountLabel)} (${fmtPct2(pctToShow)})`;
+            return (
+                <span className="inline-flex items-baseline gap-1 leading-tight">
+                    <span>{formatDisplayAmount(amountToShow, amountLabel)}</span>
+                    <span className="text-[10px] 2xl:text-xs text-slate-500 font-medium">
+                        ({fmtPct2(pctToShow)})
+                    </span>
+                </span>
+            );
         },
         [formatDisplayAmount]
     );
@@ -13649,18 +13656,76 @@ export default function DashboardPage() {
     // A recap is about the month that just closed. The dashboard KPIs are MTD,
     // so deliberately use their `previous` values here rather than `current`.
     const recapMetrics = useMemo(
-        () =>
-            stickyKpiItems
-                .filter((item) =>
-                    ["Units", "ASP", "Net Sales", "Cost of Ads", "TACoS", "CM2 Profit"].includes(item.label)
-                )
-                .map((item) => ({
-                    label: item.label,
-                    value: item.previous,
-                    formatter: item.previousFormatter ?? item.formatter,
-                    loading: item.loading,
-                })),
-        [stickyKpiItems]
+        () => {
+            const metrics: any[] = [];
+            const getMetric = (label: string) => stickyKpiItems.find((item) => item.label === label);
+
+            // 1. Units
+            const units = getMetric("Units");
+            if (units) {
+                metrics.push({
+                    label: "Units",
+                    value: units.previous,
+                    formatter: units.previousFormatter ?? units.formatter,
+                    loading: units.loading
+                });
+            }
+
+            // 2. ASP
+            const asp = getMetric("ASP");
+            if (asp) {
+                metrics.push({
+                    label: "ASP",
+                    value: asp.previous,
+                    formatter: asp.previousFormatter ?? asp.formatter,
+                    loading: asp.loading
+                });
+            }
+
+            // 3. Net Sales
+            const netSales = getMetric("Net Sales");
+            if (netSales) {
+                metrics.push({
+                    label: "Net Sales",
+                    value: netSales.previous,
+                    formatter: netSales.previousFormatter ?? netSales.formatter,
+                    loading: netSales.loading
+                });
+            }
+
+            // 4. Marketplace Fees (Replaced Cost of Ads)
+            metrics.push({
+                label: "Marketplace Fees",
+                value: overviewData.financial.marketplaceFees.previousValue,
+                formatter: (val: number) => formatDisplayAmount(val, "Marketplace Fees"),
+                loading: pageLoading
+            });
+
+            // 5. TACoS
+            const tacos = getMetric("TACoS");
+            if (tacos) {
+                metrics.push({
+                    label: "TACoS",
+                    value: tacos.previous,
+                    formatter: tacos.previousFormatter ?? tacos.formatter,
+                    loading: tacos.loading
+                });
+            }
+
+            // 6. CM2 Profit
+            const cm2Profit = getMetric("CM2 Profit");
+            if (cm2Profit) {
+                metrics.push({
+                    label: "CM2 Profit",
+                    value: cm2Profit.previous,
+                    formatter: cm2Profit.previousFormatter ?? cm2Profit.formatter,
+                    loading: cm2Profit.loading
+                });
+            }
+
+            return metrics;
+        },
+        [stickyKpiItems, overviewData.financial.marketplaceFees, formatDisplayAmount, pageLoading]
     );
 
     const monthlyRecapData = useMemo<MonthlyRecapData | null>(() => {
@@ -13688,6 +13753,9 @@ export default function DashboardPage() {
             quantity?: unknown;
             total_quantity?: unknown;
             sales_mix?: number;
+            cm2_profit?: unknown;
+            total_cm2_profit?: unknown;
+            profit?: unknown;
         }> = Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
 
         const skuRows = sourceSkuRows.filter((r) => {
@@ -13713,6 +13781,10 @@ export default function DashboardPage() {
                 netSales: convertToDisplayCurrency(toNumber(best.net_sales), amazonDataCurrency),
                 // Use API sales_mix if available, else calculate
                 sharePct: best.sales_mix ?? (totalNet > 0 ? (toNumber(best.net_sales) / totalNet) * 100 : undefined),
+                cm2Profit: convertToDisplayCurrency(
+                    toNumber(best.cm2_profit ?? best.total_cm2_profit ?? best.profit ?? 0),
+                    amazonDataCurrency
+                ),
             }
             : null;
 
@@ -13725,7 +13797,11 @@ export default function DashboardPage() {
         const objectives = [
             objectiveContext?.growth_intent && `Growth focus: ${titleCase(objectiveContext.growth_intent)}`,
             objectiveContext?.profit_priority && `Profit focus: ${titleCase(objectiveContext.profit_priority)}`,
-            objectiveContext?.inventory_clearance_priority && "Prioritise clearing ageing inventory",
+            // ✅ Fix: Display the objective even if it is false, so the 3rd chip always appears
+            objectiveContext?.inventory_clearance_priority !== undefined &&
+            (objectiveContext.inventory_clearance_priority
+                ? "Prioritise clearing ageing inventory"
+                : "Inventory dilution: No"),
             ...(Array.isArray(objectiveContext?.journey_summary) ? objectiveContext.journey_summary : []),
             objectiveContext?.recommendation,
         ]
