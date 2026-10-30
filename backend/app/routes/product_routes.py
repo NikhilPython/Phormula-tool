@@ -3332,42 +3332,6 @@ def skutableprofit():
 
         metadata = MetaData(schema='public')
 
-        # Resolve discontinued SKUs from the user's SKU master. Older SKU
-        # tables have no status column and remain Active by default.
-        discontinued_skus = set()
-        discontinued_product_names = set()
-        sku_master_name = f"sku_{user_id}_data_table"
-        if sku_master_name in existing_tables:
-            sku_master = Table(sku_master_name, MetaData(), autoload_with=engine)
-            if "product_status" in sku_master.c:
-                # Product status is product-wide. Monthly P&L rows may use a
-                # marketplace SKU different from the currently selected one,
-                # so match every known marketplace mapping.
-                sku_columns = ["sku_uk", "sku_us", "sku_canada"]
-                selected_columns = [sku_master.c.product_status] + (
-                    [sku_master.c.product_name]
-                    if "product_name" in sku_master.c
-                    else []
-                ) + [
-                    sku_master.c[column]
-                    for column in sku_columns
-                    if column in sku_master.c
-                ]
-                if len(selected_columns) > 1:
-                    with engine.connect() as conn:
-                        master_rows = conn.execute(select(*selected_columns)).mappings().all()
-                    for master_row in master_rows:
-                        if str(master_row.get("product_status") or "Active").strip().lower() not in {"discontinued", "discontinuous"}:
-                            continue
-                        product_name = str(master_row.get("product_name") or "").strip().lower()
-                        if product_name:
-                            discontinued_product_names.add(product_name)
-                        for column in sku_columns:
-                            sku_value = str(master_row.get(column) or "").strip().lower()
-                            if sku_value:
-                                discontinued_skus.add(sku_value)
-
-
         def safe_divide(numerator, denominator):
             numerator = safe_float(numerator)
             denominator = safe_float(denominator)
@@ -3615,56 +3579,6 @@ def skutableprofit():
                     row_dict["cm2_profit_total"] = round(cm2_profit_total, 2)
 
                     break
-
-            # Remove discontinued detail rows and subtract their additive
-            # metrics from the precomputed total row before returning it.
-            if discontinued_skus or discontinued_product_names:
-                kept_rows = []
-                removed_rows = []
-                total_row = None
-                for item in final_data:
-                    sku_value = str(item.get("sku") or "").strip().lower()
-                    product_name_value = str(item.get("product_name") or "").strip().lower()
-                    if sku_value == "total" or product_name_value == "total":
-                        total_row = item
-                        kept_rows.append(item)
-                    elif (
-                        sku_value in discontinued_skus
-                        or product_name_value in discontinued_product_names
-                    ):
-                        removed_rows.append(item)
-                    else:
-                        kept_rows.append(item)
-
-                if total_row is not None and removed_rows:
-                    non_additive_tokens = (
-                        "percentage", "margin", "_per", "per_unit", "acos", "roas", "tacos", "rate", "asp"
-                    )
-                    for key, total_value in list(total_row.items()):
-                        normalized_key = str(key).lower()
-                        if not isinstance(total_value, (int, float, Decimal)):
-                            continue
-                        if any(token in normalized_key for token in non_additive_tokens):
-                            continue
-                        try:
-                            adjusted_total = safe_float(total_value) - sum(
-                                safe_float(removed.get(key)) for removed in removed_rows
-                            )
-                            total_row[key] = round(adjusted_total, 2)
-                        except Exception:
-                            continue
-
-                    net_sales_total = safe_float(total_row.get("net_sales"))
-                    total_units = safe_float(total_row.get("total_quantity"))
-                    total_row["profit_percentage"] = round(safe_divide(total_row.get("profit"), net_sales_total) * 100, 2)
-                    total_row["cm2_margins"] = round(safe_divide(total_row.get("cm2_profit_total"), net_sales_total) * 100, 2)
-                    total_row["cm2_profit_percentage"] = total_row["cm2_margins"]
-                    total_row["cm2_profit_per"] = total_row["cm2_margins"]
-                    total_row["cm2_profit_per_unit"] = round(safe_divide(total_row.get("cm2_profit"), total_units), 2)
-                    total_row["acos"] = round(safe_divide(total_row.get("ads_spend"), net_sales_total) * 100, 2)
-                    total_row["promotional_rebates_percentage"] = round(safe_divide(total_row.get("promotional_rebates"), net_sales_total) * 100, 2)
-
-                final_data = kept_rows
 
             return add_per_unit_fields(final_data)
 
