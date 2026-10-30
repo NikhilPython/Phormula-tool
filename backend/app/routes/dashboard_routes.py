@@ -117,6 +117,79 @@ INVENTORY_MARKETPLACE_BY_COUNTRY = {
 
 SessionLocal = scoped_session(sessionmaker(bind=engine))
 
+def exclude_discontinued_sku_rows(df, user_id, country="global",
+                                  sku_column="sku", product_name_column="Product Name"):
+    """Remove discontinued SKU rows from planning outputs, preserving total rows."""
+    if df is None or df.empty:
+        return df
+
+    table_name = f"sku_{user_id}_data_table"
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table(table_name):
+            return df
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+        if "product_status" not in columns:
+            return df
+
+        country_key = str(country or "global").strip().lower()
+        sku_columns = {
+            "uk": ["sku_uk"], "gb": ["sku_uk"],
+            "us": ["sku_us"], "usa": ["sku_us"], "amazon us": ["sku_us"],
+            "canada": ["sku_canada"], "ca": ["sku_canada"],
+            "global": ["sku_uk", "sku_us", "sku_canada"],
+        }.get(country_key, ["sku_uk", "sku_us", "sku_canada"])
+
+        selected = ["product_status"]
+        if "product_name" in columns:
+            selected.append("product_name")
+        selected.extend(col for col in sku_columns if col in columns)
+        if len(selected) == 1:
+            return df
+
+        quoted = ", ".join(f'"{col}"' for col in selected)
+        master = pd.read_sql_query(
+            text(f'SELECT {quoted} FROM "{table_name}"'),
+            engine
+        )
+        discontinued = master[
+            master["product_status"].fillna("Active").astype(str).str.strip().str.lower()
+            .isin({"discontinued", "discontinuous"})
+        ]
+
+        discontinued_skus = set()
+        for col in sku_columns:
+            if col in discontinued.columns:
+                discontinued_skus.update(
+                    str(value).strip().upper()
+                    for value in discontinued[col].dropna()
+                    if str(value).strip()
+                )
+        discontinued_names = (
+            {
+                str(value).strip().lower()
+                for value in discontinued["product_name"].dropna()
+                if str(value).strip()
+            }
+            if "product_name" in discontinued.columns else set()
+        )
+
+        sku_values = (
+            df[sku_column].fillna("").astype(str).str.strip().str.upper()
+            if sku_column in df.columns else pd.Series("", index=df.index)
+        )
+        name_values = (
+            df[product_name_column].fillna("").astype(str).str.strip().str.lower()
+            if product_name_column in df.columns else pd.Series("", index=df.index)
+        )
+        total_mask = sku_values.isin({"TOTAL", "TOTALS"}) | name_values.isin({"total", "totals"})
+        discontinued_mask = sku_values.isin(discontinued_skus) | name_values.isin(discontinued_names)
+        return df.loc[total_mask | ~discontinued_mask].copy()
+    except Exception as exc:
+        logging.exception("Unable to filter discontinued SKUs for %s: %s", country, exc)
+        return df
+
+
 def encode_file_to_base64(file_path):
     with open(file_path, "rb") as file:
         return base64.b64encode(file.read()).decode('utf-8')
@@ -2528,6 +2601,13 @@ def PO_generated():
         inventory_df['Product Name'] = ''
 
     inventory_df['Product Name'] = inventory_df['Product Name'].astype(str).str.strip()
+    inventory_df = exclude_discontinued_sku_rows(
+        inventory_df,
+        user_id=user_id,
+        country=country_db,
+        sku_column="sku",
+        product_name_column="Product Name",
+    )
 
     inventory_df = inventory_df[
         ~inventory_df['sku'].astype(str).str.lower().str.contains('total', na=False)
@@ -2867,6 +2947,13 @@ def global_PO_generated():
 
             country_po_df['sku'] = country_po_df['sku'].fillna('').astype(str).str.strip()
             country_po_df['Product Name'] = country_po_df['Product Name'].fillna('').astype(str).str.strip()
+            country_po_df = exclude_discontinued_sku_rows(
+                country_po_df,
+                user_id=user_id,
+                country=country,
+                sku_column="sku",
+                product_name_column="Product Name",
+            )
 
             country_po_df = country_po_df[
                 country_po_df['Product Name'].str.lower() != 'total'
