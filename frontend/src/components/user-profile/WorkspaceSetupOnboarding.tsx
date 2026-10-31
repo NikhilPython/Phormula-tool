@@ -130,13 +130,13 @@ function StatusPill({
   tone = "green",
 }: {
   children: React.ReactNode;
-  tone?: "green" | "blue" | "gray" | "red"; // ✅ Added red
+  tone?: "green" | "blue" | "gray" | "red";
 }) {
   const styles = {
     green: "bg-[#EAF7F1] text-[#0E8558]",
     blue: "bg-[#EEF5FA] text-[#41708F]",
     gray: "bg-[#F1F3F2] text-[#74807A]",
-    red: "bg-[#FCEBEC] text-[#B75A5A]", // ✅ Added red style
+    red: "bg-[#FCEBEC] text-[#B75A5A]",
   };
 
   return (
@@ -679,14 +679,15 @@ export default function WorkspaceSetupOnboarding({
     ) : null;
 
   const handleUpdateProductStatus = async (row: any, newStatus: 'Active' | 'Discontinued') => {
-    const recordId = row.id || row.s_no || row.product_barcode;
+    const recordId = row._originalId || row.id || row.s_no || row.product_barcode;
+    const country = row._country;
 
     if (!recordId) {
       window.alert("Cannot update status: A valid ID was not found for this row.");
       return;
     }
 
-    setSavingStatusId(String(recordId));
+    setSavingStatusId(`${String(recordId)}-${country}`);
 
     try {
       const res = await fetch(`${API_BASE}/sku-status`, {
@@ -697,7 +698,9 @@ export default function WorkspaceSetupOnboarding({
         },
         body: JSON.stringify({
           id: recordId,
-          product_status: newStatus, // 👈 Sends "Active" or "Discontinued"
+          product_status: newStatus,
+          country: country, // Pass country so backend knows which specific status to update
+          field: country ? `product_status_${country.toLowerCase()}` : "product_status",
         }),
       });
 
@@ -715,49 +718,65 @@ export default function WorkspaceSetupOnboarding({
     }
   };
 
+  // Transform flat backend data into long format based on countries
+  const flattenedSkuRows = useMemo(() => {
+    if (!currentSkuSheet?.rows) return [];
+    const result: any[] = [];
+    let sNoCounter = 1;
+
+    currentSkuSheet.rows.forEach((row: any) => {
+      // Find all countries based on sku_ keys (ignoring null/empty ones)
+      const countries = Object.keys(row)
+        .filter((k) => k.startsWith("sku_") && row[k] != null && String(row[k]).trim() !== "" && row[k] !== "nan")
+        .map((k) => k.replace("sku_", ""));
+
+      if (countries.length === 0) {
+        // Fallback: if no country-specific sku exists, just push the row as is
+        result.push({
+          ...row,
+          _originalId: row.id || row.s_no || row.product_barcode,
+          _country: null,
+          s_no: sNoCounter++,
+          country: "-",
+          sku: "-",
+        });
+      } else {
+        countries.forEach((country) => {
+          result.push({
+            ...row,
+            _originalId: row.id || row.s_no || row.product_barcode,
+            _country: country,
+            s_no: sNoCounter++,
+            country: country.toUpperCase(),
+            sku: row[`sku_${country}`],
+            asin: row[`asin_${country}`] || row.asin || "-",
+            product_barcode: row[`product_barcode_${country}`] || row.product_barcode || "-",
+            local_stock:
+              row[`local_stock_${country}`] !== undefined
+                ? row[`local_stock_${country}`]
+                : row.local_stock,
+            product_status:
+              row[`product_status_${country}`] || row.product_status || "Active",
+          });
+        });
+      }
+    });
+
+    return result;
+  }, [currentSkuSheet?.rows]);
+
+  // View Sheet columns with Product Status restored
   const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => {
-    // Helper to check if a column has valid data (ignores "nan", null, empty strings)
-    const hasData = (key: string) => {
-      if (!currentSkuSheet?.rows || currentSkuSheet.rows.length === 0) return true; // Show all while loading
-
-      return currentSkuSheet.rows.some((row: any) => {
-        const val = row[key];
-        if (val === null || val === undefined) return false;
-        const strVal = String(val).trim().toLowerCase();
-        return strVal !== "" && strVal !== "nan" && strVal !== "null" && strVal !== "undefined";
-      });
-    };
-
-    // Dynamically find all SKU columns from the data, ensuring the default ones are checked
-    const rowSkuKeys = new Set<string>();
-    if (currentSkuSheet?.rows && currentSkuSheet.rows.length > 0) {
-      Object.keys(currentSkuSheet.rows[0]).forEach(k => {
-        if (k.startsWith('sku_')) rowSkuKeys.add(k);
-      });
-    }
-    ['sku_uk', 'sku_us', 'sku_canada'].forEach(k => rowSkuKeys.add(k));
-
-    // Build the SKU columns, filtering out any that only have "nan" or empty values
-    const skuColumns: ColumnDef<TableRow>[] = Array.from(rowSkuKeys)
-      .filter(key => hasData(key))
-      .map(key => ({
-        key,
-        header: key.replace(/^sku_/i, 'SKU_').toUpperCase()
-      }));
-
-    const baseColumns: ColumnDef<TableRow>[] = [
+    return [
       { key: "s_no", header: "S. No." },
       { key: "product_name", header: "Product Name" },
       { key: "product_barcode", header: "Product Barcode" },
       { key: "asin", header: "ASIN" },
-    ];
-
-    const endColumns: ColumnDef<TableRow>[] = [
+      { key: "country", header: "Country" },
+      { key: "sku", header: "SKU" },
       { key: "landing_cost", header: "Landing Cost" },
       { key: "currency", header: "Currency" },
-      { key: "date", header: "Date" },
       { key: "local_stock", header: "Local Stock" },
-      { key: "in_transit_units", header: "In Transit Units" },
       {
         key: "product_status",
         header: "Product Status",
@@ -768,8 +787,8 @@ export default function WorkspaceSetupOnboarding({
               ? 'Discontinued'
               : 'Active';
 
-          const recordId = row.id || row.s_no || row.product_barcode;
-          const isSaving = savingStatusId === String(recordId);
+          const recordId = row._originalId;
+          const isSaving = savingStatusId === `${String(recordId)}-${row._country}`;
 
           const statusTintClass =
             currentStatus === 'Active'
@@ -820,9 +839,7 @@ export default function WorkspaceSetupOnboarding({
         },
       },
     ];
-
-    return [...baseColumns, ...skuColumns, ...endColumns];
-  }, [savingStatusId, token, getCurrentSkuSheet, currentSkuSheet]); // 👈 Added currentSkuSheet to dependencies
+  }, [savingStatusId, token, getCurrentSkuSheet]);
 
   return (
     <div className={cx("min-h-full", className)}>
@@ -1493,7 +1510,7 @@ export default function WorkspaceSetupOnboarding({
                 </button>
               </div>
             </div>
-          ) : !currentSkuSheet?.rows?.length ? (
+          ) : !flattenedSkuRows.length ? (
             <div className="grid min-h-[300px] place-items-center">
               <p className="text-sm text-[#78847E]">No SKU data found.</p>
             </div>
@@ -1501,7 +1518,7 @@ export default function WorkspaceSetupOnboarding({
             <div className="mt-5 min-w-0 w-full">
               <DataTable
                 columns={SKU_VIEW_COLUMNS}
-                data={currentSkuSheet.rows as unknown as TableRow[]}
+                data={flattenedSkuRows as TableRow[]}
                 pageSize={10}
                 maxHeight="60vh"
                 stickyHeader
@@ -1509,15 +1526,15 @@ export default function WorkspaceSetupOnboarding({
                 emptyMessage="No SKU data found."
                 className="my-4 w-full max-w-full min-w-0"
                 tableClassName="
-  [&_table]:w-full
-  [&_table]:table-fixed
-  [&_th]:whitespace-nowrap
-  [&_td]:whitespace-nowrap
-  [&_th]:overflow-hidden
-  [&_th]:text-ellipsis
-  [&_td]:overflow-hidden
-  [&_td]:text-ellipsis
-"
+                  [&_table]:w-full
+                  [&_table]:table-fixed
+                  [&_th]:whitespace-nowrap
+                  [&_td]:whitespace-nowrap
+                  [&_th]:overflow-hidden
+                  [&_th]:text-ellipsis
+                  [&_td]:overflow-hidden
+                  [&_td]:text-ellipsis
+                "
               />
             </div>
           )}

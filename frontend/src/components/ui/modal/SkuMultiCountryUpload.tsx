@@ -12,16 +12,17 @@ import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 type Row = Record<string, string | number | null | undefined>;
 type Props = { onClose: () => void; onComplete: () => void };
 
+// Updated to match your new Excel format
 const FIXED_COLUMNS = [
   "s_no",
   "product_name",
   "product_barcode",
   "asin",
+  "country",
+  "sku",
   "landing_cost",
   "currency",
-  "date",
   "local_stock",
-  "in_transit_units",
 ] as const;
 
 const HEADER_LABELS: Record<string, string> = {
@@ -29,12 +30,11 @@ const HEADER_LABELS: Record<string, string> = {
   product_name: "Product Name",
   product_barcode: "Product Barcode",
   asin: "ASIN",
+  country: "Country",
+  sku: "SKU",
   landing_cost: "Landing Cost",
   currency: "Currency",
-  date: "Date",
   local_stock: "Local Stock",
-  in_transit_units: "In Transit Units",
-  product_status: "Product Status",
 };
 
 function toTitleCase(value: string) {
@@ -63,93 +63,20 @@ function normalizeHeader(key: string): string {
 
     asin: "asin",
 
+    country: "country",
+
+    sku: "sku",
+
     landing_cost: "landing_cost",
     cost: "landing_cost",
 
     currency: "currency",
 
-    date: "date",
-    month_year: "date",
-    "mm/yyyy": "date",
-    mm_yyyy: "date",
-    "month/year": "date",
-
     local_stock: "local_stock",
     stock: "local_stock",
-
-    in_transit_units: "in_transit_units",
-    in_transit: "in_transit_units",
-    transit_units: "in_transit_units",
-    product_status: "product_status",
-    productstatus: "product_status",
-    sku_status: "product_status",
-    status: "product_status",
   };
 
-  const mapped = aliases[raw] || raw;
-
-  // normalize variants like sku uk / SKU-US / sku canada => sku_uk / sku_us / sku_canada
-  if (/^sku[_\-\s]?[a-z0-9]+$/i.test(mapped)) {
-    return mapped.replace(/^sku[_\-\s]?/i, "sku_").replace(/[\-\s]+/g, "_");
-  }
-
-  return mapped;
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function formatToMMYYYY(value: unknown): string | number | null | undefined {
-  if (value == null || value === "") return value as any;
-
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    return `${pad2(value.getMonth() + 1)}/${value.getFullYear()}`;
-  }
-
-  if (typeof value === "number" && isFinite(value)) {
-    const dt = XLSX.SSF.parse_date_code(value);
-    if (dt && dt.y && dt.m) {
-      return `${pad2(dt.m)}/${dt.y}`;
-    }
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const s = value.trim();
-    if (!s) return "";
-
-    let m = s.match(/^(\d{1,2})[\/\-](\d{4})$/);
-    if (m) {
-      const mm = Math.max(1, Math.min(12, parseInt(m[1], 10)));
-      const yyyy = parseInt(m[2], 10);
-      return `${pad2(mm)}/${yyyy}`;
-    }
-
-    m = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
-    if (m) {
-      const yyyy = parseInt(m[1], 10);
-      const mm = Math.max(1, Math.min(12, parseInt(m[2], 10)));
-      return `${pad2(mm)}/${yyyy}`;
-    }
-
-    m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-    if (m) {
-      const yyyy = parseInt(m[1], 10);
-      const mm = Math.max(1, Math.min(12, parseInt(m[2], 10)));
-      return `${pad2(mm)}/${yyyy}`;
-    }
-
-    return s;
-  }
-
-  return value as any;
-}
-
-function getDynamicSkuColumnsFromRow(row: Row): string[] {
-  return Object.keys(row)
-    .map((key) => normalizeHeader(key))
-    .filter((key) => /^sku_[a-z0-9_]+$/i.test(key));
+  return aliases[raw] || raw;
 }
 
 export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
@@ -160,7 +87,6 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
   const [showConfirm, setShowConfirm] = React.useState<boolean>(false);
   const [columns, setColumns] = React.useState<ColumnDef<TableRow>[]>([]);
   const [rows, setRows] = React.useState<TableRow[]>([]);
-  const [dynamicSkuColumns, setDynamicSkuColumns] = React.useState<string[]>([]);
 
   const [uploadSku, { isLoading: isUploading }] =
     useUploadSkuMultiCountryMutation();
@@ -169,65 +95,14 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     setShowConfirm(false);
     setRows([]);
     setColumns([]);
-    setDynamicSkuColumns([]);
   }, []);
 
-  const buildColumns = React.useCallback(
-    (skuColumns: string[]): ColumnDef<TableRow>[] => {
-      const finalColumns = [
-        "s_no",
-        "product_name",
-        "product_barcode",
-        "asin",
-        ...skuColumns,
-        "landing_cost",
-        "currency",
-        "date",
-        "local_stock",
-        "in_transit_units",
-        "product_status",
-      ];
-
-      return finalColumns.map((key) => {
-        const header =
-          HEADER_LABELS[key] ||
-          (key.startsWith("sku_") ? `SKU_${key.replace(/^sku_/, "").toUpperCase()}` : toTitleCase(key));
-
-        // Add custom rendering for the product_status column
-        if (key === "product_status") {
-          return {
-            key,
-            header,
-            render: (row: any) => {
-              // Normalize the status exactly like in your view sheet
-              const currentStatus =
-                row.product_status === 'Discontinued' || row.product_status === 'Discontinuous'
-                  ? 'Discontinued'
-                  : 'Active';
-
-              // Use the same styling as your StatusPill component
-              const statusTintClass =
-                currentStatus === 'Active'
-                  ? 'bg-[#EAF7F1] text-[#0E8558]' // Green badge
-                  : 'bg-[#FCEBEC] text-[#B75A5A]'; // Red badge
-
-              return (
-                <div className="flex items-center justify-center">
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusTintClass}`}>
-                    {currentStatus}
-                  </span>
-                </div>
-              );
-            },
-          };
-        }
-
-        // Return default for other columns
-        return { key, header };
-      });
-    },
-    []
-  );
+  const buildColumns = React.useCallback((): ColumnDef<TableRow>[] => {
+    return FIXED_COLUMNS.map((key) => {
+      const header = HEADER_LABELS[key] || toTitleCase(key);
+      return { key, header };
+    });
+  }, []);
 
   const validateHeadersFromRawRow = React.useCallback((row: Row) => {
     const normalizedHeaders = Object.keys(row).map((key) => normalizeHeader(key));
@@ -242,18 +117,10 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
         .join(", ")}`;
     }
 
-    const skuColumns = normalizedHeaders.filter((col) =>
-      /^sku_[a-z0-9_]+$/i.test(col)
-    );
-
-    if (!skuColumns.length) {
-      return `At least one SKU column is required. Example: sku_uk, sku_us, sku_canada, sku_germany`;
-    }
-
     return "";
   }, []);
 
-  const cleanParsedData = React.useCallback((data: unknown[], skuColumns: string[]): Row[] => {
+  const cleanParsedData = React.useCallback((data: unknown[]): Row[] => {
     if (!Array.isArray(data) || data.length === 0) return [];
 
     return (data as Row[])
@@ -263,19 +130,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
       .map((row, index) => {
         const out: Row = {};
 
-        const allColumns = [
-          "s_no",
-          "product_name",
-          "product_barcode",
-          "asin",
-          ...skuColumns,
-          "landing_cost",
-          "currency",
-          "date",
-          "local_stock",
-          "in_transit_units",
-          "product_status",
-        ];
+        const allColumns = [...FIXED_COLUMNS];
 
         allColumns.forEach((col) => {
           out[col] = "";
@@ -288,11 +143,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
           if (typeof value === "string") value = value.trim();
           if (value === "undefined" || value === "NaN") value = "";
 
-          if (normalizedKey === "date") {
-            value = formatToMMYYYY(value) as any;
-          }
-
-          if (allColumns.includes(normalizedKey)) {
+          if ((allColumns as string[]).includes(normalizedKey)) {
             out[normalizedKey] = value;
           }
         });
@@ -325,14 +176,14 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
 
       const headerError = validateHeadersFromRawRow(firstNonEmptyRow);
       if (headerError) {
-        setError("Invalid file format. Please upload a file using the provided template.");
+        setError(
+          `Invalid file format. Please upload a file using the provided template. (${headerError})`
+        );
         resetPreview();
         return;
       }
 
-      const skuColumns = getDynamicSkuColumnsFromRow(firstNonEmptyRow);
-
-      const cleaned = cleanParsedData(rawRows, skuColumns);
+      const cleaned = cleanParsedData(rawRows);
 
       if (!cleaned.length) {
         setError("No valid rows found in the uploaded file.");
@@ -340,9 +191,8 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
         return;
       }
 
-      setDynamicSkuColumns(skuColumns);
       setRows(cleaned as TableRow[]);
-      setColumns(buildColumns(skuColumns));
+      setColumns(buildColumns());
       setShowConfirm(true);
     },
     [buildColumns, cleanParsedData, resetPreview, validateHeadersFromRawRow]
@@ -392,7 +242,6 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
           const json = XLSX.utils.sheet_to_json(sheet, {
             defval: "",
             raw: false,
-            dateNF: "mm/yyyy",
           }) as Row[];
 
           processParsedRows(json);
@@ -428,7 +277,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     const isValidType =
       selected.type === "application/vnd.ms-excel" ||
       selected.type ===
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       lowerName.endsWith(".csv") ||
       lowerName.endsWith(".xls") ||
       lowerName.endsWith(".xlsx");
@@ -468,7 +317,46 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     setError("");
 
     try {
-      const res = await uploadSku({ file }).unwrap();
+      // 👇 Transform long format into wide format for the backend
+      const grouped = new Map();
+
+      rows.forEach((row: any) => {
+        const key = row.product_barcode || row.product_name;
+        
+        if (!grouped.has(key)) {
+          grouped.set(key, {
+            "S. No.": row.s_no,
+            "Product Name": row.product_name,
+            "Product Barcode": row.product_barcode,
+            "ASIN": row.asin,
+            "Landing Cost": row.landing_cost,
+            "Currency": row.currency,
+          });
+        }
+        
+        const item = grouped.get(key);
+        const country = String(row.country || "").toLowerCase();
+        
+        if (country) {
+          item[`sku_${country}`] = row.sku;
+          item[`asin_${country}`] = row.asin;
+          item[`product_barcode_${country}`] = row.product_barcode;
+          item[`local_stock_${country}`] = row.local_stock;
+        }
+      });
+
+      const wideData = Array.from(grouped.values());
+      const ws = XLSX.utils.json_to_sheet(wideData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      
+      // Create the file object to upload
+      const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const newFile = new File([wbout], file.name, {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      await uploadSku({ file: newFile }).unwrap();
 
       setError("");
       resetPreview();
@@ -478,10 +366,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
       onComplete();
     } catch (e: any) {
       const msg =
-        e?.data?.error ||
-        e?.data?.message ||
-        e?.error ||
-        "Upload failed.";
+        e?.data?.error || e?.data?.message || e?.error || "Upload failed.";
       setError(msg);
     }
   };
