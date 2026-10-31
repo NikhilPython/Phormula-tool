@@ -2882,6 +2882,27 @@ def update_prices():
                     failed_products.append(product_name)
                     continue
 
+            # Marketplace-specific product master fields (optional).
+            for field in ('asin_uk','asin_us','product_barcode_uk','product_barcode_us'):
+                if field in updates:
+                    if field not in sku_data_table.c:
+                        failed_products.append(product_name)
+                        update_data = {}
+                        break
+                    update_data[field] = (str(updates[field]).strip() if updates[field] is not None else None)
+            for field in ('local_stock_uk','local_stock_us'):
+                if field in updates:
+                    if field not in sku_data_table.c:
+                        failed_products.append(product_name)
+                        update_data = {}
+                        break
+                    try:
+                        update_data[field] = int(updates[field]) if updates[field] is not None else 0
+                    except (ValueError, TypeError):
+                        failed_products.append(product_name)
+                        update_data = {}
+                        break
+
             # If nothing valid to update
             if not update_data:
                 failed_products.append(product_name)
@@ -2940,30 +2961,41 @@ def update_sku_product_status():
         return jsonify({'error': 'A valid SKU record id is required'}), 400
 
     requested_status = str(data.get('product_status') or '').strip().lower()
-    status = {
-        'active': 'Active',
-        'discontinued': 'Discontinued',
-    }.get(requested_status)
+    status = {'active': 'Active', 'discontinued': 'Discontinued', 'discontinuous': 'Discontinued'}.get(requested_status)
     if not status:
         return jsonify({'error': 'Product status must be Active or Discontinued'}), 400
 
+    # A status update MUST identify its marketplace; never modify both countries.
+    country = str(data.get('country') or request.args.get('country') or '').strip().lower()
+    country = {'gb': 'uk', 'usa': 'us', 'amazon us': 'us', 'ca': 'canada'}.get(country, country)
+    status_columns = {'us': 'product_status_us', 'uk': 'product_status_uk', 'canada': 'product_status_canada'}
+    sku_columns = {'us': 'sku_us', 'uk': 'sku_uk', 'canada': 'sku_canada'}
+    if country not in status_columns:
+        return jsonify({'error': 'country is required (us, uk, canada)'}), 400
+
     table_name = f"sku_{user_id}_data_table"
+    status_column, sku_column = status_columns[country], sku_columns[country]
     try:
         if not inspect(user_engine).has_table(table_name):
             return jsonify({'error': 'SKU table was not found'}), 404
 
         with user_engine.begin() as conn:
+            columns = {column['name'] for column in inspect(conn).get_columns(table_name)}
+            if sku_column not in columns:
+                return jsonify({'error': f'{country.upper()} SKU column not found'}), 400
             conn.execute(text(
-                f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS product_status VARCHAR(32) DEFAULT \'Active\''
+                f"ALTER TABLE \"{table_name}\" ADD COLUMN IF NOT EXISTS \"{status_column}\" VARCHAR(32) DEFAULT 'Active'"
             ))
-            result = conn.execute(
-                text(f'UPDATE "{table_name}" SET product_status = :status WHERE id = :id AND user_id = :user_id'),
-                {'status': status, 'id': record_id, 'user_id': user_id},
-            )
+            result = conn.execute(text(
+                f"""UPDATE "{table_name}" SET "{status_column}" = :status
+                    WHERE id = :id AND user_id = :user_id
+                      AND NULLIF(TRIM(CAST("{sku_column}" AS TEXT)), '') IS NOT NULL"""
+            ), {'status': status, 'id': record_id, 'user_id': user_id})
             if result.rowcount == 0:
-                return jsonify({'error': 'SKU record was not found'}), 404
+                return jsonify({'error': f'SKU record not found or no {country.upper()} SKU assigned'}), 404
 
-        return jsonify({'success': True, 'id': record_id, 'product_status': status}), 200
+        return jsonify({'success': True, 'id': record_id, 'country': country,
+                        'product_status': status, status_column: status}), 200
     except SQLAlchemyError as e:
         return jsonify({'error': 'Database error', 'message': str(e)}), 500
     except Exception as e:
