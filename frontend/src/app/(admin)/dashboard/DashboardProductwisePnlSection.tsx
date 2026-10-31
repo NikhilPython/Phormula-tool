@@ -262,7 +262,15 @@ export default function DashboardProductwisePnlSection({
         }
 
         const normalizedName = normalizeKeyForStatus(row?.product_name);
-        const status = String(row?.product_status || skuStatusMap[normalizedName] || "").trim().toLowerCase();
+        const rowCountry = String(row?.country || countryName || "").trim().toLowerCase();
+        const normalizedSku = String(row?.sku || "").trim().toLowerCase();
+        const status = String(
+            skuStatusMap[`${rowCountry}|${normalizedName}`] ||
+            skuStatusMap[`${rowCountry}|sku:${normalizedSku}`] ||
+            row?.product_status ||
+            skuStatusMap[normalizedName] ||
+            ""
+        ).trim().toLowerCase();
 
         return status === "discontinued" || status === "discontinuous";
     };

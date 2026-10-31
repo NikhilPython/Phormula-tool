@@ -240,6 +240,7 @@ export default function WorkspaceSetupOnboarding({
 
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
+  const [skuStatusOverrides, setSkuStatusOverrides] = useState<Record<string, 'Active' | 'Discontinued'>>({});
 
   const companySectionRef = useRef<HTMLDivElement | null>(null);
   const productSectionRef = useRef<HTMLDivElement | null>(null);
@@ -681,6 +682,7 @@ export default function WorkspaceSetupOnboarding({
   const handleUpdateProductStatus = async (row: any, newStatus: 'Active' | 'Discontinued') => {
     const recordId = row._originalId || row.id || row.s_no || row.product_barcode;
     const country = row._country;
+    const overrideKey = `${String(recordId)}-${String(country || '').toLowerCase()}`;
 
     if (!recordId) {
       window.alert("Cannot update status: A valid ID was not found for this row.");
@@ -709,10 +711,11 @@ export default function WorkspaceSetupOnboarding({
         throw new Error(err.error || "Failed to update status");
       }
 
-      await getCurrentSkuSheet().unwrap();
+      // Update this row locally instead of refetching the whole sheet. The refetch
+      // toggles the table into its loading state, unmounting it and resetting pagination.
+      setSkuStatusOverrides((previous) => ({ ...previous, [overrideKey]: newStatus }));
     } catch (error: any) {
       window.alert(error.message || "Failed to update product status");
-      void getCurrentSkuSheet();
     } finally {
       setSavingStatusId(null);
     }
@@ -756,6 +759,7 @@ export default function WorkspaceSetupOnboarding({
                 ? row[`local_stock_${country}`]
                 : row.local_stock,
             product_status:
+              skuStatusOverrides[`${String(row.id || row.s_no || row.product_barcode)}-${String(country).toLowerCase()}`] ||
               row[`product_status_${country}`] || row.product_status || "Active",
           });
         });
@@ -763,7 +767,7 @@ export default function WorkspaceSetupOnboarding({
     });
 
     return result;
-  }, [currentSkuSheet?.rows]);
+  }, [currentSkuSheet?.rows, skuStatusOverrides]);
 
   // View Sheet columns with Product Status restored
   const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => {

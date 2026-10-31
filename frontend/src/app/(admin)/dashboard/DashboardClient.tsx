@@ -2259,14 +2259,19 @@ export default function DashboardPage() {
             .replace(/\s+/g, " ")
             .replace(/[^\w\s-]/g, "");
 
+        const rowCountry = String(row?.country || countryName || "").trim().toLowerCase();
+        const normalizedSku = String(row?.sku || "").trim().toLowerCase();
         const status = String(
-            row?.product_status || skuStatusMap[normalizedName] || ""
+            skuStatusMap[`${rowCountry}|${normalizedName}`] ||
+            skuStatusMap[`${rowCountry}|sku:${normalizedSku}`] ||
+            row?.product_status ||
+            skuStatusMap[normalizedName] || ""
         )
             .trim()
             .toLowerCase();
 
         return status === "discontinued" || status === "discontinuous";
-    }, [skuStatusMap]);
+    }, [skuStatusMap, countryName]);
 
     const forcedRegion: RegionKey = useMemo(() => {
         switch (platform) {
@@ -2789,12 +2794,29 @@ export default function DashboardPage() {
                         .replace(/\s+/g, " ")
                         .replace(/[^\w\s-]/g, "");
 
-                    if (!name) return;
-
-                    const raw = String(row.product_status || "").trim().toLowerCase();
-                    map[name] = (raw === "discontinued" || raw === "discontinuous")
-                        ? "Discontinued"
-                        : "Active";
+                    const getStatus = (value: unknown) => {
+                        const raw = String(value || "").trim().toLowerCase();
+                        return (raw === "discontinued" || raw === "discontinuous")
+                            ? "Discontinued" as const
+                            : "Active" as const;
+                    };
+                    const country = String(row.country || "").trim().toLowerCase();
+                    const sku = String(row.sku || "").trim().toLowerCase();
+                    const statuses = [
+                        [country, row.product_status],
+                        ["uk", row.product_status_uk],
+                        ["us", row.product_status_us],
+                        ["canada", row.product_status_canada],
+                    ] as const;
+                    statuses.forEach(([statusCountry, value]) => {
+                        if (!statusCountry || value == null || value === "") return;
+                        const status = getStatus(value);
+                        if (name) map[`${statusCountry}|${name}`] = status;
+                        if (sku) map[`${statusCountry}|sku:${sku}`] = status;
+                    });
+                    // Use the general field only as a fallback; country-specific fields take precedence.
+                    const fallbackStatus = getStatus(row.product_status);
+                    if (name && !map[name]) map[name] = fallbackStatus;
                 });
                 setSkuStatusMap(map);
             } catch (e) {
@@ -12481,9 +12503,7 @@ export default function DashboardPage() {
         const isPositive = rawPct >= 0;
 
         // Check if the row was flagged as discontinued via props or map
-        const isDiscontinued =
-            String((row as any)?.product_status || "").trim().toLowerCase() === "discontinued" ||
-            String((row as any)?.product_status || "").trim().toLowerCase() === "discontinuous";
+        const isDiscontinued = isDiscontinuedSkuRow(row);
 
         const colorClass = isDiscontinued
             ? "text-[#FF5C5C]"

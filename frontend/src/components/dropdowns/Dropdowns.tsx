@@ -6904,12 +6904,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const skuRowsWithStatus = useMemo(() => {
     return (displaySkuRows || []).map((row) => {
-      // Backend already included the field → respect it
-      if ((row as any).product_status) return row;
-
       const name = normalizeKey(String((row as any).product_name || ""));
-      const status = skuStatusMap[name];
-      if (!status) return row;
+      const country = String((row as any).country || countryName || "").trim().toLowerCase();
+      const sku = String((row as any).sku || "").trim().toLowerCase();
+      const status = skuStatusMap[`${country}|${name}`] ||
+        skuStatusMap[`${country}|sku:${sku}`] || skuStatusMap[name];
+      if (!status || (row as any).product_status === status) return row;
 
       return { ...(row as any), product_status: status };
     });
@@ -9530,19 +9530,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const data: Array<{
           product_name?: string;
           product_status?: string;
+          product_status_uk?: string;
+          product_status_us?: string;
+          product_status_canada?: string;
+          country?: string;
+          sku?: string;
         }> = await res.json();
 
         const map: Record<string, "Active" | "Discontinued"> = {};
 
         data.forEach((row) => {
           const name = normalizeKey(String(row.product_name || ""));
-          if (!name) return;
-
-          const raw = String(row.product_status || "").trim().toLowerCase();
-          map[name] =
-            raw === "discontinued" || raw === "discontinuous"
+          const country = String(row.country || "").trim().toLowerCase();
+          const sku = String(row.sku || "").trim().toLowerCase();
+          const statusEntries: Array<[string, string | undefined]> = [
+            [country, row.product_status],
+            ["uk", row.product_status_uk],
+            ["us", row.product_status_us],
+            ["canada", row.product_status_canada],
+          ];
+          statusEntries.forEach(([statusCountry, value]) => {
+            if (!statusCountry || value == null || value === "") return;
+            const raw = String(value).trim().toLowerCase();
+            const status = raw === "discontinued" || raw === "discontinuous"
               ? "Discontinued"
               : "Active";
+            if (name) map[`${statusCountry}|${name}`] = status;
+            if (sku) map[`${statusCountry}|sku:${sku}`] = status;
+          });
+          if (name && !map[name]) {
+            const raw = String(row.product_status || "").trim().toLowerCase();
+            map[name] = raw === "discontinued" || raw === "discontinuous"
+              ? "Discontinued"
+              : "Active";
+          }
         });
 
         if (!ignore) setSkuStatusMap(map);
@@ -9556,7 +9577,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return () => {
       ignore = true;
     };
-  }, [isDemoMode]);
+  }, [isDemoMode, countryName]);
 
   useEffect(() => {
     if (isDemoMode) return;
