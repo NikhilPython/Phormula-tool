@@ -2703,6 +2703,50 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     return payload_out
 
+def _load_previous_skuwise_months(user_id, country, now_utc, count=1):
+    """Read full historical monthly SKU tables, without mutating them."""
+    from sqlalchemy import text as sql_text
+    from datetime import date
+    from decimal import Decimal
+
+    out = []
+    for offset in range(1, count + 1):
+        year = now_utc.year
+        month = now_utc.month - offset
+        while month <= 0:
+            month += 12
+            year -= 1
+
+        table_name = _build_skuwise_table_name(user_id, country, month, year)
+        entry = {"year": year, "month": month, "table": table_name,
+                 "found": False, "count": 0, "items": []}
+        try:
+            with PHORMULA_ENGINE.connect() as conn:
+                exists = conn.execute(
+                    sql_text("SELECT to_regclass(:table_name)"),
+                    {"table_name": f"public.{table_name}"},
+                ).scalar()
+                if exists is not None:
+                    # Identifier originates solely from validated internal components.
+                    rows = conn.execute(
+                        sql_text(f'SELECT * FROM public."{table_name}" ORDER BY id ASC')
+                    ).mappings().all()
+                    entry["found"] = True
+                    entry["items"] = [
+                        {key: (value.isoformat() if isinstance(value, (datetime, date))
+                               else float(value) if isinstance(value, Decimal)
+                               else value)
+                         for key, value in row.items()}
+                        for row in rows
+                    ]
+                    entry["count"] = len(entry["items"])
+        except Exception as exc:
+            logging.exception("Failed reading SKU history table %s", table_name)
+            entry["error"] = str(exc)
+        out.append(entry)
+    return out
+
+
 @amazon_api_bp.route("/amazon_api/finances/mtd_transactions", methods=["GET"])
 def finances_mtd_transactions():
     
@@ -3595,6 +3639,15 @@ def finances_mtd_transactions():
     }
 
     previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
+    try:
+        previous_months_count = int(request.args.get("previous_months", "1"))
+        if not 1 <= previous_months_count <= 24:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "previous_months must be 1 to 24"}), 400
+    previous_months_skuwise = _load_previous_skuwise_months(
+        user_id, ui_country, now_utc, previous_months_count
+    )
 
     # ============================================================
     # SKU-WISE TABLE
@@ -4780,6 +4833,7 @@ def finances_mtd_transactions():
         "totals": totals,
         "derived_totals": derived_totals,
         "previous_period": previous_period,
+        "previous_months_skuwise": previous_months_skuwise,
         "dashboard_card_metrics": _build_dashboard_card_metrics(
             {
                 **totals,
