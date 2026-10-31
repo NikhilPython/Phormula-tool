@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
 import PageBreadcrumb from "../common/PageBreadCrumb";
+import { createPortal } from "react-dom";
 
 const ACCENT_CLASS = {
     units: "border-[#FDD36F]", // Gold/Yellow
@@ -56,8 +57,8 @@ type Props = {
     data: MonthlyRecapData | null;
     onClose: () => void;
     onViewBreakdown?: () => void;
-    /** Opens the "Set a target" modal. The link only shows when this is provided. */
     onSetTarget?: () => void;
+    country: string;
 };
 
 /* ----------------------------- Helpers ----------------------------- */
@@ -94,6 +95,7 @@ export default function MonthlyRecapModal({
     onClose,
     onViewBreakdown,
     onSetTarget,
+    country,
 }: Props) {
     const primaryBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -126,9 +128,52 @@ export default function MonthlyRecapModal({
         return label;
     };
 
-    return (
+    const getPnlDateParams = () => {
+        const monthMap: Record<string, string> = {
+            jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June",
+            jul: "July", aug: "August", sep: "September", oct: "October", nov: "November", dec: "December"
+        };
+
+        let month = new Date().toLocaleString('default', { month: 'long' });
+        let year = new Date().getFullYear();
+
+        if (monthLabel) {
+            const parts = monthLabel.trim().split(" ");
+            if (parts.length >= 2) {
+                const shortMonth = parts[0].substring(0, 3).toLowerCase();
+                month = monthMap[shortMonth] || month;
+
+                const parsedYear = parseInt(parts[parts.length - 1], 10);
+                if (!isNaN(parsedYear)) {
+                    year = parsedYear;
+                }
+            }
+        }
+        return { month, year };
+    };
+
+    const handleOpenPnl = () => {
+        // If the parent passed a custom onViewBreakdown function, use that instead
+        if (onViewBreakdown) {
+            onViewBreakdown();
+            return;
+        }
+
+        // Get the actual current month and year
+        const now = new Date();
+        // Force English locale so the month name matches your URL structure (e.g., "October")
+        const month = now.toLocaleString('en-US', { month: 'long' });
+        const year = now.getFullYear();
+
+        const url = `/pnl-dashboard/YTD/${country.toLowerCase()}/${month}/${year}`;
+
+        // Open in a new tab
+        window.open(url, "_blank", "noopener,noreferrer");
+    };
+
+    return createPortal(
         <div
-            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 py-6" // Increased z-index to be safe
             onClick={onClose}
         >
             <div
@@ -152,7 +197,7 @@ export default function MonthlyRecapModal({
                     <PageBreadcrumb
                         pageTitle={
                             <>
-                                Here&rsquo;s how your{" "} 
+                                Here&rsquo;s how your{" "}
                                 <span className="text-[#5EA68E]">{formatRecapMonth(monthLabel)}</span>{" "}
                                 went
                             </>
@@ -288,46 +333,47 @@ export default function MonthlyRecapModal({
                 </section>
 
                 {/* Top-selling SKU */}
-                <section className="mt-4 rounded-xl border border-[#E6ECEF] p-5">
-                    <p className="mb-3 text-xs text-[#50627A]">Top-selling SKU</p>
+                <section className="mt-4 rounded-xl border border-t-4 border-[#7B9A6D] p-5">
+                    <p className="mb-3 text-xs text-charcoal-500">Top-selling SKU</p>
                     {topSku ? (
                         <div className="grid grid-cols-3 items-start gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)]">
                             <div className="col-span-3 min-w-0 sm:col-span-1">
-                                <p className="truncate text-lg font-bold text-[#37455F]" title={topSku.name}>
+                                <p className="truncate text-lg font-bold text-charcoal-500" title={topSku.name}>
                                     {topSku.name}
                                 </p>
-                                {topSku.sku && <p className="mt-0.5 truncate text-xs text-[#50627A]">{topSku.sku}</p>}
+                                {topSku.sku && <p className="mt-0.5 truncate text-xs text-charcoal-500">{topSku.sku}</p>}
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs text-[#50627A]">Net sales</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-[#37455F]">
+                                <p className="text-xs text-charcoal-500">Net sales</p>
+                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
                                     {formatMoney(topSku.netSales)}
                                 </p>
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs text-[#50627A]">Units</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-[#37455F]">
+                                <p className="text-xs text-charcoal-500">Units</p>
+                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
                                     {Math.round(topSku.units).toLocaleString()}
                                 </p>
                             </div>
                             <div className="min-w-0">
-                                <p className="text-xs text-[#50627A]">CM2 Profit</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-[#37455F]">
+                                <p className="text-xs text-charcoal-500">CM2 Profit</p>
+                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
                                     {topSku.cm2Profit != null ? formatMoney(topSku.cm2Profit) : "\u2014"}
                                 </p>
                             </div>
                         </div>
                     ) : (
-                        <p className="text-sm text-[#50627A]">No SKU sales recorded for this month.</p>
+                        <p className="text-sm text-charcoal-500">No SKU sales recorded for this month.</p>
                     )}
                 </section>
 
                 {/* Footer */}
+                {/* Footer */}
                 <div className="mt-6 flex items-center justify-between gap-3">
-                    {onViewBreakdown ? (
+                    {onViewBreakdown || country ? ( // Ensure it shows if either is provided
                         <button
                             type="button"
-                            onClick={onViewBreakdown}
+                            onClick={handleOpenPnl} // <--- Changed to new handler
                             className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#5EA68E] hover:underline"
                         >
                             Open P&amp;L Breakdown
@@ -346,6 +392,7 @@ export default function MonthlyRecapModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

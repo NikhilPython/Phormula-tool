@@ -6671,6 +6671,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const getInitialSelectedYear = () => {
     if (isDemoMode) return String(new Date().getFullYear());
 
+    // Check if we have a shifted route period first
+    const shifted = getShiftedRoutePeriod();
+    if (shifted) return shifted.year;
+
     const routeYear = String(initialYear || "").trim();
 
     if (routeYear && routeYear.toUpperCase() !== "NA") {
@@ -6690,8 +6694,33 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return computeDefaultYearlyYear();
   };
 
+  const getShiftedRoutePeriod = () => {
+    const m = String(initialMonth || "").toLowerCase();
+    const y = Number(initialYear || new Date().getFullYear());
+
+    const monthIdx = monthIndexMap[m];
+    if (monthIdx !== undefined && !isNaN(y)) {
+      const prevDate = new Date(y, monthIdx - 1, 1);
+      return {
+        month: monthNames[prevDate.getMonth()].toLowerCase(),
+        year: String(prevDate.getFullYear()),
+      };
+    }
+    return null;
+  };
+
   const getInitialRange = (): RangeType => {
     const routeRange = String(initialRanged || "").toLowerCase();
+
+    const hasSpecificMonth =
+      initialMonth &&
+      String(initialMonth).toUpperCase() !== "NA" &&
+      String(initialMonth).toUpperCase() !== "ALL" &&
+      String(initialMonth).trim() !== "";
+
+    if (hasSpecificMonth) {
+      return "monthly";
+    }
 
     if (routeRange === "monthly") return "monthly";
     if (routeRange === "quarterly") return "quarterly";
@@ -6815,13 +6844,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const initialRange = getInitialRange();
     const initialSelectedYear = getInitialSelectedYear();
+    const shifted = getShiftedRoutePeriod();
 
     if (initialRange === "yearly") return !!initialSelectedYear;
-    if (initialRange === "monthly") return !!initialSelectedYear && !!initialMonth;
+    if (initialRange === "monthly") {
+      return !!initialSelectedYear && !!(shifted ? shifted.month : initialMonth);
+    }
     if (initialRange === "quarterly") return !!initialSelectedYear && isQuarter(initialMonth);
 
     return false;
   });
+
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showNoDataOverlay, setShowNoDataOverlay] = useState(false);
@@ -9360,13 +9393,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     didApplyLandingDefault.current = true;
 
     const routeRange = getInitialRange();
+    const shifted = getShiftedRoutePeriod();
 
     setRange(routeRange);
-    setSelectedYear(getInitialSelectedYear());
+
+    // Use the shifted year if available
+    setSelectedYear(shifted ? shifted.year : getInitialSelectedYear());
 
     if (routeRange === "monthly") {
       setSelectedMonth(
-        (initialMonth || computeDefaultMonthlyPeriod().month).toLowerCase()
+        // Use shifted month if available, otherwise fallback to URL month or default
+        shifted ? shifted.month : (initialMonth || computeDefaultMonthlyPeriod().month).toLowerCase()
       );
       setSelectedQuarter("");
       return;
@@ -9384,7 +9421,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setSelectedQuarter("");
   }, [isDemoMode, initialRanged, initialMonth, initialYear]);
 
-
+  
   const fetchCurrencyKey = isGlobalPage ? homeCurrency : "country";
 
   useEffect(() => {
@@ -12315,7 +12352,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     </>
                   )}
                 </div>
-
               )}
 
               {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
@@ -12342,10 +12378,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         ? toNum(uploadsData.card_metrics.current.tacos_pct)
                         : (toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales) > 0
                           ? (Math.abs(toNum(
-                              range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
-                                ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
-                                : displayData?.advertising_total ?? displayData?.advertising_total_final
-                            )) / toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales)) * 100
+                            range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
+                              ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
+                              : displayData?.advertising_total ?? displayData?.advertising_total_final
+                          )) / toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales)) * 100
                           : 0),
                       cm2Profit: toNum(uploadsData?.card_metrics?.current?.cm2_profit ?? displayData?.cm2_profit),
                     }}

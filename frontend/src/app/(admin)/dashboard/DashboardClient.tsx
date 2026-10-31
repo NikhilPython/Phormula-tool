@@ -13961,10 +13961,11 @@ export default function DashboardPage() {
                 open={recapOpen}
                 data={monthlyRecapData}
                 onClose={() => setRecapOpen(false)}
-                onViewBreakdown={() => {
-                    setRecapOpen(false);
-                    navigateFromOverview("skuBreakdown");
-                }}
+                // onViewBreakdown={() => {
+                //     setRecapOpen(false);
+                //     navigateFromOverview("skuBreakdown");
+                // }}
+                country={countryName}
             />
 
             {/* TEMP: recap modal test controls, remove after testing */}
