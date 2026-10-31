@@ -119,75 +119,33 @@ SessionLocal = scoped_session(sessionmaker(bind=engine))
 
 def exclude_discontinued_sku_rows(df, user_id, country="global",
                                   sku_column="sku", product_name_column="Product Name"):
-    """Remove discontinued SKU rows from planning outputs, preserving total rows."""
-    if df is None or df.empty:
+    """Filter only country-specific discontinued SKU codes, never product names."""
+    if df is None or df.empty or sku_column not in df.columns:
         return df
-
     table_name = f"sku_{user_id}_data_table"
-    try:
-        inspector = inspect(engine)
-        if not inspector.has_table(table_name):
-            return df
-        columns = {column["name"] for column in inspector.get_columns(table_name)}
-        if "product_status" not in columns:
-            return df
-
-        country_key = str(country or "global").strip().lower()
-        sku_columns = {
-            "uk": ["sku_uk"], "gb": ["sku_uk"],
-            "us": ["sku_us"], "usa": ["sku_us"], "amazon us": ["sku_us"],
-            "canada": ["sku_canada"], "ca": ["sku_canada"],
-            "global": ["sku_uk", "sku_us", "sku_canada"],
-        }.get(country_key, ["sku_uk", "sku_us", "sku_canada"])
-
-        selected = ["product_status"]
-        if "product_name" in columns:
-            selected.append("product_name")
-        selected.extend(col for col in sku_columns if col in columns)
-        if len(selected) == 1:
-            return df
-
-        quoted = ", ".join(f'"{col}"' for col in selected)
-        master = pd.read_sql_query(
-            text(f'SELECT {quoted} FROM "{table_name}"'),
-            engine
-        )
-        discontinued = master[
-            master["product_status"].fillna("Active").astype(str).str.strip().str.lower()
-            .isin({"discontinued", "discontinuous"})
-        ]
-
-        discontinued_skus = set()
-        for col in sku_columns:
-            if col in discontinued.columns:
-                discontinued_skus.update(
-                    str(value).strip().upper()
-                    for value in discontinued[col].dropna()
-                    if str(value).strip()
-                )
-        discontinued_names = (
-            {
-                str(value).strip().lower()
-                for value in discontinued["product_name"].dropna()
-                if str(value).strip()
-            }
-            if "product_name" in discontinued.columns else set()
-        )
-
-        sku_values = (
-            df[sku_column].fillna("").astype(str).str.strip().str.upper()
-            if sku_column in df.columns else pd.Series("", index=df.index)
-        )
-        name_values = (
-            df[product_name_column].fillna("").astype(str).str.strip().str.lower()
-            if product_name_column in df.columns else pd.Series("", index=df.index)
-        )
-        total_mask = sku_values.isin({"TOTAL", "TOTALS"}) | name_values.isin({"total", "totals"})
-        discontinued_mask = sku_values.isin(discontinued_skus) | name_values.isin(discontinued_names)
-        return df.loc[total_mask | ~discontinued_mask].copy()
-    except Exception as exc:
-        logging.exception("Unable to filter discontinued SKUs for %s: %s", country, exc)
+    country = str(country or '').strip().lower()
+    country = {'gb': 'uk', 'usa': 'us', 'amazon us': 'us', 'ca': 'canada'}.get(country, country)
+    mapping = {'uk': ('sku_uk', 'product_status_uk'),
+               'us': ('sku_us', 'product_status_us'),
+               'canada': ('sku_canada', 'product_status_canada')}
+    inspector = inspect(engine)
+    if not inspector.has_table(table_name):
         return df
+    columns = {col['name'] for col in inspector.get_columns(table_name)}
+    countries = mapping.keys() if country == 'global' else [country]
+    pairs = [mapping[c] for c in countries if c in mapping and all(x in columns for x in mapping[c])]
+    if not pairs:
+        return df
+    fields = list(dict.fromkeys(field for pair in pairs for field in pair))
+    quoted = ', '.join('"' + field + '"' for field in fields)
+    master = pd.read_sql_query(text(f'SELECT {quoted} FROM "{table_name}"'), engine)
+    excluded = set()
+    for sku_col, status_col in pairs:
+        disc = master[master[status_col].fillna('Active').astype(str).str.strip().str.lower()
+                      .isin({'discontinued', 'discontinuous'})]
+        excluded.update(str(x).strip().upper() for x in disc[sku_col].dropna() if str(x).strip())
+    sku = df[sku_column].fillna('').astype(str).str.strip().str.upper()
+    return df.loc[~sku.isin(excluded)].copy()
 
 
 def encode_file_to_base64(file_path):
@@ -771,57 +729,8 @@ def getDispatchfile():
             return cleaned
 
         def exclude_discontinued_dispatch_skus(df: pd.DataFrame, ctry: str) -> pd.DataFrame:
-            """Keep discontinued products visible in inventory, but exclude them from dispatch."""
-            if df.empty:
-                return df
-
-            sku_table_name = f"sku_{user_id}_data_table"
-            inspector = inspect(engine)
-            if not inspector.has_table(sku_table_name):
-                return df
-
-            master_columns = {column["name"] for column in inspector.get_columns(sku_table_name)}
-            country_sku_column = f"sku_{str(ctry).strip().lower()}"
-            if "product_status" not in master_columns:
-                return df
-
-            selected = ["product_status"]
-            if "product_name" in master_columns:
-                selected.append("product_name")
-            if country_sku_column in master_columns:
-                selected.append(country_sku_column)
-            else:
-                return df
-
-            quoted_columns = ", ".join(f'"{column}"' for column in selected)
-            master_df = pd.read_sql_query(
-                text(f'SELECT {quoted_columns} FROM "{sku_table_name}"'),
-                engine,
-            )
-            discontinued = master_df[
-                master_df["product_status"].fillna("Active").astype(str).str.strip().str.lower()
-                .isin({"discontinued", "discontinuous"})
-            ]
-            discontinued_skus = {
-                str(value).strip().upper()
-                for value in discontinued[country_sku_column].dropna().tolist()
-                if str(value).strip()
-            }
-            discontinued_names = (
-                {
-                    str(value).strip().lower()
-                    for value in discontinued["product_name"].dropna().tolist()
-                    if str(value).strip()
-                }
-                if "product_name" in discontinued.columns
-                else set()
-            )
-            if not discontinued_skus and not discontinued_names:
-                return df
-
-            sku_values = df.get("sku", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.upper()
-            name_values = df.get("Product Name", pd.Series("", index=df.index)).fillna("").astype(str).str.strip().str.lower()
-            return df.loc[~sku_values.isin(discontinued_skus) & ~name_values.isin(discontinued_names)].copy()
+            return exclude_discontinued_sku_rows(df, user_id, ctry,
+                                                 sku_column='sku', product_name_column='Product Name')
 
         def month_start_date(month_name: str, year_value: int) -> str:
             parsed = datetime.strptime(month_name.strip().title(), "%B")
@@ -2631,6 +2540,11 @@ def PO_generated():
     sku_df = sku_df.copy()
     sku_df.rename(columns={sku_column: 'sku'}, inplace=True)
     sku_df['sku'] = sku_df['sku'].astype(str).str.strip()
+
+    # Prefer marketplace-specific stock; legacy stock is a fallback only for old schemas.
+    region_stock = f'local_stock_{country_db}'
+    if region_stock in sku_df.columns:
+        sku_df['local_stock'] = sku_df[region_stock]
 
     for col in ['local_stock', 'in_transit_units', 'price']:
         if col in sku_df.columns:
