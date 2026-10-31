@@ -13731,6 +13731,16 @@ export default function DashboardPage() {
     const monthlyRecapData = useMemo<MonthlyRecapData | null>(() => {
         if (shouldShowDummyUi) return null;
 
+        const historicalMonth = Array.isArray((data as any)?.previous_months_skuwise)
+            ? (data as any).previous_months_skuwise[0]
+            : null;
+        const historicalRows: any[] = Array.isArray(historicalMonth?.items) ? historicalMonth.items : [];
+        const historicalTotal = historicalRows.find((row) => {
+            const sku = String(row?.sku ?? "").trim().toUpperCase();
+            const name = String(row?.product_name ?? row?.product_title ?? row?.name ?? "").trim().toLowerCase();
+            return ["TOTAL", "GRAND_TOTAL"].includes(sku) || ["total", "grand total"].includes(name);
+        });
+
         const summary = prevTargetSummaries[targetSummaryCountry as keyof typeof prevTargetSummaries];
         const summaryNet = toNumberSafe(summary?.net_sales_total);
         const actual = summaryNet > 0
@@ -13738,11 +13748,10 @@ export default function DashboardPage() {
             : prevFullMonthNetSalesDisp;
         const target = prevMonthTargetHome;
 
-        if (!actual && !target) return null;
+        if (!actual && !target && !historicalTotal) return null;
 
-        // This already selects the correct previous-period source for the
-        // platform (including Global), so use it for both the Hero SKU and its
-        // sales-share calculation.
+        // Prefer the historical month returned with the MTD transactions. Its
+        // total row and SKU rows keep the recap values on the same source.
         const sourceSkuRows: Array<{
             sku?: unknown;
             product_name?: unknown;
@@ -13756,7 +13765,13 @@ export default function DashboardPage() {
             cm2_profit?: unknown;
             total_cm2_profit?: unknown;
             profit?: unknown;
-        }> = Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
+            amazon_fees?: unknown;
+            amazon_fee?: unknown;
+            asp?: unknown;
+            tacos_total_advertising_cost_of_sale?: unknown;
+        }> = historicalTotal
+            ? historicalRows
+            : Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
 
         const skuRows = sourceSkuRows.filter((r) => {
             const sku = String(r?.sku || "").trim().toUpperCase();
@@ -13768,7 +13783,9 @@ export default function DashboardPage() {
         });
 
         // Calculate total net for share percentage
-        const totalNet = skuRows.reduce((sum, row) => sum + toNumber(row.net_sales), 0);
+        const totalNet = historicalTotal
+            ? toNumber(historicalTotal.net_sales)
+            : skuRows.reduce((sum, row) => sum + toNumber(row.net_sales), 0);
 
         const best = [...skuRows].sort((a, b) => toNumber(b.net_sales) - toNumber(a.net_sales))[0];
 
@@ -13777,7 +13794,7 @@ export default function DashboardPage() {
                 name: getSkuwiseDisplayProductName(best),
                 sku: platform === "global" ? undefined : String(best.sku || ""),
                 // ✅ FIX: net_quantity is used in previous_period.sku_metrics
-                units: toNumber(best.net_quantity ?? best.quantity ?? best.total_quantity),
+                units: toNumber(best.total_quantity ?? best.net_quantity ?? best.quantity),
                 netSales: convertToDisplayCurrency(toNumber(best.net_sales), amazonDataCurrency),
                 // Use API sales_mix if available, else calculate
                 sharePct: best.sales_mix ?? (totalNet > 0 ? (toNumber(best.net_sales) / totalNet) * 100 : undefined),
@@ -13787,6 +13804,20 @@ export default function DashboardPage() {
                 ),
             }
             : null;
+
+        const recapActual = historicalTotal
+            ? convertToDisplayCurrency(toNumber(historicalTotal.net_sales), amazonDataCurrency)
+            : actual;
+        const displayMetrics = historicalTotal
+            ? [
+                { label: "Units", value: toNumber(historicalTotal.total_quantity), formatter: (v: number) => Math.round(v).toLocaleString() },
+                { label: "ASP", value: convertToDisplayCurrency(toNumber(historicalTotal.asp), amazonDataCurrency), formatter: (v: number) => formatDisplayAmount(v, "ASP") },
+                { label: "Net Sales", value: convertToDisplayCurrency(toNumber(historicalTotal.net_sales), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
+                { label: "Marketplace Fees", value: convertToDisplayCurrency(toNumber(historicalTotal.amazon_fees ?? historicalTotal.amazon_fee), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
+                { label: "TACoS", value: toNumber(historicalTotal.tacos_total_advertising_cost_of_sale), formatter: (v: number) => `${v.toFixed(2)}%`, inverseDelta: true },
+                { label: "CM2 Profit", value: convertToDisplayCurrency(toNumber(historicalTotal.total_cm2_profit), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
+            ]
+            : recapMetrics;
 
         const objectiveContext = liveBiPayload?.objective_context;
         const titleCase = (value: unknown) =>
@@ -13811,17 +13842,17 @@ export default function DashboardPage() {
         return {
             monthLabel: `${previousDisplayMonth.monthName} ${previousDisplayMonth.year}`,
             target,
-            actual,
+            actual: recapActual,
             topSku,
             objectives,
             formatMoney: formatDisplayAmountNoDecimals,
-            metrics: recapMetrics,
+            metrics: displayMetrics,
         };
     }, [
-        shouldShowDummyUi, prevTargetSummaries, targetSummaryCountry, convertToDisplayCurrency,
+        shouldShowDummyUi, prevTargetSummaries, targetSummaryCountry, convertToDisplayCurrency, data,
         prevFullMonthNetSalesDisp, prevMonthTargetHome, previousSkuwiseRowsForDelta, platform,
         amazonDataCurrency, liveBiPayload, previousDisplayMonth, formatDisplayAmountNoDecimals,
-        recapMetrics,
+        recapMetrics, formatDisplayAmount,
     ]);
 
     const midMonthTargetReminderData = useMemo<MidMonthTargetReminderData | null>(() => {
