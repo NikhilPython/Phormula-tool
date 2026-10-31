@@ -772,8 +772,14 @@ export default function WorkspaceSetupOnboarding({
   // View Sheet columns with Product Status restored
   const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => {
     return [
-      { key: "s_no", header: "S. No." },
-      { key: "product_name", header: "Product Name" },
+      { key: "s_no", header: "S. No.", width: "64px" },
+      {
+        key: "product_name",
+        header: "Product Name",
+        width: "180px",
+        headerClassName: "!text-left",
+        cellClassName: "!text-left",
+      },
       { key: "product_barcode", header: "Product Barcode" },
       { key: "asin", header: "ASIN" },
       { key: "country", header: "Country" },
@@ -1523,6 +1529,7 @@ export default function WorkspaceSetupOnboarding({
               <DataTable
                 columns={SKU_VIEW_COLUMNS}
                 data={flattenedSkuRows as TableRow[]}
+                stickyColumnKeys={["s_no", "product_name"]}
                 pageSize={10}
                 maxHeight="60vh"
                 stickyHeader

@@ -48,6 +48,7 @@ type DataTableProps<T extends Row> = {
   loaderHeight?: number | string;
 
   headerMaxWidth?: number; // default 140
+  stickyColumnKeys?: string[];
 };
 
 export default function DataTable<T extends Row>({
@@ -72,6 +73,7 @@ export default function DataTable<T extends Row>({
   loading = false,
   loaderHeight = 260,
   headerMaxWidth = 130,
+  stickyColumnKeys = [],
 }: DataTableProps<T>) {
   const containerStyle: React.CSSProperties = {
     maxHeight: scrollY
@@ -284,6 +286,15 @@ export default function DataTable<T extends Row>({
     return "";
   };
 
+  const getStickyLeft = (columnIndex: number) =>
+    columns.slice(0, columnIndex).reduce((offset, col) => {
+      if (!stickyColumnKeys.includes(String(col.key))) return offset;
+      const width = typeof col.width === "string" && /^\d+(\.\d+)?px$/.test(col.width.trim())
+        ? Number.parseFloat(col.width)
+        : headerMaxWidth;
+      return offset + width;
+    }, 0);
+
   const colGroup = (
     <colgroup>
       {columns.map((col, i) => (
@@ -345,9 +356,15 @@ export default function DataTable<T extends Row>({
                   <th
                     key={String(col.key) + i}
                     onClick={col.onHeaderClick}
-                    style={getWidthStyle(col)}
+                    style={{
+                      ...getWidthStyle(col),
+                      ...(stickyColumnKeys.includes(String(col.key))
+                        ? { left: `${getStickyLeft(i)}px` }
+                        : {}),
+                    }}
                     className={clsx(
                       stickyHeader && "sticky top-0 z-20",
+                      stickyColumnKeys.includes(String(col.key)) && "sticky z-30",
                       "bg-[#5EA68E] text-yellow-200 font-bold",
                       "border-b border-r border-gray-300",
                       i === columns.length - 1 && "border-r-0",
@@ -434,9 +451,15 @@ export default function DataTable<T extends Row>({
                       return (
                         <td
                           key={String(col.key) + ci}
-                          style={getWidthStyle(col)}
+                          style={{
+                            ...getWidthStyle(col),
+                            ...(stickyColumnKeys.includes(keyStr)
+                              ? { left: `${getStickyLeft(ci)}px` }
+                              : {}),
+                          }}
                           className={clsx(
                             "border-b border-r border-[#e1e5ea]",
+                            stickyColumnKeys.includes(keyStr) && "sticky z-10 bg-white",
                             ci === columns.length - 1 && "border-r-0",
                             "px-3 py-2 align-middle text-center min-w-0",
                             isTextCol
@@ -531,9 +554,15 @@ export default function DataTable<T extends Row>({
                         return (
                           <td
                             key={String(col.key) + ci}
-                            style={getWidthStyle(col)}
+                            style={{
+                              ...getWidthStyle(col),
+                              ...(stickyColumnKeys.includes(keyStr)
+                                ? { left: `${getStickyLeft(ci)}px` }
+                                : {}),
+                            }}
                             className={clsx(
                               "border-b border-r border-[#e1e5ea]",
+                              stickyColumnKeys.includes(keyStr) && "sticky z-10 bg-white",
                               ci === columns.length - 1 && "border-r-0",
                               "px-3 py-2 align-middle text-center min-w-0",
                               isTextCol

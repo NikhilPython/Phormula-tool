@@ -100,6 +100,16 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
   const buildColumns = React.useCallback((): ColumnDef<TableRow>[] => {
     return FIXED_COLUMNS.map((key) => {
       const header = HEADER_LABELS[key] || toTitleCase(key);
+      if (key === "s_no") return { key, header, width: "64px" };
+      if (key === "product_name") {
+        return {
+          key,
+          header,
+          width: "180px",
+          headerClassName: "!text-left",
+          cellClassName: "!text-left",
+        };
+      }
       return { key, header };
     });
   }, []);
@@ -446,6 +456,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
               <DataTable
                 columns={columns}
                 data={rows}
+                stickyColumnKeys={["s_no", "product_name"]}
                 pageSize={10}
                 maxHeight="60vh"
                 stickyHeader
