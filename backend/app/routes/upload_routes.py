@@ -1911,6 +1911,7 @@ def get_current_sku_sheet():
     try:
         query = text(f"""
             SELECT
+                id,
                 s_no,
                 product_name,
                 product_barcode,
@@ -2018,6 +2019,7 @@ def download_current_sku_sheet():
     try:
         query = text(f"""
             SELECT
+                id,
                 s_no,
                 product_name,
                 product_barcode,
