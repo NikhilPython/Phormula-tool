@@ -252,11 +252,6 @@ type ProductBestPerformanceData = {
   unit_wise_profitability?: BestPerformanceMetric;
 };
 
-const PRODUCT_STATUS_OPTIONS: { value: "Active" | "Discontinued"; label: string }[] = [
-  { value: "Active", label: "Active" },
-  { value: "Discontinued", label: "Discontinued" },
-];
-
 const normalizeProductStatus = (value?: string | null): "Active" | "Discontinued" =>
   value === "Discontinued" || value === "Discontinuous"
     ? "Discontinued"
@@ -3961,7 +3956,6 @@ export default function InputCostPage({ params }: Params) {
   const yearParam = decodeURIComponent(yearRaw ?? '');
 
   const [skuData, setSkuData] = useState<SkuRow[]>([]);
-  const [savingProductStatusId, setSavingProductStatusId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -4631,21 +4625,34 @@ export default function InputCostPage({ params }: Params) {
       grossMarginColumns.push(`gross_margin_${countryName}`);
     }
 
-    const otherColumns = [
-      'asin',
-      'product_barcode',
-      'month_year',
-      'price',
-      'product_status',
-    ];
+    const otherColumns = countryName === 'global'
+      ? ['asin', 'product_barcode', 'month_year', 'price', 'product_status']
+      : ['product_barcode', 'asin', 'price', 'currency', 'local_stock', 'product_status', 'month_year'];
 
     const visibleOtherColumns = otherColumns.filter((col) => {
       if (col === 'product_status') return true;
+      if (col === 'currency' && countryName !== 'global') return true;
+      if (col === 'local_stock' && countryName !== 'global') {
+        const countryStockColumn = `local_stock_${countryName}`;
+        return data.some((row) =>
+          !isEmptyCellValue(row[countryStockColumn]) || !isEmptyCellValue(row.local_stock)
+        );
+      }
       if (col === 'month_year') {
         return data.some((row) => row.month || row.year);
       }
       return !isColumnEmpty(data, col);
     });
+
+    if (countryName !== 'global') {
+      return [
+        ...baseColumns,
+        ...visibleOtherColumns.filter((col) => ['product_barcode', 'asin'].includes(col)),
+        ...skuColumns,
+        ...visibleOtherColumns.filter((col) => ['price', 'currency', 'local_stock', 'product_status', 'month_year'].includes(col)),
+        ...grossMarginColumns,
+      ];
+    }
 
     return [...baseColumns, ...skuColumns, ...visibleOtherColumns, ...grossMarginColumns];
   };
@@ -4670,6 +4677,10 @@ export default function InputCostPage({ params }: Params) {
         return 'Month / Year';
       case 'price':
         return 'Landing Cost';
+      case 'currency':
+        return 'Currency';
+      case 'local_stock':
+        return 'Local Stock';
       case 'product_status':
         return 'Product Status';
       default:
@@ -4940,7 +4951,40 @@ export default function InputCostPage({ params }: Params) {
       });
       if (!response.ok) throw new Error('Failed to fetch data');
       const data: SkuRow[] = await response.json();
-      const sorted = [...data].sort((a, b) => (a.s_no ?? 0) - (b.s_no ?? 0));
+
+      // The SKU sheet endpoint returns the same country stock values shown in
+      // Workspace Setup. Use it to fill country stock columns when /skuprice
+      // only returns the legacy shared local_stock value.
+      let sheetRows: any[] = [];
+      try {
+        const sheetResponse = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/multiCountry/current`,
+          { method: 'GET', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }
+        );
+        if (sheetResponse.ok) {
+          const sheetPayload = await sheetResponse.json();
+          sheetRows = Array.isArray(sheetPayload?.rows) ? sheetPayload.rows : [];
+        }
+      } catch {
+        // Keep the SKU table available if the optional stock-sheet request fails.
+      }
+
+      const sheetById = new Map(sheetRows.map((row) => [String(row.id), row]));
+      const sheetByName = new Map(
+        sheetRows.map((row) => [normalizeKey(String(row.product_name || '')), row])
+      );
+      const enriched = data.map((row) => {
+        const sheetRow = sheetById.get(String(row.id)) ||
+          sheetByName.get(normalizeKey(String(row.product_name || '')));
+        if (!sheetRow) return row;
+        return {
+          ...row,
+          local_stock_uk: sheetRow.local_stock_uk ?? row.local_stock_uk,
+          local_stock_us: sheetRow.local_stock_us ?? row.local_stock_us,
+        };
+      });
+
+      const sorted = [...enriched].sort((a, b) => (a.s_no ?? 0) - (b.s_no ?? 0));
       setSkuData(sorted);
       setVisibleColumns(getVisibleColumns(sorted));
     } catch (err: any) {
@@ -5850,33 +5894,48 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const tableData: TableRow[] = useMemo(() => {
-    return skuData.map((row, index) => {
+    const countrySkuColumn = `sku_${countryName}`;
+    const displayedRows = countryName === 'global'
+      ? skuData
+      : skuData.filter((row) => !isEmptyCellValue(row[countrySkuColumn]));
+
+    return displayedRows.map((row, index) => {
+      const countryStatusColumn = `product_status_${countryName}`;
+      const countryValue = (column: string) =>
+        row[`${column}_${countryName}`] ?? row[column];
       const item: TableRow = {
         id: `${row.product_name}-${index}`,
         sku_record_id: row.id,
-        s_no: row.s_no ?? index + 1,
+        // Always number rows by their visible order, independent of sheet S.No.
+        s_no: index + 1,
         product_name: row.product_name ?? '—',
         sku_uk: isEmptyCellValue(row.sku_uk) ? '—' : row.sku_uk,
         sku_us: isEmptyCellValue(row.sku_us) ? '—' : row.sku_us,
         sku_canada: isEmptyCellValue(row.sku_canada) ? '—' : row.sku_canada,
-        asin: row.asin ?? '—',
-        product_barcode: row.product_barcode ?? '—',
+        asin: countryValue('asin') ?? '—',
+        product_barcode: countryValue('product_barcode') ?? '—',
+        currency: countryValue('currency') ?? '—',
+        local_stock: countryValue('local_stock') ?? '—',
         month_year: getMonthYearDisplay(row),
         price: row.price ?? '',
-        product_status: normalizeProductStatus(row.product_status),
+        product_status: normalizeProductStatus(row[countryStatusColumn] ?? row.product_status),
       };
 
       visibleColumns.forEach((col) => {
         if (col.startsWith('gross_margin_')) {
           item[col] = '';
-        } else if (col in row) {
+        } else if (
+          col in row && col !== 's_no' &&
+          !(countryName !== 'global' &&
+            ['asin', 'product_barcode', 'currency', 'local_stock', 'product_status'].includes(col))
+        ) {
           item[col] = isEmptyCellValue(row[col]) ? '—' : row[col];
         }
       });
 
       return item;
     });
-  }, [skuData, visibleColumns]);
+  }, [skuData, visibleColumns, countryName]);
 
   const openAiProductDrawerByName = useCallback(
     (productName: string, sku?: string, inventoryRow?: any) => {
@@ -6157,8 +6216,9 @@ export default function InputCostPage({ params }: Params) {
       if (column === 's_no') col.width = '60px';
 
       if (column === "product_name") {
-        col.width = "160px";
-        col.cellClassName = "text-left";
+        col.width = "180px";
+        col.headerClassName = "!text-left";
+        col.cellClassName = "!text-left";
 
         col.render = (tableRow) => {
           const productName = String(tableRow.product_name || "").trim();
@@ -6215,122 +6275,25 @@ export default function InputCostPage({ params }: Params) {
 
         col.render = (tableRow) => {
           const recordId = Number((tableRow as any).sku_record_id);
-
           const originalRow = skuData.find((row) => row.id === recordId);
+          const countryStatusColumn = `product_status_${countryName}`;
+          const currentStatus = normalizeProductStatus(
+            originalRow?.[countryStatusColumn] ?? originalRow?.product_status
+          );
 
-          const currentStatus = normalizeProductStatus(originalRow?.product_status);
-
-          const statusTintClass =
-            currentStatus === 'Active'
-              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 focus:ring-emerald-200'
-              : 'border-rose-200 bg-rose-50/70 text-rose-700 focus:ring-rose-200';
+          const statusTintClass = currentStatus === 'Active'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-rose-200 bg-rose-50 text-rose-700';
 
           return (
-
             <div className="flex items-center justify-center">
-              <div className="relative w-[145px]">
-                <select
-                  aria-label={`Product status for ${String(tableRow.product_name)}`}
-                  className={`
-        appearance-none box-border w-full
-        rounded-full border
-        pl-4 pr-9 py-1.5
-        text-xs font-medium
-        cursor-pointer
-        transition-colors duration-150
-        focus:outline-none focus:ring-1 focus:ring-offset-0
-        ${statusTintClass}
-        disabled:cursor-wait disabled:opacity-60
-      `}
-                  value={currentStatus}
-                  disabled={!recordId || savingProductStatusId === recordId}
-                  onChange={async (event) => {
-                    const nextStatus = event.target.value as
-                      | 'Active'
-                      | 'Discontinued';
-
-                    const token = localStorage.getItem('jwtToken');
-
-                    if (!token || !recordId) return;
-
-                    setSavingProductStatusId(recordId);
-
-                    try {
-                      const response = await fetch(
-                        `${process.env.NEXT_PUBLIC_API_BASE_URL}/sku-status`,
-                        {
-                          method: 'PATCH',
-                          headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            id: recordId,
-                            product_status: nextStatus,
-                          }),
-                        }
-                      );
-
-                      const result = await response.json().catch(() => ({}));
-
-                      if (!response.ok) {
-                        throw new Error(
-                          result.error || 'Could not save product status'
-                        );
-                      }
-
-                      setSkuData((previous) =>
-                        previous.map((row) =>
-                          row.id === recordId
-                            ? { ...row, product_status: nextStatus }
-                            : row
-                        )
-                      );
-                    } catch (statusError) {
-                      window.alert(
-                        statusError instanceof Error
-                          ? statusError.message
-                          : 'Could not save product status'
-                      );
-                    } finally {
-                      setSavingProductStatusId(null);
-                    }
-                  }}
-                >
-
-                  {PRODUCT_STATUS_OPTIONS.map((opt) => {
-                    const isActive = opt.value === 'Active';
-
-                    return (
-                      <option
-                        key={opt.value}
-                        value={opt.value}
-                        style={{
-                          color: isActive ? '#047857' : '#BE123C',
-                          backgroundColor: isActive ? '#ECFDF5' : '#FFF1F2',
-                        }}
-                      >
-                        {opt.label}
-                      </option>
-                    );
-                  })}
-                </select>
-
-                <svg
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-3 top-1/2 h-3 w-3 -translate-y-1/2"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="m4 6 4 4 4-4" />
-                </svg>
-              </div>
+              <span
+                aria-label={`Product status for ${String(tableRow.product_name)}: ${currentStatus}`}
+                className={`inline-flex min-w-[145px] items-center justify-center rounded-full border px-4 py-1.5 text-xs font-semibold ${statusTintClass}`}
+              >
+                {currentStatus}
+              </span>
             </div>
-
           );
         };
       }
@@ -6382,7 +6345,6 @@ export default function InputCostPage({ params }: Params) {
     editedPrices,
     countryName,
     openAiProductDrawerByName,
-    savingProductStatusId,
   ]);
 
   const periodLabel = useMemo(() => {
@@ -7816,6 +7778,7 @@ export default function InputCostPage({ params }: Params) {
                   <DataTable<TableRow>
                     columns={columns}
                     data={tableData}
+                    stickyColumnKeys={["s_no", "product_name"]}
                     loading={false}
                     paginate={false}
                     pageSize={10}
