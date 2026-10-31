@@ -6269,6 +6269,8 @@ export default function InputCostPage({ params }: Params) {
       if (column === 'product_barcode') col.width = '160px';
       if (column === 'month_year') col.width = '140px';
 
+      if (column === 'currency') col.width = '80px';
+      if (column === 'local_stock') col.width = '100px';
 
       if (column === 'product_status') {
         col.width = '170px';
@@ -6300,7 +6302,7 @@ export default function InputCostPage({ params }: Params) {
 
 
       if (column === 'price') {
-        col.width = '100px';
+        col.width = '140px';
         col.render = (tableRow) => {
           const originalRow = skuData.find((r) => r.product_name === String(tableRow.product_name));
           if (!originalRow) return '—';
