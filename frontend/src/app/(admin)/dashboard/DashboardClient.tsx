@@ -13917,23 +13917,24 @@ export default function DashboardPage() {
         activeDateRegion,
     ]);
 
-    // Show once per user on the first calendar day of each month, using the
-    // selected dashboard region so US/UK users see it at their local midnight.
+    // Show once per user when the dashboard's displayed Last Updated timestamp
+    // falls on the first calendar day in the same region/time zone.
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (!monthlyRecapData || pageLoading || shouldShowDummyUi || unauthorized) return;
-        if (getDayOfMonthByRegion(activeDateRegion) !== 1) return;
+        if (!lastRefreshAt || getRegionDayFromTimestamp(lastRefreshAt, dashboardTimeRegion) !== 1) return;
 
         const token = localStorage.getItem("jwtToken");
         if (!token) return;
 
         const userId = decodeJwtUserId(token) || "unknown";
-        const key = `monthly_recap_seen_${userId}_${currentDisplayMonth.year}_${currentDisplayMonth.monthName}`;
+        const recapPeriod = getRegionYearMonthFromTimestamp(dashboardTimeRegion, lastRefreshAt);
+        const key = `monthly_recap_seen_${userId}_${recapPeriod.year}_${recapPeriod.monthName}`;
         if (localStorage.getItem(key) === "1") return;
 
         localStorage.setItem(key, "1"); // marked as seen the moment it's displayed
         setRecapOpen(true);
-    }, [monthlyRecapData, pageLoading, shouldShowDummyUi, unauthorized, currentDisplayMonth, activeDateRegion]);
+    }, [monthlyRecapData, pageLoading, shouldShowDummyUi, unauthorized, lastRefreshAt, dashboardTimeRegion, getRegionDayFromTimestamp]);
 
 
     const shouldScrollMtdProductwiseTable =
