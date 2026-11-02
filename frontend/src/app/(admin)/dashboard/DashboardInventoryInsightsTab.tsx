@@ -23,6 +23,7 @@ export default function DashboardInventoryInsightsTab({
     handleInventoryInsightsExcelDownload,
     canDownloadInventoryInsightsExcel,
     handleHeatmapProductClick,
+    isHeatmapRowDiscontinued,
     countryName,
     salesLast30DaysLabel,
     unitSalesDataKey,
@@ -123,6 +124,7 @@ export default function DashboardInventoryInsightsTab({
                                     onDownloadInventoryExcel={handleInventoryInsightsExcelDownload}
                                     canDownloadInventoryExcel={canDownloadInventoryInsightsExcel}
                                     onHeatmapProductClick={handleHeatmapProductClick}
+                                    isHeatmapRowDiscontinued={isHeatmapRowDiscontinued}
                                     heatmapExcelCountryLabel={
                                         platform === "global"
                                             ? selectedGlobalInventoryCountry.toUpperCase()

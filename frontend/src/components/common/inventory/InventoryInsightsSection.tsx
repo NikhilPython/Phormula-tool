@@ -39,6 +39,7 @@ type InventoryInsightsSectionProps = {
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
     onHeatmapProductClick?: (row: AgeingRiskHeatmapRow) => void;
+    isHeatmapRowDiscontinued?: (row: AgeingRiskHeatmapRow) => boolean;
     showInventoryAlerts?: boolean;
     heatmapExcelPlatformLabel?: string;
     showHeatmapExcelDownload?: boolean;
@@ -101,6 +102,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     onHeatmapProductClick,
+    isHeatmapRowDiscontinued,
     salesLast30DaysLabel,
     unitSalesDataKey,
     showInventoryAlerts = true,
@@ -163,6 +165,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
                         data={heatmapData}
                         buckets={heatmapBuckets}
                         onProductClick={onHeatmapProductClick}
+                        isDiscontinuedRow={isHeatmapRowDiscontinued}
                         onDownloadInventoryExcel={onDownloadInventoryExcel}
                         canDownloadInventoryExcel={canDownloadInventoryExcel}
                         showInventoryAlerts={showInventoryAlerts}

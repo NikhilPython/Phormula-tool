@@ -14565,6 +14565,15 @@ export default function DashboardPage() {
                                 handleInventoryInsightsExcelDownload={handleInventoryInsightsExcelDownload}
                                 canDownloadInventoryInsightsExcel={canDownloadInventoryInsightsExcel}
                                 handleHeatmapProductClick={handleHeatmapProductClick}
+                                isHeatmapRowDiscontinued={(row: AgeingRiskHeatmapRow) =>
+                                    isDiscontinuedSkuRow({
+                                        product_name: row.productName,
+                                        sku: row.sku,
+                                        country: platform === "global"
+                                            ? selectedGlobalInventoryCountry
+                                            : countryName,
+                                    })
+                                }
                                 countryName={countryName}
                                 salesLast30DaysLabel={inventoryInsightsSalesLabel}
                                 unitSalesDataKey={inventoryHeatmapUnitSalesDataKey}

@@ -93,6 +93,7 @@ type AgeingRiskHeatmapProps = {
     salesLast30DaysLabel?: string;
     unitSalesDataKey?: AgeingRiskUnitSalesDataKey;
     onProductClick?: (row: AgeingRiskHeatmapRow) => void;
+    isDiscontinuedRow?: (row: AgeingRiskHeatmapRow) => boolean;
 
     onDownloadInventoryExcel?: () => void;
     canDownloadInventoryExcel?: boolean;
@@ -597,6 +598,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
     salesLast30DaysLabel = "Unit Sales in Last 30 Days",
     unitSalesDataKey = "salesLast30Days",
     onProductClick,
+    isDiscontinuedRow,
     onDownloadInventoryExcel,
     canDownloadInventoryExcel = false,
     showInventoryAlerts = true,
@@ -804,6 +806,12 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         const sortSalesKey = unitSalesDataKey;
 
         const sortedData = [...productRows].sort((a, b) => {
+            const aDiscontinued = isDiscontinuedRow?.(a) === true;
+            const bDiscontinued = isDiscontinuedRow?.(b) === true;
+            if (aDiscontinued !== bDiscontinued) {
+                return aDiscontinued ? 1 : -1;
+            }
+
             const aUnitSales = getUnitSalesSortValue(a, sortSalesKey);
             const bUnitSales = getUnitSalesSortValue(b, sortSalesKey);
 
@@ -848,7 +856,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
         }, unitSalesDataKey);
 
         return [...mainRows, othersRow, totalRow] as HeatmapTableRow[];
-    }, [tableSourceData, data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, isActionSkuFilterActive]);
+    }, [tableSourceData, data, buckets, canCollapse, isExpanded, defaultVisibleRows, inventoryAgeSummary, unitSalesDataKey, isActionSkuFilterActive, isDiscontinuedRow]);
 
     const actionDiagnosis = useMemo(() => {
         if (!isActionSkuFilterActive) return null;
@@ -2032,7 +2040,9 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                         headerRow1ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
                         headerRow2ClassName="bg-[#5EA68E] text-[#f8edcf] !text-[12px] min-[1700px]:!text-[14px]"
                         getRowClassName={(row) =>
-                            row.isTotalRow
+                            isDiscontinuedRow?.(row)
+                                ? "!bg-rose-50 !text-[#FF5C5C] [&>td]:!bg-rose-50 [&>td]:!text-[#FF5C5C] [&_span]:!text-[#FF5C5C] [&_button]:!text-[#FF5C5C]"
+                                : row.isTotalRow
                                 ? "bg-[#EFEFEF] font-semibold"
                                 : row.isPercentageRow
                                     ? "bg-[#F8F8F8] font-semibold"

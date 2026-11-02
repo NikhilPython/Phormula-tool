@@ -12664,6 +12664,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       <InventoryInsightsSection
                         heatmapBuckets={inventoryInsightsData.heatmapBuckets}
                         heatmapData={inventoryInsightsData.heatmapData}
+                        isHeatmapRowDiscontinued={(row) => {
+                          const rowName = normalizeKey(row.productName || "");
+                          const rowSku = String(row.sku || "").trim().toLowerCase();
+                          const statusCountry = String(
+                            String(countryName || "").toLowerCase() === "global"
+                              ? selectedGlobalInventoryCountry
+                              : countryName
+                          ).trim().toLowerCase();
+                          const status = skuStatusMap[`${statusCountry}|${rowName}`] ||
+                            skuStatusMap[`${statusCountry}|sku:${rowSku}`] ||
+                            skuStatusMap[rowName] || "";
+                          return String(status).toLowerCase() === "discontinued" ||
+                            String(status).toLowerCase() === "discontinuous";
+                        }}
                         donutData={inventoryInsightsData.donutData}
                         donutTotalUnits={inventoryInsightsData.donutTotalUnits}
                         trendSelectedBucket={inventoryInsightsData.trendSelectedBucket}
