@@ -6688,7 +6688,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return computeDefaultMonthlyPeriod().year;
     }
 
-    if (routeRange === "quarterly") {
+    if (routeRange === "quarterly" || routeRange === "qtd") {
       return computeDefaultQuarterlyPeriod().year;
     }
 
@@ -9450,7 +9450,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     // Use the shifted year if available
     setSelectedYear(shifted ? shifted.year : getInitialSelectedYear());
 
-    if (routeRange === "monthly" || routeRange === "mtd") {
+    if (routeRange === "monthly") {
       setSelectedMonth(
         // Use shifted month if available, otherwise fallback to URL month or default
         shifted ? shifted.month : (initialMonth || computeDefaultMonthlyPeriod().month).toLowerCase()
@@ -9459,7 +9459,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (routeRange === "quarterly" || routeRange === "qtd") {
+    if (routeRange === "quarterly") {
       setSelectedMonth("");
       setSelectedQuarter(
         isQuarter(initialMonth) ? initialMonth : computeDefaultQuarterlyPeriod().quarter

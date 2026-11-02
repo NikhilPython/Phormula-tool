@@ -14122,7 +14122,7 @@ export default function DashboardPage() {
             />
 
             {/* TEMP: recap modal test controls, remove after testing */}
-            {process.env.NODE_ENV !== "production" && (
+            {/* {process.env.NODE_ENV !== "production" && (
                 <div className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 gap-2">
                     <button
                         type="button"
@@ -14144,7 +14144,7 @@ export default function DashboardPage() {
                         Reset seen &amp; reload
                     </button>
                 </div>
-            )}
+            )} */}
 
             <MidMonthTargetReminderModal
                 open={midMonthReminderOpen}
@@ -14198,13 +14198,13 @@ export default function DashboardPage() {
                 }}
             />
 
-            <button
+            {/* <button
                 type="button"
                 onClick={() => setMidMonthReminderOpen(true)}
                 className="rounded-md bg-[#ED9F50] px-3 py-1.5 text-xs font-semibold text-white shadow-md"
             >
                 Test mid-month reminder
-            </button>
+            </button> */}
 
             <DashboardPageHeader
                 brandName={brandName}
