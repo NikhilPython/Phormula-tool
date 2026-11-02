@@ -130,6 +130,7 @@ import type {
 } from "@/components/common/inventory/ActionBasedDashboard";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import PnlSummaryOverview, {
+    type PnlSummaryCountryInventoryMetrics,
     type PnlSummaryOverviewData,
     type SummaryDestination,
 } from "@/components/dropdowns/PnlSummaryOverview";
@@ -1845,6 +1846,8 @@ export default function DashboardPage() {
     const [dashboardActionItems, setDashboardActionItems] = useState<DashboardActionItem[]>([]);
     const [backendInventorySummaryOverview, setBackendInventorySummaryOverview] =
         useState<BackendInventorySummaryOverview | null>(null);
+    const [globalInventoryCountryMetrics, setGlobalInventoryCountryMetrics] =
+        useState<PnlSummaryCountryInventoryMetrics>({});
     const [dashboardActionSourceMetrics, setDashboardActionSourceMetrics] = useState<{
         tacos: number;
         ads_spend: number;
@@ -3347,6 +3350,7 @@ export default function DashboardPage() {
         if (shouldShowDummyUi) {
             setDashboardActionItems([]);
             setBackendInventorySummaryOverview(null);
+            setGlobalInventoryCountryMetrics({});
             setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(false);
             setDashboardActionItemsError(null);
@@ -3359,6 +3363,7 @@ export default function DashboardPage() {
         if (dashboardActionSourcesReadyKey !== inventoryInsightsRequestKey) {
             setDashboardActionItems([]);
             setBackendInventorySummaryOverview(null);
+            setGlobalInventoryCountryMetrics({});
             setDashboardActionSourceMetrics(null);
             setDashboardActionItemsLoading(true);
             setDashboardActionItemsError(null);
@@ -3376,6 +3381,7 @@ export default function DashboardPage() {
             if (!token) {
                 setDashboardActionItems([]);
                 setBackendInventorySummaryOverview(null);
+                setGlobalInventoryCountryMetrics({});
                 setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsLoading(false);
                 setDashboardActionItemsError("Authorization token is missing");
@@ -3502,6 +3508,47 @@ export default function DashboardPage() {
                     payload?.inventory_summary_overview ?? null
                 );
 
+                if (inventoryCountry === "global") {
+                    const countryMetrics: PnlSummaryCountryInventoryMetrics = {};
+                    await Promise.all(
+                        (["uk", "us"] as const).map(async (country) => {
+                            try {
+                                const countryParams = new URLSearchParams(params);
+                                countryParams.set("country_key", country);
+                                const countryResponse = await fetch(
+                                    `${DASHBOARD_ACTION_ITEMS_ENDPOINT}?${countryParams.toString()}`,
+                                    {
+                                        method: "GET",
+                                        headers: {
+                                            Accept: "application/json",
+                                            Authorization: `Bearer ${token}`,
+                                        },
+                                        cache: "no-store",
+                                        signal: controller.signal,
+                                    }
+                                );
+                                const countryPayload = await countryResponse.json().catch(() => null);
+                                const summary = countryPayload?.inventory_summary_overview;
+                                if (!countryResponse.ok || countryPayload?.success === false || !summary) return;
+
+                                countryMetrics[country] = {
+                                    returnRate: Number(summary.return_rate),
+                                    returnRateSkus: Number(summary.return_rate_skus),
+                                    highAlertUnits: Number(summary.high_alert_units),
+                                    highAlertSkus: Number(summary.high_alert_skus),
+                                };
+                            } catch {
+                                // Keep any country summary that loaded successfully.
+                            }
+                        })
+                    );
+                    if (!controller.signal.aborted) {
+                        setGlobalInventoryCountryMetrics(countryMetrics);
+                    }
+                } else {
+                    setGlobalInventoryCountryMetrics({});
+                }
+
                 const sourceMetrics = payload?.source_metrics;
                 setDashboardActionSourceMetrics(
                     sourceMetrics && typeof sourceMetrics === "object"
@@ -3516,6 +3563,7 @@ export default function DashboardPage() {
                 if (error instanceof DOMException && error.name === "AbortError") return;
                 setDashboardActionItems([]);
                 setBackendInventorySummaryOverview(null);
+                setGlobalInventoryCountryMetrics({});
                 setDashboardActionSourceMetrics(null);
                 setDashboardActionItemsError(
                     error instanceof Error
@@ -13659,6 +13707,10 @@ export default function DashboardPage() {
                 returnRateSkus: useBackendGlobalInventorySummary
                     ? globalInventorySummary?.return_rate_skus
                     : returnRateSkus,
+                countryBreakdown:
+                    platform === "global" && Object.keys(globalInventoryCountryMetrics).length > 0
+                        ? globalInventoryCountryMetrics
+                        : undefined,
                 inTransitUnits: useBackendGlobalInventorySummary
                     ? globalInventorySummary?.in_transit_units
                     : inTransitUnits,
@@ -13976,24 +14028,34 @@ export default function DashboardPage() {
         activeDateRegion,
     ]);
 
-    // Show once per user when the dashboard's displayed Last Updated timestamp
-    // falls on the first calendar day in the same region/time zone.
+    // Keep the previous month's recap eligible until this user has seen it.
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (!monthlyRecapData || pageLoading || shouldShowDummyUi || unauthorized) return;
-        if (!lastRefreshAt || getRegionDayFromTimestamp(lastRefreshAt, dashboardTimeRegion) !== 1) return;
 
         const token = localStorage.getItem("jwtToken");
         if (!token) return;
 
         const userId = decodeJwtUserId(token) || "unknown";
-        const recapPeriod = getRegionYearMonthFromTimestamp(dashboardTimeRegion, lastRefreshAt);
-        const key = `monthly_recap_seen_${userId}_${recapPeriod.year}_${recapPeriod.monthName}`;
-        if (localStorage.getItem(key) === "1") return;
+        const recapPeriodKey = monthlyRecapData.monthLabel
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, "_");
+        const key = `monthly_recap_seen_${userId}_${recapPeriodKey}`;
+        const legacyPeriod = lastRefreshAt
+            ? getRegionYearMonthFromTimestamp(dashboardTimeRegion, lastRefreshAt)
+            : null;
+        const legacyKey = legacyPeriod
+            ? `monthly_recap_seen_${userId}_${legacyPeriod.year}_${legacyPeriod.monthName}`
+            : null;
+        if (
+            localStorage.getItem(key) === "1" ||
+            (legacyKey && localStorage.getItem(legacyKey) === "1")
+        ) return;
 
-        localStorage.setItem(key, "1"); // marked as seen the moment it's displayed
+        localStorage.setItem(key, "1");
         setRecapOpen(true);
-    }, [monthlyRecapData, pageLoading, shouldShowDummyUi, unauthorized, lastRefreshAt, dashboardTimeRegion, getRegionDayFromTimestamp]);
+    }, [monthlyRecapData, pageLoading, shouldShowDummyUi, unauthorized, lastRefreshAt, dashboardTimeRegion]);
 
 
     const shouldScrollMtdProductwiseTable =

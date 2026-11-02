@@ -37,6 +37,7 @@ import InventoryInsightsSection from "@/components/common/inventory/InventoryIns
 import { createZeroInventoryInsightsData } from "@/components/common/inventory/createZeroInventoryInsightsData";
 import type { DashboardActionItem } from "@/components/dashboard/DashboardActionItemsTab";
 import PnlSummaryOverview, {
+  type PnlSummaryCountryInventoryMetrics,
   type PnlSummaryOverviewData,
   type SummaryDestination,
 } from "./PnlSummaryOverview";
@@ -6791,6 +6792,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [overviewActionItemsLoading, setOverviewActionItemsLoading] = useState(false);
   const [backendInventorySummaryOverview, setBackendInventorySummaryOverview] =
     useState<BackendInventorySummaryOverview | null>(null);
+  const [globalInventoryCountryMetrics, setGlobalInventoryCountryMetrics] =
+    useState<PnlSummaryCountryInventoryMetrics>({});
   const [overviewDispatchSummary, setOverviewDispatchSummary] =
     useState<OverviewDispatchSummary | null>(null);
   const [overviewDispatchLoading, setOverviewDispatchLoading] = useState(false);
@@ -8870,6 +8873,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (isDemoMode) {
       setOverviewActionItems([]);
       setBackendInventorySummaryOverview(null);
+      setGlobalInventoryCountryMetrics({});
       setOverviewActionItemsLoading(false);
       return;
     }
@@ -8877,6 +8881,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (!token || !countryName || !overviewActionYear || !overviewActionMonth) {
       setOverviewActionItems([]);
       setBackendInventorySummaryOverview(null);
+      setGlobalInventoryCountryMetrics({});
       setOverviewActionItemsLoading(false);
       return;
     }
@@ -8886,6 +8891,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const fetchOverviewActionItems = async () => {
       setOverviewActionItems([]);
       setBackendInventorySummaryOverview(null);
+      setGlobalInventoryCountryMetrics({});
       setOverviewActionItemsLoading(true);
 
       try {
@@ -8921,10 +8927,49 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         setBackendInventorySummaryOverview(
           payload?.inventory_summary_overview ?? null
         );
+
+        if (String(countryName).toLowerCase() === "global") {
+          const countryMetrics: PnlSummaryCountryInventoryMetrics = {};
+          await Promise.all(
+            (["uk", "us"] as const).map(async (country) => {
+              try {
+                const countryUrl = new URL(url.toString());
+                countryUrl.searchParams.set("country_key", country);
+                const countryResponse = await fetch(countryUrl.toString(), {
+                  method: "GET",
+                  headers: {
+                    Accept: "application/json",
+                    Authorization: `Bearer ${token}`,
+                  },
+                  cache: "no-store",
+                  signal: controller.signal,
+                });
+                const countryPayload = await countryResponse.json().catch(() => null);
+                const summary = countryPayload?.inventory_summary_overview;
+                if (!countryResponse.ok || countryPayload?.success === false || !summary) return;
+
+                countryMetrics[country] = {
+                  returnRate: Number(summary.return_rate),
+                  returnRateSkus: Number(summary.return_rate_skus),
+                  highAlertUnits: Number(summary.high_alert_units),
+                  highAlertSkus: Number(summary.high_alert_skus),
+                };
+              } catch {
+                // Keep whichever country summaries were successfully loaded.
+              }
+            })
+          );
+          if (!controller.signal.aborted) {
+            setGlobalInventoryCountryMetrics(countryMetrics);
+          }
+        } else {
+          setGlobalInventoryCountryMetrics({});
+        }
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setOverviewActionItems([]);
         setBackendInventorySummaryOverview(null);
+        setGlobalInventoryCountryMetrics({});
       } finally {
         if (!controller.signal.aborted) {
           setOverviewActionItemsLoading(false);
@@ -11160,6 +11205,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         returnRateSkus: useBackendGlobalInventorySummary
           ? globalInventorySummary?.return_rate_skus
           : returnRateSkus,
+        countryBreakdown:
+          isGlobalPage && Object.keys(globalInventoryCountryMetrics).length > 0
+            ? globalInventoryCountryMetrics
+            : undefined,
         inTransitUnits: useBackendGlobalInventorySummary
           ? globalInventorySummary?.in_transit_units
           : inTransitUnits,

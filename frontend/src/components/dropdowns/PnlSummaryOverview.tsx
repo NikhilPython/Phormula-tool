@@ -29,6 +29,15 @@ export type SummaryDestination =
   | "businessSummary"
   | "inventoryInsights";
 
+export type PnlSummaryCountryInventoryMetrics = Partial<
+  Record<"uk" | "us", {
+    returnRate?: number;
+    returnRateSkus?: number;
+    highAlertUnits?: number;
+    highAlertSkus?: number;
+  }>
+>;
+
 type DeltaMetric = {
   label?: string;
   value: number;
@@ -97,6 +106,7 @@ export type PnlSummaryOverviewData = {
     highAlertUnits: number;
     returnRate?: number;
     returnRateSkus?: number;
+    countryBreakdown?: PnlSummaryCountryInventoryMetrics;
     inTransitUnits?: number;
     inTransitSkus?: number;
     seaDispatchUnits?: number;
@@ -426,14 +436,43 @@ const InventoryInsightsGrid = ({
 
       <MetricTile
         label="Return rate"
-        value={value(optionalPercentage(inventory.returnRate))}
+        value={value(
+          inventory.countryBreakdown ? (
+            <div className="space-y-0.5 text-sm sm:text-base">
+              {(["uk", "us"] as const).map((country) => {
+                const metrics = inventory.countryBreakdown?.[country];
+                return metrics ? (
+                  <div key={country} className="whitespace-nowrap">
+                    <span className="text-xs font-semibold uppercase text-slate-500">{country}</span>{" "}
+                    {optionalPercentage(metrics.returnRate)}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          ) : optionalPercentage(inventory.returnRate)
+        )}
         trailing={
           loading ? null : (
-            <span className="text-xs font-semibold text-slate-500">
-              {typeof inventory.returnRateSkus === "number"
-                ? `${formatWholeNumber(inventory.returnRateSkus)} SKUs`
-                : "-"}
-            </span>
+            inventory.countryBreakdown ? (
+              <div className="space-y-0.5 text-right text-[10px] font-semibold leading-tight text-slate-500 2xl:text-xs">
+                {(["uk", "us"] as const).map((country) => {
+                  const metrics = inventory.countryBreakdown?.[country];
+                  return metrics ? (
+                    <div key={country} className="whitespace-nowrap">
+                      {typeof metrics.returnRateSkus === "number"
+                        ? `${formatWholeNumber(metrics.returnRateSkus)} SKUs`
+                        : "- SKUs"}
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-slate-500">
+                {typeof inventory.returnRateSkus === "number"
+                  ? `${formatWholeNumber(inventory.returnRateSkus)} SKUs`
+                  : "-"}
+              </span>
+            )
           )
         }
         accent="border-[#3A8EA4]"
@@ -500,12 +539,39 @@ const InventoryInsightsGrid = ({
 
       <MetricTile
         label="High alert (Coverage < 2 Months)"
-        value={value(`${formatWholeNumber(inventory.highAlertUnits)} units left`)}
+        value={value(
+          inventory.countryBreakdown ? (
+            <div className="space-y-0.5 text-sm sm:text-base">
+              {(["uk", "us"] as const).map((country) => {
+                const metrics = inventory.countryBreakdown?.[country];
+                return metrics ? (
+                  <div key={country} className="whitespace-nowrap">
+                    <span className="text-xs font-semibold uppercase text-slate-500">{country}</span>{" "}
+                    {formatWholeNumber(metrics.highAlertUnits ?? 0)} units left
+                  </div>
+                ) : null;
+              })}
+            </div>
+          ) : `${formatWholeNumber(inventory.highAlertUnits)} units left`
+        )}
         trailing={
           loading ? null : (
-            <span className="text-xs font-semibold text-slate-500">
-              {formatWholeNumber(inventory.highAlertSkus)} SKUs
-            </span>
+            inventory.countryBreakdown ? (
+              <div className="space-y-0.5 text-right text-[10px] font-semibold leading-tight text-slate-500 2xl:text-xs">
+                {(["uk", "us"] as const).map((country) => {
+                  const metrics = inventory.countryBreakdown?.[country];
+                  return metrics ? (
+                    <div key={country} className="whitespace-nowrap">
+                      {formatWholeNumber(metrics.highAlertSkus ?? 0)} SKUs
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-slate-500">
+                {formatWholeNumber(inventory.highAlertSkus)} SKUs
+              </span>
+            )
           )
         }
         accent="border-[#B85C5C]"
