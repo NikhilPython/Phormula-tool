@@ -66,12 +66,16 @@ type InventoryActionCardItem = ActionCardItem & {
 // =========================
 const WAREHOUSE_FIXED_COLUMNS = [
   's_no',
-  'sku_us',
-  'sku_uk',
+  'product_name',
+  'sku',
   'local_stock',
-  'in_transit_units',
   'month',
   'year',
+];
+const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
+  ...WAREHOUSE_FIXED_COLUMNS.slice(0, 2),
+  'country',
+  ...WAREHOUSE_FIXED_COLUMNS.slice(2),
 ];
 
 const normalizeWarehouseHeader = (key: string) => {
@@ -85,6 +89,11 @@ const normalizeWarehouseHeader = (key: string) => {
     's_no': 's_no',
     'serial_no': 's_no',
     'serial_number': 's_no',
+
+    'product_name': 'product_name',
+    'product name': 'product_name',
+    'country': 'country',
+    'sku': 'sku',
 
     'sku_us': 'sku_us',
     'sku_(us)': 'sku_us',
@@ -115,7 +124,7 @@ const normalizeWarehouseHeader = (key: string) => {
 const validateWarehouseHeaders = (row: Record<string, any>) => {
   const normalized = Object.keys(row).map(normalizeWarehouseHeader);
 
-  const missing = WAREHOUSE_FIXED_COLUMNS.filter(
+  const missing = WAREHOUSE_REQUIRED_UPLOAD_COLUMNS.filter(
     (col) => !normalized.includes(col)
   );
 
@@ -124,6 +133,13 @@ const validateWarehouseHeaders = (row: Record<string, any>) => {
   }
 
   return '';
+};
+
+const normalizeWarehouseCountry = (value: unknown) => {
+  const country = String(value ?? '').trim().toLowerCase();
+  if (['uk', 'gb', 'great britain', 'united kingdom'].includes(country)) return 'uk';
+  if (['us', 'usa', 'united states'].includes(country)) return 'us';
+  return country;
 };
 
 // Types
@@ -3625,46 +3641,41 @@ const DUMMY_CURRENCY_RATES: Record<string, number> = {
 const DUMMY_WAREHOUSE_DATA = [
   {
     s_no: 1,
-    // sku_us: 'US-SKU-001',
-    sku_uk: 'UK-SKU-001',
+    country: 'UK',
+    sku: 'UK-SKU-001',
     local_stock: 0,
-    in_transit_units: 0,
     month: 'January',
     year: '2026',
   },
   {
     s_no: 2,
-    // sku_us: 'US-SKU-002',
-    sku_uk: 'UK-SKU-002',
+    country: 'UK',
+    sku: 'UK-SKU-002',
     local_stock: 0,
-    in_transit_units: 0,
     month: 'January',
     year: '2026',
   },
   {
     s_no: 3,
-    // sku_us: 'US-SKU-002',
-    sku_uk: 'UK-SKU-003',
+    country: 'UK',
+    sku: 'UK-SKU-003',
     local_stock: 0,
-    in_transit_units: 0,
     month: 'January',
     year: '2026',
   },
   {
     s_no: 4,
-    // sku_us: 'US-SKU-002',
-    sku_uk: 'UK-SKU-004',
+    country: 'UK',
+    sku: 'UK-SKU-004',
     local_stock: 0,
-    in_transit_units: 0,
     month: 'January',
     year: '2026',
   },
   {
     s_no: 5,
-    // sku_us: 'US-SKU-002',
-    sku_uk: 'UK-SKU-005',
+    country: 'UK',
+    sku: 'UK-SKU-005',
     local_stock: 0,
-    in_transit_units: 0,
     month: 'January',
     year: '2026',
   },
@@ -3967,7 +3978,6 @@ export default function InputCostPage({ params }: Params) {
   const [aspData, setAspData] = useState<Record<string, number>>({});
   const [showMultiuseCountry, setShowMultiuseCountry] = useState(false);
   const [warehouseData, setWarehouseData] = useState<Record<string, any>[]>([]);
-  const [warehouseColumns, setWarehouseColumns] = useState<string[]>([]);
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [showWarehouseUpload, setShowWarehouseUpload] = useState(false);
   const [selectedWarehouseFile, setSelectedWarehouseFile] = useState<File | null>(null);
@@ -5075,24 +5085,6 @@ export default function InputCostPage({ params }: Params) {
     }
   };
 
-  const getOrderedWarehouseColumns = (cols: string[]) => {
-    const preferredOrder = [
-      's_no',
-      'product_name',
-      'sku_us',
-      'sku_uk',
-      'local_stock',
-      'in_transit_units',
-      'month',
-      'year',
-    ];
-
-    const preferred = preferredOrder.filter((c) => cols.includes(c));
-    const remaining = cols.filter((c) => !preferredOrder.includes(c));
-
-    return [...preferred, ...remaining];
-  };
-
   const fetchInventoryCurrentByPeriod = async (
     signal?: AbortSignal
   ): Promise<InventoryCurrentApiResponse> => {
@@ -5391,7 +5383,6 @@ export default function InputCostPage({ params }: Params) {
   const fetchWarehouseData = async () => {
     if (isNA) {
       setWarehouseData(DUMMY_WAREHOUSE_DATA);
-      setWarehouseColumns(getOrderedWarehouseColumns(Object.keys(DUMMY_WAREHOUSE_DATA[0] || {})));
       setWarehouseLoading(false);
       return;
     }
@@ -5399,26 +5390,25 @@ export default function InputCostPage({ params }: Params) {
     const token =
       typeof window !== 'undefined' ? localStorage.getItem('jwtToken') : null;
 
+    const fallbackCountry = countryName === 'global'
+      ? selectedGlobalSkuCountry
+      : normalizeWarehouseCountry(countryName);
     const skuFallbackRows = skuData
-      .filter((row) => row.local_stock !== undefined || row.in_transit_units !== undefined)
+      .filter((row) =>
+        row[`local_stock_${fallbackCountry}`] !== undefined ||
+        row.local_stock !== undefined
+      )
       .map((row, index) => ({
         s_no: row.s_no ?? index + 1,
         product_name: row.product_name ?? '',
-        sku_us: row.sku_us ?? '',
-        sku_uk: row.sku_uk ?? '',
-        local_stock: row.local_stock ?? '',
-        in_transit_units: row.in_transit_units ?? '',
+        sku: row[`sku_${fallbackCountry}`] ?? row.sku ?? '',
+        local_stock: row[`local_stock_${fallbackCountry}`] ?? row.local_stock ?? '',
         month: row.month ?? '',
         year: row.year ?? '',
       }));
 
     if (!token) {
       setWarehouseData(skuFallbackRows);
-      setWarehouseColumns(
-        skuFallbackRows.length > 0
-          ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
-          : []
-      );
       return;
     }
 
@@ -5439,65 +5429,39 @@ export default function InputCostPage({ params }: Params) {
 
       if (!response.ok) {
         setWarehouseData(skuFallbackRows);
-        setWarehouseColumns(
-          skuFallbackRows.length > 0
-            ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
-            : []
-        );
         return;
       }
 
       const rows = Array.isArray(result?.data) ? result.data : [];
 
       if (rows.length > 0) {
-        const enrichedRows = rows.map((row: Record<string, any>, index: number) => {
+        const targetCountry = countryName === 'global'
+          ? selectedGlobalSkuCountry
+          : normalizeWarehouseCountry(countryName);
+        setWarehouseData(rows.map((row: Record<string, any>, index: number) => {
           const matchedSku = skuData.find((sku) => {
-            if (countryName === 'global') {
-              return (
-                (row.sku_uk && sku.sku_uk === row.sku_uk) ||
-                (row.sku_us && sku.sku_us === row.sku_us) ||
-                (row.sku_canada && sku.sku_canada === row.sku_canada)
-              );
+            if (row.sku) {
+              return sku[`sku_${normalizeWarehouseCountry(row.country) || targetCountry}`] === row.sku;
             }
-
-            const skuKey = `sku_${countryName}`;
-            return sku[skuKey] && row[skuKey] && sku[skuKey] === row[skuKey];
+            return (
+              (row.sku_uk && sku.sku_uk === row.sku_uk) ||
+              (row.sku_us && sku.sku_us === row.sku_us) ||
+              (row.sku_canada && sku.sku_canada === row.sku_canada)
+            );
           });
-
           return {
-            s_no: row.s_no ?? matchedSku?.s_no ?? index + 1,
-            product_name: row.product_name ?? matchedSku?.product_name ?? '',
+            s_no: row.s_no ?? index + 1,
             ...row,
+            product_name: row.product_name ?? matchedSku?.product_name ?? '',
           };
-        });
-
-        const cols = Array.isArray(result?.columns)
-          ? result.columns
-          : Object.keys(enrichedRows[0]);
-
-        setWarehouseData(enrichedRows);
-        setWarehouseColumns(
-          getOrderedWarehouseColumns(
-            cols.includes('product_name') ? cols : ['product_name', ...cols]
-          )
-        );
+        }));
       } else {
         setWarehouseData(skuFallbackRows);
-        setWarehouseColumns(
-          skuFallbackRows.length > 0
-            ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
-            : []
-        );
       }
     } catch (e) {
       console.error('Failed to fetch warehouse data', e);
 
       setWarehouseData(skuFallbackRows);
-      setWarehouseColumns(
-        skuFallbackRows.length > 0
-          ? getOrderedWarehouseColumns(Object.keys(skuFallbackRows[0]))
-          : []
-      );
     } finally {
       setWarehouseLoading(false);
     }
@@ -5525,6 +5489,10 @@ export default function InputCostPage({ params }: Params) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('country', countryName);
+      formData.append(
+        'marketplace_country',
+        countryName === 'global' ? selectedGlobalSkuCountry : normalizeWarehouseCountry(countryName)
+      );
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData`, {
         method: 'POST',
@@ -5542,14 +5510,6 @@ export default function InputCostPage({ params }: Params) {
 
       const rows = Array.isArray(result?.data) ? result.data : [];
       setWarehouseData(rows);
-
-      const cols = Array.isArray(result?.columns)
-        ? result.columns
-        : rows.length > 0
-          ? Object.keys(rows[0])
-          : [];
-
-      setWarehouseColumns(getOrderedWarehouseColumns(cols));
 
       setSelectedWarehouseFile(null);
       setShowWarehouseUpload(false);
@@ -5621,7 +5581,7 @@ export default function InputCostPage({ params }: Params) {
       void fetchWarehouseData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, countryName, skuData]);
+  }, [activeTab, countryName, skuData, selectedGlobalSkuCountry]);
 
   useEffect(() => {
     if (activeTab !== 'inventory-insights') return;
@@ -7277,72 +7237,82 @@ export default function InputCostPage({ params }: Params) {
   );
 
   // 4) Make warehouse header label nicer
-  const getWarehouseHeaderLabel = (col: string) => {
-    if (col === 's_no') return 'S.No.';
-    if (col === 'product_name') return 'Product Name';
+  const warehouseTableData = useMemo(() => {
+    const targetCountry = countryName === 'global'
+      ? selectedGlobalSkuCountry
+      : normalizeWarehouseCountry(countryName);
 
-    if (col === 'sku_uk' || col === 'sku_us' || col === 'sku_canada') {
-      if (countryName === 'global') {
-        const c = col.replace('sku_', '').toUpperCase();
-        return `SKU (${c})`;
+    const displayedRows = warehouseData.flatMap((row) => {
+      const rowCountry = normalizeWarehouseCountry(
+        row.country ?? row.Country ?? (
+          row.sku_uk && !row.sku_us ? 'uk' :
+          row.sku_us && !row.sku_uk ? 'us' : targetCountry
+        )
+      );
+      if (countryName === 'global' && rowCountry && rowCountry !== targetCountry) {
+        return [];
       }
 
-      return 'SKU';
-    }
+      const sku =
+        row.sku ??
+        row.SKU ??
+        row[`sku_${targetCountry}`] ??
+        row.sku_uk ??
+        row.sku_us ??
+        '';
+      const localStock =
+        row[`local_stock_${targetCountry}`] ??
+        row.local_stock ??
+        '';
 
-    const formatted = col
-      .replaceAll('_', ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-
-    return formatted;
-  };
-
-  // 5) Optional: make Product Name column a bit wider
-  const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
-    const filteredWarehouseColumns = warehouseColumns.filter((col) => {
-      // Global should show all country SKU columns
-      if (countryName === 'global') return true;
-
-      // For country-wise pages, show only that country's SKU column
-      if (col.startsWith('sku_')) {
-        return col === `sku_${countryName}`;
-      }
-
-      return true;
+      return [{
+        s_no: 0,
+        product_name: row.product_name ?? row['Product Name'] ?? '',
+        sku,
+        local_stock: localStock,
+        month: row.month ?? row.Month ?? '',
+        year: row.year ?? row.Year ?? '',
+      }];
     });
 
-    return filteredWarehouseColumns.map((col) => ({
+    return displayedRows.map((row, index) => ({
+      ...row,
+      s_no: index + 1,
+    }));
+  }, [warehouseData, countryName, selectedGlobalSkuCountry]);
+
+  const getWarehouseHeaderLabel = (col: string) => {
+    if (col === 's_no') return 'S. No.';
+    if (col === 'product_name') return 'Product Name';
+    if (col === 'sku') return 'SKU';
+    if (col === 'local_stock') return 'Local Stock';
+    if (col === 'month') return 'Month';
+    if (col === 'year') return 'Year';
+    return col;
+  };
+
+  const warehouseTableColumns: ColumnDef<Record<string, any>>[] = useMemo(() => {
+    return WAREHOUSE_FIXED_COLUMNS.map((col) => ({
       key: col,
       header: getWarehouseHeaderLabel(col),
       width:
         col === 's_no'
           ? '70px'
-          : col === 'product_name'
-            ? '220px'
-            : col === 'sku_us' || col === 'sku_uk' || col === 'sku_canada'
-              ? '120px'
-              : col === 'local_stock' || col === 'in_transit_units'
-                ? '150px'
-                : col === 'month' || col === 'year'
-                  ? '110px'
-                  : '140px',
+          : col === 'month' || col === 'year'
+            ? '120px'
+            : col === 'product_name'
+              ? '220px'
+              : col === 'sku'
+                ? '180px'
+                : '160px',
       cellClassName:
-        col === 'product_name' ||
-          col === 'sku_us' ||
-          col === 'sku_uk' ||
-          col === 'sku_canada'
-          ? 'text-left'
-          : 'text-center',
+        col === 'product_name' || col === 'sku' ? 'text-left' : 'text-center',
       render: (row) => {
         const value = row[col];
-
-        if (col === "product_name") {
-          const sku = getSkuFromAnyRow(row);
-
-          return renderClickableProductName(value, sku);
+        if (col === 'product_name') {
+          return renderClickableProductName(value, String(row.sku || ''));
         }
-
-        if (col === "month" && typeof value === "string") {
+        if (col === 'month' && typeof value === 'string') {
           return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
         }
 
@@ -7351,12 +7321,7 @@ export default function InputCostPage({ params }: Params) {
           : String(value);
       },
     }));
-  }, [
-    warehouseColumns,
-    countryName,
-    getSkuFromAnyRow,
-    renderClickableProductName,
-  ]);
+  }, [renderClickableProductName]);
 
   if (error) return <div>Error: {error}</div>;
 
@@ -7432,50 +7397,25 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const handleWarehouseDownload = async () => {
-    if (!warehouseData || warehouseData.length === 0) {
+    if (!warehouseTableData || warehouseTableData.length === 0) {
       alert('No warehouse data available to download.');
       return;
     }
 
-    const exportWarehouseColumns = warehouseColumns.filter((col) => {
-      if (countryName === 'global') return true;
-
-      if (col.startsWith('sku_')) {
-        return col === `sku_${countryName}`;
-      }
-
-      return true;
-    });
-
-    const exportData = warehouseData.map((row, index) => {
-      const exportRow: Record<string, any> = {};
-
-      exportWarehouseColumns.forEach((col) => {
-        if (col === 's_no') {
-          exportRow.s_no = row.s_no ?? index + 1;
-        } else if (col === 'product_name') {
-          exportRow.product_name = row.product_name ?? '';
-        } else if (col === 'month' && typeof row[col] === 'string') {
-          exportRow.month =
-            row[col].charAt(0).toUpperCase() + row[col].slice(1).toLowerCase();
-        } else {
-          exportRow[col] = isEmptyCellValue(row[col]) ? '' : row[col];
-        }
-      });
-
-      return exportRow;
-    });
+    const exportCountry = countryName === 'global'
+      ? selectedGlobalSkuCountry
+      : normalizeWarehouseCountry(countryName);
 
     await exportWarehouseDataExcel({
-      filename: `Warehouse_Data_${countryName?.toUpperCase() || 'EXPORT'}.xlsx`,
-      countryName,
+      filename: `Warehouse_Data_${countryName === 'global' ? `GLOBAL_${exportCountry.toUpperCase()}` : exportCountry.toUpperCase()}.xlsx`,
+      countryName: exportCountry,
       titleLine: 'Warehouse Data',
-      titleCountry: countryName === 'global' ? 'Global' : countryName.toUpperCase(),
+      titleCountry: exportCountry.toUpperCase(),
       platformLabel: 'Phormula',
       periodLabel: `${monthParam} ${yearParam}`,
       companyName,
       brandName,
-      dataRows: exportData,
+      dataRows: warehouseTableData,
     });
   };
 
@@ -7497,7 +7437,7 @@ export default function InputCostPage({ params }: Params) {
   const shouldScrollSkuInfoTable = tableData.length > INPUT_COST_VISIBLE_ROWS;
 
   const shouldScrollWarehouseTable =
-    warehouseData.length > INPUT_COST_VISIBLE_ROWS;
+    warehouseTableData.length > INPUT_COST_VISIBLE_ROWS;
 
   return (
     <div ref={pageTopRef} className="space-y-3 relative">
@@ -7573,7 +7513,7 @@ export default function InputCostPage({ params }: Params) {
                   <DownloadIconButton
                     onClick={handleWarehouseDownload}
                     size="md"
-                    disabled={isNA || warehouseData.length === 0}
+                    disabled={isNA || warehouseTableData.length === 0}
                   />
                 </>
               )}
@@ -7693,7 +7633,7 @@ export default function InputCostPage({ params }: Params) {
           className="min-w-0"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
         />
-        {activeTab === "sku-info" &&
+        {(activeTab === "sku-info" || activeTab === "extra") &&
           countryName === "global" &&
           globalInventoryCountryOptions.length > 0 && (
             <SegmentedToggle
@@ -7846,10 +7786,10 @@ export default function InputCostPage({ params }: Params) {
                 <div className="rounded-xl border border-slate-200 bg-white min-h-[320px] flex items-center justify-center">
                   <Loader transparent />
                 </div>
-              ) : warehouseData.length > 0 ? (
+              ) : warehouseTableData.length > 0 ? (
                 <DataTable<Record<string, any>>
                   columns={warehouseTableColumns}
-                  data={warehouseData}
+                  data={warehouseTableData}
                   paginate={false}
                   pageSize={10}
                   stickyHeader
@@ -7993,6 +7933,11 @@ export default function InputCostPage({ params }: Params) {
             <div className="relative w-full rounded-xl bg-white/30 p-4 no-scrollbar lg:p-9">
               <WarehouseMultiCountryUpload
                 countryName={countryName}
+                marketplaceCountry={
+                  countryName === 'global'
+                    ? selectedGlobalSkuCountry
+                    : normalizeWarehouseCountry(countryName)
+                }
                 onClose={() => setShowWarehouseUpload(false)}
                 onComplete={() => {
                   setShowWarehouseUpload(false);

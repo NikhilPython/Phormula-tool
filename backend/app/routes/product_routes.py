@@ -4652,9 +4652,39 @@ def upload_warehouse_data():
         col = re.sub(r'_+', '_', col).strip('_')
         return col
 
+    def normalize_warehouse_country(value, fallback=None):
+        normalized = str(value or '').strip().lower()
+        if normalized in {'', 'nan', 'none', 'null'}:
+            normalized = str(fallback or '').strip().lower()
+        normalized = re.sub(r'^amazon\s+', '', normalized)
+        aliases = {
+            'gb': 'uk',
+            'great britain': 'uk',
+            'united kingdom': 'uk',
+            'usa': 'us',
+            'united states': 'us',
+        }
+        return aliases.get(normalized, normalized)
+
+    def has_warehouse_value(value):
+        if value is None or pd.isna(value):
+            return False
+        return str(value).strip().lower() not in {'', 'nan', 'none', 'null'}
+
     country = (request.form.get('country') or request.args.get('country') or '').strip().lower()
     if not country:
         return jsonify({'error': 'country is required'}), 400
+    marketplace_country = normalize_warehouse_country(
+        request.form.get('marketplace_country') or request.args.get('marketplace_country')
+    )
+    default_warehouse_country = (
+        marketplace_country if country == 'global' else normalize_warehouse_country(country)
+    )
+    if country == 'global' and default_warehouse_country not in {'uk', 'us'}:
+        return jsonify({
+            'error': 'Marketplace selection is required',
+            'message': 'Select UK or US before uploading Global warehouse data.',
+        }), 400
 
     safe_country = sanitize_identifier(country)
     warehouse_table_name = f"warehouse_{user_id}_{safe_country}_data"
@@ -4704,16 +4734,80 @@ def upload_warehouse_data():
         df.columns = [normalize_column_name(c) for c in df.columns]
         df = df.dropna(how='all')
 
-        # Required stock columns
-        if 'local_stock' not in df.columns:
-            df['local_stock'] = 0
-        if 'in_transit_units' not in df.columns:
-            df['in_transit_units'] = 0
+        # Accept the Product Name + SKU format and keep existing country-specific
+        # warehouse files compatible during rollout.
+        if 'country' not in df.columns:
+            df['country'] = default_warehouse_country
+
+        legacy_sku_columns = [col for col in ('sku_uk', 'sku_us') if col in df.columns]
+        normalized_rows = []
+        for _, source_row in df.iterrows():
+            row = source_row.to_dict()
+            row_country = normalize_warehouse_country(
+                row.get('country'), default_warehouse_country
+            )
+
+            if country != 'global':
+                row_country = normalize_warehouse_country(country)
+
+            if has_warehouse_value(row.get('sku')):
+                normalized_rows.append({
+                    's_no': row.get('s_no'),
+                    'product_name': row.get('product_name'),
+                    'country': row_country,
+                    'sku': row.get('sku'),
+                    'local_stock': row.get('local_stock', 0),
+                    'month': row.get('month'),
+                    'year': row.get('year'),
+                })
+                continue
+
+            if legacy_sku_columns:
+                legacy_countries = (
+                    [row_country] if country != 'global'
+                    else [c.removeprefix('sku_') for c in legacy_sku_columns]
+                )
+                for legacy_country in legacy_countries:
+                    legacy_sku_column = f'sku_{legacy_country}'
+                    legacy_sku = row.get(legacy_sku_column)
+                    if has_warehouse_value(legacy_sku):
+                        normalized_rows.append({
+                            's_no': row.get('s_no'),
+                            'product_name': row.get('product_name'),
+                            'country': legacy_country,
+                            'sku': legacy_sku,
+                            'local_stock': row.get('local_stock', 0),
+                            'month': row.get('month'),
+                            'year': row.get('year'),
+                        })
+
+        if not normalized_rows:
+            return jsonify({
+                'error': 'Invalid warehouse format',
+                'message': 'Each row must include a Product Name, SKU, and Local Stock value.',
+            }), 400
+
+        df = pd.DataFrame(normalized_rows, columns=[
+            's_no', 'product_name', 'country', 'sku', 'local_stock', 'month', 'year'
+        ])
+        df['country'] = df['country'].apply(
+            lambda value: normalize_warehouse_country(value, default_warehouse_country)
+        )
+
+        if country == 'global' and not df['country'].isin(['uk', 'us']).all():
+            return jsonify({
+                'error': 'Invalid warehouse country',
+                'message': 'Global warehouse rows must target UK or US.',
+            }), 400
+
+        df['country'] = df['country'].str.upper()
 
         # Numeric conversions
-        for col in ['local_stock', 'in_transit_units', 'year', 's_no', 'price']:
+        for col in ['local_stock', 'year', 's_no']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
+        df['local_stock'] = df['local_stock'].fillna(0)
+        df = df.drop_duplicates(subset=['country', 'sku'], keep='last')
 
         # Clean object columns
         for col in df.columns:
@@ -4751,58 +4845,49 @@ def upload_warehouse_data():
                     ADD COLUMN local_stock INTEGER DEFAULT 0
                 '''))
 
-            if "in_transit_units" not in existing_columns:
-                conn.execute(text(f'''
-                    ALTER TABLE "{sku_table_name}"
-                    ADD COLUMN in_transit_units INTEGER DEFAULT 0
-                '''))
+            for stock_column in ('local_stock_uk', 'local_stock_us'):
+                if stock_column not in existing_columns:
+                    conn.execute(text(f'''
+                        ALTER TABLE "{sku_table_name}"
+                        ADD COLUMN {stock_column} INTEGER DEFAULT 0
+                    '''))
 
             # Load SKU table
             sku_df = pd.read_sql(f'SELECT * FROM "{sku_table_name}"', conn)
             sku_df.columns = [normalize_column_name(c) for c in sku_df.columns]
 
-            # Decide matching key
-            possible_keys = ['asin', 'product_barcode', 'sku_uk', 'sku_us']
-            match_key = None
-            for key in possible_keys:
-                if key in df.columns and key in sku_df.columns:
-                    match_key = key
-                    break
-
-            if not match_key:
-                return jsonify({
-                    'success': False,
-                    'message': 'Warehouse uploaded, but no common matching column found to update SKU table',
-                    'possible_keys_checked': possible_keys,
-                    'warehouse_columns': df.columns.tolist(),
-                    'sku_columns': sku_df.columns.tolist()
-                }), 400
-
-            # Prepare update dataframe
-            update_df = df[[match_key, 'local_stock', 'in_transit_units']].copy()
-            update_df = update_df.dropna(subset=[match_key])
-            update_df[match_key] = update_df[match_key].astype(str).str.strip()
-
-            update_df['local_stock'] = pd.to_numeric(update_df['local_stock'], errors='coerce').fillna(0).astype(int)
-            update_df['in_transit_units'] = pd.to_numeric(update_df['in_transit_units'], errors='coerce').fillna(0).astype(int)
-
-            # If duplicate keys exist in uploaded file, keep last one
-            update_df = update_df.drop_duplicates(subset=[match_key], keep='last')
-
-            # Update rows in sku table
+            # Update the country-specific stock column using that marketplace's SKU.
+            available_sku_columns = set(sku_df.columns)
             updated_count = 0
-            for _, row in update_df.iterrows():
+            for _, row in df.iterrows():
+                row_country = normalize_warehouse_country(row.get('country'))
+                match_key = f'sku_{row_country}'
+                if match_key not in available_sku_columns:
+                    match_key = 'sku' if 'sku' in available_sku_columns else None
+                if not match_key:
+                    continue
+
+                match_value = str(row.get('sku') or '').strip()
+                if not match_value:
+                    continue
+                stock_column = f'local_stock_{row_country}'
+                if stock_column not in available_sku_columns:
+                    stock_column = 'local_stock'
+                set_clauses = [f'{stock_column} = :local_stock']
+                if country != 'global' and stock_column != 'local_stock':
+                    set_clauses.append('local_stock = :local_stock')
+
                 result = conn.execute(
-                    text(f'''
-                        UPDATE "{sku_table_name}"
-                        SET local_stock = :local_stock,
-                            in_transit_units = :in_transit_units
-                        WHERE CAST({match_key} AS TEXT) = :match_value
-                    '''),
+                    text(
+                        f'UPDATE "{sku_table_name}" SET {", ".join(set_clauses)} '
+                        f'WHERE CAST({match_key} AS TEXT) = :match_value'
+                    ),
                     {
-                        "local_stock": int(row["local_stock"]),
-                        "in_transit_units": int(row["in_transit_units"]),
-                        "match_value": str(row[match_key]).strip()
+                        "local_stock": (
+                            0 if pd.isna(pd.to_numeric(row.get('local_stock'), errors='coerce'))
+                            else int(pd.to_numeric(row.get('local_stock'), errors='coerce'))
+                        ),
+                        "match_value": match_value,
                     }
                 )
                 updated_count += result.rowcount

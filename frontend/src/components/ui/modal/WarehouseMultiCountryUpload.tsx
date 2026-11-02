@@ -13,24 +13,32 @@ type Props = {
     onClose: () => void;
     onComplete: () => void;
     countryName: string;
+    marketplaceCountry?: string;
 };
 
 const FIXED_COLUMNS = [
     "s_no",
-    "sku_us",
-    "sku_uk",
+    "product_name",
+    "sku",
     "local_stock",
-    "in_transit_units",
+    "month",
+    "year",
+] as const;
+const REQUIRED_UPLOAD_COLUMNS = [
+    "s_no",
+    "product_name",
+    "country",
+    "sku",
+    "local_stock",
     "month",
     "year",
 ] as const;
 
 const HEADER_LABELS: Record<string, string> = {
-    s_no: "S No",
-    sku_us: "SKU_US",
-    sku_uk: "SKU_UK",
+    s_no: "S. No.",
+    product_name: "Product Name",
+    sku: "SKU",
     local_stock: "Local Stock",
-    in_transit_units: "In Transit Units",
     month: "Month",
     year: "Year",
 };
@@ -52,6 +60,11 @@ function normalizeHeader(key: string): string {
         s_no: "s_no",
         serial_no: "s_no",
         serial_number: "s_no",
+
+        product_name: "product_name",
+        "product name": "product_name",
+        country: "country",
+        sku: "sku",
 
         sku_us: "sku_us",
         "sku_(us)": "sku_us",
@@ -83,6 +96,7 @@ export default function WarehouseMultiCountryUpload({
     onClose,
     onComplete,
     countryName,
+    marketplaceCountry,
 }: Props) {
     const [error, setError] = React.useState("");
     const [file, setFile] = React.useState<File | null>(null);
@@ -108,7 +122,7 @@ export default function WarehouseMultiCountryUpload({
     const validateHeadersFromRawRow = React.useCallback((row: Row) => {
         const normalizedHeaders = Object.keys(row).map((key) => normalizeHeader(key));
 
-        const missing = FIXED_COLUMNS.filter((col) => !normalizedHeaders.includes(col));
+        const missing = REQUIRED_UPLOAD_COLUMNS.filter((col) => !normalizedHeaders.includes(col));
 
         if (missing.length) {
             return "Invalid file format. Please upload a file using the provided template.";
@@ -125,10 +139,9 @@ export default function WarehouseMultiCountryUpload({
             .map((row, index) => {
                 const out: Row = {
                     s_no: "",
-                    sku_us: "",
-                    sku_uk: "",
+                    product_name: "",
+                    sku: "",
                     local_stock: "",
-                    in_transit_units: "",
                     month: "",
                     year: "",
                 };
@@ -273,8 +286,8 @@ export default function WarehouseMultiCountryUpload({
 
     const onDownloadTemplate = () => {
         const link = document.createElement("a");
-        link.href = "/warehouse-information-template.xlsx";
-        link.download = "Warehouse Information.xlsx";
+        link.href = "/warehouse-information-template-with-country.xlsx";
+        link.download = "Warehouse Information with Country.xlsx";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -301,6 +314,9 @@ export default function WarehouseMultiCountryUpload({
             const formData = new FormData();
             formData.append("file", file);
             formData.append("country", countryName);
+            if (marketplaceCountry) {
+                formData.append("marketplace_country", marketplaceCountry);
+            }
 
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData`,

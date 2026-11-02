@@ -4510,11 +4510,8 @@ export async function exportWarehouseDataExcel(params: {
   const orderedHeaders = [
     "s_no",
     "product_name",
-    "sku_uk",
-    "sku_us",
-    "sku_canada",
+    "sku",
     "local_stock",
-    "in_transit_units",
     "month",
     "year",
   ].filter((h) => inputHeaders.includes(h));
@@ -4556,13 +4553,13 @@ const whiteFill = {
   const displayHeaders = headers.map((h) => {
     switch (h) {
       case "s_no":
-        return "S.No.";
+        return "S. No.";
       case "product_name":
         return "Product Name";
+      case "sku":
+        return "SKU";
       case "local_stock":
         return "Local Stock";
-      case "in_transit_units":
-        return "In Transit Units";
       case "month":
         return "Month";
       case "year":
