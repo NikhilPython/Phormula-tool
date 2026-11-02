@@ -66,10 +66,83 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v27_fba_net_refunds"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v28_product_name_resolution"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
+
+
+def _restore_reconciliation_product_names(frame, user_id, country, monthly_rows=None):
+    """Resolve missing/zero product names by SKU without changing financial values."""
+    from app.models.user_models import Product, Fee
+
+    frame = frame.copy()
+    if "product_name" not in frame.columns:
+        frame["product_name"] = ""
+    if "sku" not in frame.columns or frame.empty:
+        return frame
+
+    invalid = {"", "0", "0.0", "none", "null", "nan", "<na>"}
+
+    def valid(value):
+        return pd.notna(value) and str(value).strip().lower() not in invalid
+
+    names = {}
+    # Prefer a name already present in the current report/period.
+    for item in frame[["sku", "product_name"]].itertuples(index=False, name=None):
+        sku, name = item
+        if valid(sku) and valid(name):
+            names[str(sku).strip()] = str(name).strip()
+    for item in monthly_rows or []:
+        sku, name = item.get("sku"), item.get("product_name")
+        if valid(sku) and valid(name):
+            names.setdefault(str(sku).strip(), str(name).strip())
+
+    marketplace = {"us": "ATVPDKIKX0DER", "uk": "A1F83G8C2ARO7P"}.get(
+        str(country or "").strip().lower()
+    )
+    unresolved = sorted({str(v).strip() for v in frame["sku"] if valid(v)} - names.keys())
+    if marketplace and unresolved:
+        # Fee Preview's product_name is imported directly from Amazon; it is
+        # preferred over guessing a name from the SKU.
+        try:
+            for start in range(0, len(unresolved), 400):
+                batch = unresolved[start:start + 400]
+                for fee in Fee.query.filter(
+                    Fee.user_id == user_id,
+                    Fee.marketplace_id == marketplace,
+                    Fee.sku.in_(batch),
+                ).all():
+                    name = getattr(fee, "product_name", None)
+                    if valid(name):
+                        names.setdefault(str(fee.sku).strip(), str(name).strip())
+        except SQLAlchemyError:
+            pass
+        unresolved = [sku for sku in unresolved if sku not in names]
+        if unresolved:
+            try:
+                for start in range(0, len(unresolved), 400):
+                    for product in Product.query.filter(
+                        Product.user_id == user_id,
+                        Product.marketplace_id == marketplace,
+                        Product.sku.in_(unresolved[start:start + 400]),
+                    ).all():
+                        name = next((value for value in (
+                            getattr(product, "product_name", None),
+                            getattr(product, "item_name", None),
+                            getattr(product, "title", None),
+                        ) if valid(value)), None)
+                        if name is not None:
+                            names.setdefault(str(product.sku).strip(), str(name).strip())
+            except SQLAlchemyError:
+                pass
+
+    missing = ~frame["product_name"].map(valid)
+    frame.loc[missing, "product_name"] = (
+        frame.loc[missing, "sku"].astype(str).str.strip().map(names).fillna("")
+    )
+    # Unresolved titles stay empty; never write numeric zero as a product name.
+    return frame
 
 
 def _recalculate_fba_source_fees(frame, user_id, country):
@@ -3899,6 +3972,9 @@ def get_table_data(file_name):
             return summary, detail_records, matched_table
 
         sku_monthly_summary, sku_monthly_rows, sku_monthly_table = _load_sku_monthly_context()
+        raw_df = _restore_reconciliation_product_names(
+            raw_df, user_id, country, monthly_rows=sku_monthly_rows
+        )
 
         # ---------------------------------------------
         # ✅ FILTER MONTHS/YEAR IF quarterly/yearly
