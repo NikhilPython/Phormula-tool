@@ -13459,9 +13459,48 @@ export default function DashboardPage() {
             : inventoryProductRows
                 .reduce((total, row) => total + readInTransitUnits(row), 0);
         const inTransitSkus = countInventorySkus(readInTransitUnits);
-        const inventoryCoverageRatio = parseOverviewMetricNumber(
-            inventoryTotalRow?.coverageRatio
-        );
+        const latestGlobalInventoryResponse = [...inventoryInsightResponses]
+            .reverse()
+            .find((response: any) => response?.success);
+        const globalCoverageCountries = (() => {
+            if (platform !== "global" || !latestGlobalInventoryResponse) return [] as ("uk" | "us")[];
+
+            const countryResults = latestGlobalInventoryResponse?.country_results;
+            const availableCountries = countryResults && typeof countryResults === "object"
+                ? Object.entries(countryResults)
+                    .filter(([, response]: [string, any]) => response?.success !== false)
+                    .map(([country]) => country.toLowerCase())
+                : (latestGlobalInventoryResponse?.combined_countries ?? []).map(
+                    (country: unknown) => String(country).toLowerCase()
+                );
+
+            return (["uk", "us"] as const).filter((country) =>
+                availableCountries.includes(country)
+            );
+        })();
+        const globalCountryCoverageRatios = globalCoverageCountries
+            .map((country) => {
+                const countryInventory = buildInventoryInsightsFromResponses(
+                    inventoryInsightResponses,
+                    inventoryAgeSummaryResponses,
+                    "global",
+                    profileHomeCurrency,
+                    selectedAgeingTrendBucket,
+                    country
+                );
+                const countryTotal = countryInventory.heatmapData.find(
+                    (row) => row.isTotalRow || String(row.productName).trim().toLowerCase() === "total"
+                );
+                return parseOverviewMetricNumber(countryTotal?.coverageRatio);
+            })
+            .filter((value): value is number => value !== undefined);
+        const averageGlobalCountryCoverageRatio = globalCountryCoverageRatios.length
+            ? globalCountryCoverageRatios.reduce((sum, value) => sum + value, 0) /
+                globalCountryCoverageRatios.length
+            : undefined;
+        const inventoryCoverageRatio =
+            averageGlobalCountryCoverageRatio ??
+            parseOverviewMetricNumber(inventoryTotalRow?.coverageRatio);
 
         const normalizeOverviewText = (value: unknown): string => {
             if (Array.isArray(value)) {
@@ -13597,7 +13636,7 @@ export default function DashboardPage() {
                     ? globalInventorySummary?.current_awd_percentage
                     : currentAwdPercentage,
                 inventoryCoverageRatio: useBackendGlobalInventorySummary
-                    ? globalInventorySummary?.inventory_coverage_ratio
+                    ? inventoryCoverageRatio ?? globalInventorySummary?.inventory_coverage_ratio
                     : inventoryCoverageRatio,
                 ageingInventoryUnits: useBackendGlobalInventorySummary
                     ? globalInventorySummary?.ageing_inventory_units

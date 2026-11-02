@@ -6683,7 +6683,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     const routeRange = String(initialRanged || "").toLowerCase();
 
-    if (routeRange === "monthly") {
+    if (routeRange === "monthly" || routeRange === "mtd") {
       return computeDefaultMonthlyPeriod().year;
     }
 
@@ -6695,6 +6695,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const getShiftedRoutePeriod = () => {
+    const routeRange = String(initialRanged || "").toLowerCase();
+    if (routeRange !== "monthly" && routeRange !== "mtd") return null;
+
     const m = String(initialMonth || "").toLowerCase();
     const y = Number(initialYear || new Date().getFullYear());
 
@@ -6712,6 +6715,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const getInitialRange = (): RangeType => {
     const routeRange = String(initialRanged || "").toLowerCase();
 
+    if (routeRange === "monthly" || routeRange === "mtd") return "monthly";
+    if (routeRange === "quarterly" || routeRange === "qtd") return "quarterly";
+    if (routeRange === "yearly" || routeRange === "ytd") return "yearly";
+
     const hasSpecificMonth =
       initialMonth &&
       String(initialMonth).toUpperCase() !== "NA" &&
@@ -6722,8 +6729,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return "monthly";
     }
 
-    if (routeRange === "monthly") return "monthly";
-    if (routeRange === "quarterly") return "quarterly";
     return "yearly";
   };
 
@@ -9400,7 +9405,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     // Use the shifted year if available
     setSelectedYear(shifted ? shifted.year : getInitialSelectedYear());
 
-    if (routeRange === "monthly") {
+    if (routeRange === "monthly" || routeRange === "mtd") {
       setSelectedMonth(
         // Use shifted month if available, otherwise fallback to URL month or default
         shifted ? shifted.month : (initialMonth || computeDefaultMonthlyPeriod().month).toLowerCase()
@@ -9409,7 +9414,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (routeRange === "quarterly") {
+    if (routeRange === "quarterly" || routeRange === "qtd") {
       setSelectedMonth("");
       setSelectedQuarter(
         isQuarter(initialMonth) ? initialMonth : computeDefaultQuarterlyPeriod().quarter
@@ -10906,9 +10911,34 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       : undefined;
     const inTransitUnits = resolveInventoryTotal(readTotalInTransit);
     const inTransitSkus = countInventorySkus(readTotalInTransit);
-    const inventoryCoverageRatio = parseOverviewNumber(
-      inventoryTotalRow?.coverageRatio
-    );
+    const globalCountryCoverageRatios = isGlobalPage
+      ? availableGlobalInventoryCountries
+        .map(({ value }) => {
+          const countryInventory = buildInventoryInsightsFromResponses(
+            inventoryRawResponses?.inventory ?? [],
+            inventoryRawResponses?.ageSummary ?? [],
+            "global",
+            effectiveHomeCurrency,
+            selectedAgeingTrendBucket,
+            value,
+            range,
+            selectedMonth,
+            selectedYear
+          );
+          const countryTotal = countryInventory.heatmapData.find(
+            (row) => row.isTotalRow || String(row.productName).trim().toLowerCase() === "total"
+          );
+          return parseOverviewNumber(countryTotal?.coverageRatio);
+        })
+        .filter((value): value is number => value !== undefined)
+      : [];
+    const averageGlobalCountryCoverageRatio = globalCountryCoverageRatios.length
+      ? globalCountryCoverageRatios.reduce((sum, value) => sum + value, 0) /
+        globalCountryCoverageRatios.length
+      : undefined;
+    const inventoryCoverageRatio =
+      averageGlobalCountryCoverageRatio ??
+      parseOverviewNumber(inventoryTotalRow?.coverageRatio);
     const ageingInventoryUnits =
       parseOverviewNumber(liquidateAction?.unitCount) ??
       resolveInventoryTotal(readAgeingInventory);
@@ -11107,7 +11137,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? globalInventorySummary?.current_awd_percentage
           : currentAwdPercentage,
         inventoryCoverageRatio: useBackendGlobalInventorySummary
-          ? globalInventorySummary?.inventory_coverage_ratio
+          ? inventoryCoverageRatio ?? globalInventorySummary?.inventory_coverage_ratio
           : inventoryCoverageRatio,
         ageingInventoryUnits: useBackendGlobalInventorySummary
           ? globalInventorySummary?.ageing_inventory_units

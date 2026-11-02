@@ -159,13 +159,9 @@ export default function MonthlyRecapModal({
             return;
         }
 
-        // Get the actual current month and year
-        const now = new Date();
-        // Force English locale so the month name matches your URL structure (e.g., "October")
-        const month = now.toLocaleString('en-US', { month: 'long' });
-        const year = now.getFullYear();
+        const { month, year } = getPnlDateParams();
 
-        const url = `/pnl-dashboard/YTD/${country.toLowerCase()}/${month}/${year}`;
+        const url = `/pnl-dashboard/MTD/${country.toLowerCase()}/${month}/${year}`;
 
         // Open in a new tab
         window.open(url, "_blank", "noopener,noreferrer");

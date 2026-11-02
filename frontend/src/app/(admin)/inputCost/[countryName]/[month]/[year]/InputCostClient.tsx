@@ -4199,6 +4199,10 @@ export default function InputCostPage({ params }: Params) {
   const inventoryHeatmapUnitSalesDataKey: AgeingRiskUnitSalesDataKey = "unitsSold";
   const [selectedGlobalInventoryCountry, setSelectedGlobalInventoryCountry] =
     useState<"uk" | "us">("uk");
+  const [selectedGlobalSkuCountry, setSelectedGlobalSkuCountry] =
+    useState<"uk" | "us">("uk");
+  const skuInfoCountryName =
+    countryName === "global" ? selectedGlobalSkuCountry : countryName;
   const inventoryInsightsReportCountry =
     countryName === "global" ? selectedGlobalInventoryCountry : countryName;
   const showCurrentInventoryTableLayout =
@@ -4277,6 +4281,18 @@ export default function InputCostPage({ params }: Params) {
     globalInventoryCountryOptions,
     selectedGlobalInventoryCountry,
   ]);
+
+  useEffect(() => {
+    if (countryName !== "global" || !globalInventoryCountryOptions.length) return;
+
+    const selectedStillAvailable = globalInventoryCountryOptions.some(
+      (option) => option.value === selectedGlobalSkuCountry
+    );
+
+    if (!selectedStillAvailable) {
+      setSelectedGlobalSkuCountry(globalInventoryCountryOptions[0].value);
+    }
+  }, [countryName, globalInventoryCountryOptions, selectedGlobalSkuCountry]);
 
   const formatMonthName = (month?: string) => {
     const value = String(month || "").trim();
@@ -4601,14 +4617,14 @@ export default function InputCostPage({ params }: Params) {
   };
 
   // Remove local_stock and in_transit_units from SKU tab
-  const getVisibleColumns = (data: SkuRow[]) => {
+  const getVisibleColumns = (data: SkuRow[], targetCountry = countryName) => {
     if (!data || data.length === 0) return [] as string[];
 
     const baseColumns: string[] = ['s_no', 'product_name'];
     let skuColumns: string[] = [];
     let grossMarginColumns: string[] = [];
 
-    if (countryName === 'global') {
+    if (targetCountry === 'global') {
       const potentialSkuColumns = ['sku_uk', 'sku_us', 'sku_canada'];
 
       skuColumns = potentialSkuColumns.filter((col) => !isColumnEmpty(data, col));
@@ -4618,22 +4634,22 @@ export default function InputCostPage({ params }: Params) {
         return `gross_margin_${c}`;
       });
     } else {
-      const skuColumn = `sku_${countryName}`;
+      const skuColumn = `sku_${targetCountry}`;
       if (!isColumnEmpty(data, skuColumn)) {
         skuColumns.push(skuColumn);
       }
-      grossMarginColumns.push(`gross_margin_${countryName}`);
+      grossMarginColumns.push(`gross_margin_${targetCountry}`);
     }
 
-    const otherColumns = countryName === 'global'
+    const otherColumns = targetCountry === 'global'
       ? ['asin', 'product_barcode', 'month_year', 'price', 'product_status']
       : ['product_barcode', 'asin', 'price', 'currency', 'local_stock', 'product_status', 'month_year'];
 
     const visibleOtherColumns = otherColumns.filter((col) => {
       if (col === 'product_status') return true;
-      if (col === 'currency' && countryName !== 'global') return true;
-      if (col === 'local_stock' && countryName !== 'global') {
-        const countryStockColumn = `local_stock_${countryName}`;
+      if (col === 'currency' && targetCountry !== 'global') return true;
+      if (col === 'local_stock' && targetCountry !== 'global') {
+        const countryStockColumn = `local_stock_${targetCountry}`;
         return data.some((row) =>
           !isEmptyCellValue(row[countryStockColumn]) || !isEmptyCellValue(row.local_stock)
         );
@@ -4644,7 +4660,7 @@ export default function InputCostPage({ params }: Params) {
       return !isColumnEmpty(data, col);
     });
 
-    if (countryName !== 'global') {
+    if (targetCountry !== 'global') {
       return [
         ...baseColumns,
         ...visibleOtherColumns.filter((col) => ['product_barcode', 'asin'].includes(col)),
@@ -4657,18 +4673,18 @@ export default function InputCostPage({ params }: Params) {
     return [...baseColumns, ...skuColumns, ...visibleOtherColumns, ...grossMarginColumns];
   };
 
-  const getColumnDisplayName = (column: string): React.ReactNode => {
+  const getColumnDisplayName = (column: string, targetCountry = countryName): React.ReactNode => {
     switch (column) {
       case 's_no':
         return 'S.No.';
       case 'product_name':
         return 'Product Name';
       case 'sku_uk':
-        return countryName === 'global' ? 'SKU (UK)' : 'SKU';
+        return targetCountry === 'global' ? 'SKU (UK)' : 'SKU';
       case 'sku_us':
-        return countryName === 'global' ? 'SKU (US)' : 'SKU';
+        return targetCountry === 'global' ? 'SKU (US)' : 'SKU';
       case 'sku_canada':
-        return countryName === 'global' ? 'SKU (CANADA)' : 'SKU';
+        return targetCountry === 'global' ? 'SKU (CANADA)' : 'SKU';
       case 'asin':
         return 'ASIN';
       case 'product_barcode':
@@ -4685,7 +4701,7 @@ export default function InputCostPage({ params }: Params) {
         return 'Product Status';
       default:
         if (column.startsWith('sku_')) {
-          if (countryName !== 'global') return 'SKU';
+          if (targetCountry !== 'global') return 'SKU';
 
           const c = column.replace('sku_', '').toUpperCase();
           return `SKU (${c})`;
@@ -4696,7 +4712,7 @@ export default function InputCostPage({ params }: Params) {
           return (
             <div className="text-center leading-tight">
               <span className="hidden xl:inline whitespace-nowrap">
-                {countryName === 'global'
+                {targetCountry === 'global'
                   ? `Gross Margin (%) ${c}`
                   : 'Gross Margin (%)'}
               </span>
@@ -4704,7 +4720,7 @@ export default function InputCostPage({ params }: Params) {
               <span className="xl:hidden flex flex-col items-center justify-center whitespace-normal">
                 <span>Gross Margin</span>
                 <span>
-                  (%) {countryName === 'global' ? c : ''}
+                  (%) {targetCountry === 'global' ? c : ''}
                 </span>
               </span>
 
@@ -4720,6 +4736,11 @@ export default function InputCostPage({ params }: Params) {
         return column.charAt(0).toUpperCase() + column.slice(1);
     }
   };
+
+  const skuInfoVisibleColumns = useMemo(
+    () => getVisibleColumns(skuData, skuInfoCountryName),
+    [skuData, skuInfoCountryName]
+  );
 
   const getCurrencyRate = (currency: string | undefined, country: string) => {
     if (!currency || !currencyRates || Object.keys(currencyRates).length === 0) return 1;
@@ -5894,15 +5915,15 @@ export default function InputCostPage({ params }: Params) {
   };
 
   const tableData: TableRow[] = useMemo(() => {
-    const countrySkuColumn = `sku_${countryName}`;
-    const displayedRows = countryName === 'global'
+    const countrySkuColumn = `sku_${skuInfoCountryName}`;
+    const displayedRows = skuInfoCountryName === 'global'
       ? skuData
       : skuData.filter((row) => !isEmptyCellValue(row[countrySkuColumn]));
 
     return displayedRows.map((row, index) => {
-      const countryStatusColumn = `product_status_${countryName}`;
+      const countryStatusColumn = `product_status_${skuInfoCountryName}`;
       const countryValue = (column: string) =>
-        row[`${column}_${countryName}`] ?? row[column];
+        row[`${column}_${skuInfoCountryName}`] ?? row[column];
       const item: TableRow = {
         id: `${row.product_name}-${index}`,
         sku_record_id: row.id,
@@ -5917,16 +5938,16 @@ export default function InputCostPage({ params }: Params) {
         currency: countryValue('currency') ?? '—',
         local_stock: countryValue('local_stock') ?? '—',
         month_year: getMonthYearDisplay(row),
-        price: row.price ?? '',
+        price: row[`price_${skuInfoCountryName}`] ?? row.price ?? '',
         product_status: normalizeProductStatus(row[countryStatusColumn] ?? row.product_status),
       };
 
-      visibleColumns.forEach((col) => {
+      skuInfoVisibleColumns.forEach((col) => {
         if (col.startsWith('gross_margin_')) {
           item[col] = '';
         } else if (
           col in row && col !== 's_no' &&
-          !(countryName !== 'global' &&
+            !(skuInfoCountryName !== 'global' &&
             ['asin', 'product_barcode', 'currency', 'local_stock', 'product_status'].includes(col))
         ) {
           item[col] = isEmptyCellValue(row[col]) ? '—' : row[col];
@@ -5935,7 +5956,7 @@ export default function InputCostPage({ params }: Params) {
 
       return item;
     });
-  }, [skuData, visibleColumns, countryName]);
+  }, [skuData, skuInfoVisibleColumns, skuInfoCountryName]);
 
   const openAiProductDrawerByName = useCallback(
     (productName: string, sku?: string, inventoryRow?: any) => {
@@ -6207,10 +6228,10 @@ export default function InputCostPage({ params }: Params) {
   }, [selectedAiProductBlock, aiProductBlocks, countryName]);
 
   const columns: ColumnDef<TableRow>[] = useMemo(() => {
-    return visibleColumns.map((column) => {
+    return skuInfoVisibleColumns.map((column) => {
       const col: ColumnDef<TableRow> = {
         key: column,
-        header: getColumnDisplayName(column),
+        header: getColumnDisplayName(column, skuInfoCountryName),
       };
 
       if (column === 's_no') col.width = '60px';
@@ -6232,11 +6253,11 @@ export default function InputCostPage({ params }: Params) {
           }
 
           const sku =
-            countryName === "uk"
+            skuInfoCountryName === "uk"
               ? originalRow.sku_uk
-              : countryName === "us"
+              : skuInfoCountryName === "us"
                 ? originalRow.sku_us
-                : countryName === "canada"
+                : skuInfoCountryName === "canada"
                   ? originalRow.sku_canada
                   : originalRow.sku_uk ||
                   originalRow.sku_us ||
@@ -6278,7 +6299,7 @@ export default function InputCostPage({ params }: Params) {
         col.render = (tableRow) => {
           const recordId = Number((tableRow as any).sku_record_id);
           const originalRow = skuData.find((row) => row.id === recordId);
-          const countryStatusColumn = `product_status_${countryName}`;
+          const countryStatusColumn = `product_status_${skuInfoCountryName}`;
           const currentStatus = normalizeProductStatus(
             originalRow?.[countryStatusColumn] ?? originalRow?.product_status
           );
@@ -6309,7 +6330,7 @@ export default function InputCostPage({ params }: Params) {
 
           return isEditing ? (
             <div className="flex items-center justify-center gap-1">
-              <span>{getCurrencySymbol(originalRow.currency)}</span>
+              <span>{getCurrencySymbol(originalRow[`currency_${skuInfoCountryName}`] ?? originalRow.currency)}</span>
               <input
                 type="number"
                 className="border border-gray-300 rounded px-2 py-1 w-[90px] text-center"
@@ -6323,7 +6344,7 @@ export default function InputCostPage({ params }: Params) {
             </div>
           ) : (
             <span>
-              {getCurrencySymbol(originalRow.currency)} {originalRow.price ?? '—'}
+              {getCurrencySymbol(originalRow[`currency_${skuInfoCountryName}`] ?? originalRow.currency)} {originalRow[`price_${skuInfoCountryName}`] ?? originalRow.price ?? '—'}
             </span>
           );
         };
@@ -6341,11 +6362,11 @@ export default function InputCostPage({ params }: Params) {
       return col;
     });
   }, [
-    visibleColumns,
+    skuInfoVisibleColumns,
     skuData,
     isEditing,
     editedPrices,
-    countryName,
+    skuInfoCountryName,
     openAiProductDrawerByName,
   ]);
 
@@ -7651,6 +7672,7 @@ export default function InputCostPage({ params }: Params) {
       </div>
 
       <div ref={stickyTabsHeaderRef} className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
+        <div className="flex items-center justify-between gap-3">
         <SegmentedToggle<InputCostTab>
           value={activeTab}
           onChange={(nextTab) => {
@@ -7668,9 +7690,23 @@ export default function InputCostPage({ params }: Params) {
           }}
           options={tabOptions}
           compact
-          className="w-full"
+          className="min-w-0"
           textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
         />
+        {activeTab === "sku-info" &&
+          countryName === "global" &&
+          globalInventoryCountryOptions.length > 0 && (
+            <SegmentedToggle
+              value={selectedGlobalSkuCountry}
+              onChange={(val) =>
+                setSelectedGlobalSkuCountry(String(val) as "uk" | "us")
+              }
+              options={globalInventoryCountryOptions}
+              compact
+              textSizeClass="text-xs"
+            />
+          )}
+        </div>
       </div>
 
       <PreviewLockedSection
@@ -7775,7 +7811,7 @@ export default function InputCostPage({ params }: Params) {
                 <div className="mt-5 rounded-xl border border-slate-200 bg-white min-h-[420px] flex items-center justify-center">
                   <Loader transparent />
                 </div>
-              ) : skuData.length > 0 ? (
+              ) : tableData.length > 0 ? (
                 <div className="mt-5">
                   <DataTable<TableRow>
                     columns={columns}
