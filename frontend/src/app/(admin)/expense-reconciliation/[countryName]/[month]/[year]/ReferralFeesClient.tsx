@@ -3861,11 +3861,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
           onAction={handlePreviewAction}
         >
           <>
-            <p className="mt-3 text-xs text-slate-600">
+            {/* <p className="mt-3 text-xs text-slate-600">
               FBA applicable fees are estimated from package measurements and the transaction date and price.
               Storage, inventory surcharges and program discounts are separate.
               {!Number.isFinite(card6.fbaFeesApplicable) && " Some products lack measurements or a supported rate; their fees and combined totals are unavailable."}
-            </p>
+            </p> */}
             {!showDeepDive ? (
               <section className="relative mt-4 overflow-hidden rounded-2xl border border-[#CFE8DF] bg-white shadow-sm">
 

@@ -438,12 +438,14 @@ const InventoryInsightsGrid = ({
         label="Return rate"
         value={value(
           inventory.countryBreakdown ? (
-            <div className="space-y-0.5 text-sm sm:text-base">
+            <div className="grid grid-cols-1 gap-y-1 text-sm leading-5 sm:text-base">
               {(["uk", "us"] as const).map((country) => {
                 const metrics = inventory.countryBreakdown?.[country];
                 return metrics ? (
-                  <div key={country} className="whitespace-nowrap">
-                    <span className="text-xs font-semibold uppercase text-slate-500">{country}</span>{" "}
+                  <div key={country} className="whitespace-nowrap leading-5">
+                    <span className="text-xs font-semibold uppercase text-slate-500">
+                      {country}
+                    </span>{" "}
                     {optionalPercentage(metrics.returnRate)}
                   </div>
                 ) : null;
@@ -454,11 +456,11 @@ const InventoryInsightsGrid = ({
         trailing={
           loading ? null : (
             inventory.countryBreakdown ? (
-              <div className="space-y-0.5 text-right text-[10px] font-semibold leading-tight text-slate-500 2xl:text-xs">
+              <div className="grid grid-cols-1 gap-y-1 text-right text-[10px] font-semibold leading-5 text-slate-500 2xl:text-xs">
                 {(["uk", "us"] as const).map((country) => {
                   const metrics = inventory.countryBreakdown?.[country];
                   return metrics ? (
-                    <div key={country} className="whitespace-nowrap">
+                    <div key={country} className="whitespace-nowrap leading-5">
                       {typeof metrics.returnRateSkus === "number"
                         ? `${formatWholeNumber(metrics.returnRateSkus)} SKUs`
                         : "- SKUs"}
@@ -541,11 +543,11 @@ const InventoryInsightsGrid = ({
         label="High alert (Coverage < 2 Months)"
         value={value(
           inventory.countryBreakdown ? (
-            <div className="space-y-0.5 text-sm sm:text-base">
+            <div className="grid grid-cols-1 gap-y-1 text-sm leading-5 sm:text-base">
               {(["uk", "us"] as const).map((country) => {
                 const metrics = inventory.countryBreakdown?.[country];
                 return metrics ? (
-                  <div key={country} className="whitespace-nowrap">
+                  <div key={country} className="whitespace-nowrap leading-5">
                     <span className="text-xs font-semibold uppercase text-slate-500">{country}</span>{" "}
                     {formatWholeNumber(metrics.highAlertUnits ?? 0)} units left
                   </div>
@@ -557,11 +559,11 @@ const InventoryInsightsGrid = ({
         trailing={
           loading ? null : (
             inventory.countryBreakdown ? (
-              <div className="space-y-0.5 text-right text-[10px] font-semibold leading-tight text-slate-500 2xl:text-xs">
+              <div className="grid grid-cols-1 gap-y-1 text-right text-[10px] font-semibold leading-5 text-slate-500 2xl:text-xs">
                 {(["uk", "us"] as const).map((country) => {
                   const metrics = inventory.countryBreakdown?.[country];
                   return metrics ? (
-                    <div key={country} className="whitespace-nowrap">
+                    <div key={country} className="whitespace-nowrap leading-5">
                       {formatWholeNumber(metrics.highAlertSkus ?? 0)} SKUs
                     </div>
                   ) : null;
@@ -609,7 +611,7 @@ const SkuPerformanceTable = ({
   }));
   const isNetSalesGrowthTable = variant === "netSalesGrowth";
   const renderProfitMetric = (row: SkuPerformanceTableRow) => (
-   <div className="inline-flex flex-col items-center justify-center whitespace-nowrap min-[1700px]:flex-row min-[1700px]:gap-2">
+    <div className="inline-flex flex-col items-center justify-center whitespace-nowrap min-[1700px]:flex-row min-[1700px]:gap-2">
       <span className="inline-flex items-baseline gap-1 text-charcoal-500">
         <span>{formatMoney(row.secondaryValue, currencySymbol)}</span>
         {typeof row.secondaryPercentage === "number" &&
