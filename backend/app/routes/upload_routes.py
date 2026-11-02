@@ -25,7 +25,8 @@ from app.utils.plotting_utils import (
 )
 from app.utils.currency_utils import (  process_global_yearly_skuwise_data ,
     process_global_quarterly_skuwise_data , 
-    process_global_monthly_skuwise_data
+    process_global_monthly_skuwise_data,
+    fetch_sku_prices_as_of,
 )
 from app.utils.history_graph_utils import get_performance_trend
 from dotenv import load_dotenv
@@ -424,58 +425,13 @@ def upload():
 
     target_year = int(year)  # form year string -> int
 
-    month_case_sql = """
-    CASE lower(month)
-        WHEN 'january' THEN 1
-        WHEN 'february' THEN 2
-        WHEN 'march' THEN 3
-        WHEN 'april' THEN 4
-        WHEN 'may' THEN 5
-        WHEN 'june' THEN 6
-        WHEN 'july' THEN 7
-        WHEN 'august' THEN 8
-        WHEN 'september' THEN 9
-        WHEN 'october' THEN 10
-        WHEN 'november' THEN 11
-        WHEN 'december' THEN 12
-        ELSE NULL
-    END
-    """
-
-    # year is string in DB, so cast it for comparisons
-    price_asof_query = text(f"""
-        SELECT sku, price, currency, product_name
-        FROM (
-            SELECT
-                {sku_column} AS sku,
-                price,
-                currency,
-                product_name,
-                CAST(year AS INTEGER) AS year_int,
-                {month_case_sql} AS month_num,
-                ROW_NUMBER() OVER (
-                    PARTITION BY {sku_column}
-                    ORDER BY CAST(year AS INTEGER) DESC, {month_case_sql} DESC
-                ) AS rn
-            FROM {country_table_name}
-            WHERE
-                year IS NOT NULL
-                AND trim(year) <> ''
-                AND {month_case_sql} IS NOT NULL
-                AND (
-                    CAST(year AS INTEGER) < :target_year
-                    OR (CAST(year AS INTEGER) = :target_year AND {month_case_sql} <= :target_month_num)
-                )
-        ) x
-        WHERE x.rn = 1
-    """)
-
-    with engine.connect() as conn:
-        country_df = pd.read_sql(
-            price_asof_query,
-            conn,
-            params={"target_year": target_year, "target_month_num": target_month_num}
-        )
+    country_df = fetch_sku_prices_as_of(
+        engine,
+        country_table_name,
+        sku_column,
+        target_year,
+        target_month_num,
+    )
 
     df = df.merge(country_df, on="sku", how="left")
 
@@ -487,26 +443,29 @@ def upload():
 
     df = df.merge(countries_df, on='sku', how='left')
 
-    with engine1.connect() as conn:
-        currency_query = text("""
-            SELECT conversion_rate
-            FROM currency_conversion 
-            WHERE lower(user_currency) = :currency 
-            AND lower(country) = :country 
-            AND lower(month) = :month 
-            AND year = :year
-            LIMIT 1
-        """)
+    source_currencies = country_df.get("currency", pd.Series(dtype=object)).dropna()
+    result = None
+    if not source_currencies.empty:
+        with engine1.connect() as conn:
+            currency_query = text("""
+                SELECT conversion_rate
+                FROM currency_conversion
+                WHERE lower(user_currency) = :currency
+                  AND lower(country) = :country
+                  AND lower(month) = :month
+                  AND year = :year
+                LIMIT 1
+            """)
 
-        result = conn.execute(
-            currency_query,
-            {
-                "currency": country_df['currency'].dropna().iloc[0].lower(),  # Get any available currency from df
-                "country": country.lower(),
-                "month": month.lower(),
-                "year": year
-            }
-        ).fetchone()
+            result = conn.execute(
+                currency_query,
+                {
+                    "currency": str(source_currencies.iloc[0]).lower(),
+                    "country": country.lower(),
+                    "month": month.lower(),
+                    "year": year,
+                },
+            ).fetchone()
 
 # Step 3: Apply conversion rate to calculate price_in_gbp
     conversion_rate = result[0] if result else None
@@ -817,58 +776,13 @@ def upload():
 
             target_year = int(year)  # form year string -> int
 
-            month_case_sql = """
-            CASE lower(month)
-                WHEN 'january' THEN 1
-                WHEN 'february' THEN 2
-                WHEN 'march' THEN 3
-                WHEN 'april' THEN 4
-                WHEN 'may' THEN 5
-                WHEN 'june' THEN 6
-                WHEN 'july' THEN 7
-                WHEN 'august' THEN 8
-                WHEN 'september' THEN 9
-                WHEN 'october' THEN 10
-                WHEN 'november' THEN 11
-                WHEN 'december' THEN 12
-                ELSE NULL
-            END
-            """
-
-            # year is string in DB, so cast it for comparisons
-            price_asof_query = text(f"""
-                SELECT sku, price, currency, product_name
-                FROM (
-                    SELECT
-                        {sku_column} AS sku,
-                        price,
-                        currency,
-                        product_name,
-                        CAST(year AS INTEGER) AS year_int,
-                        {month_case_sql} AS month_num,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY {sku_column}
-                            ORDER BY CAST(year AS INTEGER) DESC, {month_case_sql} DESC
-                        ) AS rn
-                    FROM {country_table_name}
-                    WHERE
-                        year IS NOT NULL
-                        AND trim(year) <> ''
-                        AND {month_case_sql} IS NOT NULL
-                        AND (
-                            CAST(year AS INTEGER) < :target_year
-                            OR (CAST(year AS INTEGER) = :target_year AND {month_case_sql} <= :target_month_num)
-                        )
-                ) x
-                WHERE x.rn = 1
-            """)
-
-            with engine.connect() as conn:
-                country_df = pd.read_sql(
-                    price_asof_query,
-                    conn,
-                    params={"target_year": target_year, "target_month_num": target_month_num}
-                )
+            country_df = fetch_sku_prices_as_of(
+                engine,
+                country_table_name,
+                sku_column,
+                target_year,
+                target_month_num,
+            )
 
             df = df.merge(country_df, on="sku", how="left")
 
@@ -878,26 +792,29 @@ def upload():
 
             df = df.merge(countries_df, on='sku', how='left')
 
-            with engine1.connect() as conn:
-                currency_query = text("""
-                    SELECT conversion_rate
-                    FROM currency_conversion 
-                    WHERE lower(user_currency) = :currency 
-                    AND lower(country) = :country 
-                    AND lower(month) = :month 
-                    AND year = :year
-                    LIMIT 1
-            """)
+            source_currencies = country_df.get("currency", pd.Series(dtype=object)).dropna()
+            result = None
+            if not source_currencies.empty:
+                with engine1.connect() as conn:
+                    currency_query = text("""
+                        SELECT conversion_rate
+                        FROM currency_conversion
+                        WHERE lower(user_currency) = :currency
+                          AND lower(country) = :country
+                          AND lower(month) = :month
+                          AND year = :year
+                        LIMIT 1
+                    """)
 
-                result = conn.execute(
-                    currency_query,
-                    {
-                        "currency": country_df['currency'].dropna().iloc[0].lower(),  # Get any available currency from df
-                        "country": country.lower(),
-                        "month": month.lower(),
-                        "year": year
-                    }
-                ).fetchone()
+                    result = conn.execute(
+                        currency_query,
+                        {
+                            "currency": str(source_currencies.iloc[0]).lower(),
+                            "country": country.lower(),
+                            "month": month.lower(),
+                            "year": year,
+                        },
+                    ).fetchone()
 
         # Step 3: Apply conversion rate to calculate price_in_gbp
             conversion_rate = result[0] if result else None

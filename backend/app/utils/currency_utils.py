@@ -13,6 +13,95 @@ load_dotenv()
 db_url = os.getenv("DATABASE_URL")
 admin_db_url = os.getenv("DATABASE_ADMIN_URL")
 
+
+def fetch_sku_prices_as_of(engine, table_name, sku_column, target_year, target_month_num):
+    """Load each SKU's latest eligible price, falling back to its undated base price."""
+    if sku_column not in {"sku_uk", "sku_us"}:
+        raise ValueError("Unsupported SKU column")
+    if not re.fullmatch(r"sku_\d+_data_table", str(table_name)):
+        raise ValueError("Invalid SKU table name")
+
+    target_year = int(target_year)
+    target_month_num = int(target_month_num)
+    if target_month_num < 1 or target_month_num > 12:
+        raise ValueError("target_month_num must be between 1 and 12")
+
+    price_query = text(f"""
+        WITH source_prices AS (
+            SELECT
+                BTRIM({sku_column}::text) AS sku,
+                price,
+                currency,
+                product_name,
+                CASE
+                    WHEN BTRIM(COALESCE(year::text, '')) ~ '^[0-9]{{1,4}}$'
+                    THEN BTRIM(year::text)::integer
+                    ELSE NULL
+                END AS year_int,
+                CASE LOWER(BTRIM(COALESCE(month::text, '')))
+                    WHEN 'january' THEN 1
+                    WHEN 'february' THEN 2
+                    WHEN 'march' THEN 3
+                    WHEN 'april' THEN 4
+                    WHEN 'may' THEN 5
+                    WHEN 'june' THEN 6
+                    WHEN 'july' THEN 7
+                    WHEN 'august' THEN 8
+                    WHEN 'september' THEN 9
+                    WHEN 'october' THEN 10
+                    WHEN 'november' THEN 11
+                    WHEN 'december' THEN 12
+                    ELSE NULL
+                END AS month_num,
+                id
+            FROM public."{table_name}"
+            WHERE {sku_column} IS NOT NULL
+              AND BTRIM({sku_column}::text) <> ''
+              AND price IS NOT NULL
+        ), eligible_prices AS (
+            SELECT *
+            FROM source_prices
+            WHERE (year_int IS NULL AND month_num IS NULL)
+               OR (
+                    year_int IS NOT NULL
+                    AND month_num IS NOT NULL
+                    AND (
+                        year_int < :target_year
+                        OR (year_int = :target_year AND month_num <= :target_month_num)
+                    )
+               )
+        ), ranked_prices AS (
+            SELECT
+                sku,
+                price,
+                currency,
+                product_name,
+                ROW_NUMBER() OVER (
+                    PARTITION BY UPPER(sku)
+                    ORDER BY
+                        CASE WHEN year_int IS NULL AND month_num IS NULL THEN 1 ELSE 0 END,
+                        year_int DESC NULLS LAST,
+                        month_num DESC NULLS LAST,
+                        id DESC NULLS LAST
+                ) AS row_num
+            FROM eligible_prices
+        )
+        SELECT sku, price, currency, product_name
+        FROM ranked_prices
+        WHERE row_num = 1
+    """)
+
+    with engine.connect() as connection:
+        return pd.read_sql(
+            price_query,
+            connection,
+            params={
+                "target_year": target_year,
+                "target_month_num": target_month_num,
+            },
+        )
+
+
 def _table_exists(conn, table_name):
     return conn.execute(
         text("""
