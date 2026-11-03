@@ -28,6 +28,8 @@ export type MonthlyRecapMetric = {
     loading?: boolean;
     /** Previous month's value. Shows the "Last month" row and change % on the card. Leave empty to hide both. */
     previous?: number | null;
+    /** Percentage change supplied by the dashboard card_metrics API response. */
+    deltaPct?: number | null;
     /** Set true for costs/rates where a decrease is good (Cost of Ads, TACoS). Passed to AmazonStatCard. */
     inverseDelta?: boolean;
     /** Optional top-border colour override. */
@@ -38,14 +40,13 @@ export type MonthlyRecapData = {
     monthLabel: string;
     target: number;
     actual: number;
-    topSku: {
+    skuHighlights: Array<{
+        title: string;
         name: string;
         sku?: string;
-        units: number;
         netSales: number;
-        sharePct?: number;
-        cm2Profit?: number;
-    } | null;
+        netSalesDeltaPct: number | null;
+    }>;
     objectives: string[];
     formatMoney: (val: number) => string;
     /** Values for the completed month, rather than the current MTD values. */
@@ -109,7 +110,7 @@ export default function MonthlyRecapModal({
 
     if (!open || !data) return null;
 
-    const { monthLabel, target, actual, topSku, objectives, formatMoney, metrics } = data;
+    const { monthLabel, target, actual, skuHighlights, objectives, formatMoney, metrics } = data;
     const hasTarget = target > 0;
     const pct = hasTarget ? (actual / target) * 100 : null;
     const met = pct !== null && pct >= 100;
@@ -311,10 +312,15 @@ export default function MonthlyRecapModal({
                                     label={metric.label}
                                     current={hasValue ? value : null}
                                     previous={metric.previous ?? null}
-                                    deltaPct={hasValue ? getDeltaPct(value, metric.previous) : null}
+                                    deltaPct={
+                                        hasValue
+                                            ? metric.deltaPct ?? getDeltaPct(value, metric.previous)
+                                            : null
+                                    }
                                     inverseDelta={metric.inverseDelta}
                                     bottomLabel="Last month"
-                                    hidePrevious={!hasPrevious}
+                                    hidePrevious={!hasPrevious && metric.deltaPct == null}
+                                    hidePreviousValue={!hasPrevious}
                                     loading={!!metric.loading}
                                     formatter={
                                         hasValue
@@ -328,38 +334,32 @@ export default function MonthlyRecapModal({
                     </div>
                 </section>
 
-                {/* Top-selling SKU */}
-                <section className="mt-4 rounded-xl border border-t-4 border-[#7B9A6D] p-5">
-                    <p className="mb-3 text-xs text-charcoal-500">Top-selling SKU</p>
-                    {topSku ? (
-                        <div className="grid grid-cols-3 items-start gap-3 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)]">
-                            <div className="col-span-3 min-w-0 sm:col-span-1">
-                                <p className="truncate text-lg font-bold text-charcoal-500" title={topSku.name}>
-                                    {topSku.name}
-                                </p>
-                                {topSku.sku && <p className="mt-0.5 truncate text-xs text-charcoal-500">{topSku.sku}</p>}
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-xs text-charcoal-500">Net sales</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
-                                    {formatMoney(topSku.netSales)}
-                                </p>
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-xs text-charcoal-500">Units</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
-                                    {Math.round(topSku.units).toLocaleString()}
-                                </p>
-                            </div>
-                            <div className="min-w-0">
-                                <p className="text-xs text-charcoal-500">CM2 Profit</p>
-                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
-                                    {topSku.cm2Profit != null ? formatMoney(topSku.cm2Profit) : "\u2014"}
-                                </p>
-                            </div>
+                {/* SKU sales highlights */}
+                <section className="mt-4 space-y-2" aria-label="SKU sales highlights">
+                    {skuHighlights.length > 0 ? skuHighlights.map((highlight) => {
+                        const delta = highlight.netSalesDeltaPct;
+                        return (
+                            <article key={highlight.title} className="rounded-xl border border-t-4 border-[#7B9A6D] px-4 py-3">
+                                <p className="mb-2 text-xs text-charcoal-500">{highlight.title}</p>
+                                <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] items-center gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-bold text-charcoal-500" title={highlight.name}>{highlight.name}</p>
+                                        {highlight.sku && <p className="mt-0.5 truncate text-xs text-charcoal-500">{highlight.sku}</p>}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-charcoal-500">Net sales</p>
+                                        <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">{formatMoney(highlight.netSales)}</p>
+                                    </div>
+                                    <p className={`whitespace-nowrap text-xs font-semibold ${delta == null ? "text-slate-400" : delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                        {delta == null ? "\u2014" : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
+                                    </p>
+                                </div>
+                            </article>
+                        );
+                    }) : (
+                        <div className="rounded-xl border border-t-4 border-[#7B9A6D] p-4">
+                            <p className="text-sm text-charcoal-500">No SKU sales recorded for this month.</p>
                         </div>
-                    ) : (
-                        <p className="text-sm text-charcoal-500">No SKU sales recorded for this month.</p>
                     )}
                 </section>
 

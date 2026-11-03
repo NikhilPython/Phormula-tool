@@ -13846,6 +13846,20 @@ export default function DashboardPage() {
             ? (data as any).previous_months_skuwise[0]
             : null;
         const historicalRows: any[] = Array.isArray(historicalMonth?.items) ? historicalMonth.items : [];
+        const monthlySkuHistory: any[] = Array.isArray((data as any)?.previous_months_skuwise)
+            ? (data as any).previous_months_skuwise
+            : [];
+        const historicalMonthNumber = toNumber(historicalMonth?.month);
+        const historicalYearNumber = toNumber(historicalMonth?.year);
+        const priorMonthNumber = historicalMonthNumber === 1 ? 12 : historicalMonthNumber - 1;
+        const priorYearNumber = historicalMonthNumber === 1 ? historicalYearNumber - 1 : historicalYearNumber;
+        const priorHistoricalMonth = monthlySkuHistory.find((entry) =>
+            toNumber(entry?.month) === priorMonthNumber &&
+            toNumber(entry?.year) === priorYearNumber
+        ) ?? monthlySkuHistory[1] ?? null;
+        const priorHistoricalRows: any[] = Array.isArray(priorHistoricalMonth?.items)
+            ? priorHistoricalMonth.items
+            : [];
         const historicalTotal = historicalRows.find((row) => {
             const sku = String(row?.sku ?? "").trim().toUpperCase();
             const name = String(row?.product_name ?? row?.product_title ?? row?.name ?? "").trim().toLowerCase();
@@ -13880,6 +13894,7 @@ export default function DashboardPage() {
             amazon_fee?: unknown;
             asp?: unknown;
             tacos_total_advertising_cost_of_sale?: unknown;
+            net_sales_delta_percentage?: unknown;
         }> = historicalTotal
             ? historicalRows
             : Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
@@ -13893,28 +13908,57 @@ export default function DashboardPage() {
             );
         });
 
-        // Calculate total net for share percentage
-        const totalNet = historicalTotal
-            ? toNumber(historicalTotal.net_sales)
-            : skuRows.reduce((sum, row) => sum + toNumber(row.net_sales), 0);
-
-        const best = [...skuRows].sort((a, b) => toNumber(b.net_sales) - toNumber(a.net_sales))[0];
-
-        const topSku = best
-            ? {
-                name: getSkuwiseDisplayProductName(best),
-                sku: platform === "global" ? undefined : String(best.sku || ""),
-                // ✅ FIX: net_quantity is used in previous_period.sku_metrics
-                units: toNumber(best.total_quantity ?? best.net_quantity ?? best.quantity),
-                netSales: convertToDisplayCurrency(toNumber(best.net_sales), amazonDataCurrency),
-                // Use API sales_mix if available, else calculate
-                sharePct: best.sales_mix ?? (totalNet > 0 ? (toNumber(best.net_sales) / totalNet) * 100 : undefined),
-                cm2Profit: convertToDisplayCurrency(
-                    toNumber(best.cm2_profit ?? best.total_cm2_profit ?? best.profit ?? 0),
-                    amazonDataCurrency
-                ),
-            }
-            : null;
+        const skuIdentity = (row: any) => {
+            const sku = String(row?.sku || "").trim().toLowerCase();
+            return sku || String(row?.product_name || row?.product_title || row?.name || "").trim().toLowerCase();
+        };
+        const priorSkuByIdentity = new Map<string, any>(
+            priorHistoricalRows
+                .filter((row) => skuIdentity(row))
+                .map((row) => [skuIdentity(row), row] as [string, any])
+        );
+        const rankedSkuHighlights = skuRows.map((row) => {
+            const priorRow = priorSkuByIdentity.get(skuIdentity(row));
+            const priorNetSales = priorRow ? toNumber(priorRow.net_sales) : null;
+            const currentNetSales = toNumber(row.net_sales);
+            const apiIncrease = row.net_sales_delta;
+            const netSalesIncrease = apiIncrease !== undefined && apiIncrease !== null
+                ? toNumber(apiIncrease)
+                : priorNetSales != null
+                    ? currentNetSales - priorNetSales
+                    : null;
+            const apiDelta = row.net_sales_delta_percentage;
+            const deltaPct = apiDelta !== undefined && apiDelta !== null
+                ? toNumber(apiDelta)
+                : priorNetSales != null && priorNetSales !== 0
+                    ? ((currentNetSales - priorNetSales) / Math.abs(priorNetSales)) * 100
+                    : null;
+            return {
+                name: getSkuwiseDisplayProductName(row),
+                sku: platform === "global" ? undefined : String(row.sku || ""),
+                netSales: currentNetSales,
+                netSalesIncrease,
+                netSalesDeltaPct: deltaPct,
+            };
+        });
+        const best = [...rankedSkuHighlights].sort((a, b) => b.netSales - a.netSales)[0];
+        const bestGrowth = rankedSkuHighlights
+            .filter((row) => row.netSalesIncrease != null && row.netSalesIncrease > 0)
+            .sort((a, b) => (b.netSalesIncrease ?? 0) - (a.netSalesIncrease ?? 0))[0];
+        const largestDecline = rankedSkuHighlights
+            .filter((row) => row.netSalesIncrease != null && row.netSalesIncrease < 0)
+            .sort((a, b) => (a.netSalesIncrease ?? 0) - (b.netSalesIncrease ?? 0))[0];
+        const toSkuHighlight = (title: string, row: NonNullable<typeof best>) => ({
+            title,
+            name: row.name,
+            sku: row.sku,
+            netSales: row.netSales,
+            netSalesDeltaPct: row.netSalesDeltaPct,
+        });
+        const skuHighlights: MonthlyRecapData["skuHighlights"] = [];
+        if (best) skuHighlights.push(toSkuHighlight("Top Selling SKU", best));
+        if (bestGrowth) skuHighlights.push(toSkuHighlight("Highest Net Sales Growth", bestGrowth));
+        if (largestDecline) skuHighlights.push(toSkuHighlight("Largest Net Sales Decline", largestDecline));
 
         const recapActual = historicalTotal
             ? convertToDisplayCurrency(toNumber(historicalTotal.net_sales), amazonDataCurrency)
@@ -13929,6 +13973,27 @@ export default function DashboardPage() {
                 { label: "CM2 Profit", value: convertToDisplayCurrency(toNumber(historicalTotal.total_cm2_profit), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
             ]
             : recapMetrics;
+
+        // The API exposes percentage changes in card_metrics.deltas. Keep the
+        // recap values sourced as before, while taking each displayed delta
+        // directly from that response object.
+        const cardMetricDeltas = (data as any)?.card_metrics?.deltas ?? {};
+        const recapDeltaByLabel: Record<string, unknown> = {
+            Units: cardMetricDeltas.units,
+            ASP: cardMetricDeltas.asp,
+            "Net Sales": cardMetricDeltas.net_sales,
+            "Marketplace Fees": cardMetricDeltas.marketplace_fees,
+            TACoS: cardMetricDeltas.tacos_pct,
+            "CM2 Profit": cardMetricDeltas.cm2_profit,
+        };
+        const metricsWithDeltas = displayMetrics.map((metric) => {
+            const rawDelta = recapDeltaByLabel[metric.label];
+            const deltaPct = rawDelta == null ? null : Number(rawDelta);
+            return {
+                ...metric,
+                deltaPct: deltaPct != null && Number.isFinite(deltaPct) ? deltaPct : null,
+            };
+        });
 
         const objectiveContext = liveBiPayload?.objective_context;
         const titleCase = (value: unknown) =>
@@ -13954,10 +14019,10 @@ export default function DashboardPage() {
             monthLabel: `${previousDisplayMonth.monthName} ${previousDisplayMonth.year}`,
             target,
             actual: recapActual,
-            topSku,
+            skuHighlights,
             objectives,
             formatMoney: formatDisplayAmountNoDecimals,
-            metrics: displayMetrics,
+            metrics: metricsWithDeltas,
         };
     }, [
         shouldShowDummyUi, prevTargetSummaries, targetSummaryCountry, convertToDisplayCurrency, data,
@@ -14122,7 +14187,7 @@ export default function DashboardPage() {
             />
 
             {/* TEMP: recap modal test controls, remove after testing */}
-            {/* {process.env.NODE_ENV !== "production" && (
+            {process.env.NODE_ENV !== "production" && (
                 <div className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 gap-2">
                     <button
                         type="button"
@@ -14144,7 +14209,7 @@ export default function DashboardPage() {
                         Reset seen &amp; reload
                     </button>
                 </div>
-            )} */}
+            )}
 
             <MidMonthTargetReminderModal
                 open={midMonthReminderOpen}
