@@ -2079,6 +2079,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   const [showAllProductRows, setShowAllProductRows] = useState(false);
   const [showDeepDive, setShowDeepDive] = useState(false);
+  const [skuStatusMap, setSkuStatusMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setShowAllProductRows(false);
@@ -2095,6 +2096,54 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
   // ✅ Global vs country behavior
   const isGlobalPage = effectiveCountry === "global";
+
+  useEffect(() => {
+    if (isPreviewMode) return;
+
+    let ignore = false;
+    const fetchSkuStatuses = async () => {
+      try {
+        const token = localStorage.getItem("jwtToken");
+        if (!token) return;
+        const response = await fetch(`${baseURL}/skuprice`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!response.ok || ignore) return;
+
+        const rows: Array<Record<string, unknown>> = await response.json();
+        const normalize = (value: unknown) => String(value ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .replace(/[^\w\s-]/g, "");
+        const next: Record<string, string> = {};
+        rows.forEach((row) => {
+          const name = normalize(row.product_name);
+          const sku = normalize(row.sku);
+          const rowCountry = String(row.country ?? "").trim().toLowerCase();
+          const statuses: Array<[string, unknown]> = [
+            [rowCountry, row.product_status],
+            ["uk", row.product_status_uk],
+            ["us", row.product_status_us],
+            ["canada", row.product_status_canada],
+          ];
+          statuses.forEach(([market, raw]) => {
+            if (!market || raw == null || raw === "") return;
+            const status = String(raw).trim().toLowerCase();
+            if (name) next[`${market}|${name}`] = status;
+            if (sku) next[`${market}|sku:${sku}`] = status;
+          });
+        });
+        if (!ignore) setSkuStatusMap(next);
+      } catch {
+        // Status lookup is cosmetic; keep the reconciliation table available.
+      }
+    };
+
+    void fetchSkuStatuses();
+    return () => { ignore = true; };
+  }, [effectiveCountry, isPreviewMode]);
 
   // ✅ get home currency ONLY for global formatting + api param
   const { homeCurrency: rawHomeCurrency } = useHomeCurrencyContext(country);
@@ -3477,7 +3526,25 @@ export default function ReferralFeesDashboard(): JSX.Element {
   }, [showAllProductRows, skuTableAll]);
 
   const groupedSkuTableDisplay: any[] = useMemo(() => {
-    return skuTableDisplay.map((row: any) => ({
+    const normalizeStatusKey = (value: unknown) => String(value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[^\w\s-]/g, "");
+
+    const rows = skuTableDisplay.map((row: any) => {
+      const name = normalizeStatusKey(row.productName);
+      const skus = String(row.sku || "").split(/[,;|/]+/).map(normalizeStatusKey);
+      const markets = isGlobalPage ? ["uk", "us"] : [effectiveCountry];
+      const statuses = markets.flatMap((market) => [
+        skuStatusMap[`${market}|${name}`],
+        ...skus.map((sku: string) => skuStatusMap[`${market}|sku:${sku}`]),
+      ]);
+      const isDiscontinued = statuses.some((status) =>
+        status === "discontinued" || status === "discontinuous"
+      );
+
+      return {
       sno: row.sno,
       productName: row.productName,
       sku: row.sku,
@@ -3499,8 +3566,23 @@ export default function ReferralFeesDashboard(): JSX.Element {
       // ✅ keep total-row styling working
       _isTotal: row._isTotal,
       _isOthers: row._isOthers,
+      _isDiscontinued: isDiscontinued && !row._isTotal && !row._isOthers,
+    };
+    });
+
+    const products = rows.filter((row) => !row._isTotal && !row._isOthers);
+    const others = rows.filter((row) => row._isOthers);
+    const totals = rows.filter((row) => row._isTotal);
+    const orderedProducts = [
+      ...products.filter((row) => !row._isDiscontinued),
+      ...products.filter((row) => row._isDiscontinued),
+    ];
+    let serialNumber = 1;
+    return [...orderedProducts, ...others, ...totals].map((row) => ({
+      ...row,
+      sno: row._isTotal || row._isOthers ? "" : serialNumber++,
     }));
-  }, [skuTableDisplay]);
+  }, [skuTableDisplay, skuStatusMap, isGlobalPage, effectiveCountry]);
 
 
   const handleDownloadFbaExcel = useCallback(() => {
@@ -4823,6 +4905,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                       getRowClassName={(row, index) => {
                         if (row._isTotal) return "bg-[#EFEFEF] font-semibold";
                         if (row._isOthers) return "bg-white cursor-pointer";
+                        if (row._isDiscontinued) return "!bg-rose-50 !text-[#FF5C5C] [&>td]:!bg-rose-50 [&>td]:!text-[#FF5C5C] [&_span]:!text-[#FF5C5C] [&_button]:!text-[#FF5C5C]";
                         return index % 2 === 0 ? "bg-white" : "bg-gray-50";
                       }}
                       onRowClick={(row) => {
@@ -4859,7 +4942,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
                                 event.stopPropagation();
                                 openReferralProductDrawer(row);
                               }}
-                              className="w-full cursor-pointer text-left font-medium text-green-500 hover:underline"
+                              className={`w-full cursor-pointer text-left font-medium hover:underline ${row._isDiscontinued ? "text-[#FF5C5C]" : "text-green-500"}`}
                               title={`View details for ${row.productName}`}
                             >
                               {row.productName}
