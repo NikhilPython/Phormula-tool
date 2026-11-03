@@ -5155,6 +5155,8 @@ export default function DashboardPage() {
         message: string;
         completed?: number;
         total?: number;
+        publishedPhase?: string | null;
+        refreshId?: string | null;
     }>({ status: "idle", message: "" });
 
     const refreshRequest = useCallback(async (method: "POST" | "PATCH" | "GET", body?: Record<string, unknown>) => {
@@ -5200,6 +5202,8 @@ export default function DashboardPage() {
                         : state === "failed" ? String(result.error || "Refresh did not complete") : "",
                     completed: result.completed,
                     total: result.total,
+                    publishedPhase: result.published_phase ?? null,
+                    refreshId: result.refresh_id ?? null,
                 });
                 const runId = state === "running" ? String(result.refresh_id || "") : "";
                 setTrackedRefreshId(runId || null);
@@ -5738,6 +5742,38 @@ export default function DashboardPage() {
         ]
     );
 
+    // After Sales/Inventory/BI are published, load the new cached figures
+    // without restarting any Amazon requests. Ads continue in Celery.
+    const coreRunAppliedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (refreshStatus.status !== "running" || refreshStatus.publishedPhase !== "core" ||
+            !refreshStatus.refreshId || verifiedRefreshScope !== refreshStorageKey) return;
+        const key = `${refreshStorageKey}:${refreshStatus.refreshId}:core`;
+        if (coreRunAppliedRef.current === key) return;
+        coreRunAppliedRef.current = key;
+        void loadRangeFromCache(selectedStartDay, selectedEndDay).catch((error) => {
+            coreRunAppliedRef.current = null;
+            console.error("Cannot hydrate initial dashboard refresh", error);
+        });
+    }, [refreshStatus.status, refreshStatus.publishedPhase, refreshStatus.refreshId,
+        verifiedRefreshScope, refreshStorageKey, loadRangeFromCache,
+        selectedStartDay, selectedEndDay]);
+
+    const completedRunAppliedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (refreshStatus.status !== "completed" || !verifiedRefreshScope ||
+            verifiedRefreshScope !== refreshStorageKey) return;
+        // A completed backend run must be loaded from the authoritative cache.
+        // Do not re-run the Amazon/Ads APIs from this effect.
+        const key = `${refreshStorageKey}:${refreshStatus.message}`;
+        if (completedRunAppliedRef.current === key) return;
+        completedRunAppliedRef.current = key;
+        void loadRangeFromCache(selectedStartDay, selectedEndDay).catch((error) => {
+            console.error("Cannot hydrate refreshed dashboard cache", error);
+        });
+    }, [refreshStatus.status, refreshStatus.message, verifiedRefreshScope,
+        refreshStorageKey, loadRangeFromCache, selectedStartDay, selectedEndDay]);
+
     // const liveCacheKey = useMemo(() => {
     //     const country =
     //         platform === "amazon-us" ? "us" :
@@ -6208,82 +6244,44 @@ export default function DashboardPage() {
     }, []);
 
 
+    // Manual refresh is now enqueued on the backend. Never start the expensive
+    // Amazon report pipeline in a browser event handler; it must survive F5/logout.
     const handleHardRefresh = useCallback(async () => {
-        if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey || trackedRefreshId || refreshIdRef.current || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
+        if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey ||
+            trackedRefreshId || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
+        setRefreshStatus({ status: "running", message: "Queuing background refresh..." });
         try {
-            isManualRefreshRef.current = true;
-            shouldPostCacheRef.current = false;
-            setRefreshStatus({ status: "running", message: "Starting refresh..." });
-            await fetchCountryTime();
-
-            const steps = [
-                "mtd_transactions", "inventory_current",
-                "sp_report", "sb_report",
-                ...(platform !== "amazon-ca" ? ["sd_report"] : []),
-                "monthly_ads_db", "daily_ads_db",
-                ...(showLiveBI ? ["live_mtd_bi"] : []),
-            ];
-            const session = await refreshRequest("POST", {
-                country: liveDashboardCountry,
-                platform: String(platform || "").toLowerCase(),
-                region: String(activeDateRegion || ""),
-                month: monthToNumber(currMonthName.toLowerCase()),
-                year: currYear,
-                startDay: selectedStartDay,
-                endDay: selectedEndDay,
-                steps,
+            const token = window.localStorage.getItem("jwtToken");
+            if (!token) throw new Error("Session token missing");
+            const response = await fetch(`${baseURL}/amazon_api/live-dashboard/refresh/background`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify(refreshScope),
+                cache: "no-store",
             });
-            refreshIdRef.current = session.refresh_id;
-            window.localStorage.setItem(refreshStorageKey, session.refresh_id);
-            setTrackedRefreshId(session.refresh_id);
-
-            await runDashboardLoadWithSteps({
-                dataOnlyRefresh: true,
-                forceAdsReportSync: true,
-                forceInventoryInsightsRefresh: true,
-                trackStep: updateRefreshStep,
-            });
-
-            // Final cache write is performed only after React has committed the
-            // updated source data and the existing loader conditions are clear.
-            shouldPostCacheRef.current = true;
-            setCacheSaveTick((x) => x + 1);
-        } catch (err) {
-            console.error("Hard refresh failed:", err);
-            const message = err instanceof Error ? err.message : "Dashboard refresh failed";
-            if (refreshIdRef.current && refreshStepRef.current) {
-                try { await updateRefreshStep(refreshStepRef.current, "failed", message); }
-                catch (statusError) { console.error("Cannot record refresh failure", statusError); }
-            }
-            if (refreshIdRef.current && window.localStorage.getItem(refreshStorageKey) === refreshIdRef.current) {
-                window.localStorage.removeItem(refreshStorageKey);
-            }
-            setTrackedRefreshId(null);
-            refreshIdRef.current = null;
-            refreshStepRef.current = null;
-            isManualRefreshRef.current = false;
-            shouldPostCacheRef.current = false;
-            if (message.includes("Refresh already in progress")) {
-                // Another tab/session started this run; never unlock after a 409.
-                setRefreshStatus({ status: "running", message: "Refresh already in progress..." });
-                try {
+            const result = await response.json().catch(() => null);
+            if (!response.ok || result?.success !== true) {
+                if (response.status === 409) {
+                    // Another tab/session already queued the same cache key.
+                    setRefreshStatus({ status: "running", message: "Refresh already in progress..." });
                     const active = await refreshRequest("GET", refreshScope);
-                    if (active.status === "running" || active.status === "saving") {
+                    if (active.refresh_id) {
                         setTrackedRefreshId(String(active.refresh_id));
                         window.localStorage.setItem(refreshStorageKey, String(active.refresh_id));
                     }
-                } catch { /* keep lock on verification error */ }
-            } else {
-                setRefreshStatus({ status: "failed", message });
+                    return;
+                }
+                throw new Error(result?.error || `Failed to enqueue refresh (${response.status})`);
             }
+            const rid = String(result.refresh_id);
+            setTrackedRefreshId(rid);
+            window.localStorage.setItem(refreshStorageKey, rid);
+            setRefreshStatus({ status: "running", message: "Background refresh started...", completed: 0, total: result.total });
+        } catch (error) {
+            setRefreshStatus({ status: "failed", message: error instanceof Error ? error.message : "Refresh could not start" });
         }
-    }, [
-        refreshStatusChecking, trackedRefreshId, refreshStatus.status, refreshStorageKey, verifiedRefreshScope, refreshScope,
-        pageLoading, dashboardBusy, fetchCountryTime, refreshRequest,
-        liveDashboardCountry, platform, activeDateRegion, currMonthName, currYear,
-        selectedStartDay, selectedEndDay, showLiveBI,
-        runDashboardLoadWithSteps, updateRefreshStep,
-    ]);
+    }, [refreshStatusChecking, verifiedRefreshScope, refreshStorageKey, trackedRefreshId,
+        refreshStatus.status, pageLoading, dashboardBusy, refreshScope, refreshRequest]);
 
     useEffect(() => {
 

@@ -5102,6 +5102,17 @@ def dashboard_refresh_status():
                 return jsonify({"success": True, "status": "idle", "refresh_id": None,
                                 "completed": 0, "total": 0}), 200
             result = _refresh_public(row)
+            # Expose whether the early, non-Ads cache has been published.
+            # No migration needed: phase is embedded in the saved JSON payload.
+            with PHORMULA_ENGINE.connect() as cache_conn:
+                early = cache_conn.execute(text("""
+                    SELECT payload->>'refreshPhase' AS phase,
+                           payload->>'refreshRunId' AS run_id
+                      FROM public.live_dashboard_cache
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                """), {"uid": uid, "cache_key": row["cache_key"]}).mappings().first()
+            result["published_phase"] = (early["phase"] if early and
+                early["run_id"] == str(row["refresh_id"]) else None)
             if row["status"] in ("running", "saving") and row["expires_at"] <= datetime.now(timezone.utc):
                 result["status"] = "failed"
                 result["error"] = "Refresh expired before completion"
@@ -5117,6 +5128,17 @@ def dashboard_refresh_status():
             if not row:
                 return jsonify({"success": False, "error": "Unknown refresh"}), 404
             result = _refresh_public(row)
+            # Expose whether the early, non-Ads cache has been published.
+            # No migration needed: phase is embedded in the saved JSON payload.
+            with PHORMULA_ENGINE.connect() as cache_conn:
+                early = cache_conn.execute(text("""
+                    SELECT payload->>'refreshPhase' AS phase,
+                           payload->>'refreshRunId' AS run_id
+                      FROM public.live_dashboard_cache
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                """), {"uid": uid, "cache_key": row["cache_key"]}).mappings().first()
+            result["published_phase"] = (early["phase"] if early and
+                early["run_id"] == str(row["refresh_id"]) else None)
             if row["status"] in ("running", "saving") and row["expires_at"] <= datetime.now(timezone.utc):
                 result["status"] = "failed"
                 result["error"] = "Refresh expired"
@@ -5160,6 +5182,78 @@ def dashboard_refresh_status():
     except Exception:
         logging.exception("Dashboard refresh tracking failed")
         return jsonify({"success": False, "error": "Refresh tracking unavailable"}), 500
+
+
+
+
+@amazon_api_bp.route("/amazon_api/live-dashboard/refresh/background", methods=["POST"])
+def launch_background_dashboard_refresh():
+    """Queue a durable UK/US refresh; dedupe by authenticated user and cache key."""
+    try:
+        uid = _refresh_user_id()
+    except PermissionError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 401
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"success": False, "error": "Expected JSON object"}), 400
+    try:
+        params = _live_cache_parameters({**body, "_authenticated_user_id": uid})
+        country = params["country"]
+        if country not in ("uk", "us") or params["month"] is None or params["year"] is None:
+            return jsonify({"success": False, "error": "Background refresh currently supports UK/US monthly dashboards"}), 400
+        # Don't use a historical date for Amazon live report generation.
+        from datetime import date as _date
+        now = _date.today()
+        if (params["year"], params["month"]) != (now.year, now.month):
+            return jsonify({"success": False, "error": "Background sync supports current month only"}), 400
+        from uuid import uuid4
+        rid = str(uuid4())
+        steps = ["mtd_transactions", "inventory_current", "sp_report", "sb_report", "sd_report",
+                 "monthly_ads_db", "daily_ads_db", "live_mtd_bi"]
+        with PHORMULA_ENGINE.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": params["cache_key"]})
+            conn.execute(text("""
+                UPDATE public.dashboard_refresh_runs SET status='failed',
+                    error='Refresh expired', updated_at=now(), finished_at=now()
+                WHERE user_id=:uid AND cache_key=:key AND status IN ('running','saving') AND expires_at<=now()
+            """), {"uid": uid, "key": params["cache_key"]})
+            active = conn.execute(text("""
+                SELECT * FROM public.dashboard_refresh_runs WHERE user_id=:uid AND cache_key=:key
+                AND status IN ('running','saving') AND expires_at>now()
+                ORDER BY started_at DESC LIMIT 1
+            """), {"uid": uid, "key": params["cache_key"]}).mappings().first()
+            if active:
+                return jsonify({"success": False, "error": "Refresh already in progress", **_refresh_public(active)}), 409
+            row = conn.execute(text("""
+                INSERT INTO public.dashboard_refresh_runs
+                (refresh_id,user_id,cache_key,country,steps,expires_at)
+                VALUES(CAST(:rid AS uuid),:uid,:key,:country,CAST(:steps AS jsonb),now()+interval '90 minutes')
+                RETURNING *
+            """), {"rid": rid, "uid": uid, "key": params["cache_key"], "country": country,
+                    "steps": json.dumps({name: "pending" for name in steps})}).mappings().one()
+        try:
+            # App extension is initialized during create_app; it is not necessary
+            # to import tasks.py within a Flask request.
+            from flask import current_app
+            current_app.extensions["celery"].send_task(
+                "tasks.refresh_dashboard_background", kwargs={"refresh_id": rid, "user_id": uid,
+                "params": {key: params[key] for key in ("country", "platform", "region", "month", "year", "start_day", "end_day", "cache_key")}}
+            )
+        except Exception:
+            logging.exception("Cannot enqueue dashboard background refresh")
+            with PHORMULA_ENGINE.begin() as conn:
+                conn.execute(text("""
+                    UPDATE public.dashboard_refresh_runs SET status='failed',
+                    error='Celery enqueue failed',finished_at=now(),updated_at=now()
+                    WHERE refresh_id=CAST(:rid AS uuid)
+                """), {"rid": rid})
+            return jsonify({"success": False, "error": "Celery worker unavailable; refresh not queued"}), 503
+        return jsonify({"success": True, **_refresh_public(row)}), 202
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        logging.exception("Background refresh startup failed")
+        return jsonify({"success": False, "error": "Unable to start background refresh"}), 500
 
 
 @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
@@ -5215,6 +5309,11 @@ def save_live_dashboard_data():
         # A refresh session, if active, protects the OLD published snapshot.
         # Legacy saves remain compatible when no refresh session is active.
         refresh_id = body.get("refreshId") or body.get("refresh_id")
+        refresh_phase = body.get("refreshPhase", "final")
+        if refresh_phase not in ("core", "final"):
+            return jsonify({"success": False, "error": "Invalid refresh phase"}), 400
+        if refresh_phase == "core" and not refresh_id:
+            return jsonify({"success": False, "error": "Core publish requires refreshId"}), 400
         try:
             from uuid import UUID
             if refresh_id is not None:
@@ -5261,14 +5360,28 @@ def save_live_dashboard_data():
                     """), {"rid": refresh_id, "uid": user_id}).mappings().first()
                     if (not tracked or tracked["cache_key"] != params["cache_key"]
                         or tracked["status"] != "running"
-                        or tracked["expires_at"] <= datetime.now(timezone.utc)
-                        or not all(x == "completed" for x in tracked["steps"].values())):
-                        return jsonify({"success": False, "error": "Refresh steps incomplete or session invalid; old cache retained"}), 409
+                        or tracked["expires_at"] <= datetime.now(timezone.utc)):
+                        return jsonify({"success": False, "error": "Refresh session invalid; old cache retained"}), 409
+                    tracked_steps = tracked["steps"] or {}
+                    if refresh_phase == "core":
+                        needed = ("mtd_transactions", "inventory_current", "live_mtd_bi")
+                        # An early publish must never overwrite a complete run or
+                        # publish an unverified frontend payload.
+                        allowed = (all(tracked_steps.get(x) == "completed" for x in needed)
+                                   and all(tracked_steps.get(x) == "pending" for x in
+                                       ("sp_report", "sb_report", "sd_report", "monthly_ads_db", "daily_ads_db"))
+                                   and snapshot.get("refreshRunId") == refresh_id
+                                   and snapshot.get("refreshPhase") == "core")
+                    else:
+                        allowed = (all(x == "completed" for x in tracked_steps.values())
+                                   and snapshot.get("refreshPhase", "final") == "final")
+                    if not allowed:
+                        return jsonify({"success": False, "error": "Refresh steps incomplete or invalid publish phase"}), 409
                 row = conn.execute(text(upsert_sql), {
                     **params, "user_id": user_id, "saved_at": saved_at,
                     "payload": payload_json,
                 }).mappings().first()
-                if refresh_id:
+                if refresh_id and refresh_phase == "final":
                     conn.execute(text("""
                         UPDATE public.dashboard_refresh_runs
                            SET status=:status, error=:error, updated_at=now(), finished_at=now()
