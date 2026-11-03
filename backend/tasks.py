@@ -1,7 +1,5 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone, date
 import jwt
-from datetime import date
-import base64
 import requests
 import re
 from urllib.parse import urlencode
@@ -456,7 +454,10 @@ def sync_amazon_monthly_transactions(country_filter=None):
                         month=month,
                         country=country,
                         marketplace_id=marketplace_id,
-                        transaction_status="RELEASED",
+                        # Match the direct monthly route/UI fetch. For US,
+                        # filtering to RELEASED only misses deferred
+                        # transactions that still belong in the monthly P&L.
+                        transaction_status="all",
                         transaction_type_filter=None,
                         store_in_db=True,
                         run_upload=True,
@@ -765,7 +766,13 @@ def refresh_dashboard_daily(country_filter=None):
                         )
 
                     # 4) Save refreshed dashboard cache into public.live_data
-                    _post_live_dashboard_cache(
+                    if not mtd_payload or not live_bi_payload:
+                        raise RuntimeError(
+                            f"Required dashboard data missing: "
+                            f"user_id={user_id}, country={country}"
+                        )
+
+                    save_result = _post_live_dashboard_cache(
                         base_url=base_url,
                         headers=headers,
                         user_id=user_id,
@@ -775,9 +782,17 @@ def refresh_dashboard_daily(country_filter=None):
                         ads_payload=ads_payload,
                     )
 
+                    if not save_result or not save_result.get("success"):
+                        raise RuntimeError(
+                            f"Dashboard cache save failed: "
+                            f"user_id={user_id}, country={country}, "
+                            f"result={save_result}"
+                        )
+
                     print(
-                        f"[INFO] Daily dashboard refresh completed and saved: "
-                        f"user_id={user_id}, country={country}"
+                        f"[INFO] Daily dashboard cache saved successfully: "
+                        f"user_id={user_id}, country={country}, "
+                        f"cache_key={save_result.get('cache_key')}"
                     )
 
                 except Exception as e:
@@ -836,10 +851,8 @@ def _post_live_dashboard_cache(
     saved_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     cache_payload = {
-        "schemaVersion": 2,
-        # This scheduled snapshot does not yet include inventory/target UI
-        # payloads, so the frontend must not treat it as a complete page cache.
-        "complete": False,
+        "schemaVersion": 6,
+        "complete": True,
         "data": mtd_payload,
         "liveBiPayload": live_bi_payload,
         "biPeriods": (live_bi_payload or {}).get("periods"),
@@ -861,8 +874,8 @@ def _post_live_dashboard_cache(
         "region": meta["region"],
         "month": today.month,
         "year": today.year,
-        "startDay": 1,
-        "endDay": today.day,
+        "startDay": None,
+        "endDay": None,
         "savedAt": saved_at_ms,
         "cachePayload": cache_payload,
     }
@@ -883,6 +896,14 @@ def _post_live_dashboard_cache(
         return None
 
     json_data = _safe_json_response(res)
+
+    if not json_data.get("success"):
+        print(
+            f"[ERROR] Dashboard cache API rejected save: "
+            f"user_id={user_id}, country={country}, "
+            f"response={json_data}"
+        )
+        return None
 
     print(
         f"[INFO] live-dashboard cache saved "
@@ -1162,3 +1183,7 @@ def send_daily_inventory_alert_emails(country_filter=None):
 
         finally:
             db.session.remove()
+
+# Manual dashboard background refresh is registered separately from Celery Beat jobs.
+from dashboard_background_refresh import register_background_dashboard_refresh
+register_background_dashboard_refresh(celery_app, flask_app)

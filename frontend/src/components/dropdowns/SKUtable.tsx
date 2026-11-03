@@ -70,6 +70,7 @@ type SKUtableProps = {
 
   rows: TableRow[];
   monthWiseRows?: TableRow[];
+  yearlyTotalRow?: TableRow | null;
   monthWiseKpiValues?: {
     adsSpend?: number;
     acos?: number;
@@ -134,11 +135,24 @@ export type TableRow = {
   cm2_profit_per_unit?: number;
   debt_payment?: number;
   disbursement?: number;
+  shipping_charges_total?: number;
+  storage_fees_total?: number;
+  inventory_charges_and_reimbursement?: number;
+  other_fees_total?: number;
+  other_charges_total?: number;
+  net_reimbursement?: number;
+  placement_fee?: number;
+  customs_fee?: number;
+  inventory_charges?: number;
+  platform_management_fees?: number;
   gross_sales?: number;
   product_sales?: number;
   refund_sales?: number;
   net_sales?: number;
   lost_total?: number;
+  shipping_charges?: number | string;
+storage_fee?: number | string;
+rembursement_fee?: number | string;
 
   cost_of_unit_sold?: number;
   shipment_charges?: number;
@@ -472,8 +486,22 @@ function normalizeRows(data: any[]): TableRow[] {
       lost_total: toNumber(row.lost_total),
 
       reimbursement_vs_sales: toNumber(row.reimbursement_vs_sales),
+      rembursment_vs_cm2_margins: toNumber(row.rembursment_vs_cm2_margins),
       debt_payment: toNumber(row.debt_payment),
       disbursement: toNumber(row.disbursement),
+
+      // Month-wise fee/reimbursement values use the exact backend field names.
+      // Prefer source fields over normalized aliases because aliases may already be 0.
+      shipping_charges_total: toNumber(row.shipping_charges ?? row.shipment_charges ?? row.shipping_charges_total),
+      storage_fees_total: toNumber(row.storage_fee ?? row.storage_fees ?? row.storage_fees_total),
+      inventory_charges_and_reimbursement: toNumber(row.inventory_charges_and_reimbursement),
+      other_fees_total: toNumber(row.platform_management_fees ?? row.platformfeenew) - toNumber(row.other_adjustment),
+      net_reimbursement: toNumber(row.rembursement_fee ?? row.net_reimbursement ?? row.net_reimbursement_total),
+      placement_fee: toNumber(row.placement_fee),
+      customs_fee: toNumber(row.customs_fee),
+      inventory_charges: toNumber(row.inventory_charges),
+      platform_management_fees: toNumber(row.platform_management_fees ?? row.platformfeenew),
+      other_adjustment: toNumber(row.other_adjustment),
 
       // Costs / Fees
       cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
@@ -696,6 +724,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   rows,
   monthWiseRows = [],
+  yearlyTotalRow = null,
   monthWiseKpiValues,
   loading = false,
   error = null,
@@ -879,6 +908,34 @@ const SKUtable: React.FC<SKUtableProps> = ({
         cm2_profit: cm2Value,
         total_cm2_profit: cm2Value,
         cm2_profit_total: cm2Value,
+
+        // Monthly fee/reimbursement columns use the exact backend fields.
+        // Backend sends Storage Fees in storage_fee; use that exact field.
+        shipping_charges_total: toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total),
+        placement_fee: toNumber(sourceRow.placement_fee),
+        shipment_fees: toNumber(sourceRow.shipment_fees ?? sourceRow.shipment_charges),
+        customs_fee: toNumber(sourceRow.customs_fee),
+        storage_fees_total: toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total),
+        short_term_storage_fee: toNumber(sourceRow.short_term_storage_fee),
+        long_term_storage_fee: toNumber(sourceRow.long_term_storage_fee),
+        inventory_charges_and_reimbursement: toNumber(sourceRow.inventory_charges_and_reimbursement),
+        inventory_charges: toNumber(sourceRow.inventory_charges),
+        reimbursement_lost_inventory_amount: toNumber(sourceRow.reimbursement_lost_inventory_amount ?? sourceRow.lost_total),
+        // Other Fees = Platform Management Fees - Other (backend key: other).
+        platform_management_fees: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew),
+        other_adjustment: toNumber(sourceRow.other_adjustment),
+        other_fees_total: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment),
+        other_charges_total:
+          toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total) +
+          toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total) +
+          toNumber(sourceRow.inventory_charges_and_reimbursement) +
+          (toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment)),
+        // Backend's actual Net Reimbursement field is misspelled as rembursement_fee.
+        net_reimbursement: toNumber(sourceRow.rembursement_fee ?? sourceRow.net_reimbursement ?? sourceRow.net_reimbursement_total),
+        debt_payment: toNumber(sourceRow.debt_payment),
+        disbursement: toNumber(sourceRow.disbursement),
+        reimbursement_vs_sales: toNumber(sourceRow.reimbursement_vs_sales),
+        rembursment_vs_cm2_margins: toNumber(sourceRow.rembursment_vs_cm2_margins),
       } as TableRow;
     });
   }, [rows, monthWiseRows, isMonthWiseView, year]);
@@ -966,6 +1023,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
   };
 
   const getAcosPercentage = (row: Partial<TableRow>) => {
+    // Month-wise monthly rows use the backend TACoS field.
+    // Keep the Month-wise Total row and all Product-wise rows unchanged.
+    if (isMonthWiseView && !isTotalLikeRow(row as TableRow)) {
+      return toNumber((row as any).tacos_total_advertising_cost_of_sale);
+    }
+
     const backendValue = toNumber((row as any).acos);
     if (backendValue) return backendValue;
 
@@ -987,9 +1050,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [tableData]);
 
   const rawTotalRow = useMemo(() => {
+    // Month-wise total fees must come from the YearlySKU API total row.
+    // Keep the Product-wise total-row source completely unchanged.
+    if (isMonthWiseView && yearlyTotalRow && isTotalLikeRow(yearlyTotalRow)) {
+      return yearlyTotalRow;
+    }
     const rawRows = Array.isArray(rows) ? rows : [];
     return rawRows.find(isTotalLikeRow) || rawRows[rawRows.length - 1] || {};
-  }, [rows]);
+  }, [rows, isMonthWiseView, yearlyTotalRow]);
 
   const frontendTacos = useMemo(() => {
     const netSales = toNumber(totals.net_sales);
@@ -1169,6 +1237,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
         monthlyTotal.sku = "Total";
         monthlyTotal.asp = resolveAspForRow(monthlyTotal, true);
 
+        // Fee totals in the Month-wise Total row must come directly from
+        // the YearlySKU API Total row, never from summing visible months.
+        if (yearlyTotalRow) {
+          monthlyTotal.shipping_charges_total = toNumber(yearlyTotalRow.shipping_charges);
+          monthlyTotal.storage_fees_total = toNumber(yearlyTotalRow.storage_fee);
+          monthlyTotal.other_fees_total =
+            toNumber(yearlyTotalRow.platform_management_fees) -
+            toNumber(yearlyTotalRow.other_adjustment);
+          monthlyTotal.other_charges_total =
+            toNumber(yearlyTotalRow.shipping_charges) +
+            toNumber(yearlyTotalRow.storage_fee) +
+            toNumber(yearlyTotalRow.inventory_charges_and_reimbursement) +
+            (toNumber(yearlyTotalRow.platform_management_fees) - toNumber(yearlyTotalRow.other_adjustment));
+          monthlyTotal.net_reimbursement = toNumber(yearlyTotalRow.rembursement_fee);
+
+          // Month-wise Ads Spend expanded columns use YearlySKU API totals.
+          monthlyTotal.brand_spend = toNumber(yearlyTotalRow.visible_ads);
+          monthlyTotal.dealsvouchar_ads = toNumber(
+            (yearlyTotalRow as any).dealsvoucher_ads ??
+            yearlyTotalRow.dealsvouchar_ads ??
+            (yearlyTotalRow as any).dealvouchars_ads
+          );
+        }
+
         if (monthWiseKpiValues?.adsSpend !== undefined) {
           monthlyTotal.ads_spend = toNumber(monthWiseKpiValues.adsSpend);
           monthlyTotal.total_ads = toNumber(monthWiseKpiValues.adsSpend);
@@ -1238,7 +1330,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     if (totalRow) outputRows.push(totalRow);
 
     return outputRows;
-  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow, isMonthWiseView, rows, monthWiseKpiValues]);
+  }, [tableData, tableSort, getSortableValue, showAllRows, resolveAspForRow, isMonthWiseView, rows, monthWiseKpiValues, yearlyTotalRow]);
 
   const excelRows = useMemo(() => {
     if (!tableData?.length) return [];
@@ -1292,7 +1384,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         label: isMonthWiseView ? "Month" : "Product Name",
         info: isMonthWiseView ? undefined : <InfoTip text={TERM_DEFINITIONS.product_name} />,
         align: "left",
-        width: "17%",
+        width: isMonthWiseView ? "9%" : "17%",
         tdClassName: "!whitespace-normal !text-clip break-words align-middle",
       },
     ],
@@ -1384,6 +1476,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
             width: "8%",
             info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
           },
+          ...(isMonthWiseView
+            ? [{
+                key: "promotional_rebates_percentage",
+                label: <>Promotions<br />%</>,
+                align: "center" as const,
+                width: "9%",
+                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+              }]
+            : []),
           {
             key: "net_sales",
             label: "Net Sales",
@@ -1414,6 +1515,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
             width: "8%",
             info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
           },
+          ...(isMonthWiseView
+            ? [{
+                key: "promotional_rebates_percentage",
+                label: <>Promotions<br />%</>,
+                align: "center" as const,
+                width: "9%",
+                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+              }]
+            : []),
           {
             key: "net_sales",
             label: "Total",
@@ -1446,18 +1556,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
               align: "center" as const,
               width: "9%",
             },
-            {
-              key: "promotional_rebates_percentage",
-              label: (
-                <>
-                  Promotions
-                  <br />
-                  %
-                </>
-              ),
-              align: "center" as const,
-              width: "9%",
-            },
+            ...(!isMonthWiseView
+              ? [{
+                  key: "promotional_rebates_percentage",
+                  label: <>Promotions<br />%</>,
+                  align: "center" as const,
+                  width: "9%",
+                }]
+              : []),
           ],
         } as ColGroup<TableRow>,
       ]
@@ -1628,6 +1734,22 @@ const SKUtable: React.FC<SKUtableProps> = ({
               align: "center",
               width: "8%",
             },
+            ...(isMonthWiseView
+              ? [
+                  {
+                    key: "brand_spend",
+                    label: "Visible Ads",
+                    align: "center" as const,
+                    width: "8%",
+                  },
+                  {
+                    key: "dealsvouchar_ads",
+                    label: "Visible Deals",
+                    align: "center" as const,
+                    width: "8%",
+                  },
+                ]
+              : []),
             {
               key: "ads_spend",
               label: "Total",
@@ -1637,6 +1759,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
             },
           ],
         } as ColGroup<TableRow>,
+
+        ...(isMonthWiseView && isUsCountry
+          ? ([
+            {
+              id: "month_other_charges",
+              label: "Other Charges",
+              collapsedCols: [{ key: "other_charges_total", label: "", align: "center" as const, width: "8%" }],
+              expandedCols: [
+                { key: "shipping_charges_total", label: "Shipping Charges", align: "center" as const, width: "9%" },
+                { key: "storage_fees_total", label: "Storage Fees", align: "center" as const, width: "9%" },
+                { key: "inventory_charges_and_reimbursement", label: "Inventory Charges and Reimbursement", align: "center" as const, width: "11%" },
+                { key: "other_fees_total", label: "Other Fees", align: "center" as const, width: "9%" },
+              ],
+            },
+            {
+              id: "month_net_reimbursement",
+              label: "Net Reimbursement",
+              collapsedCols: [{ key: "net_reimbursement", label: "", align: "center" as const, width: "8%" }],
+              expandedCols: [
+                { key: "debt_payment", label: "Charged", align: "center" as const, width: "8%" },
+                { key: "disbursement", label: "Disbursement", align: "center" as const, width: "8%" },
+                { key: "reimbursement_vs_sales", label: "Reimbursement vs Sales", align: "center" as const, width: "10%" },
+                { key: "rembursment_vs_cm2_margins", label: "Reimbursement vs CM2 Margins", align: "center" as const, width: "11%" },
+              ],
+            },
+          ] as ColGroup<TableRow>[])
+          : []),
 
         {
           id: "cm2_profit_breakdown",
@@ -1696,7 +1845,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         } as ColGroup<TableRow>,
       ]
       : []),
-  ], [hasCm2Data, isUsCountry, isGlobalPage]);
+  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -1793,7 +1942,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ]
         : []),
     ],
-    [hasCm2Data, isUsCountry]
+    [hasCm2Data, isUsCountry, isMonthWiseView]
   );
 
   const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
@@ -1940,6 +2089,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
     "inventory_charges_and_reimbursement",
     "others",
     "other_adjustment",
+    "shipping_charges_total",
+    "storage_fees_total",
+    "other_fees_total",
+    "net_reimbursement",
+    "debt_payment",
+    "disbursement",
+    "inventory_charges_and_reimbursement",
   ]), []);
 
   const formatValue = useCallback(
@@ -1981,6 +2137,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "fba_disposal",
         "misc_transaction",
         "shipment_charges",
+        "shipping_charges_total",
+        "storage_fees_total",
+        "other_fees_total",
+        "other_charges_total",
         "net_reimbursement",
         "cm2_profit",
         "lost_total",
@@ -2058,8 +2218,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "storage_fee",
         "storage_fees",
         "storage_fees_total",
-        "inventory_storage_fees",
-        "platform_fee_inventory_storage",
       ]) ?? sumKnownNumbers(shortTermStorage, longTermStorage);
 
     const inventoryCharges = getOptionalNumber(rawTotalRow, [
@@ -2093,7 +2251,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     const otherAdjustment = getOptionalNumber(rawTotalRow, [
       "other_adjustment",
-      "other", // backend total row sends the Others value under this key
     ]);
 
     return {
@@ -2130,6 +2287,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "net_sales",           // Net Sales (+)
         "net_credits",         // Net Credits (+)
         "misc_transaction",
+        "reimbursement_lost_inventory_amount",
+        "disbursement",
+        "other_adjustment",
         // "other_transactions",
       ]),
     []
@@ -2147,10 +2307,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "fba_fees",            // FBA Fees (-)
         "amazon_fee",          // Platform Fees (-)
         "shipment_charges",
+        "shipping_charges_total",
+        "storage_fees_total",
+        "other_fees_total",
         "shipment_fees",
         "promotional_rebates", // Promotions (-)
         "platformfeenew",
-        "platform_fee_inventory_storage",
         "short_term_storage_fee",
         "long_term_storage_fee",
         "fba_disposal",
@@ -2161,6 +2323,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
         "product_spend",
         "display_spend",
         "brand_spend",
+        "placement_fee",
+        "shipment_fees",
+        "customs_fee",
+        "short_term_storage_fee",
+        "long_term_storage_fee",
+        "inventory_charges",
+        "platform_management_fees",
+        "debt_payment",
       ]),
     []
   );
@@ -2819,7 +2989,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const sku = String(row?.sku ?? "").trim().toLowerCase();
       return name !== "total" && sku !== "total";
     });
-    const backendTotalBase = normalizeRows([rawTotalRow])[0] as TableRow | undefined;
+    const backendTotalBase = normalizeRows([isMonthWiseView && yearlyTotalRow ? yearlyTotalRow : rawTotalRow])[0] as TableRow | undefined;
     const monthTotalRow: TableRow = {
       ...(backendTotalBase || ({} as TableRow)),
       product_name: "Total",
@@ -2954,6 +3124,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     buildSkuSheetModel,
     buildExcelColumnsFromUI,
     monthWiseRows,
+    yearlyTotalRow,
     monthWiseKpiValues,
     rawTotalRow,
     costOfAdvertisementValue,
@@ -3591,7 +3762,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   { type: "group" as const, id: "sales" },
                   ...(isUsCountry
-                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                    ? (!isMonthWiseView
+                        ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                        : [])
                     : [{ type: "group" as const, id: "promotional_rebates" }]),
 
                   { type: "single" as const, key: "cost_of_unit_sold" },
@@ -3604,7 +3777,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     ? [
                       { type: "group" as const, id: "ads_spend_breakdown" },
                       { type: "single" as const, key: "acos" },
-                      { type: "group" as const, id: "cm2_profit_breakdown" },
+                      ...(isMonthWiseView && isUsCountry
+                        ? [
+                          { type: "group" as const, id: "month_other_charges" },
+                          { type: "group" as const, id: "cm2_profit_breakdown" },
+                          { type: "group" as const, id: "month_net_reimbursement" },
+                        ]
+                        : []),
+                      ...(!isMonthWiseView ? [{ type: "group" as const, id: "cm2_profit_breakdown" }] : []),
                     ]
                     : []),
                 ]}
@@ -3619,6 +3799,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   ...(hasCm2Data
                     ? {
                       ads_spend_breakdown: true,
+                      ...(isMonthWiseView && isUsCountry
+                        ? {
+                          month_other_charges: true,
+                          month_net_reimbursement: true,
+                        }
+                        : {}),
                       cm2_profit_breakdown: true,
                     }
                     : {}),
@@ -3635,6 +3821,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       product_spend: "ads_spend_breakdown",
                       display_spend: "ads_spend_breakdown",
                       cm2_profit: "cm2_profit_breakdown",
+                      ...(isMonthWiseView && isUsCountry
+                        ? {
+                          other_charges_total: "month_other_charges",
+                          shipping_charges_total: "month_other_charges",
+                          storage_fees_total: "month_other_charges",
+                          inventory_charges_and_reimbursement: "month_other_charges",
+                          other_fees_total: "month_other_charges",
+                          net_reimbursement: "month_net_reimbursement",
+                          debt_payment: "month_net_reimbursement",
+                          disbursement: "month_net_reimbursement",
+                          reimbursement_vs_sales: "month_net_reimbursement",
+                          rembursment_vs_cm2_margins: "month_net_reimbursement",
+                        }
+                        : {}),
                     }
                     : {}),
                 }}
@@ -3749,6 +3949,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (colKey === "promotional_rebates_percentage") {
                     const value = formatValue((row as any)[colKey], colKey);
                     return value === "-" ? value : `${value}%`;
+                  }
+
+                  // Month-wise Visible Ads: prefer brand_spend when non-zero;
+                  // otherwise show the monthly visible_ads value. Total row stays unchanged.
+                  if (isMonthWiseView && colKey === "brand_spend" && !isTotal) {
+                    const monthlyBrandSpend = toNumber((row as any).brand_spend);
+                    const monthlyVisibleAds = toNumber((row as any).visible_ads);
+                    return formatRoundedPlain(
+                      monthlyBrandSpend !== 0 ? monthlyBrandSpend : monthlyVisibleAds
+                    );
                   }
 
                   // ✅ round Ads Spend expanded columns without decimals

@@ -5104,6 +5104,124 @@ export default function DashboardPage() {
         ]
     );
 
+    // One tracked manual refresh per dashboard cache key. The old cache remains
+    // published until all required steps finish and the final snapshot is saved.
+    const refreshIdRef = useRef<string | null>(null);
+    const refreshStepRef = useRef<string | null>(null);
+    // A full browser reload destroys React state. Persist only the server run ID,
+    // never a fake completion flag or a bearer token.
+    const refreshStorageKey = useMemo(() => [
+        "phormula:dashboard-refresh:v1", String(platform),
+        String(activeDateRegion), String(currYear), String(currMonthName),
+        String(selectedStartDay ?? "all"), String(selectedEndDay ?? "all"),
+    ].join(":"), [platform, activeDateRegion, currYear, currMonthName, selectedStartDay, selectedEndDay]);
+    // The server is authoritative, including after logout (which can clear storage).
+    // Lock on the very first render until the authenticated status lookup resolves.
+    const refreshScope = useMemo(() => ({
+        country: platform === "global" ? "global" : platform === "amazon-us" ? "us" : platform === "amazon-ca" ? "ca" : "uk",
+        platform: String(platform || "").toLowerCase(),
+        region: String(activeDateRegion || ""),
+        month: monthToNumber(currMonthName.toLowerCase()),
+        year: currYear,
+        startDay: selectedStartDay,
+        endDay: selectedEndDay,
+    }), [platform, activeDateRegion, currMonthName, currYear, selectedStartDay, selectedEndDay]);
+    const [refreshStatusChecking, setRefreshStatusChecking] = useState(true);
+    const [verifiedRefreshScope, setVerifiedRefreshScope] = useState<string | null>(null);
+    const [trackedRefreshId, setTrackedRefreshId] = useState<string | null>(null);
+    const [refreshStatus, setRefreshStatus] = useState<{
+        status: "idle" | "running" | "completed" | "failed";
+        message: string;
+        completed?: number;
+        total?: number;
+        publishedPhase?: string | null;
+        refreshId?: string | null;
+    }>({ status: "idle", message: "" });
+
+    const refreshRequest = useCallback(async (method: "POST" | "PATCH" | "GET", body?: Record<string, unknown>) => {
+        const token = localStorage.getItem("jwtToken");
+        if (!token) throw new Error("Session token missing");
+        const query = new URLSearchParams();
+        if (method === "GET") {
+            Object.entries(body || {}).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+            });
+        }
+        const url = `${baseURL}/amazon_api/live-dashboard/refresh${method === "GET" ? `?${query}` : ""}`;
+        const response = await fetch(url, {
+            method,
+            headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(method !== "GET" ? { "Content-Type": "application/json" } : {}) },
+            ...(method !== "GET" ? { body: JSON.stringify(body ?? {}) } : {}),
+            cache: "no-store",
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || result?.success !== true) throw new Error(result?.error || `Refresh tracking failed: HTTP ${response.status}`);
+        return result;
+    }, []);
+
+    // Reconcile from PostgreSQL every time the page mounts, including after login,
+    // and keep polling independently of browser localStorage or tab navigation.
+    useEffect(() => {
+        let cancelled = false;
+        setRefreshStatusChecking(true);
+        setVerifiedRefreshScope(null);
+        const check = async () => {
+            try {
+                const result = await refreshRequest("GET", refreshScope);
+                if (cancelled) return;
+                const state: "idle" | "running" | "completed" | "failed" =
+                    result.status === "running" || result.status === "saving" ? "running" :
+                    result.status === "completed" ? "completed" :
+                    result.status === "failed" ? "failed" : "idle";
+                setRefreshStatus({
+                    status: state,
+                    message: state === "running"
+                        ? (result.current_step ? `Updating ${String(result.current_step).replace(/_/g, " ")}...` : "Refresh in progress...")
+                        : state === "completed" ? "All data updated successfully"
+                        : state === "failed" ? String(result.error || "Refresh did not complete") : "",
+                    completed: result.completed,
+                    total: result.total,
+                    publishedPhase: result.published_phase ?? null,
+                    refreshId: result.refresh_id ?? null,
+                });
+                const runId = state === "running" ? String(result.refresh_id || "") : "";
+                setTrackedRefreshId(runId || null);
+                if (state !== "running") {
+                    // Remove stale local locks on successful backend verification.
+                    window.localStorage.removeItem(refreshStorageKey);
+                } else if (runId) {
+                    window.localStorage.setItem(refreshStorageKey, runId);
+                }
+                setVerifiedRefreshScope(refreshStorageKey);
+            } catch (error) {
+                if (cancelled) return;
+                // Fail closed: API/auth errors must NEVER enable Refresh.
+                setRefreshStatus({ status: "running", message: "Verifying refresh status; retrying..." });
+                setVerifiedRefreshScope(null);
+            } finally {
+                if (!cancelled) setRefreshStatusChecking(false);
+            }
+        };
+        void check();
+        const poll = window.setInterval(() => { void check(); }, 3000);
+        return () => { cancelled = true; window.clearInterval(poll); };
+    }, [refreshStorageKey, refreshRequest, refreshScope]);
+
+    const updateRefreshStep = useCallback(async (step: string, state: "running" | "completed" | "failed", error?: string) => {
+        const refresh_id = refreshIdRef.current;
+        if (!refresh_id) return;
+        const result = await refreshRequest("PATCH", { refresh_id, step, state, ...(error ? { error } : {}) });
+        if (state === "running") refreshStepRef.current = step;
+        if (state === "completed" && refreshStepRef.current === step) refreshStepRef.current = null;
+        if (state === "failed") refreshStepRef.current = null;
+        setRefreshStatus({
+            status: result.status === "failed" ? "failed" : "running",
+            message: state === "running" ? `Updating ${step.replace(/_/g, " ")}...` : "Updating dashboard...",
+            completed: result.completed,
+            total: result.total,
+        });
+    }, [refreshRequest]);
+
     const runDashboardLoadWithSteps = useCallback(async ({
         dataOnlyRefresh = false,
         forceAdsReportSync = false,
@@ -5472,7 +5590,8 @@ export default function DashboardPage() {
     const getDashboardCacheFromBackend = useCallback(
         async (
             rangeStartDay: number | null = selectedStartDay,
-            rangeEndDay: number | null = selectedEndDay
+            rangeEndDay: number | null = selectedEndDay,
+            expectedRefresh?: { id: string; phase: "core" | "final" }
         ) => {
             if (typeof window === "undefined") return null;
 
@@ -5510,14 +5629,24 @@ export default function DashboardPage() {
             }
 
             const payload = json?.data?.payload ?? null;
+            // For a tracked Celery refresh, accept ONLY the exact run/phase.
+            // The worker copies the previous inventory request key, which can
+            // differ from the browser-derived key during initial rehydration.
+            // A normal page bootstrap still retains the original strict checks.
+            const isTrackedPublish = Boolean(
+                expectedRefresh &&
+                payload?.refreshRunId === expectedRefresh.id &&
+                payload?.refreshPhase === expectedRefresh.phase
+            );
             const isUsablePayload = Boolean(
                 payload?.complete === true &&
                 Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION &&
-                payload?.inventoryInsightsRequestKey === inventoryInsightsRequestKey &&
-                (platform !== "global" || hasConsistentGlobalComparisons(
-                    payload?.data,
-                    payload?.previousSkuwiseGlobalData
-                ))
+                (isTrackedPublish || (!expectedRefresh &&
+                    payload?.inventoryInsightsRequestKey === inventoryInsightsRequestKey &&
+                    (platform !== "global" || hasConsistentGlobalComparisons(
+                        payload?.data,
+                        payload?.previousSkuwiseGlobalData
+                    ))))
             );
 
             return {
@@ -5539,12 +5668,14 @@ export default function DashboardPage() {
     const loadRangeFromCache = useCallback(
         async (
             startDay: number | null,
-            endDay: number | null
+            endDay: number | null,
+            expectedRefresh?: { id: string; phase: "core" | "final" }
         ) => {
 
             const cacheResult = await getDashboardCacheFromBackend(
                 startDay,
-                endDay
+                endDay,
+                expectedRefresh
             );
 
             if (cacheResult?.found && cacheResult.payload) {
@@ -5578,6 +5709,34 @@ export default function DashboardPage() {
             normalizeRefreshTimestamp
         ]
     );
+
+    // Reconcile published snapshots with the Celery run ID. Polling can see
+    // published_phase before a cache GET sees the committed row; retry on each
+    // server status update instead of permanently consuming the first attempt.
+    const publishedAppliedRef = useRef<string | null>(null);
+    const publishedLoadingRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (verifiedRefreshScope !== refreshStorageKey || !refreshStatus.refreshId) return;
+        const phase: "core" | "final" | null =
+            refreshStatus.status === "completed" ? "final" :
+            refreshStatus.status === "running" && refreshStatus.publishedPhase === "core" ? "core" : null;
+        if (!phase) return;
+        const runId = refreshStatus.refreshId;
+        const key = `${refreshStorageKey}:${runId}:${phase}`;
+        if (publishedAppliedRef.current === key || publishedLoadingRef.current === key) return;
+        publishedLoadingRef.current = key;
+        void loadRangeFromCache(selectedStartDay, selectedEndDay, { id: runId, phase })
+            .then((loaded) => {
+                if (loaded) publishedAppliedRef.current = key;
+                // If false, leave it retryable. The next status poll triggers
+                // another effect pass without changing any underlying data.
+            })
+            .catch((error) => console.error(`Cannot load ${phase} dashboard cache`, error))
+            .finally(() => {
+                if (publishedLoadingRef.current === key) publishedLoadingRef.current = null;
+            });
+    }, [refreshStatus, verifiedRefreshScope, refreshStorageKey, loadRangeFromCache,
+        selectedStartDay, selectedEndDay]);
 
     // const liveCacheKey = useMemo(() => {
     //     const country =
@@ -6049,39 +6208,44 @@ export default function DashboardPage() {
     }, []);
 
 
+    // Manual refresh is now enqueued on the backend. Never start the expensive
+    // Amazon report pipeline in a browser event handler; it must survive F5/logout.
     const handleHardRefresh = useCallback(async () => {
+        if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey ||
+            trackedRefreshId || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
+        setRefreshStatus({ status: "running", message: "Queuing background refresh..." });
         try {
-            isManualRefreshRef.current = true;
-            shouldPostCacheRef.current = false;
-
-            await fetchCountryTime();
-
-            await runDashboardLoadWithSteps({
-                dataOnlyRefresh: true,
-                forceAdsReportSync: true,
-                forceInventoryInsightsRefresh: true,
+            const token = window.localStorage.getItem("jwtToken");
+            if (!token) throw new Error("Session token missing");
+            const response = await fetch(`${baseURL}/amazon_api/live-dashboard/refresh/background`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify(refreshScope),
+                cache: "no-store",
             });
-
-            const refreshedAt = Date.now();
-            setLastRefreshAt(refreshedAt);
-
-            shouldPostCacheRef.current = true;
-            setCacheSaveTick((x) => x + 1);
-        } catch (err) {
-            if (isDashboardLoadCancelledError(err)) {
-                isManualRefreshRef.current = false;
-                shouldPostCacheRef.current = false;
-                return;
+            const result = await response.json().catch(() => null);
+            if (!response.ok || result?.success !== true) {
+                if (response.status === 409) {
+                    // Another tab/session already queued the same cache key.
+                    setRefreshStatus({ status: "running", message: "Refresh already in progress..." });
+                    const active = await refreshRequest("GET", refreshScope);
+                    if (active.refresh_id) {
+                        setTrackedRefreshId(String(active.refresh_id));
+                        window.localStorage.setItem(refreshStorageKey, String(active.refresh_id));
+                    }
+                    return;
+                }
+                throw new Error(result?.error || `Failed to enqueue refresh (${response.status})`);
             }
-
-            console.error("Hard refresh failed:", err);
-            isManualRefreshRef.current = false;
-            shouldPostCacheRef.current = false;
+            const rid = String(result.refresh_id);
+            setTrackedRefreshId(rid);
+            window.localStorage.setItem(refreshStorageKey, rid);
+            setRefreshStatus({ status: "running", message: "Background refresh started...", completed: 0, total: result.total });
+        } catch (error) {
+            setRefreshStatus({ status: "failed", message: error instanceof Error ? error.message : "Refresh could not start" });
         }
-    }, [
-        fetchCountryTime,
-        runDashboardLoadWithSteps,
-    ]);
+    }, [refreshStatusChecking, verifiedRefreshScope, refreshStorageKey, trackedRefreshId,
+        refreshStatus.status, pageLoading, dashboardBusy, refreshScope, refreshRequest]);
 
     useEffect(() => {
 
