@@ -11,7 +11,6 @@ type DashboardPageHeaderProps<TTab extends string = string> = {
     countryName: string;
     formattedMonthYear: string;
     handleHardRefresh: () => void;
-    refreshStatus?: { status: "idle" | "running" | "completed" | "failed"; message: string; completed?: number; total?: number };
     pageLoading: boolean;
     lastRefreshAt: string | number | Date | null | undefined;
     lastUpdatedTimeText: string;
@@ -36,7 +35,6 @@ export default function DashboardPageHeader<TTab extends string = string>({
     countryName,
     formattedMonthYear,
     handleHardRefresh,
-    refreshStatus,
     pageLoading,
     lastRefreshAt,
     lastUpdatedTimeText,
@@ -124,15 +122,6 @@ export default function DashboardPageHeader<TTab extends string = string>({
             {pageLoading ? "Refreshing…" : "Refresh"}
         </AiButton>
 
-        {refreshStatus && refreshStatus.status !== "idle" && (
-            <span role="status" aria-live="polite" className={`max-w-[280px] text-xs font-medium text-right ${
-                refreshStatus.status === "completed" ? "text-green-700" :
-                refreshStatus.status === "failed" ? "text-red-600" : "text-amber-700"
-            }`} title={refreshStatus.message}>
-                {refreshStatus.status === "running" ? `⏳ ${refreshStatus.message}${refreshStatus.total ? ` (${refreshStatus.completed || 0}/${refreshStatus.total})` : ""}` :
-                    refreshStatus.status === "completed" ? "✓ All data updated successfully" : `⚠ ${refreshStatus.message}`}
-            </span>
-        )}
         {lastRefreshAt != null && (
             <span className="whitespace-nowrap text-xs text-gray-500 2xl:text-sm">
                 Last Updated at{" "}

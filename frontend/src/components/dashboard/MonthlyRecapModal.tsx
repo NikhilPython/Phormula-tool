@@ -45,7 +45,10 @@ export type MonthlyRecapData = {
         name: string;
         sku?: string;
         netSales: number;
+        netSalesChange: number | null;
         netSalesDeltaPct: number | null;
+        units: number;
+        cm2Profit: number | null;
     }>;
     objectives: string[];
     formatMoney: (val: number) => string;
@@ -335,35 +338,173 @@ export default function MonthlyRecapModal({
                 </section>
 
                 {/* SKU sales highlights */}
+                {/* SKU sales highlights */}
                 <section className="mt-4 space-y-2" aria-label="SKU sales highlights">
-                    {skuHighlights.length > 0 ? skuHighlights.map((highlight) => {
-                        const delta = highlight.netSalesDeltaPct;
-                        return (
-                            <article key={highlight.title} className="rounded-xl border border-t-4 border-[#7B9A6D] px-4 py-3">
-                                <p className="mb-2 text-xs text-charcoal-500">{highlight.title}</p>
-                                <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] items-center gap-3">
-                                    <div className="min-w-0">
-                                        <p className="truncate font-bold text-charcoal-500" title={highlight.name}>{highlight.name}</p>
-                                        {highlight.sku && <p className="mt-0.5 truncate text-xs text-charcoal-500">{highlight.sku}</p>}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-xs text-charcoal-500">Net sales</p>
-                                        <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">{formatMoney(highlight.netSales)}</p>
-                                    </div>
-                                    <p className={`whitespace-nowrap text-xs font-semibold ${delta == null ? "text-slate-400" : delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                                        {delta == null ? "\u2014" : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
-                                    </p>
+                    {skuHighlights.length > 0 ? (
+                        <>
+                            {/* Top Selling SKU - Full Width */}
+                            {skuHighlights.slice(0, 1).map((highlight) => {
+                                const delta = highlight.netSalesDeltaPct;
+
+                                return (
+                                    <article
+                                        key={highlight.title}
+                                        className="rounded-xl border border-t-4 border-[#7B9A6D] px-4 py-3"
+                                    >
+                                        <p className="mb-2 text-xs text-charcoal-500">
+                                            {highlight.title}
+                                        </p>
+
+                                        {/* Replace the div with grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] with this: */}
+                                        <div className="flex flex-row items-center justify-between w-full gap-10">
+
+                                            {/* Name & SKU */}
+                                            {/* Name, SKU & Delta */}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex min-w-0 items-center gap-2">
+                                                    <p
+                                                        className="truncate font-bold text-charcoal-500"
+                                                        title={highlight.name}
+                                                    >
+                                                        {highlight.name}
+                                                    </p>
+
+                                                    <p
+                                                        className={`shrink-0 whitespace-nowrap text-xs font-semibold ${delta == null
+                                                            ? "text-slate-400"
+                                                            : delta >= 0
+                                                                ? "text-emerald-600"
+                                                                : "text-red-600"
+                                                            }`}
+                                                    >
+                                                        {delta == null
+                                                            ? "—"
+                                                            : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(2)}%`}
+                                                    </p>
+                                                </div>
+
+                                                {highlight.sku && (
+                                                    <p className="mt-0.5 truncate text-xs text-charcoal-500">
+                                                        {highlight.sku}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Net Sales */}
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Net sales</p>
+                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                    {formatMoney(highlight.netSales)}
+                                                </p>
+                                            </div>
+
+                                            {/* Units */}
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Units</p>
+                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                    {Math.round(highlight.units || 0).toLocaleString()}
+                                                </p>
+                                            </div>
+
+                                            {/* CM2 Profit */}
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">CM2 Profit</p>
+                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                    {highlight.cm2Profit != null ? formatMoney(highlight.cm2Profit) : "\u2014"}
+                                                </p>
+                                            </div>
+
+                                            {/* Delta % */}
+                                            {/* <p className={`whitespace-nowrap text-xs font-semibold ${delta == null
+                                                ? "text-slate-400"
+                                                : delta >= 0
+                                                    ? "text-emerald-600"
+                                                    : "text-red-600"
+                                                }`}>
+                                                {delta == null
+                                                    ? "\u2014"
+                                                    : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
+                                            </p> */}
+                                        </div>
+                                    </article>
+                                );
+                            })}
+
+                            {/* Remaining 2 SKU Highlights - 2 Columns, 1 Row */}
+                            {skuHighlights.length > 1 && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {skuHighlights.slice(1, 3).map((highlight) => {
+                                        const delta = highlight.netSalesDeltaPct;
+
+                                        return (
+                                            <article
+                                                key={highlight.title}
+                                                className={`min-w-0 rounded-xl border border-t-4 px-3 py-3 sm:px-4 ${highlight.title === "Highest Net Sales Growth"
+                                                        ? "border-[#5EA68E]"
+                                                        : "border-[#B75A5A]"
+                                                    }`}
+                                            >
+                                                <p className="mb-2 truncate text-xs text-charcoal-500">
+                                                    {highlight.title}
+                                                </p>
+
+                                                {/* Delta + Product Name + Net Sales */}
+                                                <div className="flex items-center justify-between gap-2">
+                                                    {/* Delta and Product */}
+                                                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                        {/* <p className={`shrink-0 whitespace-nowrap text-xs font-semibold ${delta == null
+                                                                ? "text-slate-400"
+                                                                : delta >= 0
+                                                                    ? "text-emerald-600"
+                                                                    : "text-red-600"
+                                                            }`}>
+                                                            {delta == null
+                                                                ? "\u2014"
+                                                                : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
+                                                        </p> */}
+
+                                                        <div className="min-w-0">
+                                                            <p
+                                                                className="truncate text-sm font-bold text-charcoal-500"
+                                                                title={highlight.name}
+                                                            >
+                                                                {highlight.name}
+                                                            </p>
+                                                            {highlight.sku && (
+                                                                <p className="truncate text-xs text-charcoal-500">
+                                                                    {highlight.sku}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Amount of net sales growth or decline */}
+                                                    <div className="shrink-0 text-right">
+                                                        <p className={`text-xs text-charcoal-500 `}>
+                                                            {highlight.title === "Highest Net Sales Growth" ? "Increased" : "Decreased"}
+                                                        </p>
+                                                        <p className={`text-sm font-bold ${highlight.title === "Highest Net Sales Growth" ? "text-emerald-600" : "text-red-600"}`}>
+                                                            {highlight.netSalesChange == null
+                                                                ? "—"
+                                                                : formatMoney(Math.abs(highlight.netSalesChange))}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </article>
+                                        );
+                                    })}
                                 </div>
-                            </article>
-                        );
-                    }) : (
+                            )}
+                        </>
+                    ) : (
                         <div className="rounded-xl border border-t-4 border-[#7B9A6D] p-4">
-                            <p className="text-sm text-charcoal-500">No SKU sales recorded for this month.</p>
+                            <p className="text-sm text-charcoal-500">
+                                No SKU sales recorded for this month.
+                            </p>
                         </div>
                     )}
                 </section>
 
-                {/* Footer */}
                 {/* Footer */}
                 <div className="mt-6 flex items-center justify-between gap-3">
                     {onViewBreakdown || country ? ( // Ensure it shows if either is provided

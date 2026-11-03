@@ -1119,7 +1119,7 @@ const ensureSpReportSeedOncePerDay = async (
         localStorage.setItem(storageKey, "1");
     });
 
-    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
+    if (didRun === null) return;
 };
 
 const ensureSdReportSeedOncePerDay = async (
@@ -1175,7 +1175,7 @@ const ensureSdReportSeedOncePerDay = async (
     });
 
     // ✅ IMPORTANT: if another tab/render is running it, don't error, just exit
-    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
+    if (didRun === null) return;
 };
 
 const ensureSbKeywordReportSeedOncePerDay = async (
@@ -1237,7 +1237,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
     });
 
     // ✅ if another tab/render is running it, don't error, just exit
-    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
+    if (didRun === null) return;
 };
 
 
@@ -2668,15 +2668,10 @@ export default function DashboardPage() {
 
     const runAdsBackgroundSync = useCallback(async ({
         forceReportSync = false,
-        trackStep,
     }: {
         forceReportSync?: boolean;
-        trackStep?: (step: string, state: "running" | "completed") => Promise<void>;
     } = {}) => {
-        if (adsBackgroundLoadingRef.current) {
-            if (forceReportSync) throw new Error("Ads synchronization already running");
-            return;
-        }
+        if (adsBackgroundLoadingRef.current) return;
         if (isMonthYearNA) return;
         if (platform === "shopify") return;
 
@@ -2685,7 +2680,6 @@ export default function DashboardPage() {
 
         if (!jwtToken) {
             adsBackgroundErrorRef.current = "No token found. Please sign in.";
-            if (forceReportSync) throw new Error(adsBackgroundErrorRef.current);
             return;
         }
 
@@ -2700,20 +2694,17 @@ export default function DashboardPage() {
         adsBackgroundErrorRef.current = null;
 
         try {
-            // For tracked refresh, only acknowledge a report after its awaited
-            // API request resolves. Preserve parallel Ads reports for performance.
-            const runReport = async (step: string, task: () => Promise<void>) => {
-                if (trackStep) await trackStep(step, "running");
-                await task();
-                if (trackStep) await trackStep(step, "completed");
-            };
             const adsSeedTasks = [
-                runReport("sp_report", () => ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
-                runReport("sb_report", () => ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
+                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
+                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
             ];
+
             if (country === "UK" || country === "US") {
-                adsSeedTasks.push(runReport("sd_report", () => ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)));
+                adsSeedTasks.push(
+                    ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)
+                );
             }
+
             await Promise.all(adsSeedTasks);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
@@ -2751,26 +2742,16 @@ export default function DashboardPage() {
                     errMsg.toLowerCase().includes("request is a duplicate") ||
                     errMsg.toLowerCase().includes("in progress");
 
-                if (forceReportSync && (isNoRows404 || isDuplicateOrInProgress)) {
-                    throw new Error(`${fallbackName}: update not confirmed (${res.status})`);
-                }
                 if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
                     throw new Error(errMsg || `${fallbackName} failed`);
-                }
-                if (json?.success === false || json?.error) {
-                    throw new Error(errMsg || `${fallbackName} returned an error`);
                 }
 
                 return json;
             };
 
-            if (trackStep) await trackStep("monthly_ads_db", "running");
             await callAdsDbSync(MONTHLY_SP_ENDPOINT, "monthly_sp_sd_to_db");
-            if (trackStep) await trackStep("monthly_ads_db", "completed");
 
-            if (trackStep) await trackStep("daily_ads_db", "running");
             await callAdsDbSync(DAILY_SP_SD_SB_ENDPOINT, "daily_sp_sd_sb_to_db");
-            if (trackStep) await trackStep("daily_ads_db", "completed");
 
 
             adsSeededRef.current = true;
@@ -2783,7 +2764,6 @@ export default function DashboardPage() {
             adsSeededRef.current = false;
             adsSeedErrorRef.current = e?.message || "Ads background sync failed";
             adsBackgroundErrorRef.current = e?.message || "Ads background sync failed";
-            if (forceReportSync) throw e;
         } finally {
             adsBackgroundLoadingRef.current = false;
         }
@@ -4601,7 +4581,7 @@ export default function DashboardPage() {
     ]);
 
     /* ===================== AMAZON FETCH ===================== */
-    const fetchAmazon = useCallback(async (strict = false) => {
+    const fetchAmazon = useCallback(async () => {
         if (isMonthYearNA) {
             setLoading(false);
             setUnauthorized(false);
@@ -4696,7 +4676,6 @@ export default function DashboardPage() {
             setData(json); // ✅ data now matches your new response shape
         } catch (e: any) {
             setError(e?.message || "Failed to load data");
-            if (strict) throw e;
             setData(null);
         } finally {
             setLoading(false);
@@ -5125,130 +5104,14 @@ export default function DashboardPage() {
         ]
     );
 
-    // One tracked manual refresh per dashboard cache key. The old cache remains
-    // published until all required steps finish and the final snapshot is saved.
-    const refreshIdRef = useRef<string | null>(null);
-    const refreshStepRef = useRef<string | null>(null);
-    // A full browser reload destroys React state. Persist only the server run ID,
-    // never a fake completion flag or a bearer token.
-    const refreshStorageKey = useMemo(() => [
-        "phormula:dashboard-refresh:v1", String(platform),
-        String(activeDateRegion), String(currYear), String(currMonthName),
-        String(selectedStartDay ?? "all"), String(selectedEndDay ?? "all"),
-    ].join(":"), [platform, activeDateRegion, currYear, currMonthName, selectedStartDay, selectedEndDay]);
-    // The server is authoritative, including after logout (which can clear storage).
-    // Lock on the very first render until the authenticated status lookup resolves.
-    const refreshScope = useMemo(() => ({
-        country: platform === "global" ? "global" : platform === "amazon-us" ? "us" : platform === "amazon-ca" ? "ca" : "uk",
-        platform: String(platform || "").toLowerCase(),
-        region: String(activeDateRegion || ""),
-        month: monthToNumber(currMonthName.toLowerCase()),
-        year: currYear,
-        startDay: selectedStartDay,
-        endDay: selectedEndDay,
-    }), [platform, activeDateRegion, currMonthName, currYear, selectedStartDay, selectedEndDay]);
-    const [refreshStatusChecking, setRefreshStatusChecking] = useState(true);
-    const [verifiedRefreshScope, setVerifiedRefreshScope] = useState<string | null>(null);
-    const [trackedRefreshId, setTrackedRefreshId] = useState<string | null>(null);
-    const [refreshStatus, setRefreshStatus] = useState<{
-        status: "idle" | "running" | "completed" | "failed";
-        message: string;
-        completed?: number;
-        total?: number;
-    }>({ status: "idle", message: "" });
-
-    const refreshRequest = useCallback(async (method: "POST" | "PATCH" | "GET", body?: Record<string, unknown>) => {
-        const token = localStorage.getItem("jwtToken");
-        if (!token) throw new Error("Session token missing");
-        const query = new URLSearchParams();
-        if (method === "GET") {
-            Object.entries(body || {}).forEach(([key, value]) => {
-                if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
-            });
-        }
-        const url = `${baseURL}/amazon_api/live-dashboard/refresh${method === "GET" ? `?${query}` : ""}`;
-        const response = await fetch(url, {
-            method,
-            headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(method !== "GET" ? { "Content-Type": "application/json" } : {}) },
-            ...(method !== "GET" ? { body: JSON.stringify(body ?? {}) } : {}),
-            cache: "no-store",
-        });
-        const result = await response.json().catch(() => null);
-        if (!response.ok || result?.success !== true) throw new Error(result?.error || `Refresh tracking failed: HTTP ${response.status}`);
-        return result;
-    }, []);
-
-    // Reconcile from PostgreSQL every time the page mounts, including after login,
-    // and keep polling independently of browser localStorage or tab navigation.
-    useEffect(() => {
-        let cancelled = false;
-        setRefreshStatusChecking(true);
-        setVerifiedRefreshScope(null);
-        const check = async () => {
-            try {
-                const result = await refreshRequest("GET", refreshScope);
-                if (cancelled) return;
-                const state: "idle" | "running" | "completed" | "failed" =
-                    result.status === "running" || result.status === "saving" ? "running" :
-                    result.status === "completed" ? "completed" :
-                    result.status === "failed" ? "failed" : "idle";
-                setRefreshStatus({
-                    status: state,
-                    message: state === "running"
-                        ? (result.current_step ? `Updating ${String(result.current_step).replace(/_/g, " ")}...` : "Refresh in progress...")
-                        : state === "completed" ? "All data updated successfully"
-                        : state === "failed" ? String(result.error || "Refresh did not complete") : "",
-                    completed: result.completed,
-                    total: result.total,
-                });
-                const runId = state === "running" ? String(result.refresh_id || "") : "";
-                setTrackedRefreshId(runId || null);
-                if (state !== "running") {
-                    // Remove stale local locks on successful backend verification.
-                    window.localStorage.removeItem(refreshStorageKey);
-                } else if (runId) {
-                    window.localStorage.setItem(refreshStorageKey, runId);
-                }
-                setVerifiedRefreshScope(refreshStorageKey);
-            } catch (error) {
-                if (cancelled) return;
-                // Fail closed: API/auth errors must NEVER enable Refresh.
-                setRefreshStatus({ status: "running", message: "Verifying refresh status; retrying..." });
-                setVerifiedRefreshScope(null);
-            } finally {
-                if (!cancelled) setRefreshStatusChecking(false);
-            }
-        };
-        void check();
-        const poll = window.setInterval(() => { void check(); }, 3000);
-        return () => { cancelled = true; window.clearInterval(poll); };
-    }, [refreshStorageKey, refreshRequest, refreshScope]);
-
-    const updateRefreshStep = useCallback(async (step: string, state: "running" | "completed" | "failed", error?: string) => {
-        const refresh_id = refreshIdRef.current;
-        if (!refresh_id) return;
-        const result = await refreshRequest("PATCH", { refresh_id, step, state, ...(error ? { error } : {}) });
-        if (state === "running") refreshStepRef.current = step;
-        if (state === "completed" && refreshStepRef.current === step) refreshStepRef.current = null;
-        if (state === "failed") refreshStepRef.current = null;
-        setRefreshStatus({
-            status: result.status === "failed" ? "failed" : "running",
-            message: state === "running" ? `Updating ${step.replace(/_/g, " ")}...` : "Updating dashboard...",
-            completed: result.completed,
-            total: result.total,
-        });
-    }, [refreshRequest]);
-
     const runDashboardLoadWithSteps = useCallback(async ({
         dataOnlyRefresh = false,
         forceAdsReportSync = false,
         forceInventoryInsightsRefresh = false,
-        trackStep,
     }: {
         dataOnlyRefresh?: boolean;
         forceAdsReportSync?: boolean;
         forceInventoryInsightsRefresh?: boolean;
-        trackStep?: (step: string, state: "running" | "completed") => Promise<void>;
     } = {}) => {
         if (isMonthYearNA) {
             resetStepState();
@@ -5312,20 +5175,13 @@ export default function DashboardPage() {
 
             if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
-                if (forceAdsReportSync) {
-                    // Ads is expensive and can take minutes. Await ALL report downloads
-                    // and monthly/daily DB updates before preparing the final cache.
-                    // Start it in parallel with the sales/inventory portion below.
-                } else {
-                    void runAdsBackgroundSync({ forceReportSync: false });
-                }
+                void runAdsBackgroundSync({ forceReportSync: forceAdsReportSync });
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
-            if (trackStep) await trackStep("mtd_transactions", "running");
-            await fetchAmazon(Boolean(trackStep));
+            await fetchAmazon();
             ensureDashboardLoadActive();
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -5340,12 +5196,10 @@ export default function DashboardPage() {
                 setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
-            if (trackStep) await trackStep("mtd_transactions", "completed");
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
             setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
-            if (trackStep) await trackStep("inventory_current", "running");
             await fetchInventory();
             ensureDashboardLoadActive();
 
@@ -5353,23 +5207,13 @@ export default function DashboardPage() {
             await fetchInventoryInsights({ force: forceInventoryInsightsRefresh });
             ensureDashboardLoadActive();
 
-            if (trackStep) await trackStep("inventory_current", "completed");
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            if (forceAdsReportSync) {
-                await runAdsBackgroundSync({ forceReportSync: true, trackStep });
-                ensureDashboardLoadActive();
-                // Ads DB writes change profitability; rebuild MTD after Ads finishes.
-                await fetchAmazon(Boolean(trackStep));
-                ensureDashboardLoadActive();
-            }
-
-            // ✅ Live BI runs AFTER inventory and, on manual refresh, Ads DB updates.
+            // ✅ Now /live_mtd_bi runs AFTER all inventory APIs
             if (showLiveBI) {
                 setStep(3, "Plotting Graph", 20, "Fetching Live BI data.");
 
-                if (trackStep) await trackStep("live_mtd_bi", "running");
                 await fetchLiveBiPayload({
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
@@ -5381,7 +5225,6 @@ export default function DashboardPage() {
                     dataOnlyRefresh,
                 });
                 ensureDashboardLoadActive();
-                if (trackStep) await trackStep("live_mtd_bi", "completed");
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
             }
@@ -5422,7 +5265,6 @@ export default function DashboardPage() {
 
             console.error("runDashboardLoadWithSteps failed:", e);
             setError(e?.message || "Failed to load dashboard");
-            if (forceAdsReportSync) throw e;
             setDashboardBusy(false);
             setStepProgress((prev) => ({
                 ...prev,
@@ -5504,14 +5346,13 @@ export default function DashboardPage() {
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
                     savedAt: Date.now(),
-                    ...(refreshIdRef.current ? { refreshId: refreshIdRef.current } : {}),
                     cachePayload: payload,
                 }),
             });
 
             const json = await res.json().catch(() => null);
 
-            if (!res.ok || !json?.success || json?.stale_ignored) {
+            if (!res.ok || !json?.success) {
                 throw new Error(
                     json?.error || `Failed to save dashboard cache (${res.status})`
                 );
@@ -6209,80 +6050,37 @@ export default function DashboardPage() {
 
 
     const handleHardRefresh = useCallback(async () => {
-        if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey || trackedRefreshId || refreshIdRef.current || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
         try {
             isManualRefreshRef.current = true;
             shouldPostCacheRef.current = false;
-            setRefreshStatus({ status: "running", message: "Starting refresh..." });
-            await fetchCountryTime();
 
-            const steps = [
-                "mtd_transactions", "inventory_current",
-                "sp_report", "sb_report",
-                ...(platform !== "amazon-ca" ? ["sd_report"] : []),
-                "monthly_ads_db", "daily_ads_db",
-                ...(showLiveBI ? ["live_mtd_bi"] : []),
-            ];
-            const session = await refreshRequest("POST", {
-                country: liveDashboardCountry,
-                platform: String(platform || "").toLowerCase(),
-                region: String(activeDateRegion || ""),
-                month: monthToNumber(currMonthName.toLowerCase()),
-                year: currYear,
-                startDay: selectedStartDay,
-                endDay: selectedEndDay,
-                steps,
-            });
-            refreshIdRef.current = session.refresh_id;
-            window.localStorage.setItem(refreshStorageKey, session.refresh_id);
-            setTrackedRefreshId(session.refresh_id);
+            await fetchCountryTime();
 
             await runDashboardLoadWithSteps({
                 dataOnlyRefresh: true,
                 forceAdsReportSync: true,
                 forceInventoryInsightsRefresh: true,
-                trackStep: updateRefreshStep,
             });
 
-            // Final cache write is performed only after React has committed the
-            // updated source data and the existing loader conditions are clear.
+            const refreshedAt = Date.now();
+            setLastRefreshAt(refreshedAt);
+
             shouldPostCacheRef.current = true;
             setCacheSaveTick((x) => x + 1);
         } catch (err) {
+            if (isDashboardLoadCancelledError(err)) {
+                isManualRefreshRef.current = false;
+                shouldPostCacheRef.current = false;
+                return;
+            }
+
             console.error("Hard refresh failed:", err);
-            const message = err instanceof Error ? err.message : "Dashboard refresh failed";
-            if (refreshIdRef.current && refreshStepRef.current) {
-                try { await updateRefreshStep(refreshStepRef.current, "failed", message); }
-                catch (statusError) { console.error("Cannot record refresh failure", statusError); }
-            }
-            if (refreshIdRef.current && window.localStorage.getItem(refreshStorageKey) === refreshIdRef.current) {
-                window.localStorage.removeItem(refreshStorageKey);
-            }
-            setTrackedRefreshId(null);
-            refreshIdRef.current = null;
-            refreshStepRef.current = null;
             isManualRefreshRef.current = false;
             shouldPostCacheRef.current = false;
-            if (message.includes("Refresh already in progress")) {
-                // Another tab/session started this run; never unlock after a 409.
-                setRefreshStatus({ status: "running", message: "Refresh already in progress..." });
-                try {
-                    const active = await refreshRequest("GET", refreshScope);
-                    if (active.status === "running" || active.status === "saving") {
-                        setTrackedRefreshId(String(active.refresh_id));
-                        window.localStorage.setItem(refreshStorageKey, String(active.refresh_id));
-                    }
-                } catch { /* keep lock on verification error */ }
-            } else {
-                setRefreshStatus({ status: "failed", message });
-            }
         }
     }, [
-        refreshStatusChecking, trackedRefreshId, refreshStatus.status, refreshStorageKey, verifiedRefreshScope, refreshScope,
-        pageLoading, dashboardBusy, fetchCountryTime, refreshRequest,
-        liveDashboardCountry, platform, activeDateRegion, currMonthName, currYear,
-        selectedStartDay, selectedEndDay, showLiveBI,
-        runDashboardLoadWithSteps, updateRefreshStep,
+        fetchCountryTime,
+        runDashboardLoadWithSteps,
     ]);
 
     useEffect(() => {
@@ -8915,34 +8713,13 @@ export default function DashboardPage() {
 
         const payload = buildDashboardCachePayload();
 
-        // Do not publish an untracked snapshot during a tracked refresh.
-        const publishingRefreshId = refreshIdRef.current;
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
-                if (publishingRefreshId) {
-                    if (window.localStorage.getItem(refreshStorageKey) === publishingRefreshId) {
-                        window.localStorage.removeItem(refreshStorageKey);
-                    }
-                    setTrackedRefreshId(null);
-                    refreshIdRef.current = null;
-                    refreshStepRef.current = null;
-                    setLastRefreshAt(Date.now());
-                    setRefreshStatus({ status: "completed", message: "All data updated successfully" });
-                }
             })
-            .catch(async (err) => {
+            .catch((err) => {
                 console.error("Failed to save dashboard cache to backend:", err);
-                shouldPostCacheRef.current = false;
-                isManualRefreshRef.current = false;
-                if (publishingRefreshId && window.localStorage.getItem(refreshStorageKey) === publishingRefreshId) {
-                    window.localStorage.removeItem(refreshStorageKey);
-                }
-                setTrackedRefreshId(null);
-                refreshIdRef.current = null;
-                refreshStepRef.current = null;
-                setRefreshStatus({ status: "failed", message: err?.message || "Cache save failed" });
             });
     }, [
         buildDashboardCachePayload,
@@ -8963,7 +8740,6 @@ export default function DashboardPage() {
         dashboardActionItemsError,
         dashboardActionItemsLoading,
         cacheSaveTick,
-        refreshStorageKey,
     ]);
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
@@ -14157,10 +13933,24 @@ export default function DashboardPage() {
                 : priorNetSales != null && priorNetSales !== 0
                     ? ((currentNetSales - priorNetSales) / Math.abs(priorNetSales)) * 100
                     : null;
+            const rawUnits = row.total_quantity ?? row.net_quantity ?? row.quantity;
+            // Monthly SKU sources are not consistent: some populate only the
+            // total field, while older payloads expose CM2 as `profit`.
+            // Don't let an empty/zero alias hide a populated CM2 value.
+            const cm2Candidates = [row.cm2_profit, row.total_cm2_profit, row.profit]
+                .filter((value) => value != null)
+                .map((value) => toNumber(value));
+            const rawCm2Profit = cm2Candidates.find((value) => value !== 0)
+                ?? cm2Candidates[0]
+                ?? null;
             return {
                 name: getSkuwiseDisplayProductName(row),
                 sku: platform === "global" ? undefined : String(row.sku || ""),
                 netSales: currentNetSales,
+                units: rawUnits == null ? 0 : toNumber(rawUnits),
+                cm2Profit: rawCm2Profit == null
+                    ? null
+                    : convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency),
                 netSalesIncrease,
                 netSalesDeltaPct: deltaPct,
             };
@@ -14177,7 +13967,12 @@ export default function DashboardPage() {
             name: row.name,
             sku: row.sku,
             netSales: row.netSales,
+            netSalesChange: row.netSalesIncrease == null
+                ? null
+                : convertToDisplayCurrency(row.netSalesIncrease, amazonDataCurrency),
             netSalesDeltaPct: row.netSalesDeltaPct,
+            units: row.units,
+            cm2Profit: row.cm2Profit,
         });
         const skuHighlights: MonthlyRecapData["skuHighlights"] = [];
         if (best) skuHighlights.push(toSkuHighlight("Top Selling SKU", best));
@@ -14189,12 +13984,12 @@ export default function DashboardPage() {
             : actual;
         const displayMetrics = historicalTotal
             ? [
-                { label: "Units", value: toNumber(historicalTotal.total_quantity), formatter: (v: number) => Math.round(v).toLocaleString() },
+                { label: "Units", value: toNumber(historicalTotal.total_quantity ?? historicalTotal.net_quantity ?? historicalTotal.quantity), formatter: (v: number) => Math.round(v).toLocaleString() },
                 { label: "ASP", value: convertToDisplayCurrency(toNumber(historicalTotal.asp), amazonDataCurrency), formatter: (v: number) => formatDisplayAmount(v, "ASP") },
                 { label: "Net Sales", value: convertToDisplayCurrency(toNumber(historicalTotal.net_sales), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
                 { label: "Marketplace Fees", value: convertToDisplayCurrency(toNumber(historicalTotal.amazon_fees ?? historicalTotal.amazon_fee), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
                 { label: "TACoS", value: toNumber(historicalTotal.tacos_total_advertising_cost_of_sale), formatter: (v: number) => `${v.toFixed(2)}%`, inverseDelta: true },
-                { label: "CM2 Profit", value: convertToDisplayCurrency(toNumber(historicalTotal.total_cm2_profit), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
+                { label: "CM2 Profit", value: convertToDisplayCurrency(toNumber(historicalTotal.total_cm2_profit ?? historicalTotal.cm2_profit), amazonDataCurrency), formatter: formatDisplayAmountNoDecimals },
             ]
             : recapMetrics;
 
@@ -14369,7 +14164,7 @@ export default function DashboardPage() {
             />
             <HashScroll offset={80} />
 
-            {!shouldShowDummyUi && showDashboardStepLoader && refreshStatus.status !== "running" && (
+            {!shouldShowDummyUi && showDashboardStepLoader && (
                 <DashboardLoaderModal
                     pageLoading={showDashboardStepLoader}
                     shouldShowDummyUi={shouldShowDummyUi}
@@ -14385,7 +14180,6 @@ export default function DashboardPage() {
 
             {!shouldShowDummyUi &&
                 pageLoading &&
-                refreshStatus.status !== "running" &&
                 !showDashboardStepLoader &&
                 activeTab !== "action" && (
                     <Loader
@@ -14396,7 +14190,7 @@ export default function DashboardPage() {
                 )}
 
             <DashboardGettingReadyPopup
-                show={shouldShowSalesDelayNotice && refreshStatus.status !== "running"}
+                show={shouldShowSalesDelayNotice}
                 onExploreOtherTabs={handleExploreOtherTabsFromSalesDelay}
             />
 
@@ -14501,8 +14295,7 @@ export default function DashboardPage() {
                 countryName={countryName}
                 formattedMonthYear={formattedMonthYear}
                 handleHardRefresh={handleHardRefresh}
-                refreshStatus={refreshStatus}
-                pageLoading={pageLoading || refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey || trackedRefreshId !== null || refreshStatus.status === "running"}
+                pageLoading={pageLoading}
                 lastRefreshAt={lastRefreshAt}
                 lastUpdatedTimeText={lastUpdatedTimeText}
                 activeDateRegion={activeDateRegion}
