@@ -126,8 +126,8 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
     previous_units = first(previous_totals, "total_quantity", "quantity", "net_quantity")
     current_net_sales = first(current_totals, "net_sales", "total_current_net_sales")
     previous_net_sales = first(previous_totals, "net_sales", "total_previous_net_sales")
-    current_ads = first(current_totals, "advertising_total_final", "total_ads", "advertising_fees", "total_current_advertising", "ads_spend")
-    previous_ads = first(previous_totals, "advertising_total_final", "total_ads", "advertising_fees", "total_previous_advertising", "ads_spend")
+    current_ads = first(current_totals, "total_ads", "advertising_fees", "total_current_advertising", "ads_spend")
+    previous_ads = first(previous_totals, "total_ads", "advertising_fees", "total_previous_advertising", "ads_spend")
     current_cm2 = first(current_totals, "total_cm2_profit", "cm2_profit", "total_current_profit_cm2")
     previous_cm2 = first(previous_totals, "total_cm2_profit", "cm2_profit", "total_previous_profit_cm2")
     current_promotions = first(current_totals, "promotional_rebates", "total_promotional_rebates")
@@ -176,95 +176,6 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
         "previous_percentage": _dashboard_number(previous_promotions / previous_net_sales * 100) if previous_net_sales else 0.0,
     })
     return metrics
-
-def _build_card_metrics_response(current_totals, previous_totals):
-    if not current_totals:
-        current_totals = {}
-    if not previous_totals:
-        previous_totals = {}
-
-    def get_val(d, *keys):
-        for k in keys:
-            if k in d and d[k] is not None:
-                try:
-                    return float(d[k] or 0)
-                except (ValueError, TypeError):
-                    return 0.0
-        return 0.0
-
-    current_units = get_val(current_totals, "total_quantity", "quantity")
-    previous_units = get_val(previous_totals, "total_quantity", "quantity")
-    
-    current_net_sales = get_val(current_totals, "net_sales")
-    previous_net_sales = get_val(previous_totals, "net_sales")
-    
-    current_ads = get_val(current_totals, "advertising_total_final", "total_ads", "advertising_fees", "ads_spend")
-    previous_ads = get_val(previous_totals, "advertising_total_final", "total_ads", "advertising_fees", "ads_spend")
-    
-    current_cm2 = get_val(current_totals, "total_cm2_profit", "cm2_profit")
-    previous_cm2 = get_val(previous_totals, "total_cm2_profit", "cm2_profit")
-    
-    current_promotions = get_val(current_totals, "promotional_rebates")
-    previous_promotions = get_val(previous_totals, "promotional_rebates")
-    
-    current_marketplace = get_val(current_totals, "marketplace_fees", "amazon_fees")
-    previous_marketplace = get_val(previous_totals, "marketplace_fees", "amazon_fees")
-
-    current_asp = current_net_sales / current_units if current_units else 0
-    previous_asp = previous_net_sales / previous_units if previous_units else 0
-
-    current_tacos = (current_ads / current_net_sales * 100) if current_net_sales else 0
-    previous_tacos = (previous_ads / previous_net_sales * 100) if previous_net_sales else 0
-
-    current_cm2_pct = (current_cm2 / current_net_sales * 100) if current_net_sales else 0
-    previous_cm2_pct = (previous_cm2 / previous_net_sales * 100) if previous_net_sales else 0
-
-    current_promo_pct = (current_promotions / current_net_sales * 100) if current_net_sales else 0
-    previous_promo_pct = (previous_promotions / previous_net_sales * 100) if previous_net_sales else 0
-
-    def calc_delta(curr, prev):
-        if prev == 0:
-            return 0.0
-        return ((curr - prev) / abs(prev)) * 100
-
-    return {
-        "current": {
-            "units": current_units,
-            "asp": current_asp,
-            "net_sales": current_net_sales,
-            "marketplace_fees": current_marketplace,
-            "cost_of_ads": current_ads,
-            "tacos_pct": current_tacos,
-            "cm2_profit": current_cm2,
-            "cm2_margin_pct": current_cm2_pct,
-            "promotions": current_promotions,
-            "promotions_pct": current_promo_pct,
-        },
-        "previous": {
-            "units": previous_units,
-            "asp": previous_asp,
-            "net_sales": previous_net_sales,
-            "marketplace_fees": previous_marketplace,
-            "cost_of_ads": previous_ads,
-            "tacos_pct": previous_tacos,
-            "cm2_profit": previous_cm2,
-            "cm2_margin_pct": previous_cm2_pct,
-            "promotions": previous_promotions,
-            "promotions_pct": previous_promo_pct,
-        },
-        "deltas": {
-            "units": calc_delta(current_units, previous_units),
-            "asp": calc_delta(current_asp, previous_asp),
-            "net_sales": calc_delta(current_net_sales, previous_net_sales),
-            "marketplace_fees": calc_delta(current_marketplace, previous_marketplace),
-            "cost_of_ads": calc_delta(current_ads, previous_ads),
-            "tacos_pct": calc_delta(current_tacos, previous_tacos),
-            "cm2_profit": calc_delta(current_cm2, previous_cm2),
-            "cm2_margin_pct": calc_delta(current_cm2_pct, previous_cm2_pct),
-            "promotions": calc_delta(current_promotions, previous_promotions),
-            "promotions_pct": calc_delta(current_promo_pct, previous_promo_pct),
-        }
-    }
 
 
 def _align_dashboard_quantities(data):
@@ -4940,63 +4851,6 @@ def finances_mtd_transactions():
         "transactions": all_rows,
     }
 
-    def get_total_from_month_entry(entry):
-        if not entry or not entry.get("items"):
-            return {}
-        for row in entry["items"]:
-            sku = str(row.get("sku") or "").strip().upper()
-            product_name = str(row.get("product_name") or "").strip().upper()
-            if sku in ("TOTAL", "GRAND_TOTAL") or product_name in ("TOTAL", "GRAND TOTAL"):
-                return row
-        return {}
-
-    # Find October (10) and September (9) from the previous_months_skuwise array
-    oct_entry = next((m for m in previous_months_skuwise if m.get("month") == 10), None)
-    sep_entry = next((m for m in previous_months_skuwise if m.get("month") == 9), None)
-
-    oct_totals = get_total_from_month_entry(oct_entry)
-    sep_totals = get_total_from_month_entry(sep_entry)
-
-    # 1. Build card_metrics for October vs September (as requested)
-    october_card_metrics = _build_card_metrics_response(oct_totals, sep_totals)
-    # Historic P&L uses the stored `acos` percentage for the prior month. The
-    # raw total_ads field can differ from that displayed TACoS (14.38 vs 15.68
-    # in this response), which incorrectly inflated the recap delta to 18.53%.
-    # Use the same displayed percentages for the comparison, rounded to the
-    # precision shown on the cards.
-    october_tacos = oct_totals.get("tacos_total_advertising_cost_of_sale")
-    september_tacos = sep_totals.get("acos")
-    if october_tacos is not None and september_tacos is not None:
-        october_card_metrics["deltas"]["tacos_pct"] = _dashboard_delta(
-            october_tacos,
-            september_tacos,
-        )
-    payload_out["card_metrics"] = october_card_metrics
-    
-    # 2. Also build card_metrics for Current MTD vs October (useful for the top cards)
-    current_mtd_totals = {**totals, **derived_totals, "total_quantity": net_qty_total}
-    payload_out["card_metrics_mtd_vs_oct"] = _build_card_metrics_response(current_mtd_totals, oct_totals)
-
-    # 3. FIX THE RAW HISTORICAL DATA FOR THE FRONTEND MODAL
-    # The modal calculates TACoS from the raw items array. We overwrite the historical TACoS 
-    # to use `advertising_total_final` instead of `total_ads`.
-    for entry in previous_months_skuwise:
-        if not entry.get("items"):
-            continue
-        for row in entry["items"]:
-            sku = str(row.get("sku") or "").strip().upper()
-            product_name = str(row.get("product_name") or "").strip().upper()
-            if sku in ("TOTAL", "GRAND_TOTAL") or product_name in ("TOTAL", "GRAND TOTAL"):
-                net_sales = float(row.get("net_sales") or 0)
-                # Use advertising_total_final to match the top dashboard
-                ads = float(row.get("advertising_total_final") or row.get("total_ads") or 0)
-                if net_sales:
-                    row["tacos_total_advertising_cost_of_sale"] = round((ads / net_sales) * 100, 2)
-                    row["tacos_pct"] = row["tacos_total_advertising_cost_of_sale"]
-                else:
-                    row["tacos_total_advertising_cost_of_sale"] = 0.0
-                    row["tacos_pct"] = 0.0
-
     return jsonify(_json_safe(payload_out)), 200
 
 
@@ -5139,6 +4993,175 @@ def _live_cache_json_safe(obj):
     return obj
 
 
+# Refresh tracking is persisted separately from the published dashboard snapshot.
+# Apply migrations/dashboard_refresh_runs.sql once before using these endpoints.
+# The frontend starts a run, acknowledges the result of each awaited API call,
+# and sends refreshId with the ONE final cache save. Failed/incomplete runs do
+# not replace the last published snapshot.
+_DASHBOARD_REFRESH_STEPS = frozenset({
+    "mtd_transactions", "inventory_aged", "inventory_awd",
+    "current_inventory", "inventory_current", "inventory_age_summary",
+    "sp_report", "sb_report", "sd_report", "monthly_ads_db",
+    "daily_ads_db", "live_mtd_bi", "action_items", "card_deltas",
+    "target_summary", "currency_rates", "previous_month_table",
+})
+
+
+def _refresh_user_id():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        raise PermissionError("Missing token")
+    try:
+        claims, uid, _ = get_effective_user_id_from_token(header.split(" ", 1)[1])
+        uid = int(uid or claims.get("user_id"))
+        if uid <= 0:
+            raise ValueError("Invalid user")
+        return uid
+    except Exception as exc:
+        raise PermissionError("Invalid token") from exc
+
+
+def _refresh_public(row):
+    data = dict(row)
+    data["refresh_id"] = str(data["refresh_id"])
+    for key in ("started_at", "updated_at", "expires_at", "finished_at"):
+        if data.get(key) is not None:
+            data[key] = data[key].isoformat()
+    steps = data.get("steps") or {}
+    data["completed"] = sum(v == "completed" for v in steps.values())
+    data["total"] = len(steps)
+    data["failed_steps"] = [k for k, v in steps.items() if v == "failed"]
+    data["current_step"] = next((k for k, v in steps.items() if v == "running"), None)
+    data["cache_updated"] = data["status"] == "completed"
+    return data
+
+
+@amazon_api_bp.route("/amazon_api/live-dashboard/refresh", methods=["POST", "PATCH", "GET"])
+def dashboard_refresh_status():
+    try:
+        uid = _refresh_user_id()
+    except PermissionError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 401
+
+    body = (request.get_json(silent=True) or {}) if request.method != "GET" else request.args
+    if not isinstance(body, dict) and request.method != "GET":
+        return jsonify({"success": False, "error": "Expected JSON object"}), 400
+
+    try:
+        if request.method == "POST":
+            params = _live_cache_parameters({**body, "_authenticated_user_id": uid})
+            steps = body.get("steps")
+            if (not isinstance(steps, list) or not steps or len(steps) > len(_DASHBOARD_REFRESH_STEPS)
+                or any(not isinstance(x, str) or x not in _DASHBOARD_REFRESH_STEPS for x in steps)
+                or len(set(steps)) != len(steps)):
+                return jsonify({"success": False, "error": "Invalid refresh steps"}), 400
+            from uuid import uuid4
+            rid = str(uuid4())
+            # Prevent overlapping refreshes, including from a newly logged-in tab.
+            with PHORMULA_ENGINE.begin() as conn:
+                conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                             {"key": params["cache_key"]})
+                conn.execute(text("""
+                    UPDATE public.dashboard_refresh_runs
+                       SET status='failed', error='Refresh expired', updated_at=now(), finished_at=now()
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                       AND status IN ('running','saving') AND expires_at <= now()
+                """), {"uid": uid, "cache_key": params["cache_key"]})
+                active = conn.execute(text("""
+                    SELECT * FROM public.dashboard_refresh_runs
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                       AND status IN ('running','saving') AND expires_at > now()
+                     ORDER BY started_at DESC LIMIT 1
+                """), {"uid": uid, "cache_key": params["cache_key"]}).mappings().first()
+                if active:
+                    return jsonify({"success": False, "error": "Refresh already in progress",
+                                    **_refresh_public(active)}), 409
+                row = conn.execute(text("""
+                    INSERT INTO public.dashboard_refresh_runs
+                       (refresh_id,user_id,cache_key,country,steps,expires_at)
+                    VALUES (CAST(:rid AS uuid),:uid,:cache_key,:country,
+                            CAST(:steps AS jsonb),now()+interval '45 minutes')
+                    RETURNING *
+                """), {"rid": rid, "uid": uid, "cache_key": params["cache_key"],
+                        "country": params["country"],
+                        "steps": json.dumps({x: "pending" for x in steps})}).mappings().one()
+            return jsonify({"success": True, **_refresh_public(row)}), 201
+
+        rid = str(body.get("refresh_id") or body.get("refreshId") or "")
+        if request.method == "GET" and not rid:
+            # On login / F5 the browser may have no stored refresh ID.
+            # Resolve the latest run for the authenticated user AND exact dashboard.
+            params = _live_cache_parameters({**dict(request.args), "_authenticated_user_id": uid})
+            with PHORMULA_ENGINE.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT * FROM public.dashboard_refresh_runs
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                     ORDER BY started_at DESC LIMIT 1
+                """), {"uid": uid, "cache_key": params["cache_key"]}).mappings().first()
+            if not row:
+                return jsonify({"success": True, "status": "idle", "refresh_id": None,
+                                "completed": 0, "total": 0}), 200
+            result = _refresh_public(row)
+            if row["status"] in ("running", "saving") and row["expires_at"] <= datetime.now(timezone.utc):
+                result["status"] = "failed"
+                result["error"] = "Refresh expired before completion"
+            return jsonify({"success": True, **result}), 200
+        from uuid import UUID
+        rid = str(UUID(rid))
+        if request.method == "GET":
+            with PHORMULA_ENGINE.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT * FROM public.dashboard_refresh_runs
+                    WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid
+                """), {"rid": rid, "uid": uid}).mappings().first()
+            if not row:
+                return jsonify({"success": False, "error": "Unknown refresh"}), 404
+            result = _refresh_public(row)
+            if row["status"] in ("running", "saving") and row["expires_at"] <= datetime.now(timezone.utc):
+                result["status"] = "failed"
+                result["error"] = "Refresh expired"
+            return jsonify({"success": True, **result}), 200
+
+        # PATCH reports the outcome of one awaited call (or fails the entire run).
+        step = body.get("step")
+        state = body.get("state")
+        if state not in ("running", "completed", "failed"):
+            return jsonify({"success": False, "error": "Invalid state"}), 400
+        if step not in _DASHBOARD_REFRESH_STEPS:
+            return jsonify({"success": False, "error": "Invalid step"}), 400
+        with PHORMULA_ENGINE.begin() as conn:
+            row = conn.execute(text("""
+                SELECT * FROM public.dashboard_refresh_runs
+                 WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid FOR UPDATE
+            """), {"rid": rid, "uid": uid}).mappings().first()
+            if not row:
+                return jsonify({"success": False, "error": "Unknown refresh"}), 404
+            if row["status"] != "running" or row["expires_at"] <= datetime.now(timezone.utc):
+                return jsonify({"success": False, "error": "Refresh is no longer active"}), 409
+            steps = dict(row["steps"])
+            if step not in steps:
+                return jsonify({"success": False, "error": "Step not registered"}), 400
+            if steps[step] in ("completed", "failed"):
+                return jsonify({"success": False, "error": "Step already finalized"}), 409
+            steps[step] = state
+            status = "failed" if state == "failed" else "running"
+            error = str(body.get("error") or "Refresh step failed")[:500] if state == "failed" else None
+            updated = conn.execute(text("""
+                UPDATE public.dashboard_refresh_runs
+                   SET steps=CAST(:steps AS jsonb), status=:status,
+                       error=:error, updated_at=now(),
+                       finished_at=CASE WHEN :status='failed' THEN now() ELSE finished_at END
+                 WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid RETURNING *
+            """), {"steps": json.dumps(steps), "status": status, "error": error,
+                    "rid": rid, "uid": uid}).mappings().one()
+        return jsonify({"success": True, **_refresh_public(updated)}), 200
+    except (ValueError, TypeError) as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    except Exception:
+        logging.exception("Dashboard refresh tracking failed")
+        return jsonify({"success": False, "error": "Refresh tracking unavailable"}), 500
+
+
 @amazon_api_bp.route("/amazon_api/live-dashboard/save", methods=["POST", "GET"])
 def save_live_dashboard_data():
     auth_header = request.headers.get("Authorization", "")
@@ -5189,6 +5212,28 @@ def save_live_dashboard_data():
         except (TypeError, ValueError) as exc:
             return jsonify({"success": False, "error": str(exc)}), 400
 
+        # A refresh session, if active, protects the OLD published snapshot.
+        # Legacy saves remain compatible when no refresh session is active.
+        refresh_id = body.get("refreshId") or body.get("refresh_id")
+        try:
+            from uuid import UUID
+            if refresh_id is not None:
+                refresh_id = str(UUID(str(refresh_id)))
+            with PHORMULA_ENGINE.connect() as conn:
+                active_run = conn.execute(text("""
+                    SELECT refresh_id FROM public.dashboard_refresh_runs
+                     WHERE user_id=:uid AND cache_key=:cache_key
+                       AND status='running' AND expires_at > now()
+                     ORDER BY started_at DESC LIMIT 1
+                """), {"uid": user_id, "cache_key": params["cache_key"]}).mappings().first()
+            if active_run and str(active_run["refresh_id"]) != refresh_id:
+                return jsonify({"success": False, "error": "Refresh in progress; old cache retained"}), 409
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "error": "Invalid refreshId"}), 400
+        except Exception:
+            logging.exception("Failed to check active dashboard refresh")
+            return jsonify({"success": False, "error": "Refresh status unavailable"}), 503
+
         # Existing API response shape remains unchanged. Conditional UPSERT
         # prevents an older timestamp from replacing a newer persisted snapshot.
         upsert_sql = """
@@ -5209,10 +5254,28 @@ def save_live_dashboard_data():
         try:
             started = time.monotonic()
             with PHORMULA_ENGINE.begin() as conn:
+                if refresh_id:
+                    tracked = conn.execute(text("""
+                        SELECT * FROM public.dashboard_refresh_runs
+                         WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid FOR UPDATE
+                    """), {"rid": refresh_id, "uid": user_id}).mappings().first()
+                    if (not tracked or tracked["cache_key"] != params["cache_key"]
+                        or tracked["status"] != "running"
+                        or tracked["expires_at"] <= datetime.now(timezone.utc)
+                        or not all(x == "completed" for x in tracked["steps"].values())):
+                        return jsonify({"success": False, "error": "Refresh steps incomplete or session invalid; old cache retained"}), 409
                 row = conn.execute(text(upsert_sql), {
                     **params, "user_id": user_id, "saved_at": saved_at,
                     "payload": payload_json,
                 }).mappings().first()
+                if refresh_id:
+                    conn.execute(text("""
+                        UPDATE public.dashboard_refresh_runs
+                           SET status=:status, error=:error, updated_at=now(), finished_at=now()
+                         WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid
+                    """), {"rid": refresh_id, "uid": user_id,
+                            "status": "completed" if row else "failed",
+                            "error": None if row else "Cache write rejected as stale"})
             logging.info("live dashboard cache POST country=%s bytes=%s db_ms=%.1f updated=%s",
                          params["country"], len(payload_json),
                          (time.monotonic() - started) * 1000, bool(row))
