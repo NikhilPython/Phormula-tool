@@ -2703,7 +2703,7 @@ def get_current_global_data_for_live_bi(user_id: int):
 
     return payload_out
 
-def _load_previous_skuwise_months(user_id, country, now_utc, count=1):
+def _load_previous_skuwise_months(user_id, country, now_utc, count=2):
     """Read full historical monthly SKU tables, without mutating them."""
     from sqlalchemy import text as sql_text
     from datetime import date
@@ -3640,7 +3640,7 @@ def finances_mtd_transactions():
 
     previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
     try:
-        previous_months_count = int(request.args.get("previous_months", "1"))
+        previous_months_count = int(request.args.get("previous_months", "2"))
         if not 1 <= previous_months_count <= 24:
             raise ValueError
     except (TypeError, ValueError):
@@ -4918,6 +4918,69 @@ def _live_cache_parameters(values, *, post=False):
                 year=year, start_day=start, end_day=end, cache_key=cache_key)
 
 
+def _restore_previous_month_skuwise_items(snapshot, user_id, country):
+    """Rehydrate omitted historical SKU rows in dashboard cache snapshots.
+
+    Some clients save metadata (found/count/table) but discard the heavier
+    items array.  The source of truth is the user-scoped monthly SKU table.
+    Never invent rows or overwrite a non-empty items array.
+    """
+    if not isinstance(snapshot, dict) or country not in {"uk", "us"}:
+        return snapshot
+
+    from datetime import date as _date
+    from decimal import Decimal as _Decimal
+
+    def json_value(value):
+        if isinstance(value, (datetime, _date)):
+            return value.isoformat()
+        if isinstance(value, _Decimal):
+            return float(value)
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return value
+
+    # Support both direct MTD payloads and the nested dashboard cache shape.
+    candidates = [snapshot]
+    if isinstance(snapshot.get("data"), dict):
+        candidates.append(snapshot["data"])
+
+    for candidate in candidates:
+        history = candidate.get("previous_months_skuwise")
+        if not isinstance(history, list):
+            continue
+
+        # Old saved snapshots may contain only one previous month. Rebuild
+        # the missing month from the user-scoped monthly table during reads,
+        # without modifying the stored snapshot or existing nonempty items.
+        target_months = _load_previous_skuwise_months(
+            user_id, country, datetime.now(timezone.utc), count=2
+        )
+        existing = {}
+        for entry in history:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                key = (int(entry["year"]), int(entry["month"]))
+                expected = _build_skuwise_table_name(user_id, country, key[1], key[0])
+                if entry.get("table") == expected:
+                    existing[key] = entry
+            except (KeyError, ValueError, TypeError):
+                continue
+
+        merged = []
+        for fresh in target_months:
+            key = (fresh["year"], fresh["month"])
+            saved = existing.get(key)
+            if saved is not None and isinstance(saved.get("items"), list) and saved["items"]:
+                merged.append(saved)
+            else:
+                merged.append(fresh)
+        # Only the two immediately preceding calendar months are returned.
+        candidate["previous_months_skuwise"] = merged
+    return snapshot
+
+
 def _live_cache_json_safe(obj):
     # Preserve precision and payload fields; convert only non-finite floats,
     # which are invalid JSON, rather than rounding every numeric data point.
@@ -4962,6 +5025,9 @@ def save_live_dashboard_data():
         try:
             snapshot = _align_live_dashboard_cache_quantities(
                 snapshot, params["country"], params["start_day"], params["end_day"]
+            )
+            snapshot = _restore_previous_month_skuwise_items(
+                snapshot, user_id, params["country"]
             )
             snapshot = _live_cache_json_safe(snapshot)
             payload_json = json.dumps(snapshot, ensure_ascii=False, allow_nan=False,
@@ -5038,6 +5104,9 @@ def save_live_dashboard_data():
         data["payload"] = _align_live_dashboard_cache_quantities(
             data["payload"], params["country"],
             params["start_day"], params["end_day"]
+        )
+        data["payload"] = _restore_previous_month_skuwise_items(
+            data["payload"], user_id, params["country"]
         )
         response = jsonify({"success": True, "found": True, "data": data})
         response.headers["Cache-Control"] = "private, no-store"
