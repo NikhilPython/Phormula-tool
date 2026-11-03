@@ -5635,7 +5635,8 @@ export default function DashboardPage() {
     const getDashboardCacheFromBackend = useCallback(
         async (
             rangeStartDay: number | null = selectedStartDay,
-            rangeEndDay: number | null = selectedEndDay
+            rangeEndDay: number | null = selectedEndDay,
+            expectedRefresh?: { id: string; phase: "core" | "final" }
         ) => {
             if (typeof window === "undefined") return null;
 
@@ -5673,14 +5674,24 @@ export default function DashboardPage() {
             }
 
             const payload = json?.data?.payload ?? null;
+            // For a tracked Celery refresh, accept ONLY the exact run/phase.
+            // The worker copies the previous inventory request key, which can
+            // differ from the browser-derived key during initial rehydration.
+            // A normal page bootstrap still retains the original strict checks.
+            const isTrackedPublish = Boolean(
+                expectedRefresh &&
+                payload?.refreshRunId === expectedRefresh.id &&
+                payload?.refreshPhase === expectedRefresh.phase
+            );
             const isUsablePayload = Boolean(
                 payload?.complete === true &&
                 Number(payload?.schemaVersion) >= DASHBOARD_CACHE_SCHEMA_VERSION &&
-                payload?.inventoryInsightsRequestKey === inventoryInsightsRequestKey &&
-                (platform !== "global" || hasConsistentGlobalComparisons(
-                    payload?.data,
-                    payload?.previousSkuwiseGlobalData
-                ))
+                (isTrackedPublish || (!expectedRefresh &&
+                    payload?.inventoryInsightsRequestKey === inventoryInsightsRequestKey &&
+                    (platform !== "global" || hasConsistentGlobalComparisons(
+                        payload?.data,
+                        payload?.previousSkuwiseGlobalData
+                    ))))
             );
 
             return {
@@ -5702,12 +5713,14 @@ export default function DashboardPage() {
     const loadRangeFromCache = useCallback(
         async (
             startDay: number | null,
-            endDay: number | null
+            endDay: number | null,
+            expectedRefresh?: { id: string; phase: "core" | "final" }
         ) => {
 
             const cacheResult = await getDashboardCacheFromBackend(
                 startDay,
-                endDay
+                endDay,
+                expectedRefresh
             );
 
             if (cacheResult?.found && cacheResult.payload) {
@@ -5742,37 +5755,33 @@ export default function DashboardPage() {
         ]
     );
 
-    // After Sales/Inventory/BI are published, load the new cached figures
-    // without restarting any Amazon requests. Ads continue in Celery.
-    const coreRunAppliedRef = useRef<string | null>(null);
+    // Reconcile published snapshots with the Celery run ID. Polling can see
+    // published_phase before a cache GET sees the committed row; retry on each
+    // server status update instead of permanently consuming the first attempt.
+    const publishedAppliedRef = useRef<string | null>(null);
+    const publishedLoadingRef = useRef<string | null>(null);
     useEffect(() => {
-        if (refreshStatus.status !== "running" || refreshStatus.publishedPhase !== "core" ||
-            !refreshStatus.refreshId || verifiedRefreshScope !== refreshStorageKey) return;
-        const key = `${refreshStorageKey}:${refreshStatus.refreshId}:core`;
-        if (coreRunAppliedRef.current === key) return;
-        coreRunAppliedRef.current = key;
-        void loadRangeFromCache(selectedStartDay, selectedEndDay).catch((error) => {
-            coreRunAppliedRef.current = null;
-            console.error("Cannot hydrate initial dashboard refresh", error);
-        });
-    }, [refreshStatus.status, refreshStatus.publishedPhase, refreshStatus.refreshId,
-        verifiedRefreshScope, refreshStorageKey, loadRangeFromCache,
+        if (verifiedRefreshScope !== refreshStorageKey || !refreshStatus.refreshId) return;
+        const phase: "core" | "final" | null =
+            refreshStatus.status === "completed" ? "final" :
+            refreshStatus.status === "running" && refreshStatus.publishedPhase === "core" ? "core" : null;
+        if (!phase) return;
+        const runId = refreshStatus.refreshId;
+        const key = `${refreshStorageKey}:${runId}:${phase}`;
+        if (publishedAppliedRef.current === key || publishedLoadingRef.current === key) return;
+        publishedLoadingRef.current = key;
+        void loadRangeFromCache(selectedStartDay, selectedEndDay, { id: runId, phase })
+            .then((loaded) => {
+                if (loaded) publishedAppliedRef.current = key;
+                // If false, leave it retryable. The next status poll triggers
+                // another effect pass without changing any underlying data.
+            })
+            .catch((error) => console.error(`Cannot load ${phase} dashboard cache`, error))
+            .finally(() => {
+                if (publishedLoadingRef.current === key) publishedLoadingRef.current = null;
+            });
+    }, [refreshStatus, verifiedRefreshScope, refreshStorageKey, loadRangeFromCache,
         selectedStartDay, selectedEndDay]);
-
-    const completedRunAppliedRef = useRef<string | null>(null);
-    useEffect(() => {
-        if (refreshStatus.status !== "completed" || !verifiedRefreshScope ||
-            verifiedRefreshScope !== refreshStorageKey) return;
-        // A completed backend run must be loaded from the authoritative cache.
-        // Do not re-run the Amazon/Ads APIs from this effect.
-        const key = `${refreshStorageKey}:${refreshStatus.message}`;
-        if (completedRunAppliedRef.current === key) return;
-        completedRunAppliedRef.current = key;
-        void loadRangeFromCache(selectedStartDay, selectedEndDay).catch((error) => {
-            console.error("Cannot hydrate refreshed dashboard cache", error);
-        });
-    }, [refreshStatus.status, refreshStatus.message, verifiedRefreshScope,
-        refreshStorageKey, loadRangeFromCache, selectedStartDay, selectedEndDay]);
 
     // const liveCacheKey = useMemo(() => {
     //     const country =
