@@ -1128,20 +1128,20 @@ const buildGlobalDrawerAiState = (
       drawerOnlyMetrics:
         range === "monthly"
           ? [
-              {
-                label: "Current Inventory",
-                value: formatDrawerInventory(currentRow?.current_inventory),
-              },
-              {
-                label: "Ads",
-                value: formatDrawerMetricValue(
-                  momRow?.productwise_ads_spend ??
-                    currentRow?.productwise_ads_spend,
-                  "money",
-                  symbol
-                ),
-              },
-            ]
+            {
+              label: "Current Inventory",
+              value: formatDrawerInventory(currentRow?.current_inventory),
+            },
+            {
+              label: "Ads",
+              value: formatDrawerMetricValue(
+                momRow?.productwise_ads_spend ??
+                currentRow?.productwise_ads_spend,
+                "money",
+                symbol
+              ),
+            },
+          ]
           : [],
       journeyBullets: Array.isArray(product?.journey_comparison)
         ? product.journey_comparison
@@ -1476,9 +1476,9 @@ function ReferralProductDrawer({
       ? year === previousCompletedMonth.year
       : range === "quarterly"
         ? year === previousCompletedMonth.year &&
-          quarter === previousCompletedMonth.quarter
+        quarter === previousCompletedMonth.quarter
         : year === previousCompletedMonth.year &&
-          month.toLowerCase() === previousCompletedMonth.month;
+        month.toLowerCase() === previousCompletedMonth.month;
 
   return (
     <AnimatePresence>
@@ -1585,20 +1585,19 @@ function ReferralProductDrawer({
                               </span>
                               {delta ? (
                                 <span
-                                  className={`whitespace-nowrap text-right text-[10px] font-semibold 2xl:text-xs ${
-                                    metric.label.toLowerCase() === "ads"
+                                  className={`whitespace-nowrap text-right text-[10px] font-semibold 2xl:text-xs ${metric.label.toLowerCase() === "ads"
                                       ? "text-charcoal-500"
                                       : deltaColor
-                                  }`}
+                                    }`}
                                 >
                                   {formatDrawerDeltaDisplay(delta)}
                                 </span>
                               ) : [
-                                  "cm1 profit",
-                                  "cm1 profit per unit",
-                                  "cm2 profit",
-                                  "cm2 profit per unit",
-                                ].includes(metric.label.trim().toLowerCase()) ? (
+                                "cm1 profit",
+                                "cm1 profit per unit",
+                                "cm2 profit",
+                                "cm2 profit per unit",
+                              ].includes(metric.label.trim().toLowerCase()) ? (
                                 <span className="whitespace-nowrap text-right text-[10px] font-semibold text-charcoal-400 2xl:text-xs">
                                   -
                                 </span>
@@ -2228,7 +2227,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     );
   };
 
-  
+
 
   const buildFeeComparison = (
     applicableAmount: number,
@@ -2490,9 +2489,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
     return (
       (canUseSku
         ? drawerAi.blocks.find(
-            (block) =>
-              String(block.skuKey || "").trim().toLowerCase() === selectedSku
-          )
+          (block) =>
+            String(block.skuKey || "").trim().toLowerCase() === selectedSku
+        )
         : undefined) ||
       drawerAi.blocks.find(
         (block) => normalizeDrawerKey(block.name) === selectedName
@@ -2606,9 +2605,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
         const fallbackLines = productLines.length
           ? productLines
           : String(data?.summary || "")
-              .split(/\r?\n/)
-              .map((line) => line.trim())
-              .filter(Boolean);
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
 
         const recommendationsMap = drawerRecommendationSource(
           data?.recommendations
@@ -3262,7 +3261,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const filtered = skuwiseRows.filter((r) => {
       const skuStr = String(r.sku ?? "");
       if (skuStr === "Grand Total") return true;
-     return !skuStr.startsWith("Charge -");
+      return !skuStr.startsWith("Charge -");
     });
 
     return filtered.map((r) => {
@@ -3545,29 +3544,28 @@ export default function ReferralFeesDashboard(): JSX.Element {
       );
 
       return {
-      sno: row.sno,
-      productName: row.productName,
-      sku: row.sku,
-      units: row.units,
-      sales: row.sales,
+        sno: row.sno,
+        productName: row.productName,
+        sku: row.sku,
+        units: row.units,
+        sales: row.sales,
 
-      ref_applicable: row.ref_applicable,
-      ref_charged: row.ref_charged,
+        ref_applicable: row.ref_applicable,
+        ref_charged: row.ref_charged,
 
-      fba_applicable: row.fba_applicable,
-      fba_charged: row.fba_charged,
+        fba_applicable: row.fba_applicable,
+        fba_charged: row.fba_charged,
 
-      other_applicable: row.other_applicable,
-      other_charged: row.other_charged,
+        other_applicable: row.other_applicable,
+        other_charged: row.other_charged,
 
-      total_applicable: row.total_applicable,
-      total_charged: row.total_charged,
+        total_applicable: row.total_applicable,
+        total_charged: row.total_charged,
 
-      // ✅ keep total-row styling working
-      _isTotal: row._isTotal,
-      _isOthers: row._isOthers,
-      _isDiscontinued: isDiscontinued && !row._isTotal && !row._isOthers,
-    };
+        _isTotal: row._isTotal,
+        _isOthers: row._isOthers,
+        _isDiscontinued: isDiscontinued && !row._isTotal && !row._isOthers,
+      };
     });
 
     const products = rows.filter((row) => !row._isTotal && !row._isOthers);
@@ -3580,14 +3578,16 @@ export default function ReferralFeesDashboard(): JSX.Element {
     let serialNumber = 1;
     return [...orderedProducts, ...others, ...totals].map((row) => ({
       ...row,
-      sno: row._isTotal || row._isOthers ? "" : serialNumber++,
+      sno: row._isTotal ? "" : serialNumber++,
     }));
   }, [skuTableDisplay, skuStatusMap, isGlobalPage, effectiveCountry]);
 
 
   const handleDownloadFbaExcel = useCallback(() => {
-    exportFbaFeesExcel({ rows: fbaOrders, country, currency: displayCurrencyCode, company: companyName,
-      period: range === "yearly" ? year : range === "quarterly" ? `${selectedQuarter} ${year}` : `${month} ${year}` });
+    exportFbaFeesExcel({
+      rows: fbaOrders, country, currency: displayCurrencyCode, company: companyName,
+      period: range === "yearly" ? year : range === "quarterly" ? `${selectedQuarter} ${year}` : `${month} ${year}`
+    });
   }, [fbaOrders, country, displayCurrencyCode, companyName, range, year, selectedQuarter, month]);
 
   const handleDownloadExcel = useCallback(() => {
