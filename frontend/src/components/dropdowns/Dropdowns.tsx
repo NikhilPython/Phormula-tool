@@ -12467,6 +12467,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
+                    yearlyTotalRow={
+  (skuRowsWithStatus || []).find((row: any) => {
+    const name = String(row?.product_name ?? "").trim().toLowerCase();
+    const sku = String(row?.sku ?? "").trim().toLowerCase();
+
+    return name === "total" || sku === "total";
+  }) ?? null
+}
                     monthWiseKpiValues={{
                       adsSpend: Math.abs(toNum(
                         range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
