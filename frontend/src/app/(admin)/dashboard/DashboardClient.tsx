@@ -1119,7 +1119,7 @@ const ensureSpReportSeedOncePerDay = async (
         localStorage.setItem(storageKey, "1");
     });
 
-    if (didRun === null) return;
+    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
 };
 
 const ensureSdReportSeedOncePerDay = async (
@@ -1175,7 +1175,7 @@ const ensureSdReportSeedOncePerDay = async (
     });
 
     // ✅ IMPORTANT: if another tab/render is running it, don't error, just exit
-    if (didRun === null) return;
+    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
 };
 
 const ensureSbKeywordReportSeedOncePerDay = async (
@@ -1237,7 +1237,7 @@ const ensureSbKeywordReportSeedOncePerDay = async (
     });
 
     // ✅ if another tab/render is running it, don't error, just exit
-    if (didRun === null) return;
+    if (didRun === null && force) throw new Error("Ads report is already running in another request; cannot confirm completion");
 };
 
 
@@ -2668,10 +2668,15 @@ export default function DashboardPage() {
 
     const runAdsBackgroundSync = useCallback(async ({
         forceReportSync = false,
+        trackStep,
     }: {
         forceReportSync?: boolean;
+        trackStep?: (step: string, state: "running" | "completed") => Promise<void>;
     } = {}) => {
-        if (adsBackgroundLoadingRef.current) return;
+        if (adsBackgroundLoadingRef.current) {
+            if (forceReportSync) throw new Error("Ads synchronization already running");
+            return;
+        }
         if (isMonthYearNA) return;
         if (platform === "shopify") return;
 
@@ -2680,6 +2685,7 @@ export default function DashboardPage() {
 
         if (!jwtToken) {
             adsBackgroundErrorRef.current = "No token found. Please sign in.";
+            if (forceReportSync) throw new Error(adsBackgroundErrorRef.current);
             return;
         }
 
@@ -2694,17 +2700,20 @@ export default function DashboardPage() {
         adsBackgroundErrorRef.current = null;
 
         try {
+            // For tracked refresh, only acknowledge a report after its awaited
+            // API request resolves. Preserve parallel Ads reports for performance.
+            const runReport = async (step: string, task: () => Promise<void>) => {
+                if (trackStep) await trackStep(step, "running");
+                await task();
+                if (trackStep) await trackStep(step, "completed");
+            };
             const adsSeedTasks = [
-                ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
-                ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync),
+                runReport("sp_report", () => ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
+                runReport("sb_report", () => ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
             ];
-
             if (country === "UK" || country === "US") {
-                adsSeedTasks.push(
-                    ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)
-                );
+                adsSeedTasks.push(runReport("sd_report", () => ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)));
             }
-
             await Promise.all(adsSeedTasks);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
@@ -2742,16 +2751,26 @@ export default function DashboardPage() {
                     errMsg.toLowerCase().includes("request is a duplicate") ||
                     errMsg.toLowerCase().includes("in progress");
 
+                if (forceReportSync && (isNoRows404 || isDuplicateOrInProgress)) {
+                    throw new Error(`${fallbackName}: update not confirmed (${res.status})`);
+                }
                 if (!res.ok && !isNoRows404 && !isDuplicateOrInProgress) {
                     throw new Error(errMsg || `${fallbackName} failed`);
+                }
+                if (json?.success === false || json?.error) {
+                    throw new Error(errMsg || `${fallbackName} returned an error`);
                 }
 
                 return json;
             };
 
+            if (trackStep) await trackStep("monthly_ads_db", "running");
             await callAdsDbSync(MONTHLY_SP_ENDPOINT, "monthly_sp_sd_to_db");
+            if (trackStep) await trackStep("monthly_ads_db", "completed");
 
+            if (trackStep) await trackStep("daily_ads_db", "running");
             await callAdsDbSync(DAILY_SP_SD_SB_ENDPOINT, "daily_sp_sd_sb_to_db");
+            if (trackStep) await trackStep("daily_ads_db", "completed");
 
 
             adsSeededRef.current = true;
@@ -2764,6 +2783,7 @@ export default function DashboardPage() {
             adsSeededRef.current = false;
             adsSeedErrorRef.current = e?.message || "Ads background sync failed";
             adsBackgroundErrorRef.current = e?.message || "Ads background sync failed";
+            if (forceReportSync) throw e;
         } finally {
             adsBackgroundLoadingRef.current = false;
         }
@@ -4581,7 +4601,7 @@ export default function DashboardPage() {
     ]);
 
     /* ===================== AMAZON FETCH ===================== */
-    const fetchAmazon = useCallback(async () => {
+    const fetchAmazon = useCallback(async (strict = false) => {
         if (isMonthYearNA) {
             setLoading(false);
             setUnauthorized(false);
@@ -4676,6 +4696,7 @@ export default function DashboardPage() {
             setData(json); // ✅ data now matches your new response shape
         } catch (e: any) {
             setError(e?.message || "Failed to load data");
+            if (strict) throw e;
             setData(null);
         } finally {
             setLoading(false);
@@ -5226,10 +5247,12 @@ export default function DashboardPage() {
         dataOnlyRefresh = false,
         forceAdsReportSync = false,
         forceInventoryInsightsRefresh = false,
+        trackStep,
     }: {
         dataOnlyRefresh?: boolean;
         forceAdsReportSync?: boolean;
         forceInventoryInsightsRefresh?: boolean;
+        trackStep?: (step: string, state: "running" | "completed") => Promise<void>;
     } = {}) => {
         if (isMonthYearNA) {
             resetStepState();
@@ -5293,13 +5316,20 @@ export default function DashboardPage() {
 
             if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
-                void runAdsBackgroundSync({ forceReportSync: forceAdsReportSync });
+                if (forceAdsReportSync) {
+                    // Ads is expensive and can take minutes. Await ALL report downloads
+                    // and monthly/daily DB updates before preparing the final cache.
+                    // Start it in parallel with the sales/inventory portion below.
+                } else {
+                    void runAdsBackgroundSync({ forceReportSync: false });
+                }
             } else {
                 setStep(1, "MTD Fetching", 48, "Skipping ads fetch for Shopify-only mode...");
             }
 
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
-            await fetchAmazon();
+            if (trackStep) await trackStep("mtd_transactions", "running");
+            await fetchAmazon(Boolean(trackStep));
             ensureDashboardLoadActive();
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -5314,10 +5344,12 @@ export default function DashboardPage() {
                 setStep(1, "MTD Fetching", 96, "Shopify not connected, skipping Shopify fetch...");
             }
 
+            if (trackStep) await trackStep("mtd_transactions", "completed");
             setStep(1, "MTD Fetching", 100, "MTD data ready");
             markStepComplete(1);
 
             setStep(2, "Inventory Fetch", 20, "Fetching current inventory...");
+            if (trackStep) await trackStep("inventory_current", "running");
             await fetchInventory();
             ensureDashboardLoadActive();
 
@@ -5325,13 +5357,23 @@ export default function DashboardPage() {
             await fetchInventoryInsights({ force: forceInventoryInsightsRefresh });
             ensureDashboardLoadActive();
 
+            if (trackStep) await trackStep("inventory_current", "completed");
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            // ✅ Now /live_mtd_bi runs AFTER all inventory APIs
+            if (forceAdsReportSync) {
+                await runAdsBackgroundSync({ forceReportSync: true, trackStep });
+                ensureDashboardLoadActive();
+                // Ads DB writes change profitability; rebuild MTD after Ads finishes.
+                await fetchAmazon(Boolean(trackStep));
+                ensureDashboardLoadActive();
+            }
+
+            // ✅ Live BI runs AFTER inventory and, on manual refresh, Ads DB updates.
             if (showLiveBI) {
                 setStep(3, "Plotting Graph", 20, "Fetching Live BI data.");
 
+                if (trackStep) await trackStep("live_mtd_bi", "running");
                 await fetchLiveBiPayload({
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
@@ -5343,6 +5385,7 @@ export default function DashboardPage() {
                     dataOnlyRefresh,
                 });
                 ensureDashboardLoadActive();
+                if (trackStep) await trackStep("live_mtd_bi", "completed");
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
             }
@@ -5383,6 +5426,7 @@ export default function DashboardPage() {
 
             console.error("runDashboardLoadWithSteps failed:", e);
             setError(e?.message || "Failed to load dashboard");
+            if (forceAdsReportSync) throw e;
             setDashboardBusy(false);
             setStepProgress((prev) => ({
                 ...prev,
@@ -5464,13 +5508,14 @@ export default function DashboardPage() {
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
                     savedAt: Date.now(),
+                    ...(refreshIdRef.current ? { refreshId: refreshIdRef.current } : {}),
                     cachePayload: payload,
                 }),
             });
 
             const json = await res.json().catch(() => null);
 
-            if (!res.ok || !json?.success) {
+            if (!res.ok || !json?.success || json?.stale_ignored) {
                 throw new Error(
                     json?.error || `Failed to save dashboard cache (${res.status})`
                 );
@@ -8877,13 +8922,34 @@ export default function DashboardPage() {
 
         const payload = buildDashboardCachePayload();
 
+        // Do not publish an untracked snapshot during a tracked refresh.
+        const publishingRefreshId = refreshIdRef.current;
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 shouldPostCacheRef.current = false;
                 isManualRefreshRef.current = false;
+                if (publishingRefreshId) {
+                    if (window.localStorage.getItem(refreshStorageKey) === publishingRefreshId) {
+                        window.localStorage.removeItem(refreshStorageKey);
+                    }
+                    setTrackedRefreshId(null);
+                    refreshIdRef.current = null;
+                    refreshStepRef.current = null;
+                    setLastRefreshAt(Date.now());
+                    setRefreshStatus({ status: "completed", message: "All data updated successfully" });
+                }
             })
-            .catch((err) => {
+            .catch(async (err) => {
                 console.error("Failed to save dashboard cache to backend:", err);
+                shouldPostCacheRef.current = false;
+                isManualRefreshRef.current = false;
+                if (publishingRefreshId && window.localStorage.getItem(refreshStorageKey) === publishingRefreshId) {
+                    window.localStorage.removeItem(refreshStorageKey);
+                }
+                setTrackedRefreshId(null);
+                refreshIdRef.current = null;
+                refreshStepRef.current = null;
+                setRefreshStatus({ status: "failed", message: err?.message || "Cache save failed" });
             });
     }, [
         buildDashboardCachePayload,
@@ -8904,6 +8970,7 @@ export default function DashboardPage() {
         dashboardActionItemsError,
         dashboardActionItemsLoading,
         cacheSaveTick,
+        refreshStorageKey,
     ]);
 
     const { todayDay: statsTodayDay } = getRegionDayInfo(activeDateRegion);
@@ -14328,7 +14395,7 @@ export default function DashboardPage() {
             />
             <HashScroll offset={80} />
 
-            {!shouldShowDummyUi && showDashboardStepLoader && (
+            {!shouldShowDummyUi && showDashboardStepLoader && refreshStatus.status !== "running" && (
                 <DashboardLoaderModal
                     pageLoading={showDashboardStepLoader}
                     shouldShowDummyUi={shouldShowDummyUi}
@@ -14344,6 +14411,7 @@ export default function DashboardPage() {
 
             {!shouldShowDummyUi &&
                 pageLoading &&
+                refreshStatus.status !== "running" &&
                 !showDashboardStepLoader &&
                 activeTab !== "action" && (
                     <Loader
@@ -14354,7 +14422,7 @@ export default function DashboardPage() {
                 )}
 
             <DashboardGettingReadyPopup
-                show={shouldShowSalesDelayNotice}
+                show={shouldShowSalesDelayNotice && refreshStatus.status !== "running"}
                 onExploreOtherTabs={handleExploreOtherTabsFromSalesDelay}
             />
 
@@ -14459,7 +14527,8 @@ export default function DashboardPage() {
                 countryName={countryName}
                 formattedMonthYear={formattedMonthYear}
                 handleHardRefresh={handleHardRefresh}
-                pageLoading={pageLoading}
+                refreshStatus={refreshStatus}
+                pageLoading={pageLoading || refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey || trackedRefreshId !== null || refreshStatus.status === "running"}
                 lastRefreshAt={lastRefreshAt}
                 lastUpdatedTimeText={lastUpdatedTimeText}
                 activeDateRegion={activeDateRegion}
