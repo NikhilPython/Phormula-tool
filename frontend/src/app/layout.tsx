@@ -1,82 +1,5 @@
-// import "./globals.css";
-// import { Lato, Geist } from "next/font/google";
-
-// import { SidebarProvider } from "@/context/SidebarContext";
-// import { ThemeProvider } from "@/context/ThemeContext";
-// import Providers from "./providers";
-// import { Toaster } from "sonner";
-// import { PlatformProvider } from "@/components/context/PlatformContext";
-// import MemberRouteGuard from "@/components/auth/MemberRouteGuard";
-// import { Metadata } from "next";
-// import { cn } from "@/lib/utils";
-
-// const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-// export const metadata: Metadata = {
-//   title: {
-//     default: "Phormula",
-//     template: "%s | Phormula",
-//   },
-//   description: "Phormula dashboard",
-//   icons: {
-//     icon: "/favicon.ico",
-//   },
-// };
-
-// const lato = Lato({
-//   subsets: ["latin"],
-//   weight: ["300", "400", "700", "900"],
-//   variable: "--font-lato",
-// });
-
-// export default function RootLayout({
-//   children,
-// }: Readonly<{
-//   children: React.ReactNode;
-// }>) {
-//   return (
-//     <html lang="en" className={lato.variable}>
-//       <body className="font-lato dark:bg-gray-900">
-//         <Providers>
-//           <ThemeProvider>
-//             <SidebarProvider>
-//               <PlatformProvider>
-//                 <MemberRouteGuard>{children}</MemberRouteGuard>
-//               </PlatformProvider>
-//             </SidebarProvider>
-//           </ThemeProvider>
-//         </Providers>
-
-//         <Toaster position="top-right" richColors closeButton />
-//       </body>
-//     </html>
-//   );
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 import "./globals.css";
 import { Lato, Geist } from "next/font/google";
-
 import { SidebarProvider } from "@/context/SidebarContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import Providers from "./providers";
@@ -87,6 +10,7 @@ import CurrentMonthRouteGuard from "@/components/common/CurrentMonthRouteGuard";
 import Global401Interceptor from "@/components/auth/Global401Interceptor";
 import { Metadata } from "next";
 import { cn } from "@/lib/utils";
+import GlobalRefreshToast from "@/components/common/GlobalRefreshToast";
 
 const geist = Geist({
   subsets: ["latin"],
@@ -120,6 +44,8 @@ export default function RootLayout({
       <body className="font-lato dark:bg-gray-900">
         <Providers>
           <Global401Interceptor />
+
+          <GlobalRefreshToast />
 
           <ThemeProvider>
             <SidebarProvider>
