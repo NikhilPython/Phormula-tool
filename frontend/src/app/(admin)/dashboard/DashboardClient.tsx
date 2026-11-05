@@ -6283,8 +6283,16 @@ export default function DashboardPage() {
                 throw new Error(result?.error || `Failed to enqueue refresh (${response.status})`);
             }
             const rid = String(result.refresh_id);
+
             setTrackedRefreshId(rid);
+
             window.localStorage.setItem(refreshStorageKey, rid);
+
+            // Save the refresh scope for the global toast listener.
+            window.localStorage.setItem(
+                "live-dashboard-refresh-scope",
+                JSON.stringify(refreshScope)
+            );
             setRefreshStatus({ status: "running", message: "Background refresh started...", completed: 0, total: result.total });
         } catch (error) {
             setRefreshStatus({ status: "failed", message: error instanceof Error ? error.message : "Refresh could not start" });
@@ -14534,7 +14542,6 @@ export default function DashboardPage() {
                 countryName={countryName}
                 formattedMonthYear={formattedMonthYear}
                 handleHardRefresh={handleHardRefresh}
-                refreshStatus={refreshStatus}
                 pageLoading={pageLoading || refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey || trackedRefreshId !== null || refreshStatus.status === "running"}
                 lastRefreshAt={lastRefreshAt}
                 lastUpdatedTimeText={lastUpdatedTimeText}
@@ -14553,7 +14560,7 @@ export default function DashboardPage() {
 
             {/* Server-authoritative refresh progress, visible in overview and detail tabs.
                 Keep this separate from the blocking initial-load progress modal. */}
-            {!shouldShowDummyUi && (refreshStatus.status === "running" || refreshStatus.status === "completed" || refreshStatus.status === "failed" || refreshStatusChecking) && (
+            {/* {!shouldShowDummyUi && (refreshStatus.status === "running" || refreshStatus.status === "completed" || refreshStatus.status === "failed" || refreshStatusChecking) && (
                 <div
                     role="status"
                     aria-live="polite"
@@ -14573,7 +14580,7 @@ export default function DashboardPage() {
                         <span className="font-medium text-red-600">⚠ {refreshStatus.message || "Refresh failed"}</span>
                     ) : null}
                 </div>
-            )}
+            )} */}
 
             <PreviewLockedSection
                 enabled={isUsingDummyData}
