@@ -5192,14 +5192,14 @@ export default function DashboardPage() {
                 if (cancelled) return;
                 const state: "idle" | "running" | "completed" | "failed" =
                     result.status === "running" || result.status === "saving" ? "running" :
-                    result.status === "completed" ? "completed" :
-                    result.status === "failed" ? "failed" : "idle";
+                        result.status === "completed" ? "completed" :
+                            result.status === "failed" ? "failed" : "idle";
                 setRefreshStatus({
                     status: state,
                     message: state === "running"
                         ? (result.current_step ? `Updating ${String(result.current_step).replace(/_/g, " ")}...` : "Refresh in progress...")
                         : state === "completed" ? "All data updated successfully"
-                        : state === "failed" ? String(result.error || "Refresh did not complete") : "",
+                            : state === "failed" ? String(result.error || "Refresh did not complete") : "",
                     completed: result.completed,
                     total: result.total,
                     publishedPhase: result.published_phase ?? null,
@@ -5764,7 +5764,7 @@ export default function DashboardPage() {
         if (verifiedRefreshScope !== refreshStorageKey || !refreshStatus.refreshId) return;
         const phase: "core" | "final" | null =
             refreshStatus.status === "completed" ? "final" :
-            refreshStatus.status === "running" && refreshStatus.publishedPhase === "core" ? "core" : null;
+                refreshStatus.status === "running" && refreshStatus.publishedPhase === "core" ? "core" : null;
         if (!phase) return;
         const runId = refreshStatus.refreshId;
         const key = `${refreshStorageKey}:${runId}:${phase}`;
@@ -13775,7 +13775,7 @@ export default function DashboardPage() {
             .filter((value): value is number => value !== undefined);
         const averageGlobalCountryCoverageRatio = globalCountryCoverageRatios.length
             ? globalCountryCoverageRatios.reduce((sum, value) => sum + value, 0) /
-                globalCountryCoverageRatios.length
+            globalCountryCoverageRatios.length
             : undefined;
         const inventoryCoverageRatio =
             averageGlobalCountryCoverageRatio ??
@@ -14008,6 +14008,7 @@ export default function DashboardPage() {
                 metrics.push({
                     label: "Units",
                     value: units.previous,
+                    deltaPct: units.deltaPct,
                     formatter: units.previousFormatter ?? units.formatter,
                     loading: units.loading
                 });
@@ -14125,10 +14126,11 @@ export default function DashboardPage() {
             amazon_fee?: unknown;
             asp?: unknown;
             tacos_total_advertising_cost_of_sale?: unknown;
+            net_sales_delta?: unknown;
             net_sales_delta_percentage?: unknown;
         }> = historicalTotal
-            ? historicalRows
-            : Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
+                ? historicalRows
+                : Array.isArray(previousSkuwiseRowsForDelta) ? previousSkuwiseRowsForDelta : [];
 
         const skuRows = sourceSkuRows.filter((r) => {
             const sku = String(r?.sku || "").trim().toUpperCase();
@@ -14238,10 +14240,15 @@ export default function DashboardPage() {
         };
         const metricsWithDeltas = displayMetrics.map((metric) => {
             const rawDelta = recapDeltaByLabel[metric.label];
-            const deltaPct = rawDelta == null ? null : Number(rawDelta);
+
+            const deltaPct =
+                rawDelta != null && Number.isFinite(Number(rawDelta))
+                    ? Number(rawDelta)
+                    : null;
+
             return {
                 ...metric,
-                deltaPct: deltaPct != null && Number.isFinite(deltaPct) ? deltaPct : null,
+                deltaPct,
             };
         });
 
@@ -14543,6 +14550,30 @@ export default function DashboardPage() {
                 showTabs={showDashboardDetails}
                 onBackToOverview={returnToOverview}
             />
+
+            {/* Server-authoritative refresh progress, visible in overview and detail tabs.
+                Keep this separate from the blocking initial-load progress modal. */}
+            {!shouldShowDummyUi && (refreshStatus.status === "running" || refreshStatus.status === "completed" || refreshStatus.status === "failed" || refreshStatusChecking) && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="flex w-full items-center justify-end gap-2 px-1 pb-1 pt-1 text-right text-[11px] sm:text-xs"
+                >
+                    {refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey ? (
+                        <span className="text-slate-500">Checking refresh status…</span>
+                    ) : refreshStatus.status === "running" ? (
+                        <span className="font-medium text-amber-700">
+                            ⏳ Refreshing: {typeof refreshStatus.completed === "number" ? refreshStatus.completed : 0}/{typeof refreshStatus.total === "number" ? refreshStatus.total : 8}
+                            {refreshStatus.message ? ` · ${refreshStatus.message}` : ""}
+                        </span>
+                    ) : refreshStatus.status === "completed" ? (
+                        <span className="font-medium text-emerald-700">✓ {refreshStatus.message || "All data updated successfully"}</span>
+                    ) : refreshStatus.status === "failed" ? (
+                        <span className="font-medium text-red-600">⚠ {refreshStatus.message || "Refresh failed"}</span>
+                    ) : null}
+                </div>
+            )}
 
             <PreviewLockedSection
                 enabled={isUsingDummyData}

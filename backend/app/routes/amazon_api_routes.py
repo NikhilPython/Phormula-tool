@@ -126,8 +126,8 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
     previous_units = first(previous_totals, "total_quantity", "quantity", "net_quantity")
     current_net_sales = first(current_totals, "net_sales", "total_current_net_sales")
     previous_net_sales = first(previous_totals, "net_sales", "total_previous_net_sales")
-    current_ads = first(current_totals, "total_ads", "advertising_fees", "total_current_advertising", "ads_spend")
-    previous_ads = first(previous_totals, "total_ads", "advertising_fees", "total_previous_advertising", "ads_spend")
+    current_ads = first(current_totals, "advertising_total_final", "total_ads", "advertising_fees", "total_current_advertising", "ads_spend")
+    previous_ads = first(previous_totals, "advertising_total_final", "total_ads", "advertising_fees", "total_previous_advertising", "ads_spend")
     current_cm2 = first(current_totals, "total_cm2_profit", "cm2_profit", "total_current_profit_cm2")
     previous_cm2 = first(previous_totals, "total_cm2_profit", "cm2_profit", "total_previous_profit_cm2")
     current_promotions = first(current_totals, "promotional_rebates", "total_promotional_rebates")
@@ -176,6 +176,95 @@ def _build_dashboard_card_metrics(current_totals, previous_totals=None):
         "previous_percentage": _dashboard_number(previous_promotions / previous_net_sales * 100) if previous_net_sales else 0.0,
     })
     return metrics
+
+def _build_card_metrics_response(current_totals, previous_totals):
+    if not current_totals:
+        current_totals = {}
+    if not previous_totals:
+        previous_totals = {}
+
+    def get_val(d, *keys):
+        for k in keys:
+            if k in d and d[k] is not None:
+                try:
+                    return float(d[k] or 0)
+                except (ValueError, TypeError):
+                    return 0.0
+        return 0.0
+
+    current_units = get_val(current_totals, "total_quantity", "quantity")
+    previous_units = get_val(previous_totals, "total_quantity", "quantity")
+    
+    current_net_sales = get_val(current_totals, "net_sales")
+    previous_net_sales = get_val(previous_totals, "net_sales")
+    
+    current_ads = get_val(current_totals, "advertising_total_final", "total_ads", "advertising_fees", "ads_spend")
+    previous_ads = get_val(previous_totals, "advertising_total_final", "total_ads", "advertising_fees", "ads_spend")
+    
+    current_cm2 = get_val(current_totals, "total_cm2_profit", "cm2_profit")
+    previous_cm2 = get_val(previous_totals, "total_cm2_profit", "cm2_profit")
+    
+    current_promotions = get_val(current_totals, "promotional_rebates")
+    previous_promotions = get_val(previous_totals, "promotional_rebates")
+    
+    current_marketplace = get_val(current_totals, "marketplace_fees", "amazon_fees")
+    previous_marketplace = get_val(previous_totals, "marketplace_fees", "amazon_fees")
+
+    current_asp = current_net_sales / current_units if current_units else 0
+    previous_asp = previous_net_sales / previous_units if previous_units else 0
+
+    current_tacos = (current_ads / current_net_sales * 100) if current_net_sales else 0
+    previous_tacos = (previous_ads / previous_net_sales * 100) if previous_net_sales else 0
+
+    current_cm2_pct = (current_cm2 / current_net_sales * 100) if current_net_sales else 0
+    previous_cm2_pct = (previous_cm2 / previous_net_sales * 100) if previous_net_sales else 0
+
+    current_promo_pct = (current_promotions / current_net_sales * 100) if current_net_sales else 0
+    previous_promo_pct = (previous_promotions / previous_net_sales * 100) if previous_net_sales else 0
+
+    def calc_delta(curr, prev):
+        if prev == 0:
+            return 0.0
+        return ((curr - prev) / abs(prev)) * 100
+
+    return {
+        "current": {
+            "units": current_units,
+            "asp": current_asp,
+            "net_sales": current_net_sales,
+            "marketplace_fees": current_marketplace,
+            "cost_of_ads": current_ads,
+            "tacos_pct": current_tacos,
+            "cm2_profit": current_cm2,
+            "cm2_margin_pct": current_cm2_pct,
+            "promotions": current_promotions,
+            "promotions_pct": current_promo_pct,
+        },
+        "previous": {
+            "units": previous_units,
+            "asp": previous_asp,
+            "net_sales": previous_net_sales,
+            "marketplace_fees": previous_marketplace,
+            "cost_of_ads": previous_ads,
+            "tacos_pct": previous_tacos,
+            "cm2_profit": previous_cm2,
+            "cm2_margin_pct": previous_cm2_pct,
+            "promotions": previous_promotions,
+            "promotions_pct": previous_promo_pct,
+        },
+        "deltas": {
+            "units": calc_delta(current_units, previous_units),
+            "asp": calc_delta(current_asp, previous_asp),
+            "net_sales": calc_delta(current_net_sales, previous_net_sales),
+            "marketplace_fees": calc_delta(current_marketplace, previous_marketplace),
+            "cost_of_ads": calc_delta(current_ads, previous_ads),
+            "tacos_pct": calc_delta(current_tacos, previous_tacos),
+            "cm2_profit": calc_delta(current_cm2, previous_cm2),
+            "cm2_margin_pct": calc_delta(current_cm2_pct, previous_cm2_pct),
+            "promotions": calc_delta(current_promotions, previous_promotions),
+            "promotions_pct": calc_delta(current_promo_pct, previous_promo_pct),
+        }
+    }
 
 
 def _align_dashboard_quantities(data):
@@ -4850,6 +4939,63 @@ def finances_mtd_transactions():
         "skuwise_items": skuwise_items,
         "transactions": all_rows,
     }
+
+    def get_total_from_month_entry(entry):
+        if not entry or not entry.get("items"):
+            return {}
+        for row in entry["items"]:
+            sku = str(row.get("sku") or "").strip().upper()
+            product_name = str(row.get("product_name") or "").strip().upper()
+            if sku in ("TOTAL", "GRAND_TOTAL") or product_name in ("TOTAL", "GRAND TOTAL"):
+                return row
+        return {}
+
+    # Find October (10) and September (9) from the previous_months_skuwise array
+    oct_entry = next((m for m in previous_months_skuwise if m.get("month") == 10), None)
+    sep_entry = next((m for m in previous_months_skuwise if m.get("month") == 9), None)
+
+    oct_totals = get_total_from_month_entry(oct_entry)
+    sep_totals = get_total_from_month_entry(sep_entry)
+
+    # 1. Build card_metrics for October vs September (as requested)
+    october_card_metrics = _build_card_metrics_response(oct_totals, sep_totals)
+    # Historic P&L uses the stored `acos` percentage for the prior month. The
+    # raw total_ads field can differ from that displayed TACoS (14.38 vs 15.68
+    # in this response), which incorrectly inflated the recap delta to 18.53%.
+    # Use the same displayed percentages for the comparison, rounded to the
+    # precision shown on the cards.
+    october_tacos = oct_totals.get("tacos_total_advertising_cost_of_sale")
+    september_tacos = sep_totals.get("acos")
+    if october_tacos is not None and september_tacos is not None:
+        october_card_metrics["deltas"]["tacos_pct"] = _dashboard_delta(
+            october_tacos,
+            september_tacos,
+        )
+    payload_out["card_metrics"] = october_card_metrics
+    
+    # 2. Also build card_metrics for Current MTD vs October (useful for the top cards)
+    current_mtd_totals = {**totals, **derived_totals, "total_quantity": net_qty_total}
+    payload_out["card_metrics_mtd_vs_oct"] = _build_card_metrics_response(current_mtd_totals, oct_totals)
+
+    # 3. FIX THE RAW HISTORICAL DATA FOR THE FRONTEND MODAL
+    # The modal calculates TACoS from the raw items array. We overwrite the historical TACoS 
+    # to use `advertising_total_final` instead of `total_ads`.
+    for entry in previous_months_skuwise:
+        if not entry.get("items"):
+            continue
+        for row in entry["items"]:
+            sku = str(row.get("sku") or "").strip().upper()
+            product_name = str(row.get("product_name") or "").strip().upper()
+            if sku in ("TOTAL", "GRAND_TOTAL") or product_name in ("TOTAL", "GRAND TOTAL"):
+                net_sales = float(row.get("net_sales") or 0)
+                # Use advertising_total_final to match the top dashboard
+                ads = float(row.get("advertising_total_final") or row.get("total_ads") or 0)
+                if net_sales:
+                    row["tacos_total_advertising_cost_of_sale"] = round((ads / net_sales) * 100, 2)
+                    row["tacos_pct"] = row["tacos_total_advertising_cost_of_sale"]
+                else:
+                    row["tacos_total_advertising_cost_of_sale"] = 0.0
+                    row["tacos_pct"] = 0.0
 
     return jsonify(_json_safe(payload_out)), 200
 
