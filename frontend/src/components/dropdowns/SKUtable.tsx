@@ -47,6 +47,8 @@ const TERM_DEFINITIONS: Record<string, string> = {
   amazon_fee: "Marketplace Fees = total fees charged by Amazon, such as referral and FBA fees.",
   selling_fees: "Selling Fees = Amazon referral/commission and selling-related fees.",
   fba_fees: "FBA Fees = fulfillment, storage, and FBA service fees.",
+  other_charges:
+  "Other Charges include Shipping Charges, Storage Fees, Inventory Charges & Reimbursement, Other Fees.",
 
   other_transactions: "Other Transactions = marketplace adjustments, taxes, credits, misc. charges, and other transaction-level fees.",
 
@@ -1764,6 +1766,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
           ? ([
             {
               id: "month_other_charges",
+              info: <InfoTip text={TERM_DEFINITIONS.other_charges} />,
               label: "Other Charges",
               collapsedCols: [{ key: "other_charges_total", label: "", align: "center" as const, width: "8%" }],
               expandedCols: [
@@ -2963,12 +2966,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
           (String(sourceRow.product_name ?? "").trim() && String(sourceRow.product_name).trim() !== "-"
             ? sourceRow.product_name
             : row.product_name ?? "-"),
+        // Keep the Excel Month-wise values aligned with the Month-wise UI.
         ads_spend: toNumber(sourceRow.total_ads ?? sourceRow.ads_spend ?? sourceRow.advertising_total),
         product_spend: toNumber(sourceRow.product_spend ?? sourceRow.sponsored_product),
         display_spend: toNumber(sourceRow.display_spend ?? sourceRow.sponsored_display),
-        acos: toNumber(sourceRow.acos) || (toNumber(row.net_sales) !== 0
-          ? (toNumber(sourceRow.total_ads ?? sourceRow.ads_spend ?? sourceRow.advertising_total) / toNumber(row.net_sales)) * 100
-          : 0),
+        brand_spend: toNumber(sourceRow.brand_spend) !== 0
+          ? toNumber(sourceRow.brand_spend)
+          : toNumber(sourceRow.visible_ads),
+        visible_ads: toNumber(sourceRow.visible_ads),
+        dealsvouchar_ads: toNumber(
+          sourceRow.dealsvouchar_ads ?? sourceRow.dealvouchars_ads ?? sourceRow.dealsvoucher_ads
+        ),
+        shipping_charges_total: toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total),
+        storage_fees_total: toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total),
+        inventory_charges_and_reimbursement: toNumber(sourceRow.inventory_charges_and_reimbursement),
+        other_fees_total: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment),
+        other_charges_total:
+          toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total) +
+          toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total) +
+          toNumber(sourceRow.inventory_charges_and_reimbursement) +
+          (toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment)),
+        net_reimbursement: toNumber(sourceRow.rembursement_fee ?? sourceRow.net_reimbursement ?? sourceRow.net_reimbursement_total),
+        debt_payment: toNumber(sourceRow.debt_payment),
+        disbursement: toNumber(sourceRow.disbursement),
+        reimbursement_vs_sales: toNumber(sourceRow.reimbursement_vs_sales),
+        rembursment_vs_cm2_margins: toNumber(sourceRow.rembursment_vs_cm2_margins),
+        // Monthly ACoS column in the UI is sourced only from TACoS.
+        acos: toNumber(sourceRow.tacos_total_advertising_cost_of_sale),
         cm2_profit: toNumber(cm2Value),
         cm2_profit_total: toNumber(cm2Value),
         total_cm2_profit: toNumber(cm2Value),
@@ -2989,7 +3013,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
       const sku = String(row?.sku ?? "").trim().toLowerCase();
       return name !== "total" && sku !== "total";
     });
-    const backendTotalBase = normalizeRows([isMonthWiseView && yearlyTotalRow ? yearlyTotalRow : rawTotalRow])[0] as TableRow | undefined;
+    const backendTotalBase = normalizeRows([yearlyTotalRow || rawTotalRow])[0] as TableRow | undefined;
+    const yearlyMonthTotal: any = yearlyTotalRow || {};
     const monthTotalRow: TableRow = {
       ...(backendTotalBase || ({} as TableRow)),
       product_name: "Total",
@@ -3004,35 +3029,96 @@ const SKUtable: React.FC<SKUtableProps> = ({
       cm2_margins: getCm2Percentage(backendTotalBase || {}),
       unit_wise_cm2_profitability: getCm2PerUnit(backendTotalBase || {}),
       asp: resolveAspForRow(backendTotalBase || ({} as TableRow), true),
+      // Total-row breakdowns use the YearlySKU API, matching the Month-wise UI.
+      shipping_charges_total: toNumber(yearlyMonthTotal.shipping_charges),
+      storage_fees_total: toNumber(yearlyMonthTotal.storage_fee),
+      inventory_charges_and_reimbursement: toNumber(yearlyMonthTotal.inventory_charges_and_reimbursement),
+      other_fees_total: toNumber(yearlyMonthTotal.platform_management_fees) - toNumber(yearlyMonthTotal.other_adjustment),
+      other_charges_total:
+        toNumber(yearlyMonthTotal.shipping_charges) +
+        toNumber(yearlyMonthTotal.storage_fee) +
+        toNumber(yearlyMonthTotal.inventory_charges_and_reimbursement) +
+        (toNumber(yearlyMonthTotal.platform_management_fees) - toNumber(yearlyMonthTotal.other_adjustment)),
+      net_reimbursement: toNumber(yearlyMonthTotal.rembursement_fee),
+      brand_spend: toNumber(yearlyMonthTotal.visible_ads),
+      visible_ads: toNumber(yearlyMonthTotal.visible_ads),
+      dealsvouchar_ads: toNumber(
+        yearlyMonthTotal.dealsvoucher_ads ??
+        yearlyMonthTotal.dealsvouchar_ads ??
+        yearlyMonthTotal.dealvouchars_ads
+      ),
+      debt_payment: toNumber(yearlyMonthTotal.debt_payment),
+      disbursement: toNumber(yearlyMonthTotal.disbursement),
+      reimbursement_vs_sales: toNumber(yearlyMonthTotal.reimbursement_vs_sales),
+      rembursment_vs_cm2_margins: toNumber(yearlyMonthTotal.rembursment_vs_cm2_margins),
     } as TableRow;
     const monthRowsForExport = [...monthRowsWithoutTotal, monthTotalRow];
 
-    const monthColumns = buildExcelColumnsFromUI()
-      .filter((column) => column.key !== "sku")
-      .map((column) => column.key === "product_name"
-        ? { ...column, label: "Month", excelLabel: "Month" }
-        : column);
-
-    // Month-wise always includes the three KPI-related columns and CM2 fields,
-    // including when the global range selector is set to yearly.
-    const requiredMonthColumns: LeafCol<TableRow>[] = [
+    // Export the Month-wise table's complete column structure: left columns,
+    // every group's expanded breakdown plus its summary column, and standalone
+    // columns. This prevents Month-wise-only UI columns from disappearing in Excel.
+    const monthColumnsRaw: LeafCol<TableRow>[] = [
+      ...LEFT_COLS,
+      ...groups.flatMap((group) => {
+        const expanded = group.expandedCols || [];
+        const expandedKeys = new Set(expanded.map((column) => column.key));
+        const summaryOnly = (group.collapsedCols || []).filter(
+          (column) => !expandedKeys.has(column.key)
+        );
+        return [...expanded, ...summaryOnly];
+      }),
+      ...SINGLE_COLS,
+      // These columns exist only in the Month-wise table, or are hidden in
+      // Product-wise yearly mode. Include them even when Product-wise is active
+      // at the moment the user clicks Download.
+      { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" },
       { key: "product_spend", label: "Sponsored Product", align: "center" },
       { key: "display_spend", label: "Sponsored Display", align: "center" },
+      { key: "brand_spend", label: "Visible Ads", align: "center" },
+      { key: "dealsvouchar_ads", label: "Visible Deals", align: "center" },
       { key: "ads_spend", label: "Ads Spend", align: "center" },
+      { key: "other_charges_total", label: "Other Charges", align: "center" },
+      { key: "shipping_charges_total", label: "Shipping Charges", align: "center" },
+      { key: "storage_fees_total", label: "Storage Fees", align: "center" },
+      { key: "inventory_charges_and_reimbursement", label: "Inventory Charges and Reimbursement", align: "center" },
+      { key: "other_fees_total", label: "Other Fees", align: "center" },
+      { key: "net_reimbursement", label: "Net Reimbursement", align: "center" },
+      { key: "debt_payment", label: "Charged", align: "center" },
+      { key: "disbursement", label: "Disbursement", align: "center" },
+      { key: "reimbursement_vs_sales", label: "Reimbursement vs Sales", align: "center" },
+      { key: "rembursment_vs_cm2_margins", label: "Reimbursement vs CM2 Margins", align: "center" },
       { key: "acos", label: "ACoS %", align: "center" },
       { key: "unit_wise_cm2_profitability", label: "CM2 Profit Per Unit", align: "center" },
       { key: "cm2_margins", label: "CM2 Profit %", align: "center" },
       { key: "cm2_profit", label: "CM2 Profit", align: "center" },
     ];
-    const monthColumnKeys = new Set(monthColumns.map((column) => column.key));
-    requiredMonthColumns.forEach((column) => {
-      if (!monthColumnKeys.has(column.key)) monthColumns.push(column);
+
+    const monthColumns: LeafCol<TableRow>[] = [];
+    const monthColumnSeen = new Set<string>();
+    monthColumnsRaw.forEach((column) => {
+      if (!column.key || column.key === "sku" || monthColumnSeen.has(column.key)) return;
+      monthColumnSeen.add(column.key);
+      monthColumns.push(
+        column.key === "product_name"
+          ? { ...column, label: "Month", excelLabel: "Month" }
+          : column
+      );
     });
 
     const monthColumnKeysOrdered = monthColumns.map((column) => column.key);
     const monthHeaderRow: Record<string, string> = {};
     monthColumns.forEach((column) => {
-      monthHeaderRow[column.key] = column.excelLabel ?? (typeof column.label === "string" ? column.label : column.key);
+      monthHeaderRow[column.key] =
+        column.excelLabel ??
+        (typeof column.label === "string"
+          ? column.label
+          : column.key === "promotional_rebates_percentage"
+            ? "Promotions %"
+            : column.key === "unit_wise_cm2_profitability"
+              ? "CM2 Profit Per Unit"
+              : column.key === "cm2_margins"
+                ? "CM2 Profit %"
+                : column.key);
     });
     const monthSignRow: Record<string, string> = {};
     monthColumnKeysOrdered.forEach((key) => {
@@ -3055,8 +3141,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
           value = getBackendOtherTransactionsValue(row);
         } else if (key === "ads_spend") {
           value = row.ads_spend ?? row.total_ads ?? row.advertising_total ?? 0;
+        } else if (key === "brand_spend") {
+          const monthlyBrandSpend = toNumber(row.brand_spend);
+          value = monthlyBrandSpend !== 0 ? monthlyBrandSpend : toNumber(row.visible_ads);
+        } else if (key === "dealsvouchar_ads") {
+          value = row.dealsvouchar_ads ?? row.dealsvoucher_ads ?? row.dealvouchars_ads ?? 0;
         } else if (key === "acos") {
-          value = getAcosPercentage(row);
+          const isMonthTotal = String(row.product_name ?? "").trim().toLowerCase() === "total";
+          value = isMonthTotal
+            ? toNumber(row.acos)
+            : toNumber(row.tacos_total_advertising_cost_of_sale);
         } else if (key === "unit_wise_cm2_profitability") {
           value = getCm2PerUnit(row);
         } else if (key === "cm2_margins") {
@@ -3123,6 +3217,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [
     buildSkuSheetModel,
     buildExcelColumnsFromUI,
+    LEFT_COLS,
+    groups,
+    SINGLE_COLS,
     monthWiseRows,
     yearlyTotalRow,
     monthWiseKpiValues,

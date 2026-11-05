@@ -248,11 +248,8 @@ export default function MidMonthTargetReminderModal({
         </div>
 
         {/* Fallback Banner (Only if no target set yet) */}
-        {!hasTarget && (
+        {/* {!hasTarget && (
           <div className="mb-5 rounded-xl border border-[#D1E7E0] bg-[#F0F9F6] p-5">
-            <div className="mb-4 text-sm font-semibold text-[#5EA68E]">
-              Automatic fallback
-            </div>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="mb-1 text-sm text-slate-600">
@@ -268,7 +265,7 @@ export default function MidMonthTargetReminderModal({
               </div>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Target input: hero input + quick-fill chips + progress */}
         <div className="mb-5">

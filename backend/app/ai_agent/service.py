@@ -131,6 +131,33 @@ _verifier_llm = (
     else None
 )
 
+
+def generate_what_if_scenario_analysis(scenario_context: Dict[str, Any]) -> str:
+    """Explain a formula-calculated what-if result without changing its numbers."""
+    if _suggestion_llm is None:
+        raise RuntimeError("AI scenario analysis is unavailable because the AI model is not configured.")
+
+    prompt = f"""You are Phormula's concise Amazon seller scenario analyst.
+Explain what the user's what-if inputs are projected to do, comparing them with the previous-month baseline.
+The supplied figures are authoritative outputs from deterministic formulas. Do not recalculate, alter, or contradict any figure.
+Interpret positive COGS, Amazon fees, storage, other fees, and applicable shipping as CM2 deductions; other_transaction_fees is signed and added in CM1, while inventory_charges_and_reimbursement is signed and added in CM2. Use internal_cost_context only to understand the CM1/CM2 outcome. Never name, list, quote, or directly refer to any hidden cost input, amount, or hidden assumptions in the response. Compare changes in units, ASP, and ads explicitly; explain their effects on projected sales, CM2, and margin without attributing all movement to units. estimated_break_even_roas is the modeled break-even point, not achieved performance. target_roas_goal is the user's editable ad goal; compare it with estimated_break_even_roas when both are available, and explain that the goal alone does not change projected sales or CM2. Use only supplied facts. Mention whether CM2 and margin improve or decline, and give at most two practical observations. Keep the response to 3 short bullets and under 100 words.
+
+Scenario facts:
+{json.dumps(scenario_context, ensure_ascii=False, default=str)}"""
+
+    response = _suggestion_llm.invoke(prompt)
+    content = getattr(response, "content", "")
+    if isinstance(content, list):
+        content = "\n".join(
+            str(block.get("text", "")) if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    analysis = str(content or "").strip()
+    if not analysis:
+        raise RuntimeError("The AI returned an empty scenario analysis.")
+    return analysis
+
+
 DEFAULT_THRESHOLDS = {
     "low_profit_margin": 10.0,
     "high_amazon_fee_ratio": 25.0,

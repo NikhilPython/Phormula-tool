@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify , send_file 
+from io import BytesIO
 import jwt
 import os
 import re
@@ -2594,6 +2595,7 @@ def quarterlyskutable():
     
     
 
+
 @product_bp.route('/currency-rates', methods=['GET'])
 def get_currency_rates():
     auth_header = request.headers.get('Authorization')
@@ -2601,6 +2603,7 @@ def get_currency_rates():
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
 
     token = auth_header.split(' ')[1]
+
     try:
         payload, user_id, member_id = get_effective_user_id_from_token(token)
     except jwt.ExpiredSignatureError:
@@ -2609,37 +2612,96 @@ def get_currency_rates():
         return jsonify({'error': 'Invalid token'}), 401
 
     try:
+        # Fetch all historical records
         with admin_engine.connect() as conn:
             query = text("""
-                SELECT DISTINCT ON (user_currency, country)
-                    user_currency, country, selected_currency, conversion_rate, month, year
+                SELECT
+                    user_currency,
+                    country,
+                    selected_currency,
+                    conversion_rate,
+                    month,
+                    year
                 FROM currency_conversion
-                ORDER BY user_currency, country, year DESC,
-                    CASE month
-                        WHEN 'january' THEN 1 WHEN 'february' THEN 2 WHEN 'march' THEN 3
-                        WHEN 'april' THEN 4 WHEN 'may' THEN 5 WHEN 'june' THEN 6
-                        WHEN 'july' THEN 7 WHEN 'august' THEN 8 WHEN 'september' THEN 9
-                        WHEN 'october' THEN 10 WHEN 'november' THEN 11 WHEN 'december' THEN 12
+                ORDER BY year DESC,
+                    CASE lower(month)
+                        WHEN 'january' THEN 1
+                        WHEN 'february' THEN 2
+                        WHEN 'march' THEN 3
+                        WHEN 'april' THEN 4
+                        WHEN 'may' THEN 5
+                        WHEN 'june' THEN 6
+                        WHEN 'july' THEN 7
+                        WHEN 'august' THEN 8
+                        WHEN 'september' THEN 9
+                        WHEN 'october' THEN 10
+                        WHEN 'november' THEN 11
+                        WHEN 'december' THEN 12
                     END DESC
             """)
+
             results = conn.execute(query).mappings().all()
 
-        currency_rates = []
-        for row in results:
-            d = dict(row)
-            # normalize for frontend matching
-            d["user_currency"] = str(d.get("user_currency", "")).strip().lower()
-            d["country"] = str(d.get("country", "")).strip().lower()
-            d["selected_currency"] = str(d.get("selected_currency", "")).strip().lower()
-            currency_rates.append(d)
+        all_rates = [dict(row) for row in results]
 
-        return jsonify(currency_rates), 200
+        # Normalize currency values
+        for row in all_rates:
+            row["user_currency"] = str(row.get("user_currency") or "").strip().upper()
+            row["country"] = str(row.get("country") or "").strip().upper()
+            row["selected_currency"] = str(row.get("selected_currency") or "").strip().upper()
+
+        # Excel download: all historical months
+        if request.args.get("export", "").lower() == "excel":
+            df = pd.DataFrame(all_rates)
+
+            output = BytesIO()
+
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="Currency Rates"
+                )
+
+            output.seek(0)
+
+            return send_file(
+                output,
+                as_attachment=True,
+                download_name="Currency_Rates_History.xlsx",
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        # UI: current calendar month only
+        from datetime import datetime
+
+        current_month = datetime.now().strftime("%B").lower()
+        current_year = datetime.now().year
+
+        current_rates = [
+            row for row in all_rates
+            if str(row.get("month") or "").strip().lower() == current_month
+            and int(row.get("year") or 0) == current_year
+        ]
+
+        return jsonify({
+            "current_month": current_month,
+            "current_year": current_year,
+            "currency_rates": current_rates,
+            "message": "Download Excel to view complete historical currency rates."
+        }), 200
 
     except SQLAlchemyError as e:
-        return jsonify({'error': 'Database error', 'message': str(e)}), 500
-    except Exception as e:
-        return jsonify({'error': 'An error occurred while fetching currency rates', 'message': str(e)}), 500
+        return jsonify({
+            'error': 'Database error',
+            'message': str(e)
+        }), 500
 
+    except Exception as e:
+        return jsonify({
+            'error': 'An error occurred while fetching currency rates',
+            'message': str(e)
+        }), 500
 
 
 MONTHS = [
@@ -3409,6 +3471,7 @@ def skutableprofit():
         country = resolve_country(country_param, currency_param)
         month = (request.args.get('month') or '').strip().lower()
         year = (request.args.get('year') or '').strip()
+        benchmark_only = (request.args.get('benchmarkOnly') or '').strip().lower() in {'1', 'true', 'yes'}
 
         if not country or not month or not year:
             return jsonify({
@@ -3712,10 +3775,11 @@ def skutableprofit():
 
         try:
             current_data = _fetch_profit_data(table_name, ads_table_name)
-            try:
-                persist_per_unit_fields(engine, table_name, current_data)
-            except Exception:
-                pass
+            if not benchmark_only:
+                try:
+                    persist_per_unit_fields(engine, table_name, current_data)
+                except Exception:
+                    pass
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
@@ -3730,7 +3794,7 @@ def skutableprofit():
 
         prev_month, prev_year = get_previous_month(month, year)
 
-        if prev_month and prev_year:
+        if prev_month and prev_year and not benchmark_only:
             previous_table_name = build_skuwise_table_name(
                 user_id,
                 country,

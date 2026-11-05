@@ -546,6 +546,10 @@ const AppSidebar: React.FC = () => {
         redirectPath = `/pnlforecast/${firstAllowedCountry}/${month}/${year}`;
         break;
 
+      case "what-if-simulator":
+        redirectPath = `/what-if-simulator/${firstAllowedCountry}/${month}/${year}`;
+        break;
+
       case "inventory-reconciliation":
         redirectPath = `/inventory-reconciliation/${firstAllowedCountry}/${month}/${year}`;
         break;
@@ -962,6 +966,10 @@ const AppSidebar: React.FC = () => {
           newPath = `/pnlforecast/${newCountryName}/${month}/${year}`;
           break;
 
+        case "what-if-simulator":
+          newPath = `/what-if-simulator/${newCountryName}/${month}/${year}`;
+          break;
+
         case "inventory-reconciliation":
           newPath = `/inventory-reconciliation/${newCountryName}/${month}/${year}`;
           break;
@@ -1167,6 +1175,13 @@ const AppSidebar: React.FC = () => {
             )}/${encodeURIComponent(month)}/${encodeURIComponent(
               year
             )}#purchase-order`,
+        },
+        {
+          name: "What-if Simulator",
+          path: ({ countryName, month, year }) =>
+            `/what-if-simulator/${encodeURIComponent(
+              countryName
+            )}/${encodeURIComponent(month)}/${encodeURIComponent(year)}`,
         },
       ],
     },
