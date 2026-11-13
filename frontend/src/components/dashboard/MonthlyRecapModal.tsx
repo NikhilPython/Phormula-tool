@@ -49,6 +49,7 @@ export type MonthlyRecapData = {
         netSalesDeltaPct: number | null;
         units: number;
         cm2Profit: number | null;
+        asp?: number | null;
     }>;
     objectives: string[];
     formatMoney: (val: number) => string;
@@ -356,7 +357,7 @@ export default function MonthlyRecapModal({
                                         </p>
 
                                         {/* Replace the div with grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] with this: */}
-                                        <div className="flex flex-row items-center justify-between w-full gap-10">
+                                        <div className="flex flex-row items-center justify-between w-full gap-7">
 
                                             {/* Name & SKU */}
                                             {/* Name, SKU & Delta */}
@@ -390,19 +391,29 @@ export default function MonthlyRecapModal({
                                                 )}
                                             </div>
 
-                                            {/* Net Sales */}
-                                            <div className="min-w-0">
-                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Net sales</p>
-                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
-                                                    {formatMoney(highlight.netSales)}
-                                                </p>
-                                            </div>
+
 
                                             {/* Units */}
                                             <div className="min-w-0">
                                                 <p className="text-xs text-charcoal-500 whitespace-nowrap">Units</p>
                                                 <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
                                                     {Math.round(highlight.units || 0).toLocaleString()}
+                                                </p>
+                                            </div>
+
+                                            {/* ASP */}
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">ASP</p>
+                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                    {highlight.asp != null ? formatMoney(highlight.asp) : "\u2014"}
+                                                </p>
+                                            </div>
+
+                                            {/* Net Sales */}
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Net sales</p>
+                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                    {formatMoney(highlight.netSales)}
                                                 </p>
                                             </div>
 
@@ -440,8 +451,8 @@ export default function MonthlyRecapModal({
                                             <article
                                                 key={highlight.title}
                                                 className={`min-w-0 rounded-xl border border-t-4 px-3 py-3 sm:px-4 ${highlight.title === "Highest Net Sales Growth"
-                                                        ? "border-[#5EA68E]"
-                                                        : "border-[#B75A5A]"
+                                                    ? "border-[#5EA68E]"
+                                                    : "border-[#B75A5A]"
                                                     }`}
                                             >
                                                 <p className="mb-2 truncate text-xs text-charcoal-500">

@@ -43,6 +43,8 @@ import {
   type PersonalInfoFormErrors,
 } from "@/lib/validations/authValidation";
 
+import * as XLSX from "xlsx-js-style";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
 
@@ -484,21 +486,144 @@ export default function WorkspaceSetupOnboarding({
     }
   };
 
-  const handleDownloadCurrentSkuSheet = async () => {
-    try {
-      const blob = await downloadCurrentSkuSheet().unwrap();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
+  // const handleDownloadCurrentSkuSheet = async () => {
+  //   try {
+  //     const blob = await downloadCurrentSkuSheet().unwrap();
+  //     const url = window.URL.createObjectURL(blob);
+  //     const link = document.createElement("a");
 
-      link.href = url;
-      link.download = "SKU Information.xlsx";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to download SKU sheet:", error);
-      window.alert("Failed to download SKU sheet.");
+  //     link.href = url;
+  //     link.download = "SKU Information.xlsx";
+  //     document.body.appendChild(link);
+  //     link.click();
+  //     document.body.removeChild(link);
+  //     window.URL.revokeObjectURL(url);
+  //   } catch (error) {
+  //     console.error("Failed to download SKU sheet:", error);
+  //     window.alert("Failed to download SKU sheet.");
+  //   }
+  // };
+
+  const handleDownloadCurrentSkuSheet = () => {
+    try {
+      if (!flattenedSkuRows || flattenedSkuRows.length === 0) {
+        window.alert("No SKU data available to download.");
+        return;
+      }
+
+      // 1. Map the flattened UI rows into the exact Excel format you want
+      const formattedData = flattenedSkuRows.map((row: any) => {
+        return {
+          "S. No.": row.s_no || "",
+          "Product Name": row.product_name || "",
+          "Product Barcode": row.product_barcode || "-",
+          "ASIN": row.asin || "-",
+          "Country": row.country || "-",
+          "SKU": row.sku || "-",
+          "Landing Cost": row.landing_cost || "",
+          "Currency": row.currency || "",
+          "Local Stock": row.local_stock || 0,
+          "Product Status": row.product_status || "Active",
+          "Date": new Date().toISOString().split("T")[0],
+        };
+      });
+
+      // 2. Define the exact column order
+      const headers = [
+        "S. No.",
+        "Product Name",
+        "Product Barcode",
+        "ASIN",
+        "Country",
+        "SKU",
+        "Landing Cost",
+        "Currency",
+        "Local Stock",
+        "Product Status",
+        "Date",
+      ];
+
+      // 3. Create the worksheet
+      const worksheet = XLSX.utils.json_to_sheet(formattedData, { header: headers });
+
+      // Set column widths
+      worksheet["!cols"] = [
+        { wch: 8 },  // 0: S. No.
+        { wch: 25 }, // 1: Product Name
+        { wch: 20 }, // 2: Product Barcode
+        { wch: 15 }, // 3: ASIN
+        { wch: 10 }, // 4: Country
+        { wch: 20 }, // 5: SKU
+        { wch: 15 }, // 6: Landing Cost
+        { wch: 10 }, // 7: Currency
+        { wch: 15 }, // 8: Local Stock
+        { wch: 15 }, // 9: Product Status
+        { wch: 15 }, // 10: Date
+      ];
+
+      // 4. Apply borders and font sizes
+      const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:K1");
+
+      // Define which columns should be center-aligned based on their index
+      const centerAlignedColumns = [0, 4, 7, 9, 10]; // S.No, Country, Currency, Product Status, Date
+
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellAddress = { c: C, r: R };
+          const cellRef = XLSX.utils.encode_cell(cellAddress);
+
+          // If the cell doesn't exist (empty), create it so borders render properly
+          if (!worksheet[cellRef]) {
+            worksheet[cellRef] = { t: 's', v: '' };
+          }
+
+          const isHeader = R === 0;
+          const isCenterAligned = centerAlignedColumns.includes(C);
+
+          // Apply style to the cell
+          worksheet[cellRef].s = {
+            font: {
+              sz: 11,
+              name: "Calibri",
+              color: { rgb: "000000" },
+              bold: isHeader // Bold headers
+            },
+            border: {
+              top: {
+                style: "thin",
+                color: { rgb: "808080" }
+              },
+              bottom: {
+                style: "thin",
+                color: { rgb: "808080" }
+              },
+              left: {
+                style: "thin",
+                color: { rgb: "808080" }
+              },
+              right: {
+                style: "thin",
+                color: { rgb: "808080" }
+              }
+            },
+            alignment: {
+              vertical: "center",
+              // Center the specific columns (and all headers)
+              horizontal: (isHeader || isCenterAligned) ? "center" : "left"
+            }
+          };
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "SKU Information");
+
+      // 5. Trigger the download
+      XLSX.writeFile(workbook, "SKU Information.xlsx");
+
+    } catch (error: any) {
+      console.error("Failed to generate Excel:", error);
+      window.alert("Failed to generate Excel file.");
     }
   };
 
@@ -1307,7 +1432,7 @@ export default function WorkspaceSetupOnboarding({
                         onClick={handleViewSkuSheet}
                         className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#41708F] transition hover:text-[#315c78]"
                       >
-                        View your sheet
+                        View your SKU
                         <FiEye size={14} />
                       </button>
                     </>
@@ -1467,7 +1592,7 @@ export default function WorkspaceSetupOnboarding({
           <div className="flex items-start justify-between gap-4 border-b border-[#E8ECEA] pb-4">
             <div>
               <h2 className="text-base font-bold text-[#37455F] dark:text-white">
-                Your SKU Sheet
+               View your SKU
               </h2>
               <p className="mt-1 text-xs text-[#78847E] dark:text-gray-400">
                 This is your currently uploaded SKU information.

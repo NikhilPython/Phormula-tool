@@ -914,7 +914,16 @@ export default function ObjectivesPageClient({
         }
 
         const json = await res.json();
-        setCurrencyRates(json);
+
+        const rows: CurrencyRateRow[] = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.data)
+            ? json.data
+            : Array.isArray(json?.rates)
+              ? json.rates
+              : [];
+
+        setCurrencyRates(rows);
       } catch (e) {
         console.error(e);
         setCurrencyRates([]);
@@ -1410,15 +1419,15 @@ export default function ObjectivesPageClient({
   //   objectivesByCountry,
   // ]);
 
-const visibleObjectiveCountries = useMemo(() => {
-  const countries = integratedCountries.filter((c) => c !== "global");
+  const visibleObjectiveCountries = useMemo(() => {
+    const countries = integratedCountries.filter((c) => c !== "global");
 
-  if (countries.length) {
-    return countries;
-  }
+    if (countries.length) {
+      return countries;
+    }
 
-  return [(resolvedTargetCountry || country || "uk").toLowerCase()];
-}, [integratedCountries, resolvedTargetCountry, country]);
+    return [(resolvedTargetCountry || country || "uk").toLowerCase()];
+  }, [integratedCountries, resolvedTargetCountry, country]);
 
   const startObjectiveCardEdit = (countryValue: string) => {
     if (isMember) return;

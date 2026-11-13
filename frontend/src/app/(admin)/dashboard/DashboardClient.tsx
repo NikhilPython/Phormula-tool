@@ -14158,6 +14158,7 @@ export default function DashboardPage() {
                 .filter((row) => skuIdentity(row))
                 .map((row) => [skuIdentity(row), row] as [string, any])
         );
+
         const rankedSkuHighlights = skuRows.map((row) => {
             const priorRow = priorSkuByIdentity.get(skuIdentity(row));
             const priorNetSales = priorRow ? toNumber(priorRow.net_sales) : null;
@@ -14175,6 +14176,7 @@ export default function DashboardPage() {
                     ? ((currentNetSales - priorNetSales) / Math.abs(priorNetSales)) * 100
                     : null;
             const rawUnits = row.total_quantity ?? row.net_quantity ?? row.quantity;
+            const rawAsp = toNumber(row.asp);
             // Monthly SKU sources are not consistent: some populate only the
             // total field, while older payloads expose CM2 as `profit`.
             // Don't let an empty/zero alias hide a populated CM2 value.
@@ -14194,6 +14196,7 @@ export default function DashboardPage() {
                     : convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency),
                 netSalesIncrease,
                 netSalesDeltaPct: deltaPct,
+                asp: convertToDisplayCurrency(rawAsp, amazonDataCurrency), 
             };
         });
         const best = [...rankedSkuHighlights].sort((a, b) => b.netSales - a.netSales)[0];
@@ -14213,6 +14216,7 @@ export default function DashboardPage() {
                 : convertToDisplayCurrency(row.netSalesIncrease, amazonDataCurrency),
             netSalesDeltaPct: row.netSalesDeltaPct,
             units: row.units,
+            asp: row.asp,
             cm2Profit: row.cm2Profit,
         });
         const skuHighlights: MonthlyRecapData["skuHighlights"] = [];
