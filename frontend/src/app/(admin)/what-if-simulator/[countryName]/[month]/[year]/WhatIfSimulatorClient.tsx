@@ -408,6 +408,8 @@ export default function WhatIfSimulatorClient() {
   const [inputDirections, setInputDirections] = useState<Record<keyof ScenarioInput, SliderDirection>>({ units: null, asp: null, ads: null });
   const [targetRoasGoal, setTargetRoasGoal] = useState("");
   const [targetRoasChanged, setTargetRoasChanged] = useState(false);
+  const [targetTacosGoal, setTargetTacosGoal] = useState("");
+  const [targetTacosChanged, setTargetTacosChanged] = useState(false);
   const [overallCosts, setOverallCosts] = useState<CostInputs>(emptyCosts());
   const [aiInsight, setAiInsight] = useState<AiScenarioInsight | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -427,6 +429,8 @@ export default function WhatIfSimulatorClient() {
       setInputDirections({ units: null, asp: null, ads: null });
       setTargetRoasGoal("");
       setTargetRoasChanged(false);
+      setTargetTacosGoal("");
+      setTargetTacosChanged(false);
       setError("Select a valid month and year to load the previous month’s data.");
       return;
     }
@@ -490,6 +494,18 @@ export default function WhatIfSimulatorClient() {
           : 0;
         const initialTargetRoas = baselineContributionRate > 0 ? 1 / baselineContributionRate : null;
         setTargetRoasGoal(initialTargetRoas !== null && Number.isFinite(initialTargetRoas) ? initialTargetRoas.toFixed(2) : "");
+
+        const initialTargetTacos =
+          normalized.sales > 0
+            ? (absolute(normalized.totalAds) / normalized.sales) * 100
+            : null;
+
+        setTargetTacosGoal(
+          initialTargetTacos !== null && Number.isFinite(initialTargetTacos)
+            ? initialTargetTacos.toFixed(2)
+            : ""
+        );
+        setTargetTacosChanged(false);
 
         const loadInventoryPosition = async () => {
           const supportedCountries = ["uk", "gb", "united kingdom", "us", "usa", "united states", "global"];
@@ -619,10 +635,10 @@ export default function WhatIfSimulatorClient() {
     ? inventoryPosition.partial
       ? `Available inventory data for ${inventoryPosition.monthLabel} shows ${formatNumber(inventoryPosition.onHand)} units on hand and ${formatNumber(inventoryPosition.inbound)} inbound. Another marketplace is missing data, so confirm its stock before deciding dispatch quantities.`
       : overallInput.units > inventoryPosition.onHand + inventoryPosition.inbound
-      ? `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand and ${formatNumber(inventoryPosition.inbound)} inbound. This plan is short by about ${formatNumber(overallInput.units - inventoryPosition.onHand - inventoryPosition.inbound)} units; prepare dispatch or replenishment.`
-      : overallInput.units > inventoryPosition.onHand
-        ? `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand and ${formatNumber(inventoryPosition.inbound)} inbound. Incoming stock can cover this plan’s ${formatNumber(overallInput.units - inventoryPosition.onHand)}-unit gap; confirm transfer/arrival.`
-        : `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand. This plan leaves about ${formatNumber(inventoryPosition.onHand - overallInput.units)} units before inbound stock; if demand supports it, you have room to plan more.`
+        ? `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand and ${formatNumber(inventoryPosition.inbound)} inbound. This plan is short by about ${formatNumber(overallInput.units - inventoryPosition.onHand - inventoryPosition.inbound)} units; prepare dispatch or replenishment.`
+        : overallInput.units > inventoryPosition.onHand
+          ? `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand and ${formatNumber(inventoryPosition.inbound)} inbound. Incoming stock can cover this plan’s ${formatNumber(overallInput.units - inventoryPosition.onHand)}-unit gap; confirm transfer/arrival.`
+          : `At ${inventoryPosition.monthLabel}, you had ${formatNumber(inventoryPosition.onHand)} units on hand. This plan leaves about ${formatNumber(inventoryPosition.onHand - overallInput.units)} units before inbound stock; if demand supports it, you have room to plan more.`
     : inventoryError ? inventoryError : "";
   const unitsHistoryInsight = unitRecordMonth
     ? `Your ${unitDirection === "down" ? "lowest" : "highest"} monthly units were ${formatNumber(unitRecordMonth.units)} in ${unitRecordMonth.month}. ${unitComparison}${unitsMatchesCm2Month && unitCm2Month ? ` At about ${formatNumber(unitCm2Month.units)} units, CM2 was ${unitDirection === "down" ? "lowest" : "highest"} at ${formatCurrency(unitCm2Month.cm2, currency)} in ${unitCm2Month.month}.` : ""}`.trim()
@@ -639,6 +655,18 @@ export default function WhatIfSimulatorClient() {
     ? `Your ${adsDirection === "down" ? "lowest" : "highest"} monthly ads spend was ${formatCurrency(adsRecordMonth.ads, currency)} in ${adsRecordMonth.month}. ${overallInput.ads > adsRecordMonth.ads ? "Your planned ads are above that level." : overallInput.ads === adsRecordMonth.ads ? "Your planned ads match that level." : "Your planned ads are below that level."}`
     : benchmarkError ? "Past ads data could not be loaded for comparison." : "No past ads data was found for comparison.";
   const overallSales = overallInput.units * overallInput.asp;
+  // Blended ROAS = Total net sales / Total ads spend
+  const blendedRoas =
+    overallInput.ads > 0
+      ? overallSales / overallInput.ads
+      : null;
+
+  // TACoS = Total ads spend / Total net sales × 100
+  const currentTacos =
+    overallSales > 0
+      ? (absolute(overallInput.ads) / overallSales) * 100
+      : null;
+
   const costScale = history && history.units > 0 ? overallInput.units / history.units : 1;
   const overallCostTotals = Object.fromEntries(
     (Object.keys(overallCosts) as CostKey[]).map((key) => [key, overallCosts[key] * costScale]),
@@ -676,6 +704,14 @@ export default function WhatIfSimulatorClient() {
     : null;
   const parsedTargetRoasGoal = targetRoasGoal.trim() === "" ? null : numberValue(targetRoasGoal);
   const targetRoasGoalValue = parsedTargetRoasGoal !== null && parsedTargetRoasGoal >= 0 ? parsedTargetRoasGoal : null;
+  const parsedTargetTacosGoal = targetTacosGoal.trim() === ""
+    ? null
+    : numberValue(targetTacosGoal);
+
+  const targetTacosGoalValue =
+    parsedTargetTacosGoal !== null && parsedTargetTacosGoal >= 0
+      ? parsedTargetTacosGoal
+      : null;
   const rawAdSalesAtRoasGoal = targetRoasGoalValue !== null ? targetRoasGoalValue * overallInput.ads : null;
   const adSalesAtRoasGoal = rawAdSalesAtRoasGoal !== null && Number.isFinite(rawAdSalesAtRoasGoal)
     ? rawAdSalesAtRoasGoal
@@ -683,7 +719,10 @@ export default function WhatIfSimulatorClient() {
   const cm2Change = result.cm2 - baselineProfit.cm2;
   const marginChange = margin - baselineMargin;
   const comparisonMax = Math.max(Math.abs(result.cm2), Math.abs(baselineProfit.cm2), 1);
-  const scenarioInputsChanged = Object.values(changedInputs).some(Boolean) || targetRoasChanged;
+  const scenarioInputsChanged =
+    Object.values(changedInputs).some(Boolean) ||
+    targetRoasChanged ||
+    targetTacosChanged;
   const scenarioInsightsLoading = scenarioInputsChanged && (benchmarkLoading || (changedInputs.units && inventoryLoading));
   const signedCurrency = (value: number) => `${value >= 0 ? "+" : "−"}${formatCurrency(Math.abs(value), currency)}`;
   const aspChangeImpact = overallInput.units * (overallInput.asp - baselineAsp);
@@ -696,6 +735,13 @@ export default function WhatIfSimulatorClient() {
   const targetRoasGoalInsight = targetRoasGoalValue !== null
     ? `Your target ROAS is ${formatRoas(targetRoasGoalValue)}${breakEvenRoas !== null ? ` versus estimated break-even at ${formatRoas(breakEvenRoas)}` : ""}${adSalesAtRoasGoal !== null ? `, equivalent to about ${formatCurrency(adSalesAtRoasGoal, currency)} in ad-attributed sales at this ads budget` : ""}. This goal does not change projected CM2 by itself.`
     : "Enter a target ROAS to set an ad-attributed sales goal; the goal alone does not change projected CM2.";
+
+  const targetTacosGoalInsight =
+    targetTacosGoalValue !== null
+      ? `Your Target TACoS is ${targetTacosGoalValue.toFixed(2)}%. Current projected TACoS is ${currentTacos !== null ? `${currentTacos.toFixed(2)}%` : "unavailable"
+      }. This is an efficiency goal and does not independently change projected CM2.`
+      : "Enter a Target TACoS to set your advertising spend as a percentage of total net sales.";
+
   const scenarioInsightPoints = [
     changedInputs.units ? unitsHistoryInsight : null,
     changedInputs.units ? inventoryInsight || null : null,
@@ -705,6 +751,7 @@ export default function WhatIfSimulatorClient() {
     changedInputs.ads ? adsImpactInsight : null,
     scenarioInputsChanged ? breakEvenRoasInsight : null,
     targetRoasChanged ? targetRoasGoalInsight : null,
+    targetTacosChanged ? targetTacosGoalInsight : null,
   ].filter((point): point is string => Boolean(point));
   const scenarioSignature = JSON.stringify({
     country,
@@ -713,15 +760,16 @@ export default function WhatIfSimulatorClient() {
     currency,
     inputs: overallInput,
     targetRoasGoal: targetRoasGoalValue,
+    targetTacosGoal: targetTacosGoalValue,
     costs: overallCosts,
     history: history
       ? {
-          month: history.monthLabel,
-          units: history.units,
-          sales: history.sales,
-          totalAds: history.totalAds,
-          costAmounts: history.costAmounts,
-        }
+        month: history.monthLabel,
+        units: history.units,
+        sales: history.sales,
+        totalAds: history.totalAds,
+        costAmounts: history.costAmounts,
+      }
       : null,
   });
   const aiInsightIsCurrent = aiInsight?.signature === scenarioSignature;
@@ -793,6 +841,17 @@ export default function WhatIfSimulatorClient() {
               long_term_storage_fees: history?.costAmounts.longTermStorage ?? 0,
               other_fees: history?.costAmounts.otherFees ?? 0,
               shipping_charges: isUsFormula ? history?.costAmounts.shipping ?? 0 : 0,
+              tacos:
+                history && history.sales > 0
+                  ? (history.totalAds / history.sales) * 100
+                  : null,
+
+              blended_roas:
+                history && history.totalAds > 0
+                  ? history.sales / history.totalAds
+                  : null,
+
+              target_tacos_goal: null,
             },
             scenario: {
               cogs: overallCostTotals.cogs,
@@ -803,6 +862,9 @@ export default function WhatIfSimulatorClient() {
               long_term_storage_fees: overallCostTotals.longTermStorage,
               other_fees: overallCostTotals.otherFees,
               shipping_charges: isUsFormula ? overallCostTotals.shipping : 0,
+              tacos: currentTacos,
+              blended_roas: blendedRoas,
+              target_tacos_goal: targetTacosGoalValue,
             },
           },
         }),
@@ -846,7 +908,7 @@ export default function WhatIfSimulatorClient() {
             {loading && <p className="text-sm text-slate-500">Loading previous-month values…</p>}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <RangeSlider
               label="Planned units"
               value={overallInput.units}
@@ -904,12 +966,67 @@ export default function WhatIfSimulatorClient() {
               </div>
               <p className="mt-2 text-[11px] leading-4 text-slate-500">Ad sales goal ÷ ad spend. Current estimated break-even: {formatRoas(breakEvenRoas)}. This goal alone does not change projected CM2.</p>
             </div>
+
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label
+                htmlFor="target-tacos-goal"
+                className="text-sm font-medium text-slate-700"
+              >
+                Target TACoS
+              </label>
+
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
+                <input
+                  id="target-tacos-goal"
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={targetTacosGoal}
+                  onChange={(event) => {
+                    setTargetTacosGoal(event.target.value);
+                    setTargetTacosChanged(true);
+                    setAiError("");
+                  }}
+                  onBlur={() => {
+                    const value = Number(targetTacosGoal);
+
+                    if (
+                      targetTacosGoal.trim() !== "" &&
+                      Number.isFinite(value) &&
+                      value >= 0
+                    ) {
+                      setTargetTacosGoal(value.toFixed(2));
+                    }
+                  }}
+                  aria-label="Target TACoS goal"
+                  className="w-full bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
+                  placeholder="e.g. 25.00"
+                />
+                <span className="text-sm text-slate-500">%</span>
+              </div>
+
+              <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                Ads spend ÷ total net sales. Current projected TACoS:{" "}
+                {currentTacos !== null
+                  ? `${currentTacos.toFixed(2)}%`
+                  : "—"}
+                . Target alone does not change projected CM2.
+              </p>
+            </div>
+
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard label="Projected net sales" value={formatCurrency(result.sales, currency)} hint={`${formatNumber(result.units)} units × ASP`} accent="border-[#75BBDA]" />
             <MetricCard label="Projected CM1" value={formatCurrency(result.cm1, currency)} accent="border-[#7B9A6D]" />
-            <MetricCard label="Projected CM2" value={formatCurrency(result.cm2, currency)} accent="border-[#B8C78C]"  />
+            <MetricCard label="Projected CM2" value={formatCurrency(result.cm2, currency)} accent="border-[#B8C78C]" />
+            <MetricCard
+              label="Blended ROAS"
+              value={formatRoas(blendedRoas)}
+              hint="Total net sales ÷ ads spend"
+              accent="border-[#C49466]"
+            />
             <MetricCard label="CM2 margin" value={`${margin.toFixed(1)}%`} hint="CM2 ÷ projected net sales" accent="border-[#3A8EA4]" />
           </div>
 
@@ -920,8 +1037,8 @@ export default function WhatIfSimulatorClient() {
               {scenarioInsightsLoading
                 ? <p className="mt-4 text-sm text-slate-500">Comparing this scenario with your past results…</p>
                 : <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
-                    {scenarioInsightPoints.map((point, index) => <li key={`${index}-${point}`}>{point}</li>)}
-                  </ul>}
+                  {scenarioInsightPoints.map((point, index) => <li key={`${index}-${point}`}>{point}</li>)}
+                </ul>}
             </section>
           )}
 

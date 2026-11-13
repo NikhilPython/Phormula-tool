@@ -3,7 +3,6 @@
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import WorkspaceSetupOnboarding, { type WorkspaceActivity } from "@/components/user-profile/WorkspaceSetupOnboarding";
-import CurrencyRatesTab from "@/components/user-profile/CurrencyRatesTab";
 import Button from "@/components/ui/button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 import AddMemberModal from "@/components/header/AddMemberModal";
@@ -51,7 +50,7 @@ function getLatestWorkspaceActivity(userData: any): WorkspaceActivity | null {
 }
 
 export default function ProfileClient() {
-  const [tab, setTab] = React.useState<"personal" | "teamMembers" | "currencyRates">("personal");
+  const [tab, setTab] = React.useState<"personal" | "teamMembers">("personal");
   const [isMember, setIsMember] = React.useState<boolean | null>(null);
   const [members, setMembers] = React.useState<any[]>([]);
   const [membersLoading, setMembersLoading] = React.useState(false);
@@ -495,14 +494,13 @@ export default function ProfileClient() {
         </div>
 
         <div className="mt-3">
-          <SegmentedToggle<"personal" | "teamMembers" | "currencyRates">
+          <SegmentedToggle<"personal" | "teamMembers">
             value={tab}
             options={[
               { value: "personal", label: "User Details" },
               ...(isMember === false && !isPreviewMode
                 ? [{ value: "teamMembers" as const, label: "Team Members" }]
                 : []),
-              { value: "currencyRates", label: "Currency Rates" },
             ]}
             onChange={(val) => {
               if (isPreviewMode && val === "teamMembers") return;
@@ -517,7 +515,6 @@ export default function ProfileClient() {
           {tab === "personal" && (
             <WorkspaceSetupOnboarding onActivityChange={setLastActivity} />
           )}
-          {tab === "currencyRates" && <CurrencyRatesTab />}
         </div>
 
         {tab === "teamMembers" && isMember === false && (

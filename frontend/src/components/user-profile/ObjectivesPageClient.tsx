@@ -12,6 +12,8 @@ import { platformToCurrencyCode } from "@/lib/utils/currency";
 import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import type { PlatformId } from "@/lib/utils/platforms";
 import SegmentedToggle from "../ui/SegmentedToggle";
+import WorkspaceSetupOnboarding from "@/components/user-profile/WorkspaceSetupOnboarding";
+import CurrencyRatesTab from "@/components/user-profile/CurrencyRatesTab";
 import TargetVsSalesChart from "../objectives/TargetVsSalesChart";
 import ObjectiveMoMChart from "../objectives/ObjectiveMoMChart";
 import {
@@ -59,7 +61,9 @@ type TargetRow = Row & {
 type SummaryTab =
   | "business_summary"
   | "targets_and_objectives"
-  | "output";
+  | "output"
+  | "product_controls"
+  | "currency_rates";
 
 type UploadedSummaryFile = {
   id: string;
@@ -101,6 +105,8 @@ type BusinessJourneyResponse =
 const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
   { key: "business_summary", label: "Business Summary" },
   { key: "targets_and_objectives", label: "Targets and Objectives" },
+  { key: "product_controls", label: "Product & Inventory Controls" },
+  { key: "currency_rates", label: "Currency Rates" },
   { key: "output", label: "Output" },
 ];
 
@@ -318,10 +324,14 @@ function InfoCard({
   title,
   children,
   action,
+  className,
+  contentClassName,
 }: {
   title: React.ReactNode;
   children: React.ReactNode;
   action?: React.ReactNode;
+  className?: string;
+  contentClassName?: string;
 }) {
   return (
     <div className=" relative h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -657,7 +667,9 @@ export default function ObjectivesPageClient({
     if (
       tab === "business_summary" ||
       tab === "targets_and_objectives" ||
-      tab === "output"
+      tab === "output" ||
+      tab === "product_controls" ||
+      tab === "currency_rates"
     ) {
       setActiveTab(tab);
     }
@@ -1974,6 +1986,8 @@ export default function ObjectivesPageClient({
         buttonText="Complete Setup"
         onAction={handleConnectAmazonPreview}
       >
+        {activeTab === "product_controls" && <WorkspaceSetupOnboarding view="productControls" />}
+        {activeTab === "currency_rates" && <CurrencyRatesTab />}
         {activeTab === "business_summary" && (
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
