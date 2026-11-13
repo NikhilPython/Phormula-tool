@@ -244,6 +244,9 @@ export default function WorkspaceSetupOnboarding({
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null);
   const [skuStatusOverrides, setSkuStatusOverrides] = useState<Record<string, 'Active' | 'Discontinued'>>({});
 
+  const [skuCountryFilter, setSkuCountryFilter] = useState("all");
+  const [skuStatusFilter, setSkuStatusFilter] = useState("all");
+
   const companySectionRef = useRef<HTMLDivElement | null>(null);
   const productSectionRef = useRef<HTMLDivElement | null>(null);
   const integrationSectionRef = useRef<HTMLDivElement | null>(null);
@@ -893,6 +896,53 @@ export default function WorkspaceSetupOnboarding({
 
     return result;
   }, [currentSkuSheet?.rows, skuStatusOverrides]);
+
+  const skuCountryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        flattenedSkuRows
+          .map((row: any) => String(row.country || "").trim().toUpperCase())
+          .filter((country: string) => country && country !== "-")
+      )
+    ).sort();
+  }, [flattenedSkuRows]);
+
+  const skuStatusOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        flattenedSkuRows.map((row: any) =>
+          String(row.product_status || "Active").trim()
+        )
+      )
+    ).sort();
+  }, [flattenedSkuRows]);
+
+  const filteredSkuRows = useMemo(() => {
+    return flattenedSkuRows.filter((row: any) => {
+      const country = String(row.country || "").trim().toUpperCase();
+      const status = String(row.product_status || "Active")
+        .trim()
+        .toLowerCase();
+
+      const matchesCountry =
+        skuCountryFilter === "all" ||
+        country === skuCountryFilter;
+
+      const matchesStatus =
+        skuStatusFilter === "all" ||
+        status === skuStatusFilter.toLowerCase();
+
+      return matchesCountry && matchesStatus;
+    });
+  }, [flattenedSkuRows, skuCountryFilter, skuStatusFilter]);
+
+  // Re-index the S.No for the filtered view so it always counts 1 to N
+  const displaySkuRows = useMemo(() => {
+    return filteredSkuRows.map((row: any, index: number) => ({
+      ...row,
+      s_no: index + 1,
+    }));
+  }, [filteredSkuRows]);
 
   // View Sheet columns with Product Status restored
   const SKU_VIEW_COLUMNS: ColumnDef<TableRow>[] = useMemo(() => {
@@ -1589,37 +1639,91 @@ export default function WorkspaceSetupOnboarding({
         className="m-4 max-w-6xl w-full border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
       >
         <div className="relative w-full rounded-2xl bg-white p-5 dark:bg-gray-900 lg:p-6">
-          <div className="flex items-start justify-between gap-4 border-b border-[#E8ECEA] pb-4">
-            <div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8ECEA] pb-3">
+            {/* Left: Title */}
+            <div className="min-w-0">
               <h2 className="text-base font-bold text-[#37455F] dark:text-white">
-               View your SKU
+                View your SKU
               </h2>
               <p className="mt-1 text-xs text-[#78847E] dark:text-gray-400">
                 This is your currently uploaded SKU information.
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Right: Filters + Actions */}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+
+              {/* Country Filter */}
+              <select
+                aria-label="Filter by country"
+                value={skuCountryFilter}
+                onChange={(e) => setSkuCountryFilter(e.target.value)}
+                className="h-9 w-[125px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+              >
+                <option value="all">All Countries</option>
+                {skuCountryOptions.map((country: string) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+
+              {/* Product Status Filter */}
+              <select
+                aria-label="Filter by product status"
+                value={skuStatusFilter}
+                onChange={(e) => setSkuStatusFilter(e.target.value)}
+                className="h-9 w-[135px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+              >
+                <option value="all">All Statuses</option>
+                {skuStatusOptions.map((status: string) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+
+              {/* Reset Filters */}
+              {(skuCountryFilter !== "all" || skuStatusFilter !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkuCountryFilter("all");
+                    setSkuStatusFilter("all");
+                  }}
+                  className="h-9 rounded-lg px-2 text-[11px] font-semibold text-[#5EA68E] hover:bg-[#F4FBF7]"
+                >
+                  Reset
+                </button>
+              )}
+
+              {/* Icon-only Download */}
               <button
                 type="button"
                 onClick={handleDownloadCurrentSkuSheet}
                 disabled={isDownloadingSkuSheet || !currentSkuSheet?.rows?.length}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#B9D8C9] bg-[#F8FCFA] px-3 text-xs font-semibold text-[#0E8558] transition hover:bg-[#EFF9F4] disabled:cursor-not-allowed disabled:opacity-60"
+                title="Download SKU Sheet"
+                aria-label="Download SKU Sheet"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#B9D8C9] bg-[#F8FCFA] text-[#0E8558] transition hover:bg-[#EFF9F4] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <FiDownload size={14} />
-                {isDownloadingSkuSheet ? "Downloading..." : "Download Sheet"}
+                <FiDownload size={16} />
               </button>
 
+              {/* Close */}
               <button
                 type="button"
                 onClick={skuViewModal.closeModal}
-                className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DDE5E1] text-[#66746D] transition hover:bg-[#F5F8F6]"
+                title="Close"
                 aria-label="Close SKU sheet"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#DDE5E1] text-[#66746D] transition hover:bg-[#F5F8F6]"
               >
                 <FiX size={16} />
               </button>
+
             </div>
           </div>
+
 
           {isSkuSheetLoading ? (
             <div className="grid min-h-[350px] place-items-center">
@@ -1651,27 +1755,95 @@ export default function WorkspaceSetupOnboarding({
             </div>
           ) : (
             <div className="mt-5 min-w-0 w-full">
+
+              {/* <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <div className="min-w-[170px]">
+                    <label className="mb-1.5 block text-xs font-semibold text-[#37455F] dark:text-gray-300">
+                      Filter by Country
+                    </label>
+
+                    <select
+                      value={skuCountryFilter}
+                      onChange={(e) => setSkuCountryFilter(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-[#DDE5E1] bg-white px-3 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+                    >
+                      <option value="all">All Countries</option>
+
+                      {skuCountryOptions.map((country: string) => (
+                        <option key={country} value={country}>
+                          {country}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="min-w-[190px]">
+                    <label className="mb-1.5 block text-xs font-semibold text-[#37455F] dark:text-gray-300">
+                      Filter by Product Status
+                    </label>
+
+                    <select
+                      value={skuStatusFilter}
+                      onChange={(e) => setSkuStatusFilter(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-[#DDE5E1] bg-white px-3 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+                    >
+                      <option value="all">All Statuses</option>
+
+                      {skuStatusOptions.map((status: string) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkuCountryFilter("all");
+                    setSkuStatusFilter("all");
+                  }}
+                  disabled={
+                    skuCountryFilter === "all" &&
+                    skuStatusFilter === "all"
+                  }
+                  className="h-10 rounded-lg border border-[#DDE5E1] px-4 text-xs font-semibold text-[#5EA68E] transition hover:bg-[#F4FBF7] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Reset Filters
+                </button>
+
+              </div>
+
+              <div className="mb-2 text-xs text-[#78847E]">
+                Showing {filteredSkuRows.length} of {flattenedSkuRows.length} SKU records
+              </div> */}
+
+              {/* SKU TABLE */}
               <DataTable
                 columns={SKU_VIEW_COLUMNS}
-                data={flattenedSkuRows as TableRow[]}
+                data={displaySkuRows as TableRow[]}
                 stickyColumnKeys={["s_no", "product_name"]}
                 pageSize={10}
                 maxHeight="60vh"
                 stickyHeader
                 zebra
-                emptyMessage="No SKU data found."
+                emptyMessage="No SKU records match the selected filters."
                 className="my-4 w-full max-w-full min-w-0"
                 tableClassName="
-                  [&_table]:w-full
-                  [&_table]:table-fixed
-                  [&_th]:whitespace-nowrap
-                  [&_td]:whitespace-nowrap
-                  [&_th]:overflow-hidden
-                  [&_th]:text-ellipsis
-                  [&_td]:overflow-hidden
-                  [&_td]:text-ellipsis
-                "
+      [&_table]:w-full
+      [&_table]:table-fixed
+      [&_th]:whitespace-nowrap
+      [&_td]:whitespace-nowrap
+      [&_th]:overflow-hidden
+      [&_th]:text-ellipsis
+      [&_td]:overflow-hidden
+      [&_td]:text-ellipsis
+    "
               />
+
             </div>
           )}
         </div>
