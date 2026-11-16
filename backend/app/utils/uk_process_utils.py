@@ -1753,13 +1753,23 @@ def process_skuwise_data(user_id, country, month, year):
         sum_row["disbursement"] = abs(float(disbursement_total))
         sum_row["advertising_total"]= abs(advertising_total)
         sum_row["reimbursement_vs_sales"]= abs(reimbursement_vs_sales)
-        sum_row["cm2_profit"]= cm2_profit
-        # TOTAL-only safety (after sum_row["cm2_profit"] is set)
+        # Keep report-level CM2 in the explicit total columns as well. The
+        # product rows intentionally have CM2 = 0; only the TOTAL row carries
+        # account-level charges and therefore the complete monthly CM2.
+        sum_row["cm2_profit"] = cm2_profit
+        sum_row["total_cm2_profit"] = total_cm2_profit
+        sum_row["total_cm2_margins"] = abs(cm2_margins)
+        # TOTAL-only safety (after the report-level CM2 values are set).
         ns_total = float(sum_row.get("Net Sales", 0) or 0)
-        sum_row["cm2_profit_percentage"] = (float(sum_row.get("cm2_profit", 0) or 0) / ns_total) * 100 if ns_total != 0 else 0.0
-        sum_row["cm2_margins"]= abs(cm2_margins)
-        sum_row["acos"]= abs(acos)
-        sum_row["rembursment_vs_cm2_margins"]= abs(rembursment_vs_cm2_margins)
+        sum_row["cm2_profit_percentage"] = (
+            (float(total_cm2_profit) / ns_total) * 100 if ns_total != 0 else 0.0
+        )
+        sum_row["cm2_margins"] = abs(cm2_margins)
+        sum_row["acos"] = abs(acos)
+        sum_row["rembursment_vs_cm2_margins"] = (
+            abs(float(rembursement_fee) / float(total_cm2_profit)) * 100
+            if total_cm2_profit else 0.0
+        )
         sum_row["previous_net_sales"]= a
         sum_row["previous_net_credits"]= b
         sum_row["previous_platform_fee"]= c

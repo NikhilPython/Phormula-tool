@@ -615,6 +615,8 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
         - other_fees_total
     )
 
+    # Keep product-level CM2 and full report-level CM2 distinct. The
+    # reimbursement ratio must always use the full total_cm2_profit denominator.
     total_row["cm2_profit"] = cm2_profit_productwise
     total_row["total_cm2_profit"] = total_cm2
     total_reimbursement = float(total_row["rembursement_fee"] or 0)
@@ -627,7 +629,8 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_row["total_cm2_margins"] = (total_cm2 / total_net_sales) * 100 if total_net_sales else 0
     total_row["tacos_total_advertising_cost_of_sale"] = (total_ads / total_net_sales) * 100 if total_net_sales else 0
     total_row["rembursment_vs_cm2_margins"] = (
-        abs(total_reimbursement / total_cm2) * 100 if total_cm2 else 0
+        abs(total_reimbursement / total_row["total_cm2_profit"]) * 100
+        if total_row["total_cm2_profit"] else 0
     )
     total_row["reimbursement_vs_sales"] = (total_reimbursement / total_net_sales) * 100 if total_net_sales else 0
     total_row["promotional_rebates_percentage"] = (

@@ -2264,14 +2264,21 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
         sum_row["platform_fee"] = platform_fee
         sum_row["reimbursement_vs_sales"] = abs(reimbursement_vs_sales)
+        # SKU CM2 is intentionally zero; the monthly TOTAL row contains the
+        # complete report-level CM2 after all account-level fees are applied.
         sum_row["cm2_profit"] = abs(cm2_profit)
+        sum_row["total_cm2_profit"] = abs(total_cm2_profit)
+        sum_row["total_cm2_margins"] = abs(cm2_margins)
         sum_row["cm2_margins"] = abs(cm2_margins)
         sum_row["cm2_profit_percentage"] = (
-            (sum_row["cm2_profit"] / sum_row["Net Sales"]) * 100
+            (abs(total_cm2_profit) / sum_row["Net Sales"]) * 100
             if sum_row["Net Sales"] != 0 else 0
         )
         sum_row["acos"] = abs(acos)
-        sum_row["rembursment_vs_cm2_margins"] = abs(rembursment_vs_cm2_margins)
+        sum_row["rembursment_vs_cm2_margins"] = (
+            abs(float(rembursement_fee) / float(total_cm2_profit)) * 100
+            if total_cm2_profit else 0.0
+        )
         sum_row["previous_net_sales"] = a
         sum_row["previous_net_credits"] = b
         sum_row["previous_platform_fee"] = c
