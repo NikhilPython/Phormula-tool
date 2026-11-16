@@ -80,6 +80,7 @@ type WorkspaceSetupOnboardingProps = {
   onSetupComplete?: () => void;
   onActivityChange?: (activity: WorkspaceActivity | null) => void;
   className?: string;
+  view?: "profile" | "productControls";
 };
 
 const emptyForm: FormState = {
@@ -191,6 +192,7 @@ function ReadOnlyField({
 export default function WorkspaceSetupOnboarding({
   onActivityChange,
   className,
+  view = "profile",
 }: WorkspaceSetupOnboardingProps) {
   const skuModal = useModal();
   const skuViewModal = useModal();
@@ -212,6 +214,7 @@ export default function WorkspaceSetupOnboarding({
   const reduxToken = useSelector((state: any) => state.auth?.token);
 
   const [data, setData] = useState<any>(null);
+  const [isPlanPaid, setIsPlanPaid] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -282,6 +285,8 @@ export default function WorkspaceSetupOnboarding({
       const address = result?.address || {};
 
       setData(result);
+      const planPaymentKey = `workspace-plan-paid:${String(result?.email || result?.id || "current-user").toLowerCase()}`;
+      setIsPlanPaid(window.localStorage.getItem(planPaymentKey) === "true");
       setForm({
         name: result?.name || "",
         phone_number: result?.phone_number || "",
@@ -359,18 +364,29 @@ export default function WorkspaceSetupOnboarding({
   );
 
   const canAccessProductControls = isCompanyComplete || hasSkuSheet;
-  const canAccessIntegrations = hasSkuSheet || hasIntegration;
+  const hasPlanAccess = isPlanPaid || hasIntegration;
+  const canAccessIntegrations = hasPlanAccess && (hasSkuSheet || hasIntegration);
 
   // Progressive setup guide:
-  // Company Info -> SKU Sheet -> Integrations
-  const guideStep: "company" | "sku" | "integration" | "done" =
+  // Company Info -> SKU Sheet -> Plan payment -> Integrations
+  const guideStep: "company" | "sku" | "plan" | "integration" | "done" =
     !isCompanyComplete
       ? "company"
       : !hasSkuSheet
         ? "sku"
-        : !hasIntegration
-          ? "integration"
-          : "done";
+        : !hasPlanAccess
+          ? "plan"
+          : !hasIntegration
+            ? "integration"
+            : "done";
+  const isSetupComplete = guideStep === "done";
+  const productOnlyView = view === "productControls";
+
+  const handlePlanPayment = () => {
+    const planPaymentKey = `workspace-plan-paid:${String(data?.email || data?.id || "current-user").toLowerCase()}`;
+    window.localStorage.setItem(planPaymentKey, "true");
+    setIsPlanPaid(true);
+  };
 
   const handlePersonalChange =
     (key: "name" | "phone_number") =>
@@ -1035,250 +1051,46 @@ export default function WorkspaceSetupOnboarding({
       )}
 
       <div className="space-y-5">
-        {/* Row 1: Personal + Company, exact 50 / 50 */}
-        <div
-          className={cx(
-            "grid grid-cols-1 gap-5 xl:grid-cols-2",
-            isCompanyEditing ? "xl:items-start" : "xl:items-stretch"
-          )}
-        >
-          <Panel className="overflow-hidden">
-            <div className="flex items-start justify-between gap-3 border-b border-[#E8ECEA] px-5 py-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">1. Personal details</h2>
-                  <StatusPill tone={isPersonalComplete ? "green" : "blue"}>
-                    {isPersonalComplete ? "Completed" : "In progress"}
-                  </StatusPill>
-                </div>
-                <p className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
-                  Manage your name, phone number and account password.
-                </p>
-              </div>
-
-              {!isPersonalEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsPersonalEditing(true)}
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
-                >
-                  <FiEdit3 size={14} /> Edit details
-                </button>
-              ) : (
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button type="button" size="sm" onClick={handleSavePersonal} disabled={isSaving}>
-                    <FiCheck className="mr-1" /> {isSaving ? "Saving…" : "Save"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={cancelPersonalEdit}
-                    disabled={isSaving}
-                  >
-                    <FiX className="mr-1" /> Cancel
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 2xl:p-5">
-              {isLoading ? (
-                <div className="grid min-h-[220px] 2xl:min-h-[250px] place-items-center text-xs 2xl:text-sm text-[#78847E]">
-                  Loading profile…
-                </div>
-              ) : isPersonalEditing ? (
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px]">
-                    <div>
-                      <Label>
-                        Name <span className="text-[#B75A5A]">*</span>
-                      </Label>
-                      <Input
-                        type="text"
-                        value={form.name}
-                        onChange={handlePersonalChange("name")}
-                        onBlur={() => {
-                          setPersonalTouched((previous) => ({ ...previous, name: true }));
-                          validatePersonalField("name");
-                        }}
-                        maxLength={50}
-                        className="!h-9 !text-[12px] 2xl:!h-11 2xl:!text-[14px]"
-                        error={Boolean(personalTouched.name && personalErrors.name)}
-                      />
-                      {personalTouched.name && personalErrors.name && (
-                        <p className="mt-1.5 text-xs text-[#B75A5A]">{personalErrors.name}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>
-                        Phone Number <span className="text-[#B75A5A]">*</span>
-                      </Label>
-                      <Input
-                        type="text"
-                        value={form.phone_number}
-                        onChange={handlePersonalChange("phone_number")}
-                        onBlur={() => {
-                          setPersonalTouched((previous) => ({
-                            ...previous,
-                            phone_number: true,
-                          }));
-                          validatePersonalField("phone_number");
-                        }}
-                        maxLength={20}
-                        className="!h-9 !text-[12px] 2xl:!h-11 2xl:!text-[14px]"
-                        inputMode="tel"
-                        error={Boolean(
-                          personalTouched.phone_number && personalErrors.phone_number
-                        )}
-                      />
-                      {personalTouched.phone_number && personalErrors.phone_number && (
-                        <p className="mt-1.5 text-xs text-[#B75A5A]">
-                          {personalErrors.phone_number}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#8A948F]">
-                          Password
-                        </p>
-                        <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">••••••••••</p>
-                        <p className="mt-1 text-[11px] text-[#78847E]">
-                          We&apos;ll send a secure verification code to your registered email.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleForgotPassword}
-                        className="inline-flex h-9 items-center justify-center rounded-lg border border-[#B9D8C9] bg-white px-3 text-xs font-semibold text-[#0E8558] transition hover:bg-[#F2FAF6]"
-                      >
-                        Reset password
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="rounded-2xl bg-[#FBFDFC] p-4">
-                    <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                      {/* Name */}
-                      <div className="min-w-0">
-                        <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
-                          Name
-                        </p>
-
-                        <p className="mt-1 truncate text-xs 2xl:text-sm font-bold text-[#26322C]">
-                          {form.name || "-"}
-                        </p>
-                      </div>
-
-                      {/* Email */}
-                      <div className="min-w-0">
-                        <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
-                          Email
-                        </p>
-
-                        <p
-                          title={data?.email || ""}
-                          className="mt-1 truncate text-xs 2xl:text-sm font-semibold text-[#33413A]"
-                        >
-                          {data?.email || "-"}
-                        </p>
-                      </div>
-
-                      {/* Phone Number */}
-                      <div className="min-w-0">
-                        <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
-                          Phone number
-                        </p>
-
-                        <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">
-                          {form.phone_number || "-"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-green-500 shadow-sm">
-                        <FiLock size={18} />
-                      </span>
-                      <div>
-                        <p className="text-xs 2xl:text-sm font-bold text-[#33413A]">Password</p>
-                        <p className="mt-0.5 text-xs text-[#78847E]">{"\u2022".repeat(10)}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Panel>
-
-          <div ref={companySectionRef} className="h-full scroll-mt-24">
-            <Panel
-              className={cx(
-                "overflow-hidden transition-all duration-300",
-                guideStep === "company" &&
-                "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]"
-              )}
-            >
-              <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        {!productOnlyView && (<>
+          {/* Row 1: Personal + Company, exact 50 / 50 */}
+          <div
+            className={cx(
+              "grid grid-cols-1 gap-5 xl:grid-cols-2",
+              isCompanyEditing ? "xl:items-start" : "xl:items-stretch"
+            )}
+          >
+            <Panel className="overflow-hidden">
+              <div className="flex items-start justify-between gap-3 border-b border-[#E8ECEA] px-5 py-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">2. Company info</h2>
-
-                    {guideStep === "company" ? (
-                      <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                        Step 1 · Start here
-                      </span>
-                    ) : (
-                      <StatusPill tone={isCompanyComplete ? "green" : "blue"}>
-                        {isCompanyComplete ? "Completed" : "In progress"}
-                      </StatusPill>
-                    )}
+                    <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">1. Personal details</h2>
+                    <StatusPill tone={isPersonalComplete ? "green" : "blue"}>
+                      {isPersonalComplete ? "Completed" : "In progress"}
+                    </StatusPill>
                   </div>
-
                   <p className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
-                    {guideStep === "company"
-                      ? "Complete your company information first. This will unlock SKU sheet upload."
-                      : "Tell us about your business."}
+                    Manage your name, phone number and account password.
                   </p>
                 </div>
 
-                {!isCompanyEditing ? (
+                {!isPersonalEditing ? (
                   <button
                     type="button"
-                    onClick={() => setIsCompanyEditing(true)}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
+                    onClick={() => setIsPersonalEditing(true)}
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
                   >
-                    <FiEdit3 size={14} /> {isCompanyComplete ? "Edit details" : "Add details"}
+                    <FiEdit3 size={14} /> Edit details
                   </button>
                 ) : (
                   <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleSaveCompany}
-                      disabled={isSaving}
-                    >
-                      <FiCheck className="mr-1" />
-                      {isSaving ? "Saving…" : "Save"}
+                    <Button type="button" size="sm" onClick={handleSavePersonal} disabled={isSaving}>
+                      <FiCheck className="mr-1" /> {isSaving ? "Saving…" : "Save"}
                     </Button>
-
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        setIsCompanyEditing(false);
-                        void fetchUserData();
-                      }}
+                      onClick={cancelPersonalEdit}
                       disabled={isSaving}
                     >
                       <FiX className="mr-1" /> Cancel
@@ -1292,115 +1104,328 @@ export default function WorkspaceSetupOnboarding({
                   <div className="grid min-h-[220px] 2xl:min-h-[250px] place-items-center text-xs 2xl:text-sm text-[#78847E]">
                     Loading profile…
                   </div>
-                ) : isCompanyEditing ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
+                ) : isPersonalEditing ? (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px]">
                       <div>
-                        <Label>Company Name <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.company_name} onChange={handleCompanyChange("company_name")} onBlur={() => markCompanyTouched("company_name")} maxLength={80} error={Boolean(companyTouched.company_name && companyErrors.company_name)} />
-                        {showCompanyError("company_name")}
+                        <Label>
+                          Name <span className="text-[#B75A5A]">*</span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={form.name}
+                          onChange={handlePersonalChange("name")}
+                          onBlur={() => {
+                            setPersonalTouched((previous) => ({ ...previous, name: true }));
+                            validatePersonalField("name");
+                          }}
+                          maxLength={50}
+                          className="!h-9 !text-[12px] 2xl:!h-11 2xl:!text-[14px]"
+                          error={Boolean(personalTouched.name && personalErrors.name)}
+                        />
+                        {personalTouched.name && personalErrors.name && (
+                          <p className="mt-1.5 text-xs text-[#B75A5A]">{personalErrors.name}</p>
+                        )}
                       </div>
+
                       <div>
-                        <Label>Brand Name <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.brand_name} onChange={handleCompanyChange("brand_name")} onBlur={() => markCompanyTouched("brand_name")} maxLength={80} error={Boolean(companyTouched.brand_name && companyErrors.brand_name)} />
-                        {showCompanyError("brand_name")}
-                      </div>
-                      <div>
-                        <Label>Home Currency <span className="text-[#B75A5A]">*</span></Label>
-                        <select value={form.homeCurrency} onChange={handleCompanyChange("homeCurrency")} onBlur={() => markCompanyTouched("homeCurrency")} className={inputClass}>
-                          <option value="">Select Currency</option>
-                          {CURRENCY_OPTIONS.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
-                        </select>
-                        {showCompanyError("homeCurrency")}
-                      </div>
-                      <div>
-                        <Label>GST No.</Label>
-                        <Input type="text" value={form.gst_no} onChange={handleCompanyChange("gst_no")} onBlur={() => markCompanyTouched("gst_no")} maxLength={15} error={Boolean(companyTouched.gst_no && companyErrors.gst_no)} />
-                        {showCompanyError("gst_no")}
-                      </div>
-                      <div>
-                        <Label>PAN No.</Label>
-                        <Input type="text" value={form.pan_no} onChange={handleCompanyChange("pan_no")} onBlur={() => markCompanyTouched("pan_no")} maxLength={10} error={Boolean(companyTouched.pan_no && companyErrors.pan_no)} />
-                        {showCompanyError("pan_no")}
-                      </div>
-                      <div>
-                        <Label>Building No. <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.address_building} onChange={handleCompanyChange("address_building")} onBlur={() => markCompanyTouched("address_building")} maxLength={120} error={Boolean(companyTouched.address_building && companyErrors.address_building)} />
-                        {showCompanyError("address_building")}
-                      </div>
-                      <div>
-                        <Label>City <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.address_city} onChange={handleCompanyChange("address_city")} onBlur={() => markCompanyTouched("address_city")} maxLength={60} error={Boolean(companyTouched.address_city && companyErrors.address_city)} />
-                        {showCompanyError("address_city")}
-                      </div>
-                      <div>
-                        <Label>State <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.address_state} onChange={handleCompanyChange("address_state")} onBlur={() => markCompanyTouched("address_state")} maxLength={60} error={Boolean(companyTouched.address_state && companyErrors.address_state)} />
-                        {showCompanyError("address_state")}
-                      </div>
-                      <div>
-                        <Label>Country / Region <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.address_country} onChange={handleCompanyChange("address_country")} onBlur={() => markCompanyTouched("address_country")} maxLength={60} error={Boolean(companyTouched.address_country && companyErrors.address_country)} />
-                        {showCompanyError("address_country")}
-                      </div>
-                      <div>
-                        <Label>Zipcode <span className="text-[#B75A5A]">*</span></Label>
-                        <Input type="text" value={form.address_zipcode} onChange={handleCompanyChange("address_zipcode")} onBlur={() => markCompanyTouched("address_zipcode")} maxLength={12} error={Boolean(companyTouched.address_zipcode && companyErrors.address_zipcode)} />
-                        {showCompanyError("address_zipcode")}
+                        <Label>
+                          Phone Number <span className="text-[#B75A5A]">*</span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={form.phone_number}
+                          onChange={handlePersonalChange("phone_number")}
+                          onBlur={() => {
+                            setPersonalTouched((previous) => ({
+                              ...previous,
+                              phone_number: true,
+                            }));
+                            validatePersonalField("phone_number");
+                          }}
+                          maxLength={20}
+                          className="!h-9 !text-[12px] 2xl:!h-11 2xl:!text-[14px]"
+                          inputMode="tel"
+                          error={Boolean(
+                            personalTouched.phone_number && personalErrors.phone_number
+                          )}
+                        />
+                        {personalTouched.phone_number && personalErrors.phone_number && (
+                          <p className="mt-1.5 text-xs text-[#B75A5A]">
+                            {personalErrors.phone_number}
+                          </p>
+                        )}
                       </div>
                     </div>
 
-
-                  </>
+                    <div className="rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#8A948F]">
+                            Password
+                          </p>
+                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">••••••••••</p>
+                          <p className="mt-1 text-[11px] text-[#78847E]">
+                            We&apos;ll send a secure verification code to your registered email.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleForgotPassword}
+                          className="inline-flex h-9 items-center justify-center rounded-lg border border-[#B9D8C9] bg-white px-3 text-xs font-semibold text-[#0E8558] transition hover:bg-[#F2FAF6]"
+                        >
+                          Reset password
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="rounded-2xl px-1 py-1">
-                    <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
-                      <ReadOnlyField label="Company name" value={form.company_name} />
-                      <ReadOnlyField label="Brand name" value={form.brand_name} />
-                      <ReadOnlyField label="Home currency" value={form.homeCurrency} />
-                      <ReadOnlyField label="GST No." value={form.gst_no || "-"} />
-                      <ReadOnlyField label="PAN No." value={form.pan_no || "-"} />
-                      <ReadOnlyField
-                        label="Business address"
-                        className="min-w-0"
-                        value={[
-                          form.address_building,
-                          form.address_city,
-                          form.address_state,
-                          form.address_country,
-                          form.address_zipcode,
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      />
+                  <div className="space-y-5">
+                    <div className="rounded-2xl bg-[#FBFDFC] p-4">
+                      <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                        {/* Name */}
+                        <div className="min-w-0">
+                          <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
+                            Name
+                          </p>
+
+                          <p className="mt-1 truncate text-xs 2xl:text-sm font-bold text-[#26322C]">
+                            {form.name || "-"}
+                          </p>
+                        </div>
+
+                        {/* Email */}
+                        <div className="min-w-0">
+                          <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
+                            Email
+                          </p>
+
+                          <p
+                            title={data?.email || ""}
+                            className="mt-1 truncate text-xs 2xl:text-sm font-semibold text-[#33413A]"
+                          >
+                            {data?.email || "-"}
+                          </p>
+                        </div>
+
+                        {/* Phone Number */}
+                        <div className="min-w-0">
+                          <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
+                            Phone number
+                          </p>
+
+                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">
+                            {form.phone_number || "-"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[#DDEBE4] bg-[#F8FCFA] p-4">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-green-500 shadow-sm">
+                          <FiLock size={18} />
+                        </span>
+                        <div>
+                          <p className="text-xs 2xl:text-sm font-bold text-[#33413A]">Password</p>
+                          <p className="mt-0.5 text-xs text-[#78847E]">{"\u2022".repeat(10)}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
             </Panel>
+
+            <div ref={companySectionRef} className="h-full scroll-mt-24">
+              <Panel
+                className={cx(
+                  "overflow-hidden transition-all duration-300",
+                  guideStep === "company" &&
+                  "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]"
+                )}
+              >
+                <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">2. Company info</h2>
+
+                      {guideStep === "company" ? (
+                        <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
+                          Step 1 · Start here
+                        </span>
+                      ) : (
+                        <StatusPill tone={isCompanyComplete ? "green" : "blue"}>
+                          {isCompanyComplete ? "Completed" : "In progress"}
+                        </StatusPill>
+                      )}
+                    </div>
+
+                    <p className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
+                      {guideStep === "company"
+                        ? "Complete your company information first. This will unlock SKU sheet upload."
+                        : "Tell us about your business."}
+                    </p>
+                  </div>
+
+                  {!isCompanyEditing ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsCompanyEditing(true)}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
+                    >
+                      <FiEdit3 size={14} /> {isCompanyComplete ? "Edit details" : "Add details"}
+                    </button>
+                  ) : (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleSaveCompany}
+                        disabled={isSaving}
+                      >
+                        <FiCheck className="mr-1" />
+                        {isSaving ? "Saving…" : "Save"}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setIsCompanyEditing(false);
+                          void fetchUserData();
+                        }}
+                        disabled={isSaving}
+                      >
+                        <FiX className="mr-1" /> Cancel
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 2xl:p-5">
+                  {isLoading ? (
+                    <div className="grid min-h-[220px] 2xl:min-h-[250px] place-items-center text-xs 2xl:text-sm text-[#78847E]">
+                      Loading profile…
+                    </div>
+                  ) : isCompanyEditing ? (
+                    <>
+                      <div className="grid grid-cols-1 gap-x-3 gap-y-3 sm:grid-cols-3 2xl:gap-x-5 2xl:gap-y-4 [&_label]:!text-[12px] 2xl:[&_label]:!text-[14px] [&_input]:!h-9 [&_input]:!text-[12px] 2xl:[&_input]:!h-11 2xl:[&_input]:!text-[14px]">
+                        <div>
+                          <Label>Company Name <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.company_name} onChange={handleCompanyChange("company_name")} onBlur={() => markCompanyTouched("company_name")} maxLength={80} error={Boolean(companyTouched.company_name && companyErrors.company_name)} />
+                          {showCompanyError("company_name")}
+                        </div>
+                        <div>
+                          <Label>Brand Name <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.brand_name} onChange={handleCompanyChange("brand_name")} onBlur={() => markCompanyTouched("brand_name")} maxLength={80} error={Boolean(companyTouched.brand_name && companyErrors.brand_name)} />
+                          {showCompanyError("brand_name")}
+                        </div>
+                        <div>
+                          <Label>Home Currency <span className="text-[#B75A5A]">*</span></Label>
+                          <select value={form.homeCurrency} onChange={handleCompanyChange("homeCurrency")} onBlur={() => markCompanyTouched("homeCurrency")} className={inputClass}>
+                            <option value="">Select Currency</option>
+                            {CURRENCY_OPTIONS.map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                          </select>
+                          {showCompanyError("homeCurrency")}
+                        </div>
+                        <div>
+                          <Label>GST No.</Label>
+                          <Input type="text" value={form.gst_no} onChange={handleCompanyChange("gst_no")} onBlur={() => markCompanyTouched("gst_no")} maxLength={15} error={Boolean(companyTouched.gst_no && companyErrors.gst_no)} />
+                          {showCompanyError("gst_no")}
+                        </div>
+                        <div>
+                          <Label>PAN No.</Label>
+                          <Input type="text" value={form.pan_no} onChange={handleCompanyChange("pan_no")} onBlur={() => markCompanyTouched("pan_no")} maxLength={10} error={Boolean(companyTouched.pan_no && companyErrors.pan_no)} />
+                          {showCompanyError("pan_no")}
+                        </div>
+                        <div>
+                          <Label>Building No. <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.address_building} onChange={handleCompanyChange("address_building")} onBlur={() => markCompanyTouched("address_building")} maxLength={120} error={Boolean(companyTouched.address_building && companyErrors.address_building)} />
+                          {showCompanyError("address_building")}
+                        </div>
+                        <div>
+                          <Label>City <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.address_city} onChange={handleCompanyChange("address_city")} onBlur={() => markCompanyTouched("address_city")} maxLength={60} error={Boolean(companyTouched.address_city && companyErrors.address_city)} />
+                          {showCompanyError("address_city")}
+                        </div>
+                        <div>
+                          <Label>State <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.address_state} onChange={handleCompanyChange("address_state")} onBlur={() => markCompanyTouched("address_state")} maxLength={60} error={Boolean(companyTouched.address_state && companyErrors.address_state)} />
+                          {showCompanyError("address_state")}
+                        </div>
+                        <div>
+                          <Label>Country / Region <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.address_country} onChange={handleCompanyChange("address_country")} onBlur={() => markCompanyTouched("address_country")} maxLength={60} error={Boolean(companyTouched.address_country && companyErrors.address_country)} />
+                          {showCompanyError("address_country")}
+                        </div>
+                        <div>
+                          <Label>Zipcode <span className="text-[#B75A5A]">*</span></Label>
+                          <Input type="text" value={form.address_zipcode} onChange={handleCompanyChange("address_zipcode")} onBlur={() => markCompanyTouched("address_zipcode")} maxLength={12} error={Boolean(companyTouched.address_zipcode && companyErrors.address_zipcode)} />
+                          {showCompanyError("address_zipcode")}
+                        </div>
+                      </div>
+
+
+                    </>
+                  ) : (
+                    <div className="rounded-2xl px-1 py-1">
+                      <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-3">
+                        <ReadOnlyField label="Company name" value={form.company_name} />
+                        <ReadOnlyField label="Brand name" value={form.brand_name} />
+                        <ReadOnlyField label="Home currency" value={form.homeCurrency} />
+                        <ReadOnlyField label="GST No." value={form.gst_no || "-"} />
+                        <ReadOnlyField label="PAN No." value={form.pan_no || "-"} />
+                        <ReadOnlyField
+                          label="Business address"
+                          className="min-w-0"
+                          value={[
+                            form.address_building,
+                            form.address_city,
+                            form.address_state,
+                            form.address_country,
+                            form.address_zipcode,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            </div>
           </div>
-        </div>
+
+        </>)}
 
         {/* Row 2: Product + Integrations, exact 50 / 50 */}
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2 xl:items-stretch">
-          <div ref={productSectionRef} className="h-full scroll-mt-24">
+        <div className={cx(
+          "grid grid-cols-1 gap-5 xl:items-stretch",
+          productOnlyView ? "xl:grid-cols-1" : isSetupComplete ? "xl:grid-cols-2" : "xl:grid-cols-3"
+        )}>
+          {productOnlyView || !isSetupComplete ? <div ref={productSectionRef} className="h-full scroll-mt-24">
             <Panel
               className={cx(
                 "relative overflow-hidden transition-all duration-300",
+                // productOnlyView && "!rounded-none !border-0 !bg-transparent !shadow-none",
                 guideStep === "sku" &&
                 "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
                 !canAccessProductControls && "bg-[#FAFBFA]"
               )}
             >
-              <div className="flex h-full flex-col p-5">
-                <div className="flex gap-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">3. Product & inventory controls</h2>
+              <div className={cx("flex h-full flex-col", productOnlyView ? "p-4" : "p-5")}>
+                <div className={cx("flex gap-4", productOnlyView && "w-full justify-between")}>
+                  <div className={cx(productOnlyView && "w-full")}>
+                    <div className={cx("flex items-center gap-2", productOnlyView ? "justify-between" : "flex-wrap")}>
+                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
+                        {productOnlyView ? "Product & inventory controls" : "3. Product & inventory controls"}
+                      </h2>
 
                       {guideStep === "sku" ? (
                         <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                          Step 2 · Next step
+                          Step 3 · Next step
                         </span>
                       ) : (
                         <StatusPill tone={hasSkuSheet ? "green" : canAccessProductControls ? "blue" : "gray"}>
@@ -1409,7 +1434,7 @@ export default function WorkspaceSetupOnboarding({
                       )}
                     </div>
 
-                    <p className="mt-2 text-xs 2xl:text-sm font-bold text-[#33413A]">
+                    <p className={cx("text-xs 2xl:text-sm font-bold text-[#33413A]", productOnlyView ? "mt-1.5" : "mt-2")}>
                       {hasSkuSheet
                         ? "Your SKU sheet is ready"
                         : guideStep === "sku"
@@ -1432,7 +1457,10 @@ export default function WorkspaceSetupOnboarding({
                   disabled={!canAccessProductControls}
                   onClick={skuModal.openModal}
                   className={cx(
-                    "mt-5 flex min-h-[150px] flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-5 text-center transition",
+                    cx(
+                      "flex min-h-[150px] flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed text-center transition",
+                      productOnlyView ? "mt-3 min-h-[118px] px-4 py-3" : "mt-5 px-5 py-5"
+                    ),
                     canAccessProductControls
                       ? "border-[#B9D8C9] bg-[#FBFEFC] hover:border-green-500 hover:bg-[#F4FBF7]"
                       : "cursor-not-allowed border-[#DDE2DF] bg-[#F5F6F5] opacity-70"
@@ -1463,7 +1491,7 @@ export default function WorkspaceSetupOnboarding({
                   )}
                 </button>
 
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-4">
+                <div className={cx("flex flex-wrap items-center justify-center gap-4", productOnlyView ? "mt-2" : "mt-3")}>
                   <button
                     type="button"
                     onClick={handleDownloadSkuTemplate}
@@ -1489,10 +1517,74 @@ export default function WorkspaceSetupOnboarding({
                   )}
                 </div>
               </div>
+              {!canAccessProductControls && !productOnlyView && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                  <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
+                    <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
+                      <FiLock size={16} />
+                    </span>
+                    <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">Step 3 is locked</p>
+                    <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
+                      Complete Company Info first to unlock Product & Inventory Controls.
+                    </p>
+                  </div>
+                </div>
+              )}
             </Panel>
-          </div>
+          </div> : null}
 
-          <div ref={integrationSectionRef} className="h-full scroll-mt-24">
+          {!productOnlyView && (
+            <Panel className="relative min-h-[220px] overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-[#E8ECEA] px-5 py-4">
+                <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
+                  {isSetupComplete ? "3. Plans and Subscription" : "4. Plans and Subscription"}
+                </h2>
+                {!isSetupComplete && (
+                  <StatusPill tone={hasPlanAccess ? "green" : hasSkuSheet ? "blue" : "gray"}>
+                    {hasPlanAccess ? "Paid" : hasSkuSheet ? "Payment required" : "Locked"}
+                  </StatusPill>
+                )}
+              </div>
+              {isSetupComplete ? (
+                <div className="min-h-[165px] p-5" />
+              ) : (
+                <div className="flex min-h-[165px] flex-col items-start justify-between gap-4 p-5">
+                  <p className="text-[11px] 2xl:text-xs leading-5 text-[#78847E]">
+                    {hasSkuSheet
+                      ? "Complete the plan payment to unlock marketplace integrations."
+                      : "Upload your SKU sheet in Step 3 before continuing to plan payment."}
+                  </p>
+
+                  <div className="flex w-full justify-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="primary"
+                      disabled={!hasSkuSheet || hasPlanAccess}
+                      onClick={handlePlanPayment}
+                    >
+                      {hasPlanAccess ? "Paid" : "Pay"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {!hasSkuSheet && !isSetupComplete && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                  <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
+                    <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
+                      <FiLock size={16} />
+                    </span>
+                    <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">Step 4 is locked</p>
+                    <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
+                      Complete Step 3 and upload your SKU sheet before continuing to plan payment.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </Panel>
+          )}
+
+          {!productOnlyView && <div ref={integrationSectionRef} className="h-full scroll-mt-24">
             <Panel
               className={cx(
                 "relative overflow-hidden transition-all duration-300",
@@ -1506,11 +1598,13 @@ export default function WorkspaceSetupOnboarding({
                   <div className="flex gap-4">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">4. Integrations</h2>
+                        <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
+                          {isSetupComplete ? "4. Integrations" : "5. Integrations"}
+                        </h2>
 
                         {guideStep === "integration" ? (
                           <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                            Step 3 · Final step
+                            Step 5 · Final step
                           </span>
                         ) : (
                           <StatusPill tone={hasIntegration ? "green" : canAccessIntegrations ? "blue" : "gray"}>
@@ -1531,8 +1625,10 @@ export default function WorkspaceSetupOnboarding({
                         {hasIntegration
                           ? "Connect or manage your marketplace integrations below."
                           : guideStep === "integration"
-                            ? "Your SKU sheet is ready. Connect Amazon or Amazon Ads to complete workspace setup."
-                            : "Upload your SKU sheet first. Integrations will unlock automatically after Step 2."}
+                            ? "Your plan is paid and SKU sheet is ready. Connect Amazon or Amazon Ads to complete workspace setup."
+                            : !hasSkuSheet
+                              ? "Upload your SKU sheet first to unlock plan payment."
+                              : "Complete plan payment in Step 4 to unlock marketplace integrations."}
                       </p>
                     </div>
                   </div>
@@ -1595,16 +1691,18 @@ export default function WorkspaceSetupOnboarding({
                       <FiLock size={16} />
                     </span>
                     <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">
-                      Step 3 is locked
+                      Step 5 is locked
                     </p>
                     <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
-                      Upload your SKU sheet first to unlock marketplace integrations.
+                      {!hasSkuSheet
+                        ? "Upload your SKU sheet first to continue."
+                        : "Complete plan payment in Step 4 to unlock marketplace integrations."}
                     </p>
                   </div>
                 </div>
               )}
             </Panel>
-          </div>
+          </div>}
         </div>
       </div>
 
