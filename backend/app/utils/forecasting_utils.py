@@ -17,7 +17,7 @@ import os, base64, warnings
 from app.models.user_models import Inventory
 import json
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-import pmdarima as pm
+# import pmdarima as pm
 import re  # <-- added
 from multiprocessing import cpu_count
 

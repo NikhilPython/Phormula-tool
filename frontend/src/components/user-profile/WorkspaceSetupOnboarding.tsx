@@ -44,6 +44,7 @@ import {
 } from "@/lib/validations/authValidation";
 
 import * as XLSX from "xlsx-js-style";
+import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:5000";
@@ -1043,14 +1044,14 @@ export default function WorkspaceSetupOnboarding({
   }, [savingStatusId, token, getCurrentSkuSheet]);
 
   return (
-    <div className={cx("min-h-full", className)}>
+    <div className={cx("min-h-full flex flex-col", className)}>
       {loadError && (
         <div className="mb-4 rounded-xl border border-[#EAC9C9] bg-[#FFF6F6] px-4 py-3 text-xs 2xl:text-sm text-[#A94E4E]">
           {loadError}
         </div>
       )}
 
-      <div className="space-y-5">
+      <div className="space-y-5 flex-1 flex flex-col">
         {!productOnlyView && (<>
           {/* Row 1: Personal + Company, exact 50 / 50 */}
           <div
@@ -1402,26 +1403,33 @@ export default function WorkspaceSetupOnboarding({
 
         {/* Row 2: Product + Integrations, exact 50 / 50 */}
         <div className={cx(
-          "grid grid-cols-1 gap-5 xl:items-stretch",
+          "grid grid-cols-1 gap-5 xl:items-stretch flex-1",
           productOnlyView ? "xl:grid-cols-1" : isSetupComplete ? "xl:grid-cols-2" : "xl:grid-cols-3"
         )}>
-          {productOnlyView || !isSetupComplete ? <div ref={productSectionRef} className="h-full scroll-mt-24">
+          {productOnlyView || !isSetupComplete ? <div ref={productSectionRef} className="h-full flex flex-col scroll-mt-24">
             <Panel
               className={cx(
-                "relative overflow-hidden transition-all duration-300",
-                // productOnlyView && "!rounded-none !border-0 !bg-transparent !shadow-none",
+                "product-panel relative overflow-hidden transition-all duration-300 flex flex-col h-full",
                 guideStep === "sku" &&
                 "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
                 !canAccessProductControls && "bg-[#FAFBFA]"
               )}
             >
-              <div className={cx("flex h-full flex-col", productOnlyView ? "p-4" : "p-5")}>
+              <div className={cx("flex h-full flex-col flex-1", productOnlyView ? "p-4" : "p-5")}>
                 <div className={cx("flex gap-4", productOnlyView && "w-full justify-between")}>
                   <div className={cx(productOnlyView && "w-full")}>
                     <div className={cx("flex items-center gap-2", productOnlyView ? "justify-between" : "flex-wrap")}>
-                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
-                        {productOnlyView ? "Product & inventory controls" : "3. Product & inventory controls"}
-                      </h2>
+                      {productOnlyView ? (
+                        <PageBreadcrumb
+                          pageTitle="Product & inventory controls"
+                          variant="table"
+                          align="left"
+                        />
+                      ) : (
+                        <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
+                          3. Product & inventory controls
+                        </h2>
+                      )}
 
                       {guideStep === "sku" ? (
                         <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
@@ -1458,7 +1466,7 @@ export default function WorkspaceSetupOnboarding({
                   onClick={skuModal.openModal}
                   className={cx(
                     cx(
-                      "flex min-h-[150px] flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed text-center transition",
+                      "flex flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed text-center transition",
                       productOnlyView ? "mt-3 min-h-[118px] px-4 py-3" : "mt-5 px-5 py-5"
                     ),
                     canAccessProductControls
