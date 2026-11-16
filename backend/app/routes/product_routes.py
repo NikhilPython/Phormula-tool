@@ -1937,6 +1937,19 @@ def aggregate_monthly_sku_rows(rows):
         total_quantity = safe_number(row.get("total_quantity"))
         profit = safe_number(row.get("profit"))
         cm2_profit = safe_number(row.get("cm2_profit_total") or row.get("cm2_profit"))
+
+        # Reimbursement vs CM2 must use the all-in TOTAL CM2 value.
+        total_cm2_source = row.get("total_cm2_profit")
+        if total_cm2_source is None or pd.isna(total_cm2_source) or (
+            isinstance(total_cm2_source, str) and not total_cm2_source.strip()
+        ):
+            total_cm2_source = row.get("cm2_profit_total")
+        if total_cm2_source is None or pd.isna(total_cm2_source) or (
+            isinstance(total_cm2_source, str) and not total_cm2_source.strip()
+        ):
+            total_cm2_source = row.get("cm2_profit")
+        total_cm2_profit = safe_number(total_cm2_source)
+
         promotional_rebates = safe_number(row.get("promotional_rebates"))
 
         # Yearly TOTAL reimbursement must be derived from the final yearly
@@ -1968,7 +1981,8 @@ def aggregate_monthly_sku_rows(rows):
             abs(rembursement_fee / net_sales) * 100 if net_sales else 0
         )
         rembursment_vs_cm2_margins = (
-            abs(rembursement_fee / cm2_profit) * 100 if cm2_profit else 0
+            abs(rembursement_fee / total_cm2_profit) * 100
+            if total_cm2_profit else 0
         )
         promotional_rebates_percentage = (
             (promotional_rebates / net_sales) * 100 if net_sales else 0

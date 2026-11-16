@@ -1657,9 +1657,13 @@ def process_skuwise_data(user_id, country, month, year):
             advertising_total,
             platform_fee_fixed_total,
         )
-        cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
+        total_cm2_profit = cm2_profit
+        cm2_margins = (total_cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
-        rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
+        rembursment_vs_cm2_margins = (
+            abs(rembursement_fee / total_cm2_profit) * 100
+            if total_cm2_profit else 0
+        )
 
         # ------------------ FIXED TOTAL ROW BUILD (DEDUP + UNIQUE COLUMNS) ------------------
         extra_cols_for_total = [

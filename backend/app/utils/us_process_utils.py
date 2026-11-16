@@ -2178,9 +2178,13 @@ def process_skuwise_us_data(user_id, country, month, year):
         )
         # Do not derive report-level CM2 by summing SKU rows. SKU CM2 is
         # intentionally zero, while TOTAL CM2 uses the complete monthly charges.
-        cm2_margins = (cm2_profit / total_sales) * 100 if total_sales != 0 else 0
+        total_cm2_profit = cm2_profit
+        cm2_margins = (total_cm2_profit / total_sales) * 100 if total_sales != 0 else 0
         acos = (advertising_total / total_sales) * 100 if total_sales != 0 else 0
-        rembursment_vs_cm2_margins = abs((rembursement_fee / cm2_profit) * 100) if cm2_profit != 0 else 0
+        rembursment_vs_cm2_margins = (
+            abs(rembursement_fee / total_cm2_profit) * 100
+            if total_cm2_profit else 0
+        )
         # Same as UK: SKU rows remain zero; TOTAL row receives the percentage.
         sku_grouped["cm2_profit_percentage"] = 0.0
 

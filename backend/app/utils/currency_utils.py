@@ -449,6 +449,10 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     profit = pd.to_numeric(global_df["profit"], errors="coerce").fillna(0)
     ads = pd.to_numeric(global_df["ads_spend"], errors="coerce").fillna(0)
     cm2_profit = pd.to_numeric(global_df["cm2_profit"], errors="coerce").fillna(0)
+    total_cm2_profit = pd.to_numeric(
+        global_df.get("total_cm2_profit", global_df["cm2_profit"]),
+        errors="coerce",
+    ).fillna(0)
     reimbursement = pd.to_numeric(global_df["rembursement_fee"], errors="coerce").fillna(0)
 
     global_df["asp"] = np.where(total_quantity != 0, net_sales / total_quantity, 0)
@@ -456,7 +460,11 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     global_df["profit_percentage"] = np.where(net_sales != 0, (profit / net_sales) * 100, 0)
     global_df["acos"] = np.where(net_sales != 0, (ads / net_sales) * 100, 0)
     global_df["cm2_profit_percentage"] = np.where(net_sales != 0, (cm2_profit / net_sales) * 100, 0)
-    global_df["rembursment_vs_cm2_margins"] = np.where(cm2_profit != 0, (reimbursement / cm2_profit) * 100, 0)
+    global_df["rembursment_vs_cm2_margins"] = np.where(
+        total_cm2_profit != 0,
+        (reimbursement / total_cm2_profit).abs() * 100,
+        0,
+    )
     global_df["reimbursement_vs_sales"] = np.where(net_sales != 0, (reimbursement / net_sales) * 100, 0)
     global_df["promotional_rebates_percentage"] = np.where(
         net_sales != 0,
@@ -618,7 +626,9 @@ def _build_global_skuwise_table(user_id, output_table, source_tables, conn):
     total_row["cm2_profit_percentage"] = (cm2_profit_productwise / total_net_sales) * 100 if total_net_sales else 0
     total_row["total_cm2_margins"] = (total_cm2 / total_net_sales) * 100 if total_net_sales else 0
     total_row["tacos_total_advertising_cost_of_sale"] = (total_ads / total_net_sales) * 100 if total_net_sales else 0
-    total_row["rembursment_vs_cm2_margins"] = (total_reimbursement / total_cm2) * 100 if total_cm2 else 0
+    total_row["rembursment_vs_cm2_margins"] = (
+        abs(total_reimbursement / total_cm2) * 100 if total_cm2 else 0
+    )
     total_row["reimbursement_vs_sales"] = (total_reimbursement / total_net_sales) * 100 if total_net_sales else 0
     total_row["promotional_rebates_percentage"] = (
         float(total_row["promotional_rebates"] or 0) / total_net_sales

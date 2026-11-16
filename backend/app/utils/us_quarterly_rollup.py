@@ -76,6 +76,7 @@ def aggregate_us_monthly_reports(reports):
 
     net_sales, net_units = num("net_sales"), num("total_quantity")
     profit, cm2 = num("profit"), num("cm2_profit")
+    total_cm2_profit = num("total_cm2_profit")
     ads, reimbursement = num("advertising_total"), num("rembursement_fee")
     result["asp"] = ratio(net_sales, net_units)
     result["price_in_gbp"] = ratio(num("cost_of_unit_sold"), net_units)
@@ -88,7 +89,9 @@ def aggregate_us_monthly_reports(reports):
     result["acos"] = ratio(ads, net_sales, 100)
     result["ads_acos"] = result["acos"]
     result["reimbursement_vs_sales"] = ratio(reimbursement, net_sales, 100).abs()
-    result["rembursment_vs_cm2_margins"] = ratio(reimbursement, cm2, 100).abs()
+    result["rembursment_vs_cm2_margins"] = ratio(
+        reimbursement, total_cm2_profit, 100
+    ).abs()
     result["reimbursement_vs_cm2_margins"] = result["rembursment_vs_cm2_margins"]
     for name, denominator in (("sales_mix", total.get("net_sales", 0)), ("profit_mix", total.get("profit", 0))):
         numerator = net_sales if name == "sales_mix" else profit
