@@ -20,7 +20,7 @@ from app.utils.token_utils import create_database_if_not_exists, get_effective_u
 from sqlalchemy import text
 import pandas as pd
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
-from datetime import date
+from datetime import date, datetime, timezone
 from app.utils.fba_fee_calculator import estimate_fba_fee, number as fba_number, resolve_fba_measurements
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
@@ -2951,6 +2951,18 @@ def skup():
                     ALTER TABLE "{table_name}"
                     ADD COLUMN in_transit_units INTEGER DEFAULT 0;
                 '''))
+
+            if "last_upload_sku_file" not in existing_columns:
+                conn.execute(text(f'''
+                    ALTER TABLE "{table_name}"
+                    ADD COLUMN last_upload_sku_file TIMESTAMPTZ;
+                '''))
+
+            # Update the timestamp on all rows to record this upload event
+            conn.execute(text(f'''
+                UPDATE "{table_name}"
+                SET last_upload_sku_file = :upload_ts;
+            '''), {"upload_ts": datetime.now(timezone.utc)})
 
     except SQLAlchemyError as e:
         return jsonify({'error': 'Database error', 'message': str(e)}), 500

@@ -5,7 +5,7 @@ import calendar
 from datetime import datetime, timezone
 from werkzeug.utils import secure_filename
 import pandas as pd
-from sqlalchemy import create_engine, Table, MetaData, Column, Integer, String, Float, text
+from sqlalchemy import create_engine, Table, MetaData, Column, Integer, String, Float, DateTime, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import inspect
 import os
@@ -1474,6 +1474,9 @@ def multiCountry():
 
         Column('month', String(20), nullable=True),
         Column('year', String(20), nullable=True),
+
+        # ✅ Tracks the timestamp of the last SKU file upload for every row
+        Column('last_upload_sku_file', DateTime(timezone=True), nullable=True),
     )
 
     # ---------- helpers ----------
@@ -1720,6 +1723,9 @@ def multiCountry():
 
                 'month': _s(month),
                 'year': _s(year),
+
+                # ✅ Record the timestamp of this SKU file upload
+                'last_upload_sku_file': datetime.now(timezone.utc),
             })
 
         # Consolidate country-specific rows into one SKU master row per product.
@@ -1826,6 +1832,7 @@ def get_current_sku_sheet():
         return jsonify({'success': True, 'rows': []}), 200
 
     try:
+        _existing_cols = {c['name'] for c in inspect(engine).get_columns(table_name)}
         query = text(f"""
             SELECT
                 id,
@@ -1848,8 +1855,9 @@ def get_current_sku_sheet():
                 local_stock_uk,
                 local_stock_us,
                 in_transit_units,
-                {", ".join((field if field in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Active' AS " + field) for field in ('product_status_uk','product_status_us','product_status_canada'))},
-                {"CASE WHEN LOWER(TRIM(COALESCE(product_status, 'Active'))) IN ('discontinued', 'discontinuous') THEN 'Discontinued' ELSE 'Active' END AS product_status" if 'product_status' in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Active' AS product_status"}
+                {", ".join((field if field in _existing_cols else "'Active' AS " + field) for field in ('product_status_uk','product_status_us','product_status_canada'))},
+                {"CASE WHEN LOWER(TRIM(COALESCE(product_status, 'Active'))) IN ('discontinued', 'discontinuous') THEN 'Discontinued' ELSE 'Active' END AS product_status" if 'product_status' in _existing_cols else "'Active' AS product_status"},
+                {"last_upload_sku_file" if 'last_upload_sku_file' in _existing_cols else "NULL AS last_upload_sku_file"}
             FROM {table_name}
             WHERE user_id = :user_id
             ORDER BY s_no NULLS LAST
