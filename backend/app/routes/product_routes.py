@@ -4920,11 +4920,11 @@ def upload_warehouse_data():
         flat_rows = []
         for _, source_row in df.iterrows():
             row = source_row.to_dict()
-            row_country = normalize_warehouse_country(
-                row.get('country'), default_warehouse_country
-            )
-            if country != 'global':
-                row_country = normalize_warehouse_country(country)
+            raw_country = row.get('country')
+            if has_warehouse_value(raw_country):
+                row_country = normalize_warehouse_country(raw_country, default_warehouse_country)
+            else:
+                row_country = default_warehouse_country
 
             if has_warehouse_value(row.get('sku')):
                 flat_rows.append({
@@ -4979,8 +4979,8 @@ def upload_warehouse_data():
                     'country': None,
                     'sku_uk': None,
                     'sku_us': None,
-                    'local_stock_uk': 0,
-                    'local_stock_us': 0,
+                    'local_stock_uk': None,
+                    'local_stock_us': None,
                     '_countries': [],
                 }
 
@@ -5001,6 +5001,11 @@ def upload_warehouse_data():
                 r['s_no'] = idx
             countries_list = r.pop('_countries', [])
             r['country'] = ', '.join(countries_list) if countries_list else (country.upper() if country != 'global' else 'UK, US')
+            # For warehouse display, default unset stock to 0
+            if r['local_stock_uk'] is None:
+                r['local_stock_uk'] = 0
+            if r['local_stock_us'] is None:
+                r['local_stock_us'] = 0
             pivoted_rows.append(r)
 
         warehouse_df = pd.DataFrame(pivoted_rows, columns=[
@@ -5020,9 +5025,19 @@ def upload_warehouse_data():
         # Save warehouse table in new pivoted schema
         warehouse_df.to_sql(warehouse_table_name, user_engine, if_exists='replace', index=False)
 
+        # Keep country and global warehouse tables in sync if multi-country data was uploaded
+        if any(',' in str(c) for c in warehouse_df['country']):
+            for sync_c in ('global', 'uk', 'us'):
+                sync_tbl = f"warehouse_{user_id}_{sync_c}_data"
+                if sync_tbl != warehouse_table_name:
+                    try:
+                        warehouse_df.to_sql(sync_tbl, user_engine, if_exists='replace', index=False)
+                    except Exception:
+                        pass
+
         # -------------------------------------------------------------------
         # Step 3 – UPDATE sku_{user_id}_data_table
-        # Match on sku_uk / sku_us; update local_stock_uk / local_stock_us
+        # Match on product_name or sku_uk/sku_us; update local_stock_uk / local_stock_us independently
         # -------------------------------------------------------------------
         inspector = inspect(user_engine)
         existing_tables = inspector.get_table_names()
@@ -5059,41 +5074,80 @@ def upload_warehouse_data():
                 existing_columns.add('local_stock')
 
             for _, wrow in warehouse_df.iterrows():
-                # -- UK update --
+                pname = str(wrow.get('product_name') or '').strip()
                 sku_uk_val = str(wrow.get('sku_uk') or '').strip()
-                if sku_uk_val and sku_uk_val not in ('nan', 'None') and 'sku_uk' in existing_columns:
-                    stock_uk = int(wrow.get('local_stock_uk') or 0)
-                    set_parts = ['local_stock_uk = :stock']
-                    if 'local_stock' in existing_columns:
-                        set_parts.append('local_stock = :stock')
-                    set_clause = ', '.join(set_parts)
-                    res = conn.execute(
-                        text(
-                            f'UPDATE "{sku_table_name}" '
-                            f'SET {set_clause} '
-                            f'WHERE TRIM(CAST(sku_uk AS TEXT)) = :sku'
-                        ),
-                        {'stock': stock_uk, 'sku': sku_uk_val},
-                    )
-                    updated_count += res.rowcount
-
-                # -- US update --
                 sku_us_val = str(wrow.get('sku_us') or '').strip()
-                if sku_us_val and sku_us_val not in ('nan', 'None') and 'sku_us' in existing_columns:
+
+                has_uk = bool(sku_uk_val and sku_uk_val not in ('nan', 'None'))
+                has_us = bool(sku_us_val and sku_us_val not in ('nan', 'None'))
+
+                set_clauses = []
+                params = {}
+
+                # Only update UK stock if this upload specifically provided UK data for this product
+                if has_uk and 'local_stock_uk' in existing_columns:
+                    stock_uk = int(wrow.get('local_stock_uk') or 0)
+                    set_clauses.append('local_stock_uk = :stock_uk')
+                    params['stock_uk'] = stock_uk
+
+                # Only update US stock if this upload specifically provided US data for this product
+                if has_us and 'local_stock_us' in existing_columns:
                     stock_us = int(wrow.get('local_stock_us') or 0)
-                    set_parts = ['local_stock_us = :stock']
-                    if 'local_stock' in existing_columns:
-                        set_parts.append('local_stock = :stock')
-                    set_clause = ', '.join(set_parts)
+                    set_clauses.append('local_stock_us = :stock_us')
+                    params['stock_us'] = stock_us
+
+                if not set_clauses:
+                    continue
+
+                # Keep generic local_stock in sync with page country or active stock
+                if 'local_stock' in existing_columns:
+                    if country == 'uk' and has_uk:
+                        set_clauses.append('local_stock = :stock_uk')
+                    elif country == 'us' and has_us:
+                        set_clauses.append('local_stock = :stock_us')
+                    elif has_uk:
+                        set_clauses.append('local_stock = :stock_uk')
+                    elif has_us:
+                        set_clauses.append('local_stock = :stock_us')
+
+                set_sql = ', '.join(set_clauses)
+                row_updated = False
+
+                # 1. Update by matching exact product_name (case-insensitive)
+                if pname:
                     res = conn.execute(
                         text(
                             f'UPDATE "{sku_table_name}" '
-                            f'SET {set_clause} '
-                            f'WHERE TRIM(CAST(sku_us AS TEXT)) = :sku'
+                            f'SET {set_sql} '
+                            f'WHERE LOWER(TRIM(product_name)) = LOWER(:pname)'
                         ),
-                        {'stock': stock_us, 'sku': sku_us_val},
+                        {**params, 'pname': pname}
                     )
-                    updated_count += res.rowcount
+                    if res.rowcount > 0:
+                        updated_count += res.rowcount
+                        row_updated = True
+
+                # 2. Fallback: match by SKU if product_name was not matched
+                if not row_updated:
+                    sku_where_parts = []
+                    sku_params = {**params}
+                    if has_uk and 'sku_uk' in existing_columns:
+                        sku_where_parts.append('TRIM(CAST(sku_uk AS TEXT)) = :sku_uk')
+                        sku_params['sku_uk'] = sku_uk_val
+                    if has_us and 'sku_us' in existing_columns:
+                        sku_where_parts.append('TRIM(CAST(sku_us AS TEXT)) = :sku_us')
+                        sku_params['sku_us'] = sku_us_val
+
+                    if sku_where_parts:
+                        res = conn.execute(
+                            text(
+                                f'UPDATE "{sku_table_name}" '
+                                f'SET {set_sql} '
+                                f'WHERE {" OR ".join(sku_where_parts)}'
+                            ),
+                            sku_params
+                        )
+                        updated_count += res.rowcount
 
             if 'last_upload_sku_file' in existing_columns:
                 conn.execute(
