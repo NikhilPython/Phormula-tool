@@ -19,10 +19,9 @@ type Props = {
 const FIXED_COLUMNS = [
     "s_no",
     "product_name",
+    "country",
     "sku",
     "local_stock",
-    "month",
-    "year",
 ] as const;
 const REQUIRED_UPLOAD_COLUMNS = [
     "s_no",
@@ -30,17 +29,14 @@ const REQUIRED_UPLOAD_COLUMNS = [
     "country",
     "sku",
     "local_stock",
-    "month",
-    "year",
 ] as const;
 
 const HEADER_LABELS: Record<string, string> = {
     s_no: "S. No.",
     product_name: "Product Name",
+    country: "Country",
     sku: "SKU",
     local_stock: "Local Stock",
-    month: "Month",
-    year: "Year",
 };
 
 function toTitleCase(value: string) {
@@ -140,10 +136,9 @@ export default function WarehouseMultiCountryUpload({
                 const out: Row = {
                     s_no: "",
                     product_name: "",
+                    country: "",
                     sku: "",
                     local_stock: "",
-                    month: "",
-                    year: "",
                 };
 
                 Object.keys(row).forEach((k) => {
@@ -285,12 +280,17 @@ export default function WarehouseMultiCountryUpload({
     };
 
     const onDownloadTemplate = () => {
-        const link = document.createElement("a");
-        link.href = "/warehouse-information-template-with-country.xlsx";
-        link.download = "Warehouse Information with Country.xlsx";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Build a simple template workbook on the fly so the user always gets
+        // the current format (S.No. | Product Name | Country | SKU | Local Stock)
+        const wb = XLSX.utils.book_new();
+        const wsData = [
+            ["S.No.", "Product Name", "Country", "SKU", "Local Stock"],
+            [1, "Classic", "UK", "BV-6X5T-6CY1", 1000],
+            [2, "Classic", "US", "SEMNIW1", 1000],
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        XLSX.writeFile(wb, "Warehouse_Upload_Template.xlsx");
     };
 
     const onConfirmUpload = async () => {

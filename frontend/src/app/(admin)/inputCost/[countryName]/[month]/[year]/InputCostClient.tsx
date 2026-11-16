@@ -67,15 +67,16 @@ type InventoryActionCardItem = ActionCardItem & {
 const WAREHOUSE_FIXED_COLUMNS = [
   's_no',
   'product_name',
+  'country',
   'sku',
   'local_stock',
-  'month',
-  'year',
 ];
 const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
-  ...WAREHOUSE_FIXED_COLUMNS.slice(0, 2),
+  's_no',
+  'product_name',
   'country',
-  ...WAREHOUSE_FIXED_COLUMNS.slice(2),
+  'sku',
+  'local_stock',
 ];
 
 const normalizeWarehouseHeader = (key: string) => {

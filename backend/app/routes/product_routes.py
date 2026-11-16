@@ -4908,31 +4908,31 @@ def upload_warehouse_data():
         df.columns = [normalize_column_name(c) for c in df.columns]
         df = df.dropna(how='all')
 
-        # Accept the Product Name + SKU format and keep existing country-specific
-        # warehouse files compatible during rollout.
+        # If no country column, default to the page country
         if 'country' not in df.columns:
             df['country'] = default_warehouse_country
 
+        # -------------------------------------------------------------------
+        # Step 1 – Collect flat rows: {product_name, country, sku, local_stock}
+        # Supports both "sku" column (new format) and legacy "sku_uk"/"sku_us"
+        # -------------------------------------------------------------------
         legacy_sku_columns = [col for col in ('sku_uk', 'sku_us') if col in df.columns]
-        normalized_rows = []
+        flat_rows = []
         for _, source_row in df.iterrows():
             row = source_row.to_dict()
             row_country = normalize_warehouse_country(
                 row.get('country'), default_warehouse_country
             )
-
             if country != 'global':
                 row_country = normalize_warehouse_country(country)
 
             if has_warehouse_value(row.get('sku')):
-                normalized_rows.append({
+                flat_rows.append({
                     's_no': row.get('s_no'),
-                    'product_name': row.get('product_name'),
+                    'product_name': str(row.get('product_name') or '').strip(),
                     'country': row_country,
-                    'sku': row.get('sku'),
+                    'sku': str(row.get('sku')).strip(),
                     'local_stock': row.get('local_stock', 0),
-                    'month': row.get('month'),
-                    'year': row.get('year'),
                 })
                 continue
 
@@ -4941,60 +4941,79 @@ def upload_warehouse_data():
                     [row_country] if country != 'global'
                     else [c.removeprefix('sku_') for c in legacy_sku_columns]
                 )
-                for legacy_country in legacy_countries:
-                    legacy_sku_column = f'sku_{legacy_country}'
-                    legacy_sku = row.get(legacy_sku_column)
-                    if has_warehouse_value(legacy_sku):
-                        normalized_rows.append({
+                for leg_country in legacy_countries:
+                    leg_sku = row.get(f'sku_{leg_country}')
+                    if has_warehouse_value(leg_sku):
+                        flat_rows.append({
                             's_no': row.get('s_no'),
-                            'product_name': row.get('product_name'),
-                            'country': legacy_country,
-                            'sku': legacy_sku,
+                            'product_name': str(row.get('product_name') or '').strip(),
+                            'country': leg_country,
+                            'sku': str(leg_sku).strip(),
                             'local_stock': row.get('local_stock', 0),
-                            'month': row.get('month'),
-                            'year': row.get('year'),
                         })
 
-        if not normalized_rows:
+        if not flat_rows:
             return jsonify({
                 'error': 'Invalid warehouse format',
-                'message': 'Each row must include a Product Name, SKU, and Local Stock value.',
+                'message': 'Each row must include a Product Name, Country, SKU, and Local Stock value.',
             }), 400
 
-        df = pd.DataFrame(normalized_rows, columns=[
-            's_no', 'product_name', 'country', 'sku', 'local_stock', 'month', 'year'
+        # -------------------------------------------------------------------
+        # Step 2 – Pivot flat rows into one row per product_name
+        # DB schema: s_no, product_name, sku_uk, sku_us, local_stock_uk, local_stock_us
+        # -------------------------------------------------------------------
+        merged_pivot = {}  # key = product_name.lower()
+        for flat in flat_rows:
+            pname = flat['product_name']
+            pkey = pname.lower()
+            row_country = normalize_warehouse_country(flat['country'], default_warehouse_country)
+            try:
+                stock_val = int(float(flat.get('local_stock') or 0))
+            except (ValueError, TypeError):
+                stock_val = 0
+
+            if pkey not in merged_pivot:
+                merged_pivot[pkey] = {
+                    's_no': flat.get('s_no'),
+                    'product_name': pname,
+                    'sku_uk': None,
+                    'sku_us': None,
+                    'local_stock_uk': 0,
+                    'local_stock_us': 0,
+                }
+            if row_country == 'uk':
+                merged_pivot[pkey]['sku_uk'] = flat['sku']
+                merged_pivot[pkey]['local_stock_uk'] = stock_val
+            elif row_country == 'us':
+                merged_pivot[pkey]['sku_us'] = flat['sku']
+                merged_pivot[pkey]['local_stock_us'] = stock_val
+
+        pivoted_rows = list(merged_pivot.values())
+        for idx, r in enumerate(pivoted_rows, start=1):
+            if not r.get('s_no'):
+                r['s_no'] = idx
+
+        warehouse_df = pd.DataFrame(pivoted_rows, columns=[
+            's_no', 'product_name', 'sku_uk', 'sku_us', 'local_stock_uk', 'local_stock_us'
         ])
-        df['country'] = df['country'].apply(
-            lambda value: normalize_warehouse_country(value, default_warehouse_country)
-        )
+        for col in ['s_no', 'local_stock_uk', 'local_stock_us']:
+            warehouse_df[col] = pd.to_numeric(warehouse_df[col], errors='coerce').fillna(0).astype(int)
+        for col in ['product_name', 'sku_uk', 'sku_us']:
+            warehouse_df[col] = (
+                warehouse_df[col].astype(str).str.strip()
+                .replace({'nan': None, 'None': None, '': None})
+            )
+        warehouse_df = warehouse_df[
+            warehouse_df['sku_uk'].notna() | warehouse_df['sku_us'].notna()
+        ].reset_index(drop=True)
 
-        if country == 'global' and not df['country'].isin(['uk', 'us']).all():
-            return jsonify({
-                'error': 'Invalid warehouse country',
-                'message': 'Global warehouse rows must target UK or US.',
-            }), 400
+        # Save warehouse table in new pivoted schema
+        warehouse_df.to_sql(warehouse_table_name, user_engine, if_exists='replace', index=False)
 
-        df['country'] = df['country'].str.upper()
-
-        # Numeric conversions
-        for col in ['local_stock', 'year', 's_no']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        df['local_stock'] = df['local_stock'].fillna(0)
-        df = df.drop_duplicates(subset=['country', 'sku'], keep='last')
-
-        # Clean object columns
-        for col in df.columns:
-            if df[col].dtype == object:
-                df[col] = df[col].astype(str).str.strip()
-                df[col] = df[col].replace({'nan': None, 'None': None, '': None})
-
-        # Save uploaded warehouse data table
-        df.to_sql(warehouse_table_name, user_engine, if_exists='replace', index=False)
-
-        # ---------------------------------------------------
-        # UPDATE public.sku_{user_id}_data_table
-        # ---------------------------------------------------
+        # -------------------------------------------------------------------
+        # Step 3 – UPDATE sku_{user_id}_data_table
+        # Match on sku_uk / sku_us; update local_stock_uk / local_stock_us
+        # -------------------------------------------------------------------
         inspector = inspect(user_engine)
         existing_tables = inspector.get_table_names()
 
@@ -5004,79 +5023,76 @@ def upload_warehouse_data():
                 'message': f'Warehouse data uploaded, but SKU table "{sku_table_name}" not found',
                 'warehouse_table_name': warehouse_table_name,
                 'file_name': filename,
-                'columns': df.columns.tolist(),
-                'row_count': int(len(df)),
-                'data': df.to_dict(orient="records")
+                'columns': warehouse_df.columns.tolist(),
+                'row_count': int(len(warehouse_df)),
+                'data': warehouse_df.to_dict(orient='records'),
             }), 200
 
+        updated_count = 0
         with user_engine.begin() as conn:
-            # Ensure stock columns exist in SKU table
-            existing_columns = {col["name"] for col in inspect(conn).get_columns(sku_table_name)}
+            existing_columns = {col['name'] for col in inspect(conn).get_columns(sku_table_name)}
 
-            if "local_stock" not in existing_columns:
+            # Ensure country-specific stock columns exist
+            for stock_col in ('local_stock_uk', 'local_stock_us'):
+                if stock_col not in existing_columns:
+                    conn.execute(text(f'''
+                        ALTER TABLE "{sku_table_name}"
+                        ADD COLUMN {stock_col} INTEGER DEFAULT 0
+                    '''))
+                    existing_columns.add(stock_col)
+
+            if 'local_stock' not in existing_columns:
                 conn.execute(text(f'''
                     ALTER TABLE "{sku_table_name}"
                     ADD COLUMN local_stock INTEGER DEFAULT 0
                 '''))
+                existing_columns.add('local_stock')
 
-            for stock_column in ('local_stock_uk', 'local_stock_us'):
-                if stock_column not in existing_columns:
-                    conn.execute(text(f'''
-                        ALTER TABLE "{sku_table_name}"
-                        ADD COLUMN {stock_column} INTEGER DEFAULT 0
-                    '''))
-
-            # Load SKU table
-            sku_df = pd.read_sql(f'SELECT * FROM "{sku_table_name}"', conn)
-            sku_df.columns = [normalize_column_name(c) for c in sku_df.columns]
-
-            # Update the country-specific stock column using that marketplace's SKU.
-            available_sku_columns = set(sku_df.columns)
-            updated_count = 0
-            for _, row in df.iterrows():
-                row_country = normalize_warehouse_country(row.get('country'))
-                match_key = f'sku_{row_country}'
-                if match_key not in available_sku_columns:
-                    match_key = 'sku' if 'sku' in available_sku_columns else None
-                if not match_key:
-                    continue
-
-                match_value = str(row.get('sku') or '').strip()
-                if not match_value:
-                    continue
-                stock_column = f'local_stock_{row_country}'
-                if stock_column not in available_sku_columns:
-                    stock_column = 'local_stock'
-                set_clauses = [f'{stock_column} = :local_stock']
-                if country != 'global' and stock_column != 'local_stock':
-                    set_clauses.append('local_stock = :local_stock')
-
-                result = conn.execute(
-                    text(
-                        f'UPDATE "{sku_table_name}" SET {", ".join(set_clauses)} '
-                        f'WHERE CAST({match_key} AS TEXT) = :match_value'
-                    ),
-                    {
-                        "local_stock": (
-                            0 if pd.isna(pd.to_numeric(row.get('local_stock'), errors='coerce'))
-                            else int(pd.to_numeric(row.get('local_stock'), errors='coerce'))
+            for _, wrow in warehouse_df.iterrows():
+                # -- UK update --
+                sku_uk_val = str(wrow.get('sku_uk') or '').strip()
+                if sku_uk_val and sku_uk_val not in ('nan', 'None') and 'sku_uk' in existing_columns:
+                    stock_uk = int(wrow.get('local_stock_uk') or 0)
+                    set_parts = ['local_stock_uk = :stock']
+                    if 'local_stock' in existing_columns:
+                        set_parts.append('local_stock = :stock')
+                    res = conn.execute(
+                        text(
+                            f'UPDATE "{sku_table_name}" '
+                            f'SET {', '.join(set_parts)} '
+                            f'WHERE TRIM(CAST(sku_uk AS TEXT)) = :sku'
                         ),
-                        "match_value": match_value,
-                    }
-                )
-                updated_count += result.rowcount
+                        {'stock': stock_uk, 'sku': sku_uk_val},
+                    )
+                    updated_count += res.rowcount
+
+                # -- US update --
+                sku_us_val = str(wrow.get('sku_us') or '').strip()
+                if sku_us_val and sku_us_val not in ('nan', 'None') and 'sku_us' in existing_columns:
+                    stock_us = int(wrow.get('local_stock_us') or 0)
+                    set_parts = ['local_stock_us = :stock']
+                    if 'local_stock' in existing_columns:
+                        set_parts.append('local_stock = :stock')
+                    res = conn.execute(
+                        text(
+                            f'UPDATE "{sku_table_name}" '
+                            f'SET {', '.join(set_parts)} '
+                            f'WHERE TRIM(CAST(sku_us AS TEXT)) = :sku'
+                        ),
+                        {'stock': stock_us, 'sku': sku_us_val},
+                    )
+                    updated_count += res.rowcount
 
         return jsonify({
             'success': True,
-            'message': 'Warehouse Excel uploaded and SKU stock values updated successfully',
+            'message': 'Warehouse data uploaded and SKU stock values updated successfully',
             'warehouse_table_name': warehouse_table_name,
             'sku_table_name': sku_table_name,
-            'matched_on': match_key,
             'updated_rows': int(updated_count),
             'file_name': filename,
-            'columns': df.columns.tolist(),
-            'row_count': int(len(df)),
-            'data': df.to_dict(orient="records")
+            'columns': warehouse_df.columns.tolist(),
+            'row_count': int(len(warehouse_df)),
+            'data': warehouse_df.to_dict(orient='records'),
         }), 200
 
     except Exception as e:
