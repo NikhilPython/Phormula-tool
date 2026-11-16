@@ -4496,6 +4496,26 @@ export async function exportWarehouseDataExcel(params: {
 
   if (!dataRows?.length) return;
 
+ const formatPeriodLabel = (label: string) => {
+    if (!label) return "";
+    
+    // Matches formats like "November 2026"
+    const match = label.trim().match(/^([a-zA-Z]+)\s+(\d{4})$/);
+    if (match) {
+      const month = match[1];
+      const year = match[2];
+      
+      // Get first 3 letters (e.g., Nov) and format properly (Nov)
+      const monthAbbr = month.slice(0, 3).charAt(0).toUpperCase() + month.slice(1, 3).toLowerCase();
+      const shortYear = year.slice(-2);
+      
+      return `${monthAbbr}'${shortYear}`;
+    }
+    
+    // Fallback: if it doesn't match exactly, return original
+    return label;
+  };
+
   const wb = new ExcelJS.Workbook();
   wb.creator = "Skinelements";
   wb.created = new Date();
@@ -4545,7 +4565,7 @@ const whiteFill = {
 
   ws.getCell(4, 1).value = `Country : ${titleCountry || normalizeCountryLabel(countryName)}`;
   ws.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
-  ws.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
+  ws.getCell(6, 1).value = `Period : ${formatPeriodLabel(periodLabel) || ""}`;
 
   const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);

@@ -67,13 +67,13 @@ type InventoryActionCardItem = ActionCardItem & {
 const WAREHOUSE_FIXED_COLUMNS = [
   's_no',
   'product_name',
-  'country',
+  // 'country',
   'sku',
   'local_stock',
 ];
 const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
   'product_name',
-  'country',
+  // 'country',
   'sku',
   'local_stock',
 ];
@@ -7229,7 +7229,7 @@ export default function InputCostPage({ params }: Params) {
     () => [
       { value: 'inventory-insights' as const, label: 'Inventory Insights' },
       { value: 'sku-info' as const, label: 'SKU Information' },
-      { value: 'extra' as const, label: 'Upload Warehouse' },
+      { value: 'extra' as const, label: 'Warehouse' },
       { value: 'recon-table' as const, label: 'Recon Table' },
       { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
     ],
@@ -7420,7 +7420,7 @@ export default function InputCostPage({ params }: Params) {
       : normalizeWarehouseCountry(countryName);
 
     await exportWarehouseDataExcel({
-      filename: `Warehouse_Data_${countryName === 'global' ? `GLOBAL_${exportCountry.toUpperCase()}` : exportCountry.toUpperCase()}.xlsx`,
+      filename: `Warehouse Data ${countryName === 'global' ? `GLOBAL_${exportCountry.toUpperCase()}` : exportCountry.toUpperCase()}.xlsx`,
       countryName: exportCountry,
       titleLine: 'Warehouse Data',
       titleCountry: exportCountry.toUpperCase(),
@@ -7499,13 +7499,13 @@ export default function InputCostPage({ params }: Params) {
                     </button>
                   )}
 
-                  <button
+                  {/* <button
                     className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
                     onClick={() => setShowMultiuseCountry(true)}
                     disabled={isNA}
                   >
                     Upload File
-                  </button>
+                  </button> */}
 
                   <DownloadIconButton
                     onClick={handleDownloadXLSX}
@@ -7515,14 +7515,6 @@ export default function InputCostPage({ params }: Params) {
                 </>
               ) : (
                 <>
-                  <button
-                    className="ml-auto cursor-pointer rounded-[5px] bg-[#2c3e50] px-4 py-2 font-['Lato'] text-[clamp(12px,0.729vw,16px)] font-bold text-[#f8edcf] hover:bg-[#34495e]"
-                    onClick={() => setShowWarehouseUpload(true)}
-                    disabled={isNA}
-                  >
-                    Upload File
-                  </button>
-
                   <DownloadIconButton
                     onClick={handleWarehouseDownload}
                     size="md"

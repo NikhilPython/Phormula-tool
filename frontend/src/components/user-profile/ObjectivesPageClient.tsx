@@ -13,7 +13,7 @@ import { useConnectedPlatforms } from "@/lib/utils/useConnectedPlatforms";
 import type { PlatformId } from "@/lib/utils/platforms";
 import SegmentedToggle from "../ui/SegmentedToggle";
 import WorkspaceSetupOnboarding from "@/components/user-profile/WorkspaceSetupOnboarding";
-import CurrencyRatesTab from "@/components/user-profile/CurrencyRatesTab";
+import WarehouseStockControls from "@/components/user-profile/WarehouseStockControls";
 import TargetVsSalesChart from "../objectives/TargetVsSalesChart";
 import ObjectiveMoMChart from "../objectives/ObjectiveMoMChart";
 import {
@@ -24,6 +24,7 @@ import {
   FiFileText,
   FiTrash2,
   FiPlus,
+  FiDownload,
 } from "react-icons/fi";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
@@ -32,6 +33,8 @@ import Loader from "@/components/loader/Loader";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { IoMdLock } from "react-icons/io";
 import { useRouter } from 'next/navigation';
+import DownloadIconButton from "../ui/button/DownloadButton";
+import { exportCurrencyRatesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -672,6 +675,7 @@ export default function ObjectivesPageClient({
 
   const [currencyRates, setCurrencyRates] = useState<CurrencyRateRow[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
+  const [isDownloadingRates, setIsDownloadingRates] = useState(false);
 
   const [editingPid, setEditingPid] = useState<PlatformId | null>(null);
   const [draftTarget, setDraftTarget] = useState<string>("");
@@ -692,6 +696,8 @@ export default function ObjectivesPageClient({
   const [editingObjectiveCountry, setEditingObjectiveCountry] = useState<string | null>(null);
   const [objectiveCountryDraft, setObjectiveCountryDraft] =
     useState<CountryObjectiveForm | null>(null);
+
+  const [activeObjectiveCountry, setActiveObjectiveCountry] = useState<string>("");
 
   const [objective, setObjective] = useState<UserObjectiveForm>({
     growth_intent: "balanced",
@@ -1436,6 +1442,13 @@ export default function ObjectivesPageClient({
     return [(resolvedTargetCountry || country || "uk").toLowerCase()];
   }, [integratedCountries, resolvedTargetCountry, country]);
 
+  useEffect(() => {
+    if (!visibleObjectiveCountries.length) return;
+    if (!visibleObjectiveCountries.includes(activeObjectiveCountry)) {
+      setActiveObjectiveCountry(visibleObjectiveCountries[0]);
+    }
+  }, [visibleObjectiveCountries, activeObjectiveCountry]);
+
   const startObjectiveCardEdit = (countryValue: string) => {
     if (isMember) return;
 
@@ -1954,6 +1967,116 @@ export default function ObjectivesPageClient({
     router.push(`/profile/${resolvedTargetCountry}/NA/NA`);
   };
 
+  const handleDownloadCurrencyRates = async () => {
+    if (!token) {
+      alert("Authentication token is missing. Please sign in again.");
+      return;
+    }
+
+    try {
+      setIsDownloadingRates(true);
+
+      // Fetch ALL historical currency rates.
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/currency-rates?history=true`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+          result?.message ||
+          "Failed to fetch currency history."
+        );
+      }
+
+      const rows: CurrencyRateRow[] = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.currency_rates)
+          ? result.currency_rates
+          : [];
+
+      if (!rows.length) {
+        throw new Error("No historical currency rates found.");
+      }
+
+      // --- DEDUPLICATION LOGIC START ---
+      const uniqueRowsMap = new Map<string, any>();
+
+      rows.forEach((rate) => {
+        const rawMonth = String(rate.month || "-").trim();
+        const monthStr = rawMonth !== "-"
+          ? rawMonth.charAt(0).toUpperCase() + rawMonth.slice(1).toLowerCase()
+          : "-";
+        const yearStr = rate.year || "-";
+        const home = String(rate.user_currency || "-").toUpperCase();
+        const country = String(rate.country || "-").toUpperCase();
+        const selected = String(rate.selected_currency || "-").toUpperCase();
+
+        const uniqueKey = `${monthStr}-${yearStr}-${home}-${country}-${selected}`;
+
+        if (!uniqueRowsMap.has(uniqueKey)) {
+          uniqueRowsMap.set(uniqueKey, {
+            "Month": monthStr,
+            "Year": yearStr,
+            "Home Currency": home,
+            "Country": country,
+            "Selected Currency": selected,
+            "Conversion Rate":
+              rate.conversion_rate === null ||
+                rate.conversion_rate === undefined
+                ? "-"
+                : rate.conversion_rate,
+          });
+        }
+      });
+
+      const excelData = Array.from(uniqueRowsMap.values());
+      // --- DEDUPLICATION LOGIC END ---
+
+      const companyName = (data as any)?.companyName || (data as any)?.company_name || (data as any)?.company || "";
+      const brandName = (data as any)?.brandName || (data as any)?.brand_name || (data as any)?.brand || "";
+
+      // Generate Excel using the custom utility.
+      exportCurrencyRatesExcel({
+        filename: "Currency Rates.xlsx",
+        titleLine: "Currency Rates",
+        titleCountry: "Global",
+        platformLabel: "Phormula",
+        periodLabel: "All Time",
+        companyName,
+        brandName,
+        homeCurrencyCode: "USD",
+        dataRows: excelData,
+      });
+
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Unable to download currency history.");
+    } finally {
+      setIsDownloadingRates(false);
+    }
+  };
+
+  const activeCardCountry = activeObjectiveCountry || visibleObjectiveCountries[0] || "uk";
+  const activeCardObjective =
+    objectivesByCountry[activeCardCountry] || buildDefaultObjectiveForCountry(activeCardCountry);
+  const activeCardIsEditing = editingObjectiveCountry === activeCardCountry;
+  const activeCardPlatform = countryToPlatform(activeCardCountry);
+  const activeCardCurrency =
+    platformToCurrencyCode(activeCardPlatform) || homeCurrencyCode;
+  const activeCardRawTarget = Number(
+    targetSummaries[activeCardCountry]?.target_sales ?? 0
+  );
+
   return (
     <div className="w-full">
 
@@ -1985,7 +2108,7 @@ export default function ObjectivesPageClient({
         {activeTab === "settings_configuration" && (
           <div className="space-y-5">
             {/* Targets & Objectives and Product & Inventory Controls - Side by Side */}
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               {/* Targets & Objectives */}
               <section>
                 {/* <div className="mb-3">
@@ -1997,7 +2120,7 @@ export default function ObjectivesPageClient({
                 </div> */}
 
                 <div className="grid grid-cols-1 gap-4">
-                  {visibleObjectiveCountries.map((cardCountryKey) => {
+                  {/* {visibleObjectiveCountries.map((cardCountryKey) => {
                     const displayCountry = cardCountryKey;
                     const cardCountry = displayCountry.toLowerCase();
 
@@ -2221,7 +2344,219 @@ export default function ObjectivesPageClient({
                         </div>
                       </InfoCard>
                     );
-                  })}
+                  })} */}
+
+                  <section>
+                    <div className="grid grid-cols-1 gap-4">
+                      <InfoCard
+                        title={
+                          <div className="flex items-center gap-4">
+                            <PageBreadcrumb
+                              pageTitle={`${activeCardCountry.toUpperCase()} Objectives`}
+                              variant="table"
+                              align="left"
+                            />
+                            {visibleObjectiveCountries.length > 1 && (
+                              <SegmentedToggle<string>
+                                value={activeCardCountry}
+                                onChange={(next) => {
+                                  if (editingObjectiveCountry && editingObjectiveCountry !== next) {
+                                    cancelObjectiveCardEdit();
+                                  }
+                                  setActiveObjectiveCountry(next);
+                                }}
+                                options={visibleObjectiveCountries.map((c) => ({
+                                  value: c,
+                                  label: c.toUpperCase(),
+                                }))}
+                                compact
+                                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                              />
+                            )}
+                          </div>
+                        }
+                        action={
+                          canEditBusinessOverview ? (
+                            activeCardIsEditing ? (
+                              <div className="flex items-center gap-2">
+                                <Button size="icon" onClick={handleStrategicObjectivesSave}>
+                                  <FiCheck />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={cancelObjectiveCardEdit}
+                                >
+                                  <FiX />
+                                </Button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => startObjectiveCardEdit(activeCardCountry)}
+                                className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                type="button"
+                                disabled={isPreviewMode || editingObjectiveCountry !== null}
+                                aria-label={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
+                                title={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
+                              >
+                                <FiEdit className="text-lg" />
+                              </button>
+                            )
+                          ) : null
+                        }
+                      >
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <InfoItem
+                            label="Growth"
+                            value={
+                              activeCardIsEditing && objectiveCountryDraft ? (
+                                <select
+                                  value={objectiveCountryDraft.growth_intent}
+                                  onChange={(e) =>
+                                    setObjectiveCountryDraft((prev) =>
+                                      prev
+                                        ? {
+                                          ...prev,
+                                          growth_intent: e.target
+                                            .value as UserObjectiveForm["growth_intent"],
+                                        }
+                                        : prev
+                                    )
+                                  }
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                >
+                                  {GROWTH_OPTIONS.map((v) => (
+                                    <option key={v} value={v}>
+                                      {v.charAt(0).toUpperCase() + v.slice(1)}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                prettifyObjectiveValue(activeCardObjective.growth_intent)
+                              )
+                            }
+                          />
+
+                          <InfoItem
+                            label="Profit"
+                            value={
+                              activeCardIsEditing && objectiveCountryDraft ? (
+                                <select
+                                  value={objectiveCountryDraft.profit_priority}
+                                  onChange={(e) =>
+                                    setObjectiveCountryDraft((prev) =>
+                                      prev
+                                        ? {
+                                          ...prev,
+                                          profit_priority: e.target
+                                            .value as UserObjectiveForm["profit_priority"],
+                                        }
+                                        : prev
+                                    )
+                                  }
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                >
+                                  {PROFIT_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                prettifyObjectiveValue(activeCardObjective.profit_priority)
+                              )
+                            }
+                          />
+
+                          <InfoItem
+                            label="Inventory Dilution"
+                            value={
+                              activeCardIsEditing && objectiveCountryDraft ? (
+                                <select
+                                  value={
+                                    objectiveCountryDraft.inventory_clearance_priority
+                                      ? "yes"
+                                      : "no"
+                                  }
+                                  onChange={(e) =>
+                                    setObjectiveCountryDraft((prev) =>
+                                      prev
+                                        ? {
+                                          ...prev,
+                                          inventory_clearance_priority:
+                                            e.target.value === "yes",
+                                        }
+                                        : prev
+                                    )
+                                  }
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                >
+                                  <option value="yes">Yes</option>
+                                  <option value="no">No</option>
+                                </select>
+                              ) : activeCardObjective.inventory_clearance_priority ? (
+                                "Yes"
+                              ) : (
+                                "No"
+                              )
+                            }
+                          />
+
+                          <InfoItem
+                            label="Country"
+                            value={
+                              activeCardIsEditing && objectiveCountryDraft ? (
+                                <select
+                                  value={objectiveCountryDraft.country}
+                                  onChange={(e) => {
+                                    const nextCountry = e.target.value.toLowerCase();
+                                    const existing =
+                                      objectivesByCountry[nextCountry] ||
+                                      buildDefaultObjectiveForCountry(nextCountry);
+
+                                    setObjectiveCountryDraft(existing);
+                                    setObjectiveTargetDraft(
+                                      String(
+                                        Number(targetSummaries[nextCountry]?.target_sales ?? 0)
+                                      )
+                                    );
+                                  }}
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                >
+                                  {integratedCountries.map((c) => (
+                                    <option key={c} value={c}>
+                                      {c.toUpperCase()}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                activeCardCountry.toUpperCase()
+                              )
+                            }
+                          />
+
+                          <InfoItem
+                            label={`Target (${activeCardCurrency})`}
+                            value={
+                              activeCardIsEditing ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={1}
+                                  value={objectiveTargetDraft}
+                                  onChange={(e) => setObjectiveTargetDraft(e.target.value)}
+                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                                  placeholder="Enter target"
+                                />
+                              ) : (
+                                money(activeCardRawTarget, activeCardCurrency)
+                              )
+                            }
+                          />
+                        </div>
+                      </InfoCard>
+                    </div>
+                  </section>
                 </div>
               </section>
 
@@ -2232,19 +2567,28 @@ export default function ObjectivesPageClient({
                   className="h-full flex flex-col [&_.product-panel]:flex-1"
                 />
               </section>
+
+              {/* Warehouse Local Stock */}
+              <section className="flex flex-col">
+                <WarehouseStockControls />
+              </section>
             </div>
 
-            {/* Currency Rates (Now full width below) */}
+            {/* Currency Rates Download Section */}
             <section>
-              {/* <div className="mb-3">
-                <PageBreadcrumb
-                  pageTitle="Currency Rates"
-                  variant="table"
-                  align="left"
-                />
-              </div> */}
-
-              <CurrencyRatesTab />
+              <InfoCard
+                title={<PageBreadcrumb pageTitle="Currency Rates" variant="table" align="left" />}
+                action={
+                  <DownloadIconButton
+                    onClick={handleDownloadCurrencyRates}
+                    disabled={isDownloadingRates}
+                  />
+                }
+              >
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Download the latest currency exchange rates and formats for your marketplace reporting.
+                </div>
+              </InfoCard>
             </section>
           </div>
         )}

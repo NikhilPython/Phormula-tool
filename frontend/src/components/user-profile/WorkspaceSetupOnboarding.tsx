@@ -183,7 +183,7 @@ function ReadOnlyField({
       <p className="text-[10px] 2xl:text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8A948F]">
         {label}
       </p>
-      <div className="mt-1 break-words whitespace-normal text-xs 2xl:text-sm font-semibold leading-5 2xl:leading-6 text-[#33413A]">
+      <div className="mt-1 break-words whitespace-normal text-xs 2xl:text-sm font-semibold leading-5 2xl:leading-6 text-charcoal-500">
         {value || "-"}
       </div>
     </div>
@@ -531,6 +531,18 @@ export default function WorkspaceSetupOnboarding({
         return;
       }
 
+      // Use the upload timestamp from the SKU record and keep the exported
+      // value date-only, independent of the browser's locale/time zone.
+      const uploadTimestamp = currentSkuSheet?.rows?.find(
+        (row: any) => row.last_upload_sku_file
+      )?.last_upload_sku_file;
+      const uploadedDate = uploadTimestamp
+        ? (() => {
+            const match = String(uploadTimestamp).match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+          })()
+        : "";
+
       // 1. Map the flattened UI rows into the exact Excel format you want
       const formattedData = flattenedSkuRows.map((row: any) => {
         return {
@@ -544,7 +556,7 @@ export default function WorkspaceSetupOnboarding({
           "Currency": row.currency || "",
           "Local Stock": row.local_stock || 0,
           "Product Status": row.product_status || "Active",
-          "Date": new Date().toISOString().split("T")[0],
+          "Date": uploadedDate,
         };
       });
 
@@ -1165,7 +1177,7 @@ export default function WorkspaceSetupOnboarding({
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#8A948F]">
                             Password
                           </p>
-                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">••••••••••</p>
+                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-charcoal-500">••••••••••</p>
                           <p className="mt-1 text-[11px] text-[#78847E]">
                             We&apos;ll send a secure verification code to your registered email.
                           </p>
@@ -1203,7 +1215,7 @@ export default function WorkspaceSetupOnboarding({
 
                           <p
                             title={data?.email || ""}
-                            className="mt-1 truncate text-xs 2xl:text-sm font-semibold text-[#33413A]"
+                            className="mt-1 truncate text-xs 2xl:text-sm font-semibold text-charcoal-500"
                           >
                             {data?.email || "-"}
                           </p>
@@ -1215,7 +1227,7 @@ export default function WorkspaceSetupOnboarding({
                             Phone number
                           </p>
 
-                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-[#33413A]">
+                          <p className="mt-1 text-xs 2xl:text-sm font-semibold text-charcoal-500">
                             {form.phone_number || "-"}
                           </p>
                         </div>
@@ -1228,7 +1240,7 @@ export default function WorkspaceSetupOnboarding({
                           <FiLock size={18} />
                         </span>
                         <div>
-                          <p className="text-xs 2xl:text-sm font-bold text-[#33413A]">Password</p>
+                          <p className="text-xs 2xl:text-sm font-bold text-charcoal-500">Password</p>
                           <p className="mt-0.5 text-xs text-[#78847E]">{"\u2022".repeat(10)}</p>
                         </div>
                       </div>
@@ -1442,7 +1454,7 @@ export default function WorkspaceSetupOnboarding({
                       )}
                     </div>
 
-                    <p className={cx("text-xs 2xl:text-sm font-bold text-[#33413A]", productOnlyView ? "mt-1.5" : "mt-2")}>
+                    <p className={cx("text-xs 2xl:text-sm font-bold text-charcoal-500", productOnlyView ? "mt-1.5" : "mt-2")}>
                       {hasSkuSheet
                         ? "Your SKU sheet is ready"
                         : guideStep === "sku"
@@ -1450,7 +1462,7 @@ export default function WorkspaceSetupOnboarding({
                           : "SKU upload is locked"}
                     </p>
 
-                    <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-[#78847E]">
+                    <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-charcoal-500">
                       {hasSkuSheet
                         ? "Your product data is available. You can replace the sheet whenever you need to update your catalog."
                         : guideStep === "sku"
@@ -1486,7 +1498,7 @@ export default function WorkspaceSetupOnboarding({
                         ? "Upload SKU sheet"
                         : "SKU upload locked"}
                   </span>
-                  <span className="mt-1 text-[11px] 2xl:text-xs text-[#78847E]">
+                  <span className="mt-1 text-[11px] 2xl:text-xs text-charcoal-500">
                     {canAccessProductControls
                       ? "Click to browse · .xlsx, .xls, .csv"
                       : "Complete Company Info to unlock"}
@@ -1516,7 +1528,7 @@ export default function WorkspaceSetupOnboarding({
                       <button
                         type="button"
                         onClick={handleViewSkuSheet}
-                        className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#41708F] transition hover:text-[#315c78]"
+                        className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-green-500 transition hover:text-[#315c78]"
                       >
                         View your SKU
                         <FiEye size={14} />
@@ -1621,7 +1633,7 @@ export default function WorkspaceSetupOnboarding({
                         )}
                       </div>
 
-                      <p className="mt-2 text-xs 2xl:text-sm font-bold text-[#33413A]">
+                      <p className="mt-2 text-xs 2xl:text-sm font-bold text-charcoal-500">
                         {hasIntegration
                           ? "Marketplace connection status"
                           : guideStep === "integration"
@@ -1676,7 +1688,7 @@ export default function WorkspaceSetupOnboarding({
                         )}
                       </div>
 
-                      <p className="mt-3 text-xs 2xl:text-sm font-bold text-[#33413A]">{platform.label}</p>
+                      <p className="mt-3 text-xs 2xl:text-sm font-bold text-charcoal-500">{platform.label}</p>
                       <span
                         className={cx(
                           "mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold",

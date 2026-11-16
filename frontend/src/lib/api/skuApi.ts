@@ -15,6 +15,7 @@ export type UploadSkuMultiCountryRes = {
 export type SkuSheetRow = {
    id?: number | string;
    s_no?: number | null;
+   last_upload_sku_file?: string | null;
   product_name?: string | null;
   product_barcode?: string | null;
   asin?: string | null;

@@ -479,12 +479,12 @@ export default function ProfileClient() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#159A67]">Last workspace activity</p>
                 {lastActivity && formattedLastActivity ? (
                   <>
-                    <p className="mt-1 text-sm font-semibold text-[#33413A]">{lastActivity.label} updated</p>
+                    <p className="mt-1 text-sm font-semibold text-charcoal-500">{lastActivity.label} updated</p>
                     <p className="mt-0.5 text-xs text-[#78847E]">{formattedLastActivity}</p>
                   </>
                 ) : (
                   <>
-                    <p className="mt-1 text-sm font-semibold text-[#33413A]">No workspace updates yet</p>
+                    <p className="mt-1 text-sm font-semibold text-charcoal-500">No workspace updates yet</p>
                     <p className="mt-0.5 text-xs text-[#78847E]">Backend update times will appear here.</p>
                   </>
                 )}
