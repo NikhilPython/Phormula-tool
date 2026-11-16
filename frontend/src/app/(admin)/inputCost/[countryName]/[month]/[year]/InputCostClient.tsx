@@ -72,7 +72,6 @@ const WAREHOUSE_FIXED_COLUMNS = [
   'local_stock',
 ];
 const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
-  's_no',
   'product_name',
   'country',
   'sku',
@@ -7244,24 +7243,37 @@ export default function InputCostPage({ params }: Params) {
       : normalizeWarehouseCountry(countryName);
 
     const displayedRows = warehouseData.flatMap((row) => {
+      const rawCountryStr = String(row.country ?? row.Country ?? '').trim().toLowerCase();
       const rowCountry = normalizeWarehouseCountry(
-        row.country ?? row.Country ?? (
+        rawCountryStr || (
           row.sku_uk && !row.sku_us ? 'uk' :
           row.sku_us && !row.sku_uk ? 'us' : targetCountry
         )
       );
-      if (countryName === 'global' && rowCountry && rowCountry !== targetCountry) {
+
+      const sku =
+        (targetCountry === 'uk' ? (row.sku_uk ?? (rawCountryStr.includes('uk') ? row.sku : '')) : (row.sku_us ?? (rawCountryStr.includes('us') ? row.sku : ''))) ??
+        row[`sku_${targetCountry}`] ??
+        row.sku ??
+        row.SKU ??
+        '';
+
+      if (countryName === 'global' && !sku && (row.sku_uk || row.sku_us)) {
         return [];
       }
 
-      const sku =
-        row.sku ??
-        row.SKU ??
-        row[`sku_${targetCountry}`] ??
-        row.sku_uk ??
-        row.sku_us ??
-        '';
+      if (
+        countryName === 'global' &&
+        rowCountry &&
+        !rowCountry.includes(targetCountry) &&
+        !['global', 'all'].includes(rowCountry) &&
+        !row[`sku_${targetCountry}`]
+      ) {
+        return [];
+      }
+
       const localStock =
+        (targetCountry === 'uk' ? (row.local_stock_uk ?? row.local_stock) : (row.local_stock_us ?? row.local_stock)) ??
         row[`local_stock_${targetCountry}`] ??
         row.local_stock ??
         '';

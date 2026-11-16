@@ -4960,7 +4960,7 @@ def upload_warehouse_data():
 
         # -------------------------------------------------------------------
         # Step 2 – Pivot flat rows into one row per product_name
-        # DB schema: s_no, product_name, sku_uk, sku_us, local_stock_uk, local_stock_us
+        # DB schema: s_no, product_name, country, sku_uk, sku_us, local_stock_uk, local_stock_us
         # -------------------------------------------------------------------
         merged_pivot = {}  # key = product_name.lower()
         for flat in flat_rows:
@@ -4976,11 +4976,18 @@ def upload_warehouse_data():
                 merged_pivot[pkey] = {
                     's_no': flat.get('s_no'),
                     'product_name': pname,
+                    'country': None,
                     'sku_uk': None,
                     'sku_us': None,
                     'local_stock_uk': 0,
                     'local_stock_us': 0,
+                    '_countries': [],
                 }
+
+            c_upper = row_country.upper()
+            if c_upper and c_upper not in merged_pivot[pkey]['_countries']:
+                merged_pivot[pkey]['_countries'].append(c_upper)
+
             if row_country == 'uk':
                 merged_pivot[pkey]['sku_uk'] = flat['sku']
                 merged_pivot[pkey]['local_stock_uk'] = stock_val
@@ -4988,17 +4995,20 @@ def upload_warehouse_data():
                 merged_pivot[pkey]['sku_us'] = flat['sku']
                 merged_pivot[pkey]['local_stock_us'] = stock_val
 
-        pivoted_rows = list(merged_pivot.values())
-        for idx, r in enumerate(pivoted_rows, start=1):
+        pivoted_rows = []
+        for idx, r in enumerate(merged_pivot.values(), start=1):
             if not r.get('s_no'):
                 r['s_no'] = idx
+            countries_list = r.pop('_countries', [])
+            r['country'] = ', '.join(countries_list) if countries_list else (country.upper() if country != 'global' else 'UK, US')
+            pivoted_rows.append(r)
 
         warehouse_df = pd.DataFrame(pivoted_rows, columns=[
-            's_no', 'product_name', 'sku_uk', 'sku_us', 'local_stock_uk', 'local_stock_us'
+            's_no', 'product_name', 'country', 'sku_uk', 'sku_us', 'local_stock_uk', 'local_stock_us'
         ])
         for col in ['s_no', 'local_stock_uk', 'local_stock_us']:
             warehouse_df[col] = pd.to_numeric(warehouse_df[col], errors='coerce').fillna(0).astype(int)
-        for col in ['product_name', 'sku_uk', 'sku_us']:
+        for col in ['product_name', 'country', 'sku_uk', 'sku_us']:
             warehouse_df[col] = (
                 warehouse_df[col].astype(str).str.strip()
                 .replace({'nan': None, 'None': None, '': None})
@@ -5056,10 +5066,11 @@ def upload_warehouse_data():
                     set_parts = ['local_stock_uk = :stock']
                     if 'local_stock' in existing_columns:
                         set_parts.append('local_stock = :stock')
+                    set_clause = ', '.join(set_parts)
                     res = conn.execute(
                         text(
                             f'UPDATE "{sku_table_name}" '
-                            f'SET {', '.join(set_parts)} '
+                            f'SET {set_clause} '
                             f'WHERE TRIM(CAST(sku_uk AS TEXT)) = :sku'
                         ),
                         {'stock': stock_uk, 'sku': sku_uk_val},
@@ -5073,15 +5084,22 @@ def upload_warehouse_data():
                     set_parts = ['local_stock_us = :stock']
                     if 'local_stock' in existing_columns:
                         set_parts.append('local_stock = :stock')
+                    set_clause = ', '.join(set_parts)
                     res = conn.execute(
                         text(
                             f'UPDATE "{sku_table_name}" '
-                            f'SET {', '.join(set_parts)} '
+                            f'SET {set_clause} '
                             f'WHERE TRIM(CAST(sku_us AS TEXT)) = :sku'
                         ),
                         {'stock': stock_us, 'sku': sku_us_val},
                     )
                     updated_count += res.rowcount
+
+            if 'last_upload_sku_file' in existing_columns:
+                conn.execute(
+                    text(f'UPDATE "{sku_table_name}" SET last_upload_sku_file = :upload_ts'),
+                    {"upload_ts": datetime.now(timezone.utc)}
+                )
 
         return jsonify({
             'success': True,

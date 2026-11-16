@@ -24,7 +24,6 @@ const FIXED_COLUMNS = [
     "local_stock",
 ] as const;
 const REQUIRED_UPLOAD_COLUMNS = [
-    "s_no",
     "product_name",
     "country",
     "sku",
