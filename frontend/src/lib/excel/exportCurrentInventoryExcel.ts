@@ -6311,14 +6311,6 @@ for (let r = headerTopRowIndex; r <= headerSubRowIndex; r++) {
   XLSX.writeFile(wb, filename);
 }
 
-
-
-
-
-
-
-
-
 export function exportGlobalAgeingRiskHeatmapExcel(params: {
   filename: string;
   titleLine?: string;
@@ -6753,5 +6745,155 @@ const formatPercentValue = (value: any) => {
   buildSheet(wb, "UK Inventory Insights", "UK", ukRows);
   buildSheet(wb, "US Inventory Insights", "US", usRows);
 
+  XLSX.writeFile(wb, filename);
+}
+
+
+
+/* =========================
+   Currency Rates History Export
+========================= */
+export function exportCurrencyRatesExcel(params: {
+  filename: string;
+  titleLine?: string;
+  titleCountry?: string;
+  platformLabel?: string;
+  periodLabel: string;
+  companyName: string;
+  brandName: string;
+  homeCurrencyCode?: string;
+  dataRows: Record<string, any>[];
+}) {
+  const {
+    filename,
+    titleLine = "Currency Rates History",
+    titleCountry = "",
+    platformLabel = "Phormula",
+    periodLabel = "",
+    companyName = "",
+    brandName = "",
+    homeCurrencyCode,
+    dataRows,
+  } = params;
+
+  if (!dataRows?.length) return;
+
+const headers = [
+    "Home Currency",
+    "Country",
+    "Selected Currency",
+    "Conversion Rate",
+    "Month",
+    "Year",
+  ];
+
+  const headerCount = headers.length;
+  const ANCHOR_COL_1_BASED = headerCount;
+  
+  const currencySymbol = getCurrencySymbol({
+    countryName: titleCountry,
+    homeCurrencyCode,
+  });
+
+  const topExtraLines = [
+    `Country : ${titleCountry}`,
+    `Platform : ${platformLabel}`,
+    `Currency : ${currencySymbol}`,
+    `Period : ${periodLabel}`,
+  ];
+
+  const topAoA = buildTopAoA({
+    headerCount,
+    title: titleLine,
+    companyName,
+    brandName,
+    anchorCol1Based: ANCHOR_COL_1_BASED,
+    extraLines: topExtraLines,
+  });
+
+  const headerRowIndex = topAoA.length;
+
+  const bodyAoA = dataRows.map((row) =>
+    headers.map((h) => {
+      if (h === "Conversion Rate") {
+        const n = toNumberLoose(row[h]);
+        return n !== null ? n : "-";
+      }
+      return row[h] ?? "";
+    })
+  );
+
+  const sheetAoA = [...topAoA, headers, ...bodyAoA];
+  const ws = XLSX.utils.aoa_to_sheet(sheetAoA);
+
+  ws["!freeze"] = { xSplit: 0, ySplit: headerRowIndex + 1 };
+
+  ws["!cols"] = [
+    { wch: 20 }, // Home Currency
+    { wch: 20 }, // Country
+    { wch: 22 }, // Selected Currency
+    { wch: 25 }, // Conversion Rate
+    { wch: 15 }, // Month
+    { wch: 10 }, // Year
+  ];
+
+  applyTopStyles(ws, headerCount, ANCHOR_COL_1_BASED);
+
+  const tableBorder = {
+    top: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
+  };
+
+  // Header styling
+  for (let c = 0; c < headerCount; c++) {
+    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
+    if (!ws[addr]) continue;
+
+    ws[addr].s = {
+      ...(ws[addr].s || {}),
+      font: { bold: true, sz: 11 },
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+      border: tableBorder,
+    };
+  }
+
+  // Body styling
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1:A1");
+  for (let r = headerRowIndex + 1; r <= range.e.r; r++) {
+    for (let c = 0; c < headerCount; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      let cell = ws[addr];
+
+      if (!cell) {
+        ws[addr] = { t: "s", v: "" };
+        cell = ws[addr];
+      }
+
+      const header = headers[c];
+      
+      if (header === "Conversion Rate" && isNumber(cell.v)) {
+        cell.z = "#,##0.00000000"; // 8 decimals as seen in your UI
+      }
+
+      cell.s = {
+        ...(cell.s || {}),
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
+        border: tableBorder,
+      };
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, safeSheetName("Currency Rates"));
   XLSX.writeFile(wb, filename);
 }

@@ -2686,6 +2686,14 @@ def get_currency_rates():
                 mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
+        
+        # Frontend Excel export: return ALL historical records as JSON
+        if request.args.get("history", "").lower() == "true":
+            return jsonify({
+                "currency_rates": all_rates,
+                "message": "Complete currency rates history."
+            }), 200
+
         # UI: current calendar month only
         from datetime import datetime
 
