@@ -4527,19 +4527,20 @@ export async function exportWarehouseDataExcel(params: {
   const firstRow = dataRows[0] || {};
   const inputHeaders = Object.keys(firstRow);
 
-  const orderedHeaders = [
-    "s_no",
-    "product_name",
-    "country",
-    "sku",
-    "local_stock",
-    "last_update",
-    "month",
-    "year",
-  ].filter((h) => inputHeaders.includes(h));
+const orderedHeaders = [
+  "s_no",
+  "product_name",
+  // "country",
+  "sku",
+  "local_stock",
+  "last_update",
+].filter((h) => inputHeaders.includes(h));
 
-  const headers = orderedHeaders.length ? orderedHeaders : inputHeaders;
-  const headerCount = headers.length || 1;
+const headers = orderedHeaders.length
+  ? orderedHeaders
+  : inputHeaders.filter((h) => h !== "month" && h !== "year");
+
+const headerCount = headers.length || 1;
 
   const tableBorder = {
   top: { style: "thin" as const, color: { argb: "FF000000" } },
@@ -4585,7 +4586,7 @@ const whiteFill = {
       case "local_stock":
         return "Local Stock";
       case "last_update":
-        return "Last Update";
+        return "Last Updated";
       case "month":
         return "Month";
       case "year":
@@ -4640,13 +4641,20 @@ dataRows.forEach((r, idx) => {
         horizontal: "left",
         vertical: "middle",
       };
-    } else if (h === "month") {
-      const monthVal =
-        typeof v === "string" && v.length
-          ? v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()
-          : v ?? "";
+    } else if (h === "last_update") {
+      if (v) {
+        const date = v instanceof Date ? v : new Date(v);
 
-      cell.value = monthVal;
+        if (!isNaN(date.getTime())) {
+          cell.value = date;
+          cell.numFmt = "dd-mmm-yyyy";
+        } else {
+          cell.value = String(v).split(/[T ]/)[0];
+        }
+      } else {
+        cell.value = "";
+      }
+
       cell.alignment = {
         horizontal: "center",
         vertical: "middle",
@@ -4655,7 +4663,7 @@ dataRows.forEach((r, idx) => {
       const n = toNumberLoose(v);
 
       if (n !== null && !String(h).includes("sku")) {
-        cell.value = Number.isInteger(n) ? n : n;
+        cell.value = n;
         cell.numFmt = Number.isInteger(n) ? "#,##0" : "#,##0.00";
       } else {
         cell.value = v ?? "";
@@ -4673,16 +4681,17 @@ dataRows.forEach((r, idx) => {
   });
 });
 
-  ws.columns = headers.map((h) => {
-    if (h === "s_no") return { width: 10 };
-    if (h === "product_name") return { width: 28 };
-    if (h.startsWith("sku_")) return { width: 18 };
-    if (h === "local_stock") return { width: 16 };
-    if (h === "in_transit_units") return { width: 18 };
-    if (h === "month") return { width: 14 };
-    if (h === "year") return { width: 12 };
-    return { width: 16 };
-  });
+ws.columns = headers.map((h) => {
+  if (h === "s_no") return { width: 10 };
+  if (h === "product_name") return { width: 28 };
+  if (h === "sku") return { width: 18 };
+  if (h.startsWith("sku_")) return { width: 18 };
+  if (h === "local_stock") return { width: 16 };
+  if (h === "last_update") return { width: 18 };
+  if (h === "in_transit_units") return { width: 18 };
+
+  return { width: 16 };
+});
 
   const buf = await wb.xlsx.writeBuffer();
   saveAs(
@@ -4692,6 +4701,7 @@ dataRows.forEach((r, idx) => {
     filename
   );
 }
+
 
 
 export async function exportSkuInformationExcel(params: {
@@ -4730,89 +4740,255 @@ export async function exportSkuInformationExcel(params: {
     views: [{ state: "frozen", xSplit: 0, ySplit: 8 }],
   });
 
-  const headers = Object.keys(dataRows[0] || {});
+  // Normalize headers for consistent matching
+  const normalizeHeader = (h: string) =>
+    h.toLowerCase().replace(/[\s_-]/g, "");
+
+  // Collect all headers from the response
+  const inputHeaders = Array.from(
+    new Set(dataRows.flatMap((row) => Object.keys(row || {})))
+  );
+
+  // Identify important columns
+  const snoHeader =
+    inputHeaders.find((h) =>
+      ["sno", "serialno", "serialnumber"].includes(normalizeHeader(h))
+    ) || "s_no";
+
+  const statusHeader =
+    inputHeaders.find(
+      (h) => normalizeHeader(h) === "productstatus"
+    ) ||
+    inputHeaders.find((h) =>
+      normalizeHeader(h).startsWith("productstatus")
+    ) ||
+    "product_status";
+
+  const lastUpdatedHeader =
+    inputHeaders.find(
+      (h) => normalizeHeader(h) === "lastuploadskufile"
+    ) || "last_upload_sku_file";
+
+  // Arrange columns:
+  // S. No. first
+  // Last Updated before Product Status
+  // Product Status always last
+  const headers = [
+    snoHeader,
+
+    ...inputHeaders.filter(
+      (h) =>
+        h !== snoHeader &&
+        h !== statusHeader &&
+        h !== lastUpdatedHeader
+    ),
+
+    statusHeader,
+    lastUpdatedHeader,
+  ];
+
   const headerCount = headers.length || 1;
 
   const tableBorder = {
-  top: { style: "thin" as const, color: { argb: "FF000000" } },
-  bottom: { style: "thin" as const, color: { argb: "FF000000" } },
-  left: { style: "thin" as const, color: { argb: "FF000000" } },
-  right: { style: "thin" as const, color: { argb: "FF000000" } },
-};
+    top: { style: "thin" as const, color: { argb: "FF000000" } },
+    bottom: { style: "thin" as const, color: { argb: "FF000000" } },
+    left: { style: "thin" as const, color: { argb: "FF000000" } },
+    right: { style: "thin" as const, color: { argb: "FF000000" } },
+  };
 
-const whiteFill = {
-  type: "pattern" as const,
-  pattern: "solid" as const,
-  fgColor: { argb: "FFFFFFFF" },
-};
+  const whiteFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
 
-  // Header section
+  // ---------------------------------------
+  // HEADER SECTION
+  // ---------------------------------------
+
   ws.mergeCells(1, 1, 1, headerCount);
+
   ws.getCell(1, 1).value = titleLine || "";
   ws.getCell(1, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(2, 1).value = `Company Name : ${companyName}`;
-  ws.getCell(3, 1).value = `Brand Name : ${brandName}`;
+  ws.getCell(2, 1).value = `Company Name : ${companyName || ""}`;
+  ws.getCell(3, 1).value = `Brand Name : ${brandName || ""}`;
   ws.getCell(3, 1).alignment = { horizontal: "left" };
 
-  ws.getCell(4, 1).value = `Country : ${titleCountry}`;
-  ws.getCell(5, 1).value = `Platform : ${platformLabel}`;
-  ws.getCell(6, 1).value = `Period : ${periodLabel}`;
+  ws.getCell(4, 1).value = `Country : ${titleCountry || ""}`;
+  ws.getCell(5, 1).value = `Platform : ${platformLabel || ""}`;
+  ws.getCell(6, 1).value = `Period : ${periodLabel || ""}`;
 
-  // Table header
+  // ---------------------------------------
+  // TABLE HEADER
+  // ---------------------------------------
+
   const headerRowNumber = 8;
   const headerRow = ws.getRow(headerRowNumber);
 
-headers.forEach((h, i) => {
-  const cell = headerRow.getCell(i + 1);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    const normalized = normalizeHeader(h);
 
-  cell.value = h
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    let displayName = h
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  cell.font = { bold: true, size: 11, color: { argb: "FF000000" } };
-  cell.fill = whiteFill;
-  cell.alignment = {
-    horizontal: "center",
-    vertical: "middle",
-  };
-  cell.border = tableBorder;
-});
+    // Rename Price to Landing Cost
+    if (normalized === "price") {
+      displayName = "Landing Cost";
+    }
 
-  // Data
+    // ✅ SKU UK / SKU US / SKU CANADA -> SKU
+    if (/^sku(uk|us|canada)$/.test(normalized)) {
+    displayName = "SKU";
+    }
+
+    // ✅ Gross Margin UK / US / CANADA -> Gross Margin
+    if (/^grossmargin(uk|us|canada|eu|europe|global)?$/.test(normalized)) {
+      displayName = "Gross Margin";
+    }
+
+    // Rename Last Upload SKU File
+    if (normalized === "lastuploadskufile") {
+      displayName = "Last Updated";
+    }
+
+    // Rename S. No.
+    if (normalized === "sno") {
+      displayName = "S No";
+    }
+
+    cell.value = displayName;
+
+    cell.font = {
+      bold: true,
+      size: 11,
+      color: { argb: "FF000000" },
+    };
+
+    cell.fill = whiteFill;
+
+    cell.alignment = {
+      horizontal: "center",
+      vertical: "middle",
+      wrapText: false,
+    };
+
+    cell.border = tableBorder;
+  });
+
+  headerRow.height = 18;
+
+  // ---------------------------------------
+  // DATA POPULATION
+  // ---------------------------------------
+
   const startRow = headerRowNumber + 1;
 
   dataRows.forEach((row, idx) => {
-  const excelRow = ws.getRow(startRow + idx);
+    const excelRow = ws.getRow(startRow + idx);
 
-  headers.forEach((h, colIdx) => {
-    const cell = excelRow.getCell(colIdx + 1);
-    const value = row[h] ?? "";
+    headers.forEach((h, colIdx) => {
+      const cell = excelRow.getCell(colIdx + 1);
+      const normalized = normalizeHeader(h);
 
-    const n = toNumberLoose(value);
+      const value =
+        normalized === "lastuploadskufile"
+          ? row[h] ?? row.last_upload_sku_file ?? ""
+          : row[h] ?? "";
 
-    if (n !== null && h !== "product_name" && !String(h).includes("sku")) {
-      cell.value = n;
-      cell.numFmt = Number.isInteger(n) ? "#,##0" : "#,##0.00";
-    } else {
-      cell.value = value;
-    }
+      // 1. Sequential S. No.
+      if (normalized === "sno") {
+        cell.value = idx + 1;
+        cell.numFmt = "0";
+      }
 
-    cell.font = { size: 11, color: { argb: "FF000000" } };
-    cell.fill = whiteFill;
-    cell.alignment = {
-      horizontal: h === "product_name" ? "left" : "center",
-      vertical: "middle",
-    };
-    cell.border = tableBorder;
+      // 2. Last Updated - Date only
+      else if (normalized === "lastuploadskufile") {
+        if (value) {
+          const date =
+            value instanceof Date ? value : new Date(value);
+
+          if (!isNaN(date.getTime())) {
+            cell.value = date;
+            cell.numFmt = "dd-mmm-yyyy";
+          } else {
+            cell.value = String(value);
+          }
+        } else {
+          cell.value = "";
+        }
+      }
+
+      // 3. Remaining columns
+      else {
+        const n = toNumberLoose(value);
+
+        const isTextColumn =
+          normalized === "productname" ||
+          normalized === "productbarcode" ||
+          normalized === "asin" ||
+          normalized === "currency" ||
+          normalized.includes("sku");
+
+        if (n !== null && !isTextColumn) {
+          cell.value = n;
+
+          cell.numFmt = Number.isInteger(n)
+            ? "#,##0"
+            : "#,##0.00";
+        } else {
+          cell.value = value;
+        }
+      }
+
+      // Common cell formatting
+      cell.font = {
+        size: 11,
+        color: { argb: "FF000000" },
+      };
+
+      cell.fill = whiteFill;
+
+      cell.alignment = {
+        horizontal:
+          normalized === "productname" ? "left" : "center",
+        vertical: "middle",
+      };
+
+      cell.border = tableBorder;
+    });
   });
-});
 
-  ws.columns = headers.map((h) => ({
-    width: Math.min(Math.max(h.length + 2, 14), 30),
-  }));
+  // ---------------------------------------
+  // COLUMN WIDTHS
+  // ---------------------------------------
+
+  ws.columns = headers.map((h) => {
+    const normalized = normalizeHeader(h);
+
+    if (normalized === "sno") return { width: 10 };
+    if (normalized === "productname") return { width: 24 };
+    if (normalized === "productbarcode") return { width: 20 };
+    if (normalized === "asin") return { width: 18 };
+    if (normalized.includes("sku")) return { width: 18 };
+    if (normalized === "price") return { width: 16 };
+    if (normalized === "currency") return { width: 14 };
+    if (normalized === "localstock") return { width: 16 };
+    if (normalized === "grossmarginus") return { width: 18 };
+    if (normalized === "lastuploadskufile") return { width: 18 };
+    if (normalized.startsWith("productstatus")) return { width: 18 };
+
+    return { width: 16 };
+  });
+
+  // ---------------------------------------
+  // EXPORT EXCEL
+  // ---------------------------------------
 
   const buf = await wb.xlsx.writeBuffer();
+
   saveAs(
     new Blob([buf], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -4820,6 +4996,7 @@ headers.forEach((h, i) => {
     filename
   );
 }
+
 
 /* =========================
    SKU Analysis MTD export - black & white

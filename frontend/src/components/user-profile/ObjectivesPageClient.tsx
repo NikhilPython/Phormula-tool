@@ -2108,460 +2108,223 @@ export default function ObjectivesPageClient({
         {activeTab === "settings_configuration" && (
           <div className="space-y-5">
             {/* Targets & Objectives and Product & Inventory Controls - Side by Side */}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            {/* Targets & Objectives and Product & Inventory Controls - Side by Side */}
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 items-stretch">
               {/* Targets & Objectives */}
-              <section>
-                {/* <div className="mb-3">
-                  <PageBreadcrumb
-                    pageTitle="Targets & Objectives"
-                    variant="table"
-                    align="left"
-                  />
-                </div> */}
-
-                <div className="grid grid-cols-1 gap-4">
-                  {/* {visibleObjectiveCountries.map((cardCountryKey) => {
-                    const displayCountry = cardCountryKey;
-                    const cardCountry = displayCountry.toLowerCase();
-
-                    const cardObjective =
-                      objectivesByCountry[cardCountry] ||
-                      buildDefaultObjectiveForCountry(cardCountry);
-
-                    const isEditingThisCard =
-                      editingObjectiveCountry === cardCountry;
-
-                    const cardPlatform = countryToPlatform(cardCountry);
-                    const cardCurrency =
-                      platformToCurrencyCode(cardPlatform) || homeCurrencyCode;
-
-                    const rawTarget = Number(
-                      targetSummaries[cardCountry]?.target_sales ?? 0
-                    );
-
-                    return (
-                      <InfoCard
-                        key={cardCountryKey}
-                        title={
+              <section className="flex flex-col h-full">
+                <div className="flex flex-col flex-1 h-full">
+                  <InfoCard
+                    title={
+                      <div className="flex items-center gap-4">
+                        <PageBreadcrumb
+                          pageTitle={`${activeCardCountry.toUpperCase()} Objectives`}
+                          variant="table"
+                          align="left"
+                        />
+                        {visibleObjectiveCountries.length > 1 && (
+                          <SegmentedToggle<string>
+                            value={activeCardCountry}
+                            onChange={(next) => {
+                              if (editingObjectiveCountry && editingObjectiveCountry !== next) {
+                                cancelObjectiveCardEdit();
+                              }
+                              setActiveObjectiveCountry(next);
+                            }}
+                            options={visibleObjectiveCountries.map((c) => ({
+                              value: c,
+                              label: c.toUpperCase(),
+                            }))}
+                            compact
+                            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                          />
+                        )}
+                      </div>
+                    }
+                    action={
+                      canEditBusinessOverview ? (
+                        activeCardIsEditing ? (
                           <div className="flex items-center gap-2">
-                            <PageBreadcrumb
-                              pageTitle={`${cardCountry.toUpperCase()} Objectives`}
-                              variant="table"
-                              align="left"
-                            />
+                            <Button size="icon" onClick={handleStrategicObjectivesSave}>
+                              <FiCheck />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={cancelObjectiveCardEdit}
+                            >
+                              <FiX />
+                            </Button>
                           </div>
+                        ) : (
+                          <button
+                            onClick={() => startObjectiveCardEdit(activeCardCountry)}
+                            className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            type="button"
+                            disabled={isPreviewMode || editingObjectiveCountry !== null}
+                            aria-label={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
+                            title={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
+                          >
+                            <FiEdit className="text-lg" />
+                          </button>
+                        )
+                      ) : null
+                    }
+                  >
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <InfoItem
+                        label="Growth"
+                        value={
+                          activeCardIsEditing && objectiveCountryDraft ? (
+                            <select
+                              value={objectiveCountryDraft.growth_intent}
+                              onChange={(e) =>
+                                setObjectiveCountryDraft((prev) =>
+                                  prev
+                                    ? {
+                                      ...prev,
+                                      growth_intent: e.target
+                                        .value as UserObjectiveForm["growth_intent"],
+                                    }
+                                    : prev
+                                )
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              {GROWTH_OPTIONS.map((v) => (
+                                <option key={v} value={v}>
+                                  {v.charAt(0).toUpperCase() + v.slice(1)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            prettifyObjectiveValue(activeCardObjective.growth_intent)
+                          )
                         }
-                        action={
-                          canEditBusinessOverview ? (
-                            isEditingThisCard ? (
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="icon"
-                                  onClick={handleStrategicObjectivesSave}
-                                >
-                                  <FiCheck />
-                                </Button>
+                      />
 
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  onClick={cancelObjectiveCardEdit}
-                                >
-                                  <FiX />
-                                </Button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => startObjectiveCardEdit(cardCountry)}
-                                className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                type="button"
-                                disabled={
-                                  isPreviewMode || editingObjectiveCountry !== null
-                                }
-                                aria-label={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                                title={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                              >
-                                <FiEdit className="text-lg" />
-                              </button>
-                            )
-                          ) : null
+                      <InfoItem
+                        label="Profit"
+                        value={
+                          activeCardIsEditing && objectiveCountryDraft ? (
+                            <select
+                              value={objectiveCountryDraft.profit_priority}
+                              onChange={(e) =>
+                                setObjectiveCountryDraft((prev) =>
+                                  prev
+                                    ? {
+                                      ...prev,
+                                      profit_priority: e.target
+                                        .value as UserObjectiveForm["profit_priority"],
+                                    }
+                                    : prev
+                                )
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              {PROFIT_OPTIONS.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            prettifyObjectiveValue(activeCardObjective.profit_priority)
+                          )
                         }
-                      >
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                          <InfoItem
-                            label="Growth"
-                            value={
-                              isEditingThisCard && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.growth_intent}
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          growth_intent: e.target
-                                            .value as UserObjectiveForm["growth_intent"],
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {GROWTH_OPTIONS.map((v) => (
-                                    <option key={v} value={v}>
-                                      {v.charAt(0).toUpperCase() + v.slice(1)}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                prettifyObjectiveValue(cardObjective.growth_intent)
-                              )
-                            }
-                          />
+                      />
 
-                          <InfoItem
-                            label="Profit"
-                            value={
-                              isEditingThisCard && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.profit_priority}
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          profit_priority: e.target
-                                            .value as UserObjectiveForm["profit_priority"],
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {PROFIT_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                prettifyObjectiveValue(cardObjective.profit_priority)
-                              )
-                            }
-                          />
+                      <InfoItem
+                        label="Inventory Dilution"
+                        value={
+                          activeCardIsEditing && objectiveCountryDraft ? (
+                            <select
+                              value={
+                                objectiveCountryDraft.inventory_clearance_priority
+                                  ? "yes"
+                                  : "no"
+                              }
+                              onChange={(e) =>
+                                setObjectiveCountryDraft((prev) =>
+                                  prev
+                                    ? {
+                                      ...prev,
+                                      inventory_clearance_priority:
+                                        e.target.value === "yes",
+                                    }
+                                    : prev
+                                )
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          ) : activeCardObjective.inventory_clearance_priority ? (
+                            "Yes"
+                          ) : (
+                            "No"
+                          )
+                        }
+                      />
 
-                          <InfoItem
-                            label="Inventory Dilution"
-                            value={
-                              isEditingThisCard && objectiveCountryDraft ? (
-                                <select
-                                  value={
-                                    objectiveCountryDraft.inventory_clearance_priority
-                                      ? "yes"
-                                      : "no"
-                                  }
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          inventory_clearance_priority:
-                                            e.target.value === "yes",
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  <option value="yes">Yes</option>
-                                  <option value="no">No</option>
-                                </select>
-                              ) : cardObjective.inventory_clearance_priority ? (
-                                "Yes"
-                              ) : (
-                                "No"
-                              )
-                            }
-                          />
+                      <InfoItem
+                        label="Country"
+                        value={
+                          activeCardIsEditing && objectiveCountryDraft ? (
+                            <select
+                              value={objectiveCountryDraft.country}
+                              onChange={(e) => {
+                                const nextCountry = e.target.value.toLowerCase();
+                                const existing =
+                                  objectivesByCountry[nextCountry] ||
+                                  buildDefaultObjectiveForCountry(nextCountry);
 
-                          <InfoItem
-                            label="Country"
-                            value={
-                              isEditingThisCard && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.country}
-                                  onChange={(e) => {
-                                    const nextCountry = e.target.value.toLowerCase();
+                                setObjectiveCountryDraft(existing);
+                                setObjectiveTargetDraft(
+                                  String(
+                                    Number(targetSummaries[nextCountry]?.target_sales ?? 0)
+                                  )
+                                );
+                              }}
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                            >
+                              {integratedCountries.map((c) => (
+                                <option key={c} value={c}>
+                                  {c.toUpperCase()}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            activeCardCountry.toUpperCase()
+                          )
+                        }
+                      />
 
-                                    const existing =
-                                      objectivesByCountry[nextCountry] ||
-                                      buildDefaultObjectiveForCountry(nextCountry);
-
-                                    setObjectiveCountryDraft(existing);
-
-                                    setObjectiveTargetDraft(
-                                      String(
-                                        Number(
-                                          targetSummaries[nextCountry]?.target_sales ?? 0
-                                        )
-                                      )
-                                    );
-                                  }}
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {integratedCountries.map((c) => (
-                                    <option key={c} value={c}>
-                                      {c.toUpperCase()}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                cardCountry.toUpperCase()
-                              )
-                            }
-                          />
-
-                          <InfoItem
-                            label={`Target (${cardCurrency})`}
-                            value={
-                              isEditingThisCard ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={objectiveTargetDraft}
-                                  onChange={(e) =>
-                                    setObjectiveTargetDraft(e.target.value)
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                  placeholder="Enter target"
-                                />
-                              ) : (
-                                money(rawTarget, cardCurrency)
-                              )
-                            }
-                          />
-                        </div>
-                      </InfoCard>
-                    );
-                  })} */}
-
-                  <section>
-                    <div className="grid grid-cols-1 gap-4">
-                      <InfoCard
-                        title={
-                          <div className="flex items-center gap-4">
-                            <PageBreadcrumb
-                              pageTitle={`${activeCardCountry.toUpperCase()} Objectives`}
-                              variant="table"
-                              align="left"
+                      <InfoItem
+                        label={`Target (${activeCardCurrency})`}
+                        value={
+                          activeCardIsEditing ? (
+                            <input
+                              type="number"
+                              min={0}
+                              step={1}
+                              value={objectiveTargetDraft}
+                              onChange={(e) => setObjectiveTargetDraft(e.target.value)}
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                              placeholder="Enter target"
                             />
-                            {visibleObjectiveCountries.length > 1 && (
-                              <SegmentedToggle<string>
-                                value={activeCardCountry}
-                                onChange={(next) => {
-                                  if (editingObjectiveCountry && editingObjectiveCountry !== next) {
-                                    cancelObjectiveCardEdit();
-                                  }
-                                  setActiveObjectiveCountry(next);
-                                }}
-                                options={visibleObjectiveCountries.map((c) => ({
-                                  value: c,
-                                  label: c.toUpperCase(),
-                                }))}
-                                compact
-                                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                              />
-                            )}
-                          </div>
+                          ) : (
+                            money(activeCardRawTarget, activeCardCurrency)
+                          )
                         }
-                        action={
-                          canEditBusinessOverview ? (
-                            activeCardIsEditing ? (
-                              <div className="flex items-center gap-2">
-                                <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                                  <FiCheck />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  onClick={cancelObjectiveCardEdit}
-                                >
-                                  <FiX />
-                                </Button>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => startObjectiveCardEdit(activeCardCountry)}
-                                className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                type="button"
-                                disabled={isPreviewMode || editingObjectiveCountry !== null}
-                                aria-label={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
-                                title={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
-                              >
-                                <FiEdit className="text-lg" />
-                              </button>
-                            )
-                          ) : null
-                        }
-                      >
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <InfoItem
-                            label="Growth"
-                            value={
-                              activeCardIsEditing && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.growth_intent}
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          growth_intent: e.target
-                                            .value as UserObjectiveForm["growth_intent"],
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {GROWTH_OPTIONS.map((v) => (
-                                    <option key={v} value={v}>
-                                      {v.charAt(0).toUpperCase() + v.slice(1)}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                prettifyObjectiveValue(activeCardObjective.growth_intent)
-                              )
-                            }
-                          />
-
-                          <InfoItem
-                            label="Profit"
-                            value={
-                              activeCardIsEditing && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.profit_priority}
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          profit_priority: e.target
-                                            .value as UserObjectiveForm["profit_priority"],
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {PROFIT_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>
-                                      {opt.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                prettifyObjectiveValue(activeCardObjective.profit_priority)
-                              )
-                            }
-                          />
-
-                          <InfoItem
-                            label="Inventory Dilution"
-                            value={
-                              activeCardIsEditing && objectiveCountryDraft ? (
-                                <select
-                                  value={
-                                    objectiveCountryDraft.inventory_clearance_priority
-                                      ? "yes"
-                                      : "no"
-                                  }
-                                  onChange={(e) =>
-                                    setObjectiveCountryDraft((prev) =>
-                                      prev
-                                        ? {
-                                          ...prev,
-                                          inventory_clearance_priority:
-                                            e.target.value === "yes",
-                                        }
-                                        : prev
-                                    )
-                                  }
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  <option value="yes">Yes</option>
-                                  <option value="no">No</option>
-                                </select>
-                              ) : activeCardObjective.inventory_clearance_priority ? (
-                                "Yes"
-                              ) : (
-                                "No"
-                              )
-                            }
-                          />
-
-                          <InfoItem
-                            label="Country"
-                            value={
-                              activeCardIsEditing && objectiveCountryDraft ? (
-                                <select
-                                  value={objectiveCountryDraft.country}
-                                  onChange={(e) => {
-                                    const nextCountry = e.target.value.toLowerCase();
-                                    const existing =
-                                      objectivesByCountry[nextCountry] ||
-                                      buildDefaultObjectiveForCountry(nextCountry);
-
-                                    setObjectiveCountryDraft(existing);
-                                    setObjectiveTargetDraft(
-                                      String(
-                                        Number(targetSummaries[nextCountry]?.target_sales ?? 0)
-                                      )
-                                    );
-                                  }}
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                >
-                                  {integratedCountries.map((c) => (
-                                    <option key={c} value={c}>
-                                      {c.toUpperCase()}
-                                    </option>
-                                  ))}
-                                </select>
-                              ) : (
-                                activeCardCountry.toUpperCase()
-                              )
-                            }
-                          />
-
-                          <InfoItem
-                            label={`Target (${activeCardCurrency})`}
-                            value={
-                              activeCardIsEditing ? (
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={objectiveTargetDraft}
-                                  onChange={(e) => setObjectiveTargetDraft(e.target.value)}
-                                  className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                                  placeholder="Enter target"
-                                />
-                              ) : (
-                                money(activeCardRawTarget, activeCardCurrency)
-                              )
-                            }
-                          />
-                        </div>
-                      </InfoCard>
+                      />
                     </div>
-                  </section>
+                  </InfoCard>
                 </div>
               </section>
 
               {/* Product & Inventory Controls */}
-              <section className="flex flex-col">
+              <section className="flex flex-col h-full">
                 <WorkspaceSetupOnboarding
                   view="productControls"
                   className="h-full flex flex-col [&_.product-panel]:flex-1"
@@ -2569,8 +2332,10 @@ export default function ObjectivesPageClient({
               </section>
 
               {/* Warehouse Local Stock */}
-              <section className="flex flex-col">
-                <WarehouseStockControls />
+              <section className="flex flex-col h-full">
+                <div className="h-full flex flex-col flex-1 [&>*]:h-full">
+                  <WarehouseStockControls country={country} />
+                </div>
               </section>
             </div>
 

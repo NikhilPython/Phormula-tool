@@ -100,6 +100,23 @@ const emptyForm: FormState = {
   address_zipcode: "",
 };
 
+const SHORT_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+// "Tue, 17 Nov 2026 05:11:30 GMT" -> "17-Nov-2026"
+const formatLastUpdated = (value?: string | null) => {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  // UTC getters keep the date independent of the browser's time zone
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${day}-${SHORT_MONTHS[date.getUTCMonth()]}-${date.getUTCFullYear()}`;
+};
+
 function getLatestWorkspaceActivity(userData: any): WorkspaceActivity | null {
   if (!userData) return null;
 
@@ -538,12 +555,11 @@ export default function WorkspaceSetupOnboarding({
       )?.last_upload_sku_file;
       const uploadedDate = uploadTimestamp
         ? (() => {
-            const match = String(uploadTimestamp).match(/^(\d{4})-(\d{2})-(\d{2})/);
-            return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
-          })()
+          const match = String(uploadTimestamp).match(/^(\d{4})-(\d{2})-(\d{2})/);
+          return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+        })()
         : "";
 
-      // 1. Map the flattened UI rows into the exact Excel format you want
       const formattedData = flattenedSkuRows.map((row: any) => {
         return {
           "S. No.": row.s_no || "",
@@ -556,11 +572,10 @@ export default function WorkspaceSetupOnboarding({
           "Currency": row.currency || "",
           "Local Stock": row.local_stock || 0,
           "Product Status": row.product_status || "Active",
-          "Date": uploadedDate,
+          "Last Updated": formatLastUpdated(row.last_upload_sku_file),
         };
       });
 
-      // 2. Define the exact column order
       const headers = [
         "S. No.",
         "Product Name",
@@ -572,7 +587,7 @@ export default function WorkspaceSetupOnboarding({
         "Currency",
         "Local Stock",
         "Product Status",
-        "Date",
+        "Last Updated",
       ];
 
       // 3. Create the worksheet
@@ -993,6 +1008,7 @@ export default function WorkspaceSetupOnboarding({
       { key: "local_stock", header: "Local Stock" },
       {
         key: "product_status",
+
         header: "Product Status",
         width: "170px",
         render: (row: any) => {
@@ -1051,6 +1067,12 @@ export default function WorkspaceSetupOnboarding({
             </div>
           );
         },
+      },
+      {
+        key: "last_upload_sku_file",
+        header: "Last Updated",
+        width: "130px",
+        render: (row: any) => formatLastUpdated(row.last_upload_sku_file),
       },
     ];
   }, [savingStatusId, token, getCurrentSkuSheet]);

@@ -70,7 +70,7 @@ const WAREHOUSE_FIXED_COLUMNS = [
   // 'country',
   'sku',
   'local_stock',
-  'last_update',
+  // 'last_update',
 ];
 const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
   'product_name',
@@ -2214,6 +2214,27 @@ const getInventoryRowEstimatedStorageCost = (row: InventoryCurrentRow) => {
 const getShortMonthLabel = (monthName?: string) => {
   const clean = String(monthName || '').trim();
   return clean ? clean.slice(0, 3) : '-';
+};
+
+const formatShortPeriodLabel = (month?: string, year?: string | number) => {
+  const cleanMonth = String(month || "").trim();
+  const cleanYear = String(year || "").trim();
+
+  if (!cleanMonth || !cleanYear) return "";
+
+  // Handles both "november" and "11"
+  const numericMonth = Number(cleanMonth);
+  const monthIndex = Number.isInteger(numericMonth) && numericMonth >= 1 && numericMonth <= 12
+    ? numericMonth - 1
+    : allMonths.indexOf(cleanMonth.toLowerCase());
+
+  if (monthIndex < 0) return `${cleanMonth} ${cleanYear}`;
+
+  const shortMonth =
+    allMonths[monthIndex].charAt(0).toUpperCase() +
+    allMonths[monthIndex].slice(1, 3);
+
+  return `${shortMonth}'${cleanYear.slice(-2)}`;
 };
 
 const getUniqueInventorySkuCount = (rows: any[]) => {
@@ -5859,6 +5880,8 @@ export default function InputCostPage({ params }: Params) {
         }
       });
 
+      exportRow.last_upload_sku_file = row.last_upload_sku_file ?? '';
+
       return exportRow;
     });
 
@@ -5868,7 +5891,7 @@ export default function InputCostPage({ params }: Params) {
       titleLine: 'SKU Information',
       titleCountry: countryName === 'global' ? 'Global' : countryName.toUpperCase(),
       platformLabel: 'Phormula',
-      periodLabel: `${monthParam} ${yearParam}`,
+      periodLabel: formatShortPeriodLabel(monthParam, yearParam) || `${monthParam} ${yearParam}`,
       companyName,
       brandName,
       dataRows: dataToExport,
@@ -5908,7 +5931,7 @@ export default function InputCostPage({ params }: Params) {
           item[col] = '';
         } else if (
           col in row && col !== 's_no' &&
-            !(skuInfoCountryName !== 'global' &&
+          !(skuInfoCountryName !== 'global' &&
             ['asin', 'product_barcode', 'currency', 'local_stock', 'product_status'].includes(col))
         ) {
           item[col] = isEmptyCellValue(row[col]) ? '—' : row[col];
@@ -7248,7 +7271,7 @@ export default function InputCostPage({ params }: Params) {
       const rowCountry = normalizeWarehouseCountry(
         rawCountryStr || (
           row.sku_uk && !row.sku_us ? 'uk' :
-          row.sku_us && !row.sku_uk ? 'us' : targetCountry
+            row.sku_us && !row.sku_uk ? 'us' : targetCountry
         )
       );
 
@@ -7303,9 +7326,9 @@ export default function InputCostPage({ params }: Params) {
     if (col === 'country') return 'Country';
     if (col === 'sku') return 'SKU';
     if (col === 'local_stock') return 'Local Stock';
-    if (col === 'last_update') return 'Last Update';
-    if (col === 'month') return 'Month';
-    if (col === 'year') return 'Year';
+    if (col === 'last_update') return 'Last Updated';
+    // if (col === 'month') return 'Month';
+    // if (col === 'year') return 'Year';
     return col;
   };
 
@@ -7322,9 +7345,9 @@ export default function InputCostPage({ params }: Params) {
               ? '220px'
               : col === 'sku'
                 ? '180px'
-                : col === 'last_update'
-                  ? '190px'
-                  : '160px',
+                // : col === 'last_update'
+                //   ? '190px'
+                : '160px',
       cellClassName:
         col === 'product_name' || col === 'sku' ? 'text-left' : 'text-center',
       render: (row) => {
@@ -7348,7 +7371,7 @@ export default function InputCostPage({ params }: Params) {
                 minute: '2-digit',
               });
             }
-          } catch {}
+          } catch { }
           return String(value);
         }
 
@@ -7641,39 +7664,39 @@ export default function InputCostPage({ params }: Params) {
 
       <div ref={stickyTabsHeaderRef} className="sticky max-[480px]:top-[97px] max-[640px]:top-[97px] sm:top-[48px] md:top-[48px] 2xl:top-[56px] z-30 bg-[#F7F7F7] border-b border-gray-200 max-[480px]:pb-1 max-[640px]:pb-2 sm:py-2">
         <div className="flex items-center justify-between gap-3">
-        <SegmentedToggle<InputCostTab>
-          value={activeTab}
-          onChange={(nextTab) => {
-            shouldScrollTabTopRef.current = true;
+          <SegmentedToggle<InputCostTab>
+            value={activeTab}
+            onChange={(nextTab) => {
+              shouldScrollTabTopRef.current = true;
 
-            setActiveTab(nextTab);
+              setActiveTab(nextTab);
 
-            if (typeof window !== "undefined") {
-              const nextUrl = `${window.location.pathname}#${nextTab}`;
+              if (typeof window !== "undefined") {
+                const nextUrl = `${window.location.pathname}#${nextTab}`;
 
-              // Only update URL. Do not dispatch page-hash-navigate,
-              // because that can trigger hash scroll behavior.
-              window.history.replaceState(null, "", nextUrl);
-            }
-          }}
-          options={tabOptions}
-          compact
-          className="min-w-0"
-          textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-        />
-        {(activeTab === "sku-info" || activeTab === "extra") &&
-          countryName === "global" &&
-          globalInventoryCountryOptions.length > 0 && (
-            <SegmentedToggle
-              value={selectedGlobalSkuCountry}
-              onChange={(val) =>
-                setSelectedGlobalSkuCountry(String(val) as "uk" | "us")
+                // Only update URL. Do not dispatch page-hash-navigate,
+                // because that can trigger hash scroll behavior.
+                window.history.replaceState(null, "", nextUrl);
               }
-              options={globalInventoryCountryOptions}
-              compact
-              textSizeClass="text-xs"
-            />
-          )}
+            }}
+            options={tabOptions}
+            compact
+            className="min-w-0"
+            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+          />
+          {(activeTab === "sku-info" || activeTab === "extra") &&
+            countryName === "global" &&
+            globalInventoryCountryOptions.length > 0 && (
+              <SegmentedToggle
+                value={selectedGlobalSkuCountry}
+                onChange={(val) =>
+                  setSelectedGlobalSkuCountry(String(val) as "uk" | "us")
+                }
+                options={globalInventoryCountryOptions}
+                compact
+                textSizeClass="text-xs"
+              />
+            )}
         </div>
       </div>
 
