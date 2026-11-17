@@ -405,7 +405,7 @@ export default function MonthlyRecapModal({
                                             <div className="min-w-0">
                                                 <p className="text-xs text-charcoal-500 whitespace-nowrap">ASP</p>
                                                 <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
-                                                    {highlight.asp != null ? formatMoney(highlight.asp) : "\u2014"}
+                                                    {highlight.asp != null ? formatMoney(Number(highlight.asp.toFixed(2))) : "\u2014"}
                                                 </p>
                                             </div>
 

@@ -30,7 +30,7 @@ import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import JSZip from "jszip";
 import mammoth from "mammoth";
 import Loader from "@/components/loader/Loader";
-import { FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
 import { IoMdLock } from "react-icons/io";
 import { useRouter } from 'next/navigation';
 import DownloadIconButton from "../ui/button/DownloadButton";
@@ -647,6 +647,380 @@ const extractTextFromSupportedFile = async (file: File) => {
   throw new Error("Only .docx and .pptx text extraction is supported in the frontend.");
 };
 
+
+
+// Paste this block ABOVE `export default function ObjectivesPageClient`
+// in the same file. It relies on things already in scope there:
+// React, useState, useEffect, Button, PageBreadcrumb, InfoItem,
+// FiEdit, FiCheck, FiX, FiChevronRight, prettifyObjectiveValue, money,
+// UserObjectiveForm, CountryObjectiveForm.
+
+type ObjectivesViewProps = {
+  countries: string[];
+  getObjective: (country: string) => CountryObjectiveForm;
+  getTarget: (country: string) => number;
+  getCurrency: (country: string) => string;
+  editingCountry: string | null;
+  draft: CountryObjectiveForm | null;
+  targetDraft: string;
+  onDraftChange: (next: CountryObjectiveForm) => void;
+  onTargetDraftChange: (value: string) => void;
+  onStartEdit: (country: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  canEdit: boolean;
+  growthOptions: readonly UserObjectiveForm["growth_intent"][];
+  profitOptions: Array<{
+    label: string;
+    value: UserObjectiveForm["profit_priority"];
+  }>;
+};
+
+type ObjectiveFieldKey = "growth" | "profit" | "inventory" | "target";
+
+const OBJECTIVE_FIELDS: Array<{ key: ObjectiveFieldKey; label: string }> = [
+  { key: "growth", label: "Growth" },
+  { key: "profit", label: "Profit" },
+  { key: "inventory", label: "Inventory Dilution" },
+  { key: "target", label: "Target" },
+];
+
+const objectiveControlCls =
+  "w-full min-w-0 max-w-full truncate rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200";
+
+function ObjectiveEditActions({
+  view,
+  country,
+}: {
+  view: ObjectivesViewProps;
+  country: string;
+}) {
+  if (!view.canEdit) return null;
+
+  if (view.editingCountry === country) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button size="icon" onClick={view.onSave} title="Save">
+          <FiCheck />
+        </Button>
+        <Button size="icon" variant="outline" onClick={view.onCancel} title="Cancel">
+          <FiX />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => view.onStartEdit(country)}
+      disabled={view.editingCountry !== null}
+      className="h-9 w-9 text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
+      aria-label={`Edit ${country.toUpperCase()} objectives`}
+      title={`Edit ${country.toUpperCase()} objectives`}
+    >
+      <FiEdit className="text-lg" />
+    </button>
+  );
+}
+
+/** One field, in view or edit mode. Shared by the accordion and the comparison table. */
+function ObjectiveFieldValue({
+  view,
+  country,
+  field,
+}: {
+  view: ObjectivesViewProps;
+  country: string;
+  field: ObjectiveFieldKey;
+}) {
+  const objective = view.getObjective(country);
+  const draft = view.editingCountry === country ? view.draft : null;
+
+  const patch = (partial: Partial<CountryObjectiveForm>) => {
+    if (draft) view.onDraftChange({ ...draft, ...partial });
+  };
+
+  switch (field) {
+    case "growth":
+      return draft ? (
+        <select
+          value={draft.growth_intent}
+          onChange={(e) =>
+            patch({ growth_intent: e.target.value as UserObjectiveForm["growth_intent"] })
+          }
+          className={objectiveControlCls}
+        >
+          {view.growthOptions.map((v) => (
+            <option key={v} value={v}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <>{prettifyObjectiveValue(objective.growth_intent)}</>
+      );
+
+    case "profit":
+      return draft ? (
+        <select
+          value={draft.profit_priority}
+          onChange={(e) =>
+            patch({ profit_priority: e.target.value as UserObjectiveForm["profit_priority"] })
+          }
+          title={
+            view.profitOptions.find((o) => o.value === draft.profit_priority)?.label
+          }
+          className={objectiveControlCls}
+        >
+          {view.profitOptions.map((opt) => (
+            <option key={opt.value} value={opt.value} title={opt.label}>
+              {prettifyObjectiveValue(opt.value)}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <>{prettifyObjectiveValue(objective.profit_priority)}</>
+      );
+
+    case "inventory":
+      return draft ? (
+        <select
+          value={draft.inventory_clearance_priority ? "yes" : "no"}
+          onChange={(e) => patch({ inventory_clearance_priority: e.target.value === "yes" })}
+          className={objectiveControlCls}
+        >
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      ) : (
+        <>{objective.inventory_clearance_priority ? "Yes" : "No"}</>
+      );
+
+    case "target":
+      return draft ? (
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={view.targetDraft}
+          onChange={(e) => view.onTargetDraftChange(e.target.value)}
+          placeholder="Enter target"
+          className={objectiveControlCls}
+        />
+      ) : (
+        <>{money(view.getTarget(country), view.getCurrency(country))}</>
+      );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Option 7: accordion per country                                            */
+/* -------------------------------------------------------------------------- */
+
+function ObjectivesAccordion({ view }: { view: ObjectivesViewProps }) {
+  const { countries, editingCountry } = view;
+  const [openCountries, setOpenCountries] = useState<Set<string>>(
+    () => new Set(countries[0] ? [countries[0]] : [])
+  );
+
+  // Drop countries that no longer exist, and keep at least one open
+  // (covers the country list loading after the first render).
+  useEffect(() => {
+    setOpenCountries((prev) => {
+      const valid = new Set([...prev].filter((c) => countries.includes(c)));
+      if (valid.size === 0 && countries[0]) valid.add(countries[0]);
+      const unchanged = valid.size === prev.size && [...valid].every((c) => prev.has(c));
+      return unchanged ? prev : valid;
+    });
+  }, [countries]);
+
+  const toggleCountry = (c: string) => {
+    setOpenCountries((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(c)) {
+        // Can't close the last open row, or the row being edited.
+        if (next.size === 1 || editingCountry === c) return prev;
+        next.delete(c);
+      } else {
+        next.add(c);
+      }
+
+      return next;
+    });
+  };
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      <div className="divide-y divide-gray-200 dark:divide-gray-800">
+        {countries.map((c) => {
+          const isOpen = openCountries.has(c);
+          const isEditing = editingCountry === c;
+          const canClose = isOpen && openCountries.size > 1 && !isEditing;
+          const objective = view.getObjective(c);
+          const currency = view.getCurrency(c);
+
+          return (
+            <div key={c}>
+              {/* Row header */}
+              <div className="flex min-h-[44px] items-center gap-3 px-4">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isOpen}
+                  onClick={() => toggleCountry(c)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleCountry(c);
+                    }
+                  }}
+                  className={`flex min-w-0 flex-1 items-center justify-between gap-3 py-2 text-left ${isOpen && !canClose ? "cursor-default" : "cursor-pointer"
+                    }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <FiChevronRight
+                      size={18}
+                      className={`shrink-0 transition-transform duration-300 ease-in-out ${isOpen
+                        ? "rotate-90 text-[#5FA896]"
+                        : "rotate-0 text-gray-500 dark:text-gray-400"
+                        }`}
+                    />
+                    <PageBreadcrumb
+                      pageTitle={`${c.toUpperCase()} Objectives`}
+                      variant="table"
+                      align="left"
+                    />
+                  </span>
+
+                  {!isOpen && (
+                    <span className="hidden truncate text-xs text-gray-500 dark:text-gray-400 sm:inline">
+                      {prettifyObjectiveValue(objective.growth_intent)} ·{" "}
+                      {prettifyObjectiveValue(objective.profit_priority)} ·{" "}
+                      {money(view.getTarget(c), currency)}
+                    </span>
+                  )}
+                </div>
+
+                {isOpen && <ObjectiveEditActions view={view} country={c} />}
+              </div>
+
+              {/* Row body */}
+              <div
+                className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                  }`}
+              >
+                <div className="overflow-hidden">
+                  <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 pb-4 pt-1 sm:grid-cols-2">
+                    {OBJECTIVE_FIELDS.map(({ key, label }) => (
+                      <InfoItem
+                        key={key}
+                        label={key === "target" ? `Target (${currency})` : label}
+                        value={<ObjectiveFieldValue view={view} country={c} field={key} />}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ObjectivesPager({ view }: { view: ObjectivesViewProps }) {
+  const { countries, editingCountry } = view;
+  const [index, setIndex] = useState(0);
+
+  // Keep the index valid if the country list changes after load.
+  useEffect(() => {
+    if (index > countries.length - 1) {
+      setIndex(Math.max(countries.length - 1, 0));
+    }
+  }, [countries.length, index]);
+
+  const country = countries[index];
+  if (!country) return null;
+
+  const hasMultiple = countries.length > 1;
+  const hasPrev = index > 0;
+  const hasNext = index < countries.length - 1;
+  // Switching while editing would discard the draft, so lock the arrows.
+  const isLocked = editingCountry !== null;
+  const currency = view.getCurrency(country);
+
+  const arrowCls =
+    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-gray-800";
+
+  return (
+    <div className="h-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2">
+        <div className="flex min-w-0 items-center gap-1">
+          {hasMultiple && (
+            <button
+              type="button"
+              onClick={() => setIndex((i) => i - 1)}
+              disabled={!hasPrev || isLocked}
+              aria-label="Previous country"
+              title={isLocked ? "Save or cancel to switch country" : "Previous country"}
+              className={arrowCls}
+            >
+              <FiChevronLeft size={18} />
+            </button>
+          )}
+
+          <PageBreadcrumb
+            pageTitle={`${country.toUpperCase()} Objectives`}
+            variant="table"
+            align="left"
+          />
+
+          {hasMultiple && (
+            <button
+              type="button"
+              onClick={() => setIndex((i) => i + 1)}
+              disabled={!hasNext || isLocked}
+              aria-label="Next country"
+              title={isLocked ? "Save or cancel to switch country" : "Next country"}
+              className={arrowCls}
+            >
+              <FiChevronRight size={18} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          {/* {hasMultiple && (
+            <span
+              aria-live="polite"
+              className="text-xs text-gray-500 dark:text-gray-400"
+            >
+              {index + 1} of {countries.length}
+            </span>
+          )} */}
+          <ObjectiveEditActions view={view} country={country} />
+        </div>
+      </div>
+
+      <div className="h-px w-full bg-gray-200 dark:bg-gray-800" />
+
+      {/* Fields */}
+      <div className="grid grid-cols-1 gap-x-6 gap-y-6 p-4 sm:grid-cols-2">
+        {OBJECTIVE_FIELDS.map(({ key, label }) => (
+          <InfoItem
+            key={key}
+            label={key === "target" ? `Target (${currency})` : label}
+            value={<ObjectiveFieldValue view={view} country={country} field={key} />}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ObjectivesPageClient({
   country,
@@ -2077,6 +2451,27 @@ export default function ObjectivesPageClient({
     targetSummaries[activeCardCountry]?.target_sales ?? 0
   );
 
+  const objectivesViewProps: ObjectivesViewProps = {
+    countries: visibleObjectiveCountries,
+    getObjective: (countryValue) =>
+      objectivesByCountry[countryValue] || buildDefaultObjectiveForCountry(countryValue),
+    getTarget: (countryValue) =>
+      Number(targetSummaries[countryValue]?.target_sales ?? 0),
+    getCurrency: (countryValue) =>
+      platformToCurrencyCode(countryToPlatform(countryValue)) || homeCurrencyCode,
+    editingCountry: editingObjectiveCountry,
+    draft: objectiveCountryDraft,
+    targetDraft: objectiveTargetDraft,
+    onDraftChange: setObjectiveCountryDraft,
+    onTargetDraftChange: setObjectiveTargetDraft,
+    onStartEdit: startObjectiveCardEdit,
+    onCancel: cancelObjectiveCardEdit,
+    onSave: handleStrategicObjectivesSave,
+    canEdit: canEditBusinessOverview && !isPreviewMode,
+    growthOptions: GROWTH_OPTIONS,
+    profitOptions: PROFIT_OPTIONS,
+  };
+
   return (
     <div className="w-full">
 
@@ -2109,7 +2504,7 @@ export default function ObjectivesPageClient({
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 items-stretch">
               {/* Targets & Objectives */}
-              <section className="flex flex-col h-full">
+              {/* <section className="flex flex-col h-full">
                 <div className="flex flex-col flex-1 h-full">
                   <InfoCard
                     title={
@@ -2319,6 +2714,10 @@ export default function ObjectivesPageClient({
                     </div>
                   </InfoCard>
                 </div>
+              </section> */}
+
+              <section className="flex flex-col h-full">
+                <ObjectivesPager view={objectivesViewProps} />
               </section>
 
               {/* Product & Inventory Controls */}

@@ -5437,8 +5437,12 @@ export default function InputCostPage({ params }: Params) {
     try {
       setWarehouseLoading(true);
 
+      const requestCountry = countryName === 'global'
+        ? selectedGlobalSkuCountry
+        : normalizeWarehouseCountry(countryName);
+
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData?country=${countryName}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploadWarehouseData?country=${requestCountry}`,
         {
           method: 'GET',
           headers: {
@@ -5462,19 +5466,20 @@ export default function InputCostPage({ params }: Params) {
           : normalizeWarehouseCountry(countryName);
         setWarehouseData(rows.map((row: Record<string, any>, index: number) => {
           const matchedSku = skuData.find((sku) => {
-            if (row.sku) {
-              return sku[`sku_${normalizeWarehouseCountry(row.country) || targetCountry}`] === row.sku;
-            }
-            return (
-              (row.sku_uk && sku.sku_uk === row.sku_uk) ||
-              (row.sku_us && sku.sku_us === row.sku_us) ||
-              (row.sku_canada && sku.sku_canada === row.sku_canada)
-            );
+            const selectedSku = row[`sku_${targetCountry}`] ?? row.sku;
+            if (selectedSku && sku[`sku_${targetCountry}`] === selectedSku) return true;
+
+            const rowProductName = String(row.product_name ?? row['Product Name'] ?? '').trim().toLowerCase();
+            return Boolean(rowProductName) &&
+              String(sku.product_name ?? '').trim().toLowerCase() === rowProductName;
           });
           return {
             s_no: row.s_no ?? index + 1,
             ...row,
             product_name: row.product_name ?? matchedSku?.product_name ?? '',
+            sku_uk: row.sku_uk ?? matchedSku?.sku_uk,
+            sku_us: row.sku_us ?? matchedSku?.sku_us,
+            sku_canada: row.sku_canada ?? matchedSku?.sku_canada,
           };
         }));
       } else {
