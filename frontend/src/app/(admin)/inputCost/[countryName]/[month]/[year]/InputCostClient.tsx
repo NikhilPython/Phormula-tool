@@ -70,6 +70,7 @@ const WAREHOUSE_FIXED_COLUMNS = [
   // 'country',
   'sku',
   'local_stock',
+  'last_update',
 ];
 const WAREHOUSE_REQUIRED_UPLOAD_COLUMNS = [
   'product_name',
@@ -7281,8 +7282,10 @@ export default function InputCostPage({ params }: Params) {
       return [{
         s_no: 0,
         product_name: row.product_name ?? row['Product Name'] ?? '',
+        country: row.country ?? row.Country ?? (targetCountry ? targetCountry.toUpperCase() : ''),
         sku,
         local_stock: localStock,
+        last_update: row.last_update ?? row.last_updated ?? '',
         month: row.month ?? row.Month ?? '',
         year: row.year ?? row.Year ?? '',
       }];
@@ -7297,8 +7300,10 @@ export default function InputCostPage({ params }: Params) {
   const getWarehouseHeaderLabel = (col: string) => {
     if (col === 's_no') return 'S. No.';
     if (col === 'product_name') return 'Product Name';
+    if (col === 'country') return 'Country';
     if (col === 'sku') return 'SKU';
     if (col === 'local_stock') return 'Local Stock';
+    if (col === 'last_update') return 'Last Update';
     if (col === 'month') return 'Month';
     if (col === 'year') return 'Year';
     return col;
@@ -7317,7 +7322,9 @@ export default function InputCostPage({ params }: Params) {
               ? '220px'
               : col === 'sku'
                 ? '180px'
-                : '160px',
+                : col === 'last_update'
+                  ? '190px'
+                  : '160px',
       cellClassName:
         col === 'product_name' || col === 'sku' ? 'text-left' : 'text-center',
       render: (row) => {
@@ -7327,6 +7334,22 @@ export default function InputCostPage({ params }: Params) {
         }
         if (col === 'month' && typeof value === 'string') {
           return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+        }
+        if (col === 'last_update') {
+          if (!value) return "—";
+          try {
+            const d = new Date(value);
+            if (!isNaN(d.getTime())) {
+              return d.toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            }
+          } catch {}
+          return String(value);
         }
 
         return value === null || value === undefined || value === ""

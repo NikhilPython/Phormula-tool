@@ -4868,11 +4868,36 @@ def upload_warehouse_data():
     # ---------- GET ----------
     if request.method == 'GET':
         try:
+            # Ensure last_update column exists in the warehouse table
+            try:
+                with user_engine.begin() as conn:
+                    existing_cols = {col['name'] for col in inspect(conn).get_columns(warehouse_table_name)}
+                    if 'last_update' not in existing_cols:
+                        conn.execute(text(f'ALTER TABLE "{warehouse_table_name}" ADD COLUMN last_update VARCHAR(64)'))
+            except Exception:
+                pass
+
             df = pd.read_sql(f'SELECT * FROM "{warehouse_table_name}"', user_engine)
+
+            if 'last_update' not in df.columns:
+                df['last_update'] = None
+
+            # Convert datetime columns to strings for json serialization
+            for col in df.columns:
+                if pd.api.types.is_datetime64_any_dtype(df[col]):
+                    df[col] = df[col].astype(str)
+
+            last_update_val = None
+            if not df.empty and 'last_update' in df.columns:
+                valid_ts = df['last_update'].dropna()
+                if not valid_ts.empty:
+                    last_update_val = str(valid_ts.iloc[-1])
+
             return jsonify({
                 'success': True,
                 'message': 'Warehouse data fetched successfully',
                 'table_name': warehouse_table_name,
+                'last_update': last_update_val,
                 'columns': df.columns.tolist(),
                 'row_count': int(len(df)),
                 'data': df.to_dict(orient="records")
@@ -5008,6 +5033,7 @@ def upload_warehouse_data():
                 r['local_stock_us'] = 0
             pivoted_rows.append(r)
 
+        now_ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
         warehouse_df = pd.DataFrame(pivoted_rows, columns=[
             's_no', 'product_name', 'country', 'sku_uk', 'sku_us', 'local_stock_uk', 'local_stock_us'
         ])
@@ -5021,6 +5047,9 @@ def upload_warehouse_data():
         warehouse_df = warehouse_df[
             warehouse_df['sku_uk'].notna() | warehouse_df['sku_us'].notna()
         ].reset_index(drop=True)
+
+        # Add last_update as the last column
+        warehouse_df['last_update'] = now_ts
 
         # Save warehouse table in new pivoted schema
         warehouse_df.to_sql(warehouse_table_name, user_engine, if_exists='replace', index=False)
@@ -5162,6 +5191,7 @@ def upload_warehouse_data():
             'sku_table_name': sku_table_name,
             'updated_rows': int(updated_count),
             'file_name': filename,
+            'last_update': now_ts,
             'columns': warehouse_df.columns.tolist(),
             'row_count': int(len(warehouse_df)),
             'data': warehouse_df.to_dict(orient='records'),
