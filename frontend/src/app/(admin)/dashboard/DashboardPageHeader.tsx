@@ -28,6 +28,9 @@ type DashboardPageHeaderProps<TTab extends string = string> = {
     syncTabToHash: (tab: TTab) => void;
     showTabs?: boolean;
     onBackToOverview?: () => void;
+    comparisonPeriod?: "mtd" | "last30";
+    onComparisonPeriodChange?: (period: "mtd" | "last30") => void;
+    comparisonPeriodLoading?: boolean;
 };
 
 export default function DashboardPageHeader<TTab extends string = string>({
@@ -49,6 +52,9 @@ export default function DashboardPageHeader<TTab extends string = string>({
     syncTabToHash,
     showTabs = true,
     onBackToOverview,
+    comparisonPeriod = "mtd",
+    onComparisonPeriodChange,
+    comparisonPeriodLoading = false,
 }: DashboardPageHeaderProps<TTab>) {
     const stickyHeaderRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -142,6 +148,28 @@ export default function DashboardPageHeader<TTab extends string = string>({
 
             {showTabs && (
                 <div className="border-b border-gray-200 bg-[#F7F7F7] max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
+                    {onComparisonPeriodChange && (
+                        <div className="mb-2 flex items-center justify-end gap-2">
+                            <span className="text-xs font-medium text-[#50627A]">Compare</span>
+                            <div className="inline-flex rounded-lg border border-[#D9E2E8] bg-white p-1" role="group" aria-label="Comparison period">
+                                {([
+                                    ["mtd", "MTD"],
+                                    ["last30", "Last 30 days"],
+                                ] as const).map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        aria-pressed={comparisonPeriod === value}
+                                        disabled={comparisonPeriodLoading}
+                                        onClick={() => onComparisonPeriodChange(value)}
+                                        className={`rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${comparisonPeriod === value ? "bg-[#5EA68E] text-white" : "text-[#37455F] hover:bg-gray-100"}`}
+                                    >
+                                        {comparisonPeriodLoading && comparisonPeriod !== value ? "Loading…" : label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <div className="flex items-center gap-3">
                         <div className="min-w-0 flex-1 overflow-x-auto">
                             <SegmentedToggle<TTab>

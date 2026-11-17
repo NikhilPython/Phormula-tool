@@ -26,6 +26,7 @@ type DashboardMtdPlSectionProps = {
     finalCm1ProfitPieData: any[];
     cm2ProfitPieData: any[];
     displayCurrency: CurrencyCode;
+    comparisonPeriod?: "mtd" | "last30";
 };
 
 export default function DashboardMtdPlSection({
@@ -47,6 +48,7 @@ export default function DashboardMtdPlSection({
     finalCm1ProfitPieData,
     cm2ProfitPieData,
     displayCurrency,
+    comparisonPeriod = "mtd",
 }: DashboardMtdPlSectionProps) {
     return (
                         <div id="mtd-pl" className="mt-4 scroll-mt-[80px]">
@@ -60,7 +62,7 @@ export default function DashboardMtdPlSection({
                                     <div className="2xl:mb-3 flex items-center justify-between">
                                         <div className="text-sm text-charcoal-500">
                                             <div className="flex flex-wrap items-baseline gap-2 text-base sm:text-xl lg:text-lg 2xl:text-2xl font-bold">
-                                                <PageBreadcrumb pageTitle="MTD P&L" align="left" textSize="2xl" variant="page" />
+                                                <PageBreadcrumb pageTitle={comparisonPeriod === "last30" ? "Last 30 Days P&L" : "MTD P&L"} align="left" textSize="2xl" variant="page" />
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">

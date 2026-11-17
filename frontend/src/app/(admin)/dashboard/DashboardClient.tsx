@@ -191,6 +191,7 @@ const SHOPIFY_DROPDOWN_ENDPOINT = `${baseURL}/shopify/dropdown`;
 // const FX_RATES_GET_ENDPOINT = `${baseURL}/currency-rates`;
 
 const LIVE_MTD_BI_ENDPOINT = `${baseURL}/live_mtd_bi`;
+const LIVE_LAST_30_DAYS_ENDPOINT = `${baseURL}/live_last_30_days`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
@@ -2887,6 +2888,10 @@ export default function DashboardPage() {
     const [biPeriods, setBiPeriods] = useState<BiApiResponse["periods"] | null>(null);
     const [liveBiPayload, setLiveBiPayload] = useState<any>(null);
     const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
+    const [comparisonPeriod, setComparisonPeriod] = useState<"mtd" | "last30">("mtd");
+    const [last30Loading, setLast30Loading] = useState(false);
+    const mtdPayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
+    const last30PayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
     const [liveBiReady, setLiveBiReady] = useState(false);
     const retryRef = useRef(0);
 
@@ -5123,6 +5128,61 @@ export default function DashboardPage() {
             dashboardAllowedDay,
         ]
     );
+
+    const switchComparisonPeriod = useCallback(async (period: "mtd" | "last30") => {
+        if (period === comparisonPeriod) return;
+        if (period === "mtd") {
+            if (liveBiPayload && comparisonPeriod === "last30") {
+                last30PayloadCacheRef.current = { payload: liveBiPayload, totals: biAlignedTotals };
+            }
+            const cached = mtdPayloadCacheRef.current;
+            if (cached) {
+                setLiveBiPayload(cached.payload);
+                setBiAlignedTotals(cached.totals);
+            } else {
+                await fetchLiveBiPayload({ skipLoader: false });
+            }
+            setComparisonPeriod("mtd");
+            return;
+        }
+
+        if (liveBiPayload && comparisonPeriod === "mtd") {
+            mtdPayloadCacheRef.current = { payload: liveBiPayload, totals: biAlignedTotals };
+        }
+        const cached = last30PayloadCacheRef.current;
+        if (cached) {
+            setLiveBiPayload(cached.payload);
+            setBiAlignedTotals(cached.totals);
+            setComparisonPeriod("last30");
+            return;
+        }
+
+        setLast30Loading(true);
+        setBiError(null);
+        try {
+            const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+            const params = new URLSearchParams({
+                countryName: biCountryName.toLowerCase(),
+                as_of: dashboardAllowedEndISO,
+            });
+            const response = await fetch(`${LIVE_LAST_30_DAYS_ENDPOINT}?${params.toString()}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+            if (!response.ok) throw new Error(`Last 30 days comparison failed: ${response.status}`);
+            const json: BiApiResponse = await response.json();
+            if (!json?.aligned_totals) throw new Error("Last 30 days response is missing aligned_totals");
+            setLiveBiPayload(json);
+            setBiAlignedTotals(json.aligned_totals);
+            setBiDailySeries(json.daily_series || null);
+            setBiPeriods(json.periods || null);
+            last30PayloadCacheRef.current = { payload: json, totals: json.aligned_totals };
+            setComparisonPeriod("last30");
+        } catch (error: any) {
+            setBiError(error?.message || "Failed to load last 30 days data");
+        } finally {
+            setLast30Loading(false);
+        }
+    }, [comparisonPeriod, liveBiPayload, biAlignedTotals, biCountryName, dashboardAllowedEndISO, fetchLiveBiPayload]);
 
     // One tracked manual refresh per dashboard cache key. The old cache remains
     // published until all required steps finish and the final snapshot is saved.
@@ -9320,7 +9380,7 @@ export default function DashboardPage() {
     const TOP_TABS: { id: TopTab; label: string }[] = [
         { id: "action", label: "Business Scenario" },
         { id: "summary", label: "AI Insights & Recommendations" },
-        { id: "live", label: "MTD Sales" },
+        { id: "live", label: comparisonPeriod === "last30" ? "Last 30 Days Sales" : "MTD Sales" },
         { id: "productwise", label: "P&L Breakdown" },
         { id: "inventory", label: "Inventory Insights" },
 
@@ -14545,6 +14605,9 @@ export default function DashboardPage() {
                 syncTabToHash={syncTabToHash}
                 showTabs={showDashboardDetails}
                 onBackToOverview={returnToOverview}
+                comparisonPeriod={comparisonPeriod}
+                onComparisonPeriodChange={(period) => void switchComparisonPeriod(period)}
+                comparisonPeriodLoading={last30Loading || biLoading}
             />
 
             {/* Server-authoritative refresh progress, visible in overview and detail tabs.
@@ -14614,6 +14677,7 @@ export default function DashboardPage() {
                                             monthlyData={businessAnalysisMonthlyData}
                                             unitContributorData={businessAnalysisUnitContributorData}
                                             currency={displayCurrency}
+                                            comparisonPeriod={comparisonPeriod}
 
                                             // Loader is handled once at Action Tab level
                                             loading={false}
@@ -14672,6 +14736,7 @@ export default function DashboardPage() {
                                 loadRangeFromCache={loadRangeFromCache}
                                 fetchLiveBiPayload={fetchLiveBiPayload}
                                 shouldShowDummyUi={shouldShowDummyUi}
+                                comparisonPeriod={comparisonPeriod}
                                 dummyStatData={dummyStatData}
                                 globalMtdCardData={globalMtdCardData}
                                 backendCardDeltas={backendCardDeltas}
@@ -14873,6 +14938,7 @@ export default function DashboardPage() {
                                 />
 
                                 <DashboardMtdPlSection
+                                    comparisonPeriod={comparisonPeriod}
                                     isMtdPlExpanded={isMtdPlExpanded}
                                     setIsMtdPlExpanded={setIsMtdPlExpanded}
                                     chartRef={chartRef}

@@ -1860,11 +1860,13 @@ export function BusinessAnalysisView({
   unitContributorData = [],
   currency,
   loading,
+  comparisonPeriod = "mtd",
 }: {
   monthlyData: MonthlyMetricRow[];
   unitContributorData?: MonthlyMetricRow[];
   currency?: string;
   loading: boolean;
+  comparisonPeriod?: "mtd" | "last30";
 }) {
   const snapshots = useMemo(() => buildMonthlySnapshots(monthlyData), [monthlyData]);
 
@@ -1896,7 +1898,9 @@ export function BusinessAnalysisView({
             align="left"
             textSize="2xl"
           />
-          <p className="min-[1700px]:text-sm text-xs text-[#50627A]">Key business metrics and month-over-month movement.</p>
+          <p className="min-[1700px]:text-sm text-xs text-[#50627A]">
+            Key business metrics and {comparisonPeriod === "last30" ? "previous 30-day period" : "month-over-month"} movement.
+          </p>
         </div>
       </div>
     </div>

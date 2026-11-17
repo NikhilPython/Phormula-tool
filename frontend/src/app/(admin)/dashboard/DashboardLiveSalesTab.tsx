@@ -13,6 +13,7 @@ type GlobalMtdView = "global" | "uk" | "us";
 type DashboardLiveSalesTabProps = Record<string, any>;
 
 export default function DashboardLiveSalesTab({
+    comparisonPeriod = "mtd",
     hasAmazonCard,
     platform,
     globalMtdViewOptions,
@@ -166,7 +167,7 @@ export default function DashboardLiveSalesTab({
                                     <div className="w-full rounded-xl border bg-white p-3 2xl:p-5 shadow-sm">
                                         <div className="mb-3 lg:mb-2 2xl:mb-4 flex items-center justify-between gap-2 sm:gap-3">
                                             <div className="min-w-0">
-                                                <PageBreadcrumb pageTitle="MTD Sales" variant="page" align="left" />
+                                                <PageBreadcrumb pageTitle={comparisonPeriod === "last30" ? "Last 30 Days Sales" : "MTD Sales"} variant="page" align="left" />
                                             </div>
 
                                             {/* RIGHT: TOGGLE (only for global) */}
