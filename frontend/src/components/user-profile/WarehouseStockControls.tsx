@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { FiCloud, FiDownload, FiEye, FiLock, FiX } from "react-icons/fi";
 import { Modal } from "@/components/ui/modal";
 import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
@@ -17,6 +17,7 @@ export default function WarehouseStockControls({ country = "us" }: { country?: s
   const [warehouseRows, setWarehouseRows] = useState<Record<string, any>[]>([]);
   const [warehouseLoading, setWarehouseLoading] = useState(false);
   const [warehouseError, setWarehouseError] = useState(false);
+  const [warehouseCountryFilter, setWarehouseCountryFilter] = useState("all");
   const [getCurrentSkuSheet, { data, isFetching }] =
     useLazyGetCurrentSkuSheetQuery();
   const hasSkuSheet = Boolean(data?.rows?.length);
@@ -89,6 +90,13 @@ export default function WarehouseStockControls({ country = "us" }: { country?: s
     }];
   }).map((row, index) => ({ "S. No.": index + 1, ...row })), [warehouseRows]);
 
+  const filteredWarehouseRows = useMemo(
+    () => warehouseCountryFilter === "all"
+      ? displayRows
+      : displayRows.filter((row) => row.Country === warehouseCountryFilter.toUpperCase()),
+    [displayRows, warehouseCountryFilter]
+  ).map((row, index) => ({ ...row, "S. No.": index + 1 }));
+
   const warehouseColumns: ColumnDef<Row>[] = useMemo(() => [
     { key: "S. No.", header: "S. No.", width: "70px", cellClassName: "text-center" },
     { key: "Product Name", header: "Product Name", width: "220px", cellClassName: "text-left" },
@@ -98,8 +106,41 @@ export default function WarehouseStockControls({ country = "us" }: { country?: s
   ], []);
 
   const downloadWarehouseSheet = () => {
-    if (!displayRows.length) return;
-    const worksheet = XLSX.utils.json_to_sheet(displayRows);
+    if (!filteredWarehouseRows.length) return;
+    const exportRows = filteredWarehouseRows.map((row) => {
+      const rawDate = String(row["Last Updated"] ?? "");
+      const dateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const lastUpdated = dateMatch
+        ? `${dateMatch[3]}-${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(dateMatch[2]) - 1]}-${dateMatch[1]}`
+        : rawDate;
+      return { ...row, "Last Updated": lastUpdated };
+    });
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet["!cols"] = [
+      { wch: 10 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 20 },
+    ];
+    const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:F1");
+    for (let rowIndex = range.s.r; rowIndex <= range.e.r; rowIndex += 1) {
+      for (let colIndex = range.s.c; colIndex <= range.e.c; colIndex += 1) {
+        const address = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+        worksheet[address] ??= { t: "s", v: "" };
+        worksheet[address].s = {
+          font: { name: "Calibri", sz: 11, bold: rowIndex === 0 },
+          alignment: { vertical: "center", horizontal: rowIndex === 0 ? "center" : "left" },
+          border: {
+            top: { style: "thin", color: { rgb: "808080" } },
+            bottom: { style: "thin", color: { rgb: "808080" } },
+            left: { style: "thin", color: { rgb: "808080" } },
+            right: { style: "thin", color: { rgb: "808080" } },
+          },
+        };
+      }
+    }
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Warehouse Stock");
     XLSX.writeFile(workbook, "Warehouse Stock.xlsx");
@@ -212,7 +253,17 @@ export default function WarehouseStockControls({ country = "us" }: { country?: s
               <p className="mt-1 text-xs text-[#78847E]">Your currently uploaded warehouse stock information.</p>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={downloadWarehouseSheet} disabled={!displayRows.length} title="Download warehouse sheet" aria-label="Download warehouse sheet" className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#B9D8C9] bg-[#F8FCFA] text-[#0E8558] disabled:opacity-50">
+              <select
+                aria-label="Filter warehouse stock by country"
+                value={warehouseCountryFilter}
+                onChange={(event) => setWarehouseCountryFilter(event.target.value)}
+                className="h-9 rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E]"
+              >
+                <option value="all">All Countries</option>
+                <option value="uk">UK</option>
+                <option value="us">US</option>
+              </select>
+              <button type="button" onClick={downloadWarehouseSheet} disabled={!filteredWarehouseRows.length} title="Download warehouse sheet" aria-label="Download warehouse sheet" className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#B9D8C9] bg-[#F8FCFA] text-[#0E8558] disabled:opacity-50">
                 <FiDownload size={16} />
               </button>
               <button type="button" onClick={viewModal.closeModal} title="Close" aria-label="Close warehouse sheet" className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#DDE5E1] text-[#66746D]"><FiX size={16} /></button>
@@ -224,12 +275,12 @@ export default function WarehouseStockControls({ country = "us" }: { country?: s
             <div className="grid min-h-[300px] place-items-center text-center">
               <div><p className="text-sm font-semibold text-[#B75A5A]">Could not load your warehouse sheet</p><button type="button" onClick={() => void loadWarehouseSheet()} className="mt-3 text-xs font-semibold text-green-500">Try again</button></div>
             </div>
-          ) : !displayRows.length ? (
+          ) : !filteredWarehouseRows.length ? (
             <div className="grid min-h-[300px] place-items-center text-sm text-[#78847E]">No warehouse stock data found.</div>
           ) : (
             <DataTable
               columns={warehouseColumns}
-              data={displayRows as Row[]}
+              data={filteredWarehouseRows as Row[]}
               pageSize={10}
               stickyHeader
               zebra

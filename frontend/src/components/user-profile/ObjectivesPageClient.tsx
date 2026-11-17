@@ -2107,8 +2107,6 @@ export default function ObjectivesPageClient({
 
         {activeTab === "settings_configuration" && (
           <div className="space-y-5">
-            {/* Targets & Objectives and Product & Inventory Controls - Side by Side */}
-            {/* Targets & Objectives and Product & Inventory Controls - Side by Side */}
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 items-stretch">
               {/* Targets & Objectives */}
               <section className="flex flex-col h-full">
@@ -2170,7 +2168,7 @@ export default function ObjectivesPageClient({
                       ) : null
                     }
                   >
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
                       <InfoItem
                         label="Growth"
                         value={
