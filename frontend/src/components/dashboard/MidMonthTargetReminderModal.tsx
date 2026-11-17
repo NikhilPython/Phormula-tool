@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  SkipForward,
 } from "lucide-react";
 import Button from "@/components/ui/button/Button";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
@@ -107,11 +106,10 @@ function SegmentedControl<T extends string>({
               aria-checked={selected}
               disabled={disabled}
               onClick={() => onChange(opt.value)}
-              className={`rounded-lg px-1.5 py-2 text-center text-xs font-semibold leading-tight transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#75BBDA] disabled:opacity-50 sm:text-[13px] ${
-                selected
-                  ? "bg-green-500 text-yellow-200 shadow-sm"
-                  : "text-charcoal-500 hover:bg-white/70 hover:text-[#37455F]"
-              }`}
+              className={`rounded-lg px-1.5 py-2 text-center text-xs font-semibold leading-tight transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#75BBDA] disabled:opacity-50 sm:text-[13px] ${selected
+                ? "bg-green-500 text-yellow-200 shadow-sm"
+                : "text-charcoal-500 hover:bg-white/70 hover:text-[#37455F]"
+                }`}
             >
               {opt.label}
             </button>
@@ -240,16 +238,16 @@ export default function MidMonthTargetReminderModal({
     if (saveError) setSaveError(null);
   };
 
-  const handleSave = useCallback(
-    async (includeObjectives: boolean = false, forcedValue?: number) => {
-      if (!data) return;
 
-      const nextTarget =
-        forcedValue !== undefined ? forcedValue : Number(targetDraft);
+  const handleSave = useCallback(
+    async (includeObjectives: boolean = false): Promise<boolean> => {
+      if (!data) return false;
+
+      const nextTarget = Number(targetDraft);
 
       if (!Number.isFinite(nextTarget) || nextTarget <= 0) {
         setSaveError("Enter a valid target.");
-        return;
+        return false;
       }
 
       const token =
@@ -259,7 +257,7 @@ export default function MidMonthTargetReminderModal({
 
       if (!token) {
         setSaveError("Authorization token is missing.");
-        return;
+        return false;
       }
 
       const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
@@ -268,7 +266,7 @@ export default function MidMonthTargetReminderModal({
         setSaving(true);
         setSaveError(null);
 
-        // 1. Monthly target
+        // 1. Save monthly target
         const targetPayload = {
           month: data.monthName,
           year: data.year,
@@ -293,7 +291,7 @@ export default function MidMonthTargetReminderModal({
           );
         }
 
-        // 2. Objectives
+        // 2. Save business objectives
         if (includeObjectives) {
           const monthIndex =
             new Date(`${data.monthName} 1, ${data.year}`).getMonth() + 1;
@@ -331,15 +329,14 @@ export default function MidMonthTargetReminderModal({
 
         onSaved?.();
 
-        // Step 2 → advance to Step 3. Step 1 → close.
-        if (includeObjectives) {
-          setCurrentStep(3);
-        } else {
-          onClose();
-        }
+        // Final save is handled from Step 3.
+        return true;
+
       } catch (err: any) {
         console.error("Failed to save:", err);
         setSaveError(err?.message || "Failed to save. Try again.");
+        return false;
+
       } finally {
         setSaving(false);
       }
@@ -351,9 +348,9 @@ export default function MidMonthTargetReminderModal({
       profitPriority,
       inventoryClearance,
       onSaved,
-      onClose,
     ]
   );
+
 
   const validateWarehouseFile = (f: File): string | null => {
     const lower = f.name.toLowerCase();
@@ -428,9 +425,9 @@ export default function MidMonthTargetReminderModal({
 
       setWarehouseSuccess(
         json?.message ||
-          (json?.rows_imported != null
-            ? `Uploaded ${json.rows_imported} rows.`
-            : "Warehouse stock updated successfully.")
+        (json?.rows_imported != null
+          ? `Uploaded ${json.rows_imported} rows.`
+          : "Warehouse stock updated successfully.")
       );
 
       // Brief pause so the success tick is visible, then close.
@@ -445,21 +442,38 @@ export default function MidMonthTargetReminderModal({
     }
   };
 
+
+  const handleFinishSetup = async () => {
+    // Save monthly target and business objectives first.
+    const saved = await handleSave(true);
+
+    if (!saved) return;
+
+    // Warehouse upload is optional.
+    if (warehouseFile) {
+      await handleWarehouseUpload();
+    } else {
+      // No warehouse file selected: finish successfully.
+      onClose();
+    }
+  };
+
+
   const handleWarehouseSkip = () => {
     onClose();
   };
 
   if (!mounted || !open || !data) return null;
 
-  const canSave = !saving && draftNumber > 0;
-  const canUpload = !!warehouseFile && !warehouseUploading && !warehouseSuccess;
+  // const canSave = !saving && draftNumber > 0;
+  // const canUpload = !!warehouseFile && !warehouseUploading && !warehouseSuccess;
 
   const headingText =
     currentStep === 1
       ? `Set a target for ${data.monthName}`
       : currentStep === 2
-      ? "Update Business Objectives"
-      : "Update Local Warehouse Stock";
+        ? "Update Business Objectives"
+        : "Update Local Warehouse Stock";
 
   const subtitleText =
     currentStep === 1
@@ -467,15 +481,15 @@ export default function MidMonthTargetReminderModal({
         ? `Review and update your monthly net sales target for ${data.monthLabel}.`
         : `You haven't set a monthly net sales target yet. Set one now, or we'll use ${prevMonthName}'s net sales as your ${data.monthName} target.`
       : currentStep === 2
-      ? `Define your business priorities for ${data.monthName}. You can change these preferences at any time.`
-      : `Upload your ${data.monthName} ${data.year} local warehouse stock sheet. This is optional — you can also upload it later from the Inventory section.`;
+        ? `Define your business priorities for ${data.monthName}. You can change these preferences at any time.`
+        : `Upload your ${data.monthName} ${data.year} local warehouse stock sheet. This is optional — you can also upload it later from the Inventory section.`;
 
   const infoText =
     currentStep === 1
       ? "You can update your target at any time from Targets & Objectives."
       : currentStep === 2
-      ? "You can update your objectives at any time from Targets & Objectives."
-      : "You can update warehouse stock at any time from the Inventory section.";
+        ? "You can update your objectives at any time from Targets & Objectives."
+        : "You can update warehouse stock at any time from the Inventory section.";
 
   return createPortal(
     <div
@@ -560,11 +574,10 @@ export default function MidMonthTargetReminderModal({
                 </label>
 
                 <div
-                  className={`flex items-center gap-2 rounded-xl border bg-white px-4 py-3 transition ${
-                    saveError
-                      ? "border-red-300 focus-within:border-red-400"
-                      : "border-slate-300 focus-within:border-green-500"
-                  } ${saving ? "opacity-60" : ""}`}
+                  className={`flex items-center gap-2 rounded-xl border bg-white px-4 py-3 transition ${saveError
+                    ? "border-red-300 focus-within:border-red-400"
+                    : "border-slate-300 focus-within:border-green-500"
+                    } ${saving ? "opacity-60" : ""}`}
                 >
                   <span className="text-lg font-medium leading-none text-slate-400">
                     {currencySymbol}
@@ -577,8 +590,9 @@ export default function MidMonthTargetReminderModal({
                     value={displayValue}
                     onChange={(e) => handleDraftChange(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && canSave) {
-                        handleSave(false);
+                      if (e.key === "Enter") {
+                        setSaveError(null);
+                        setCurrentStep(2);
                       }
                     }}
                     placeholder="0"
@@ -617,11 +631,10 @@ export default function MidMonthTargetReminderModal({
                     <div
                       className="h-full rounded-full bg-green-500 transition-[width] duration-300"
                       style={{
-                        width: `${
-                          progressPct === null
-                            ? 0
-                            : Math.min(progressPct, 100)
-                        }%`,
+                        width: `${progressPct === null
+                          ? 0
+                          : Math.min(progressPct, 100)
+                          }%`,
                       }}
                     />
                   </div>
@@ -679,14 +692,12 @@ export default function MidMonthTargetReminderModal({
                   aria-labelledby="inventory-clearance-label"
                   onClick={() => setInventoryClearance(!inventoryClearance)}
                   disabled={saving}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:opacity-50 ${
-                    inventoryClearance ? "bg-green-500" : "bg-slate-200"
-                  }`}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2 disabled:opacity-50 ${inventoryClearance ? "bg-green-500" : "bg-slate-200"
+                    }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      inventoryClearance ? "translate-x-5" : "translate-x-0"
-                    }`}
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${inventoryClearance ? "translate-x-5" : "translate-x-0"
+                      }`}
                   />
                 </button>
               </div>
@@ -810,7 +821,7 @@ export default function MidMonthTargetReminderModal({
             {infoText}
           </div>
 
-          {currentStep !== 3 && saveError && (
+          {saveError && (
             <p
               role="alert"
               className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600"
@@ -824,6 +835,7 @@ export default function MidMonthTargetReminderModal({
         {/* FOOTER: STEP ACTIONS        */}
         {/* =========================== */}
         <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-4 sm:px-8">
+
           {currentStep === 1 && (
             <div className="flex items-center justify-between gap-3">
               <button
@@ -835,31 +847,22 @@ export default function MidMonthTargetReminderModal({
                 Maybe later
               </button>
 
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="md"
-                  onClick={() => handleSave(false)}
-                  disabled={!canSave}
-                  className="px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Done"}
-                </Button>
-
-                <Button
-                  size="md"
-                  variant="outline"
-                  onClick={() => {
-                    setSaveError(null);
-                    setCurrentStep(2);
-                  }}
-                  className="text-sm font-semibold text-charcoal-500"
-                >
-                  Next: Objectives
-                </Button>
-              </div>
+              <Button
+                type="button"
+                size="md"
+                onClick={() => {
+                  setSaveError(null);
+                  setCurrentStep(2);
+                }}
+                disabled={saving}
+                className="px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
+              >
+                Next
+              </Button>
             </div>
           )}
+
+
 
           {currentStep === 2 && (
             <div className="flex items-center justify-between gap-3">
@@ -876,77 +879,64 @@ export default function MidMonthTargetReminderModal({
                 Back
               </Button>
 
-              <div className="flex items-center gap-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSaveError(null);
-                    setCurrentStep(3);
-                  }}
-                  disabled={saving}
-                  className="text-sm font-semibold text-slate-500 hover:underline disabled:opacity-50"
-                >
-                  Skip to Warehouse
-                </button>
-
-                <Button
-                  type="button"
-                  size="md"
-                  onClick={() => handleSave(true)}
-                  disabled={!canSave}
-                  className="px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Save & Next"}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                size="md"
+                onClick={() => {
+                  setSaveError(null);
+                  setCurrentStep(3);
+                }}
+                disabled={saving}
+                className="px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
+              >
+                Next
+              </Button>
             </div>
           )}
+
 
           {currentStep === 3 && (
             <div className="flex items-center justify-between gap-3">
               <Button
                 size="md"
                 variant="outline"
-                onClick={() => setCurrentStep(2)}
-                disabled={warehouseUploading || !!warehouseSuccess}
+                onClick={() => {
+                  setWarehouseError(null);
+                  setCurrentStep(2);
+                }}
+                disabled={warehouseUploading || !!warehouseSuccess || saving}
                 className="px-4 py-2.5 text-sm font-semibold text-charcoal-500 transition hover:bg-slate-50 disabled:opacity-50"
               >
                 Back
               </Button>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleWarehouseSkip}
-                  disabled={warehouseUploading || !!warehouseSuccess}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <SkipForward className="h-4 w-4" />
-                  Skip for now
-                </button>
-
-                <Button
-                  type="button"
-                  size="md"
-                  onClick={handleWarehouseUpload}
-                  disabled={!canUpload}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
-                >
-                  {warehouseUploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="h-4 w-4" />
-                      Upload Stock
-                    </>
-                  )}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                size="md"
+                onClick={handleFinishSetup}
+                disabled={saving || warehouseUploading || !!warehouseSuccess}
+                className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : warehouseUploading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    {/* <CheckCircle2 className="h-4 w-4" /> */}
+                    Save
+                  </>
+                )}
+              </Button>
             </div>
           )}
+
         </div>
       </div>
     </div>,
