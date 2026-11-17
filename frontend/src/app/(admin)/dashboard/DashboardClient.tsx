@@ -59,7 +59,7 @@ import {
     dummyTargetData,
 } from "./DashboardPreviewData";
 import DashboardPageHeader from "./DashboardPageHeader";
-import { DashboardLoaderModal, PreviewLockedSection } from "./DashboardAccessPanels";
+import { PreviewLockedSection } from "./DashboardAccessPanels";
 import DashboardLiveSalesTab from "./DashboardLiveSalesTab";
 import DashboardProductwisePnlSection from "./DashboardProductwisePnlSection";
 import DashboardMtdPlSection from "./DashboardMtdPlSection";
@@ -2999,7 +2999,6 @@ export default function DashboardPage() {
     const actionTabLoading =
         activeTab === "action" &&
         !shouldShowDummyUi &&
-        !showDashboardStepLoader &&
         (
             businessAnalysisLoading ||
             dashboardActionItemsLoading
@@ -14413,20 +14412,6 @@ export default function DashboardPage() {
                 }}
             />
             <HashScroll offset={80} />
-
-            {!shouldShowDummyUi && showDashboardStepLoader && refreshStatus.status !== "running" && (
-                <DashboardLoaderModal
-                    pageLoading={showDashboardStepLoader}
-                    shouldShowDummyUi={shouldShowDummyUi}
-                    currentStep={currentStep}
-                    completedSteps={completedSteps}
-                    dashboardSteps={dashboardSteps}
-                    stepProgress={stepProgress}
-                    loadingStartedAt={loadingStartedAt}
-                    estimatedSecondsMap={STEP_ESTIMATED_SECONDS}
-                    onCancel={handleDashboardLoadCancel}
-                />
-            )}
 
             {!shouldShowDummyUi &&
                 pageLoading &&

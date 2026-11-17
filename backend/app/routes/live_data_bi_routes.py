@@ -15,7 +15,7 @@ from calendar import month_name
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges,fetch_previous_period_data,fetch_current_mtd_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
+from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges, get_last_30_days_ranges,fetch_previous_period_data,fetch_current_mtd_data,fetch_last_30_days_current_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,fetch_adsdaily_sku_mtd_ads,
 attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_current_inventory_snapshot, get_ai_refresh_slot,fetch_live_target_context,fetch_previous_cm2_profit_from_skuwisemonthly)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
@@ -30,6 +30,16 @@ from datetime import datetime, date, timezone
 from zoneinfo import ZoneInfo
 from app import db
 from app.models.user_models import LiveAISummary
+
+
+def _format_live_period_label(start: date, end: date) -> str:
+    start_label = f"{month_abbr[start.month].capitalize()}'{str(start.year)[-2:]} {start.day}"
+    if start.month == end.month and start.year == end.year:
+        return f"{start_label}–{end.day}"
+
+    end_label = f"{month_abbr[end.month].capitalize()}'{str(end.year)[-2:]} {end.day}"
+    return f"{start_label}–{end_label}"
+
 
 # -----------------------------------------------------------------------------
 # ENV / DB SETUP
@@ -2568,7 +2578,7 @@ def save_live_ai_cache(
     return record
 
 @live_data_bi_bp.route("/live_mtd_bi", methods=["GET"])
-def live_mtd_vs_previous():
+def live_mtd_vs_previous(period_mode=None):
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return jsonify({"error": "Authorization token is missing or invalid"}), 401
@@ -2635,10 +2645,14 @@ def live_mtd_vs_previous():
 #     "raw_args": dict(request.args),
 # })
 
-        ranges = get_mtd_and_prev_ranges(
-            as_of=as_of,
-            start_day=start_day,
-            end_day=end_day,
+        ranges = (
+            get_last_30_days_ranges(as_of=as_of)
+            if period_mode == "last_30_days"
+            else get_mtd_and_prev_ranges(
+                as_of=as_of,
+                start_day=start_day,
+                end_day=end_day,
+            )
         )
         prev_start = ranges["previous"]["start"]
         prev_end = ranges["previous"]["end"]
@@ -2677,13 +2691,17 @@ def live_mtd_vs_previous():
 
 
         # FULL previous month (charts)
-        prev_full_start = date(
-            ranges["meta"]["previous_year"],
-            ranges["meta"]["previous_month"],
-            1,
-        )
-        last_day_prev = monthrange(prev_full_start.year, prev_full_start.month)[1]
-        prev_full_end = date(prev_full_start.year, prev_full_start.month, last_day_prev)
+        if period_mode == "last_30_days":
+            prev_full_start = prev_start
+            prev_full_end = prev_end
+        else:
+            prev_full_start = date(
+                ranges["meta"]["previous_year"],
+                ranges["meta"]["previous_month"],
+                1,
+            )
+            last_day_prev = monthrange(prev_full_start.year, prev_full_start.month)[1]
+            prev_full_end = date(prev_full_start.year, prev_full_start.month, last_day_prev)
 
         key_column = "sku"
 
@@ -2698,6 +2716,7 @@ def live_mtd_vs_previous():
                 as_of=as_of,
                 start_day=start_day,
                 end_day=end_day,
+                period_mode=period_mode,
             )
 
             curr_global_items = remove_total_rows(
@@ -2895,15 +2914,8 @@ def live_mtd_vs_previous():
                     other_products_total_row["is_other_skus_card"] = True
 
 
-            prev_label = (
-                f"{month_abbr[prev_start.month].capitalize()}'"
-                f"{str(prev_start.year)[-2:]} {prev_start.day}–{prev_end.day}"
-            )
-
-            curr_label = (
-                f"{month_abbr[curr_start.month].capitalize()}'"
-                f"{str(curr_start.year)[-2:]} {curr_start.day}–{curr_end.day}"
-            )
+            prev_label = _format_live_period_label(prev_start, prev_end)
+            curr_label = _format_live_period_label(curr_start, curr_end)
 
             prev_totals = aggregate_totals(prev_data_aligned)
             curr_totals = aggregate_totals(curr_data)
@@ -4036,12 +4048,21 @@ def live_mtd_vs_previous():
 
             def safe_fetch_current_mtd_data_for_global(user_id, country, start_date, end_date):
                 try:
-                    items, daily_rows = fetch_current_mtd_data(
-                        user_id,
-                        country,
-                        start_date,
-                        end_date,
-                    )
+                    if period_mode == "last_30_days":
+                        items, daily_rows = fetch_last_30_days_current_data(
+                            user_id,
+                            country,
+                            start_date,
+                            end_date,
+                            ranges["meta"]["today"],
+                        )
+                    else:
+                        items, daily_rows = fetch_current_mtd_data(
+                            user_id,
+                            country,
+                            start_date,
+                            end_date,
+                        )
                     return items or [], daily_rows or []
                 except Exception as e:
                     print(
@@ -4350,16 +4371,32 @@ def live_mtd_vs_previous():
             user_id, country, prev_start, prev_end
         )
 
-        curr_data, curr_daily = fetch_current_mtd_data(
-            user_id, country, curr_start, curr_end
-        )
+        if period_mode == "last_30_days" and country in {"uk", "us"}:
+            curr_data, curr_daily = fetch_last_30_days_current_data(
+                user_id,
+                country,
+                curr_start,
+                curr_end,
+                ranges["meta"]["today"],
+            )
+        else:
+            curr_data, curr_daily = fetch_current_mtd_data(
+                user_id, country, curr_start, curr_end
+            )
 
         # ✅ Current values for AI only, from skuwisemonthly monthly table
-        curr_ai_data, curr_ai_totals, curr_ai_fee_totals = fetch_current_ai_values_from_skuwisemonthly(
-            user_id=user_id,
-            country=country,
-            curr_end=curr_end,
-        )
+        if period_mode == "last_30_days":
+            curr_ai_data = curr_data
+            curr_ai_totals = aggregate_totals(curr_ai_data)
+            curr_ai_totals["total_asp"] = compute_total_asp(curr_ai_data)
+            curr_ai_totals["unit_wise_profitability"] = compute_total_unit_profitability(curr_ai_data)
+            curr_ai_fee_totals = totals_from_daily_series(curr_daily)
+        else:
+            curr_ai_data, curr_ai_totals, curr_ai_fee_totals = fetch_current_ai_values_from_skuwisemonthly(
+                user_id=user_id,
+                country=country,
+                curr_end=curr_end,
+            )
 
         # -------------------------------------------------
         # CASE: Current month has no sales yet
@@ -4522,15 +4559,21 @@ def live_mtd_vs_previous():
         current_mtd_global = []
 
         if country == "uk":
-            _, current_mtd_uk_raw = fetch_current_mtd_data(
-                user_id, "uk", curr_start, curr_end
-            )
+            if period_mode == "last_30_days":
+                current_mtd_uk_raw = curr_daily
+            else:
+                _, current_mtd_uk_raw = fetch_current_mtd_data(
+                    user_id, "uk", curr_start, curr_end
+                )
             current_mtd_uk = _tag_daily_series(current_mtd_uk_raw, "uk")
 
         elif country == "us":
-            _, current_mtd_us_raw = fetch_current_mtd_data(
-                user_id, "us", curr_start, curr_end
-            )
+            if period_mode == "last_30_days":
+                current_mtd_us_raw = curr_daily
+            else:
+                _, current_mtd_us_raw = fetch_current_mtd_data(
+                    user_id, "us", curr_start, curr_end
+                )
             current_mtd_us = _tag_daily_series(current_mtd_us_raw, "us")
 
         # Previous aligned period
@@ -4891,14 +4934,8 @@ def live_mtd_vs_previous():
         # ---------------------------
         # LABELS
         # ---------------------------
-        prev_label = (
-            f"{month_abbr[prev_start.month].capitalize()}'"
-            f"{str(prev_start.year)[-2:]} {prev_start.day}–{prev_end.day}"
-        )
-        curr_label = (
-            f"{month_abbr[curr_start.month].capitalize()}'"
-            f"{str(curr_start.year)[-2:]} {curr_start.day}–{curr_end.day}"
-        )
+        prev_label = _format_live_period_label(prev_start, prev_end)
+        curr_label = _format_live_period_label(curr_start, curr_end)
         prev_label_full = (
             f"{month_abbr[prev_full_start.month].capitalize()}'"
             f"{str(prev_full_start.year)[-2:]} 1–{prev_full_end.day}"
@@ -7185,11 +7222,16 @@ def get_previous_global_data_for_live_bi(
     as_of=None,
     start_day=None,
     end_day=None,
+    period_mode=None,
 ):
-    ranges = get_mtd_and_prev_ranges(
-        as_of=as_of,
-        start_day=start_day,
-        end_day=end_day,
+    ranges = (
+        get_last_30_days_ranges(as_of=as_of)
+        if period_mode == "last_30_days"
+        else get_mtd_and_prev_ranges(
+            as_of=as_of,
+            start_day=start_day,
+            end_day=end_day,
+        )
     )
 
     prev_start = ranges["previous"]["start"]
@@ -7198,12 +7240,16 @@ def get_previous_global_data_for_live_bi(
     prev_month_name = month_name[prev_start.month].lower()
     prev_year = prev_start.year
 
-    prev_full_start = date(prev_start.year, prev_start.month, 1)
-    prev_full_end = date(
-        prev_start.year,
-        prev_start.month,
-        monthrange(prev_start.year, prev_start.month)[1]
-    )
+    if period_mode == "last_30_days":
+        prev_full_start = prev_start
+        prev_full_end = prev_end
+    else:
+        prev_full_start = date(prev_start.year, prev_start.month, 1)
+        prev_full_end = date(
+            prev_start.year,
+            prev_start.month,
+            monthrange(prev_start.year, prev_start.month)[1]
+        )
 
     # -------------------------------------------------------------------------
     # SAFE FETCH HELPERS
