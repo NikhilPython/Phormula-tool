@@ -643,7 +643,7 @@ export default function MidMonthTargetReminderModal({
                       "Enter a target to see your progress."
                     ) : (
                       <>
-                        You're at{" "}
+                        You&apos;re at{" "}
                         <span className="font-semibold text-[#37455F]">
                           {progressPct}%
                         </span>{" "}
