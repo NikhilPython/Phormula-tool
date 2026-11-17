@@ -105,6 +105,7 @@ def create_app():
     from app.routes.conversion_rate_routes import conversion_bp
     from app.routes.amazon_sales_api_routes import amazon_sales_api_bp
     from app.routes.live_data_bi_routes import live_data_bi_bp
+    from app.routes.last_30_days_routes import last_30_days_bp
     from app.routes.monthwise_ai_summary_routes import summary_bp
     from app.routes.advertisement_api_routes import advertisement_api_routes_bp
     from app.routes.member_auth import member_auth_bp
@@ -143,6 +144,7 @@ def create_app():
     app.register_blueprint(conversion_bp)
     app.register_blueprint(amazon_sales_api_bp)
     app.register_blueprint(live_data_bi_bp)
+    app.register_blueprint(last_30_days_bp)
     app.register_blueprint(summary_bp)
     app.register_blueprint(advertisement_api_routes_bp)
     app.register_blueprint(member_auth_bp)

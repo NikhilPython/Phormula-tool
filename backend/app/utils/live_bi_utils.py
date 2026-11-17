@@ -296,6 +296,40 @@ def get_mtd_and_prev_ranges(as_of=None, start_day=None, end_day=None):
         },
     }
 
+
+def get_last_30_days_ranges(as_of=None):
+    """Return the requested windows: as_of-31 through yesterday, then the prior 30 days."""
+    if as_of is None:
+        today = date.today()
+    elif isinstance(as_of, str):
+        today = datetime.strptime(as_of, "%Y-%m-%d").date()
+    elif isinstance(as_of, datetime):
+        today = as_of.date()
+    elif isinstance(as_of, date):
+        today = as_of
+    else:
+        raise ValueError("as_of must be a date or an ISO-formatted date string")
+
+    current_end = today - timedelta(days=1)
+    current_start = today - timedelta(days=31)
+    previous_end = current_start - timedelta(days=1)
+    previous_start = current_start - timedelta(days=30)
+
+    previous_month = today.month - 1 or 12
+    previous_year = today.year - (1 if today.month == 1 else 0)
+
+    return {
+        "current": {"start": current_start, "end": current_end},
+        "previous": {"start": previous_start, "end": previous_end},
+        "meta": {
+            "today": today,
+            "current_month": today.month,
+            "current_year": today.year,
+            "previous_month": previous_month,
+            "previous_year": previous_year,
+        },
+    }
+
 AI_REFRESH_DAYS = {1, 8, 15, 22, 29}
 
 
@@ -837,7 +871,7 @@ def fetch_adsdaily_sku_mtd_ads(
     """
 
     country_key = _normalise_ads_country(country)
-    table_name = f"adsdaily_{int(user_id)}_{country_key}_{int(start_date.month)}_{int(start_date.year)}"
+    first_table_name = f"adsdaily_{int(user_id)}_{country_key}_{int(start_date.month)}_{int(start_date.year)}"
 
     empty_totals = {
         "ads_spend": 0.0,
@@ -850,38 +884,56 @@ def fetch_adsdaily_sku_mtd_ads(
         "ctr": 0.0,
         "cpc": 0.0,
         "conversion_rate": 0.0,
-        "source_table": table_name,
+        "source_table": first_table_name,
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
     }
 
     try:
+        monthly_frames = []
+        source_tables = []
+        month_cursor = date(start_date.year, start_date.month, 1)
+
         with engine_hist.connect() as conn:
-            exists = conn.execute(
-                text("SELECT to_regclass(:table_name)"),
-                {"table_name": f"public.{table_name}"},
-            ).scalar()
+            while month_cursor <= end_date:
+                table_name = (
+                    f"adsdaily_{int(user_id)}_{country_key}_"
+                    f"{int(month_cursor.month)}_{int(month_cursor.year)}"
+                )
+                exists = conn.execute(
+                    text("SELECT to_regclass(:table_name)"),
+                    {"table_name": f"public.{table_name}"},
+                ).scalar()
 
-            if not exists:
-                print(f"[WARN] adsdaily table missing: {table_name}")
-                return {}, empty_totals
+                if exists:
+                    month_end = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+                    monthly_frames.append(pd.read_sql(
+                        text(f"""
+                            SELECT *
+                            FROM {table_name}
+                            WHERE date::date >= :start_date
+                              AND date::date <= :end_date
+                        """),
+                        conn,
+                        params={
+                            "start_date": max(start_date, month_cursor),
+                            "end_date": min(end_date, month_end),
+                        },
+                    ))
+                    source_tables.append(table_name)
+                else:
+                    print(f"[WARN] adsdaily table missing: {table_name}")
 
-            df = pd.read_sql(
-                text(f"""
-                    SELECT *
-                    FROM {table_name}
-                    WHERE date::date >= :start_date
-                      AND date::date <= :end_date
-                """),
-                conn,
-                params={
-                    "start_date": start_date,
-                    "end_date": end_date,
-                },
-            )
+                month_cursor = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+        if not monthly_frames:
+            return {}, empty_totals
+
+        df = pd.concat(monthly_frames, ignore_index=True)
+        empty_totals["source_table"] = ", ".join(source_tables)
 
     except Exception as e:
-        print(f"[WARN] failed reading adsdaily MTD table {table_name}: {e}")
+        print(f"[WARN] failed reading adsdaily tables for {start_date} through {end_date}: {e}")
         return {}, empty_totals
 
     if df is None or df.empty or "sku" not in df.columns:
@@ -1386,37 +1438,44 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
 def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: date, *, include_dashboard_totals=False):
     country_key = _normalise_formula_country(country)
 
-    table_name = construct_prev_table_name(
-        user_id=user_id,
-        country=country_key,
-        month=prev_start.month,
-        year=prev_start.year,
-    )
-
-    query = text(f"""
-        SELECT *
-        FROM (
-            SELECT
-                *,
-                NULLIF(NULLIF(date_time, '0'), '')::timestamp AS date_ts
-            FROM {table_name}
-        ) t
-        WHERE date_ts >= :start_date
-          AND date_ts < :end_date_plus_one
-    """)
-
     params = {
         "start_date": datetime.combine(prev_start, datetime.min.time()),
         "end_date_plus_one": datetime.combine(prev_end + timedelta(days=1), datetime.min.time()),
     }
 
-    with engine_hist.connect() as conn:
-        result = conn.execute(query, params)
-        rows = result.fetchall()
-        if not rows:
-            return ([], [], {}) if include_dashboard_totals else ([], [])
+    monthly_frames = []
+    month_cursor = date(prev_start.year, prev_start.month, 1)
 
-        df = pd.DataFrame(rows, columns=result.keys())
+    with engine_hist.connect() as conn:
+        while month_cursor <= prev_end:
+            table_name = construct_prev_table_name(
+                user_id=user_id,
+                country=country_key,
+                month=month_cursor.month,
+                year=month_cursor.year,
+            )
+            query = text(f"""
+                SELECT *
+                FROM (
+                    SELECT
+                        *,
+                        NULLIF(NULLIF(date_time, '0'), '')::timestamp AS date_ts
+                    FROM {table_name}
+                ) t
+                WHERE date_ts >= :start_date
+                  AND date_ts < :end_date_plus_one
+            """)
+            result = conn.execute(query, params)
+            rows = result.fetchall()
+            if rows:
+                monthly_frames.append(pd.DataFrame(rows, columns=result.keys()))
+
+            month_cursor = (month_cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+    if not monthly_frames:
+        return ([], [], {}) if include_dashboard_totals else ([], [])
+
+    df = pd.concat(monthly_frames, ignore_index=True)
 
     # 1) per-SKU metrics (now includes gross_sales if you updated compute_sku_metrics_from_df)
     sku_metrics = compute_sku_metrics_from_df(df, country=country_key)
@@ -1588,6 +1647,77 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         )
         return sku_metrics, daily_series, dashboard_totals
     return sku_metrics, daily_series
+
+
+def combine_period_sku_metrics(*row_groups):
+    rows = [row for group in row_groups for row in (group or [])]
+    if not rows:
+        return []
+
+    df = pd.DataFrame(rows)
+    if "sku" not in df.columns:
+        return []
+
+    df["sku"] = df["sku"].astype(str).str.strip()
+    df = df.loc[~df["sku"].str.lower().isin(["", "none", "nan", "null"])].copy()
+    if df.empty:
+        return []
+
+    ratio_fields = {
+        "asp",
+        "unit_wise_profitability",
+        "sales_mix",
+        "promotional_rebates_percentage",
+        "profit_percentage",
+    }
+    aggregations = {}
+    for column in df.columns:
+        if column == "sku":
+            continue
+        if column == "product_name" or column in ratio_fields:
+            aggregations[column] = "first"
+            continue
+
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        if numeric.notna().any():
+            df[column] = numeric.fillna(0.0)
+            aggregations[column] = "sum"
+        else:
+            aggregations[column] = "first"
+
+    combined = df.groupby("sku", as_index=False, sort=False).agg(aggregations)
+    quantity = pd.to_numeric(
+        combined["quantity"] if "quantity" in combined else pd.Series(0.0, index=combined.index),
+        errors="coerce",
+    )
+    net_sales = pd.to_numeric(
+        combined["net_sales"] if "net_sales" in combined else pd.Series(0.0, index=combined.index),
+        errors="coerce",
+    )
+    profit = pd.to_numeric(
+        combined["profit"] if "profit" in combined else pd.Series(0.0, index=combined.index),
+        errors="coerce",
+    )
+    quantity = quantity.replace(0, np.nan)
+
+    combined["asp"] = (net_sales / quantity).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    combined["unit_wise_profitability"] = (
+        profit / quantity
+    ).replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    total_net_sales = float(net_sales.fillna(0.0).sum())
+    combined["sales_mix"] = (
+        net_sales / total_net_sales * 100.0 if total_net_sales else 0.0
+    )
+    combined = normalize_sales_mix(combined, "sales_mix", digits=2)
+    if "promotional_rebates" in combined.columns:
+        combined["promotional_rebates_percentage"] = np.where(
+            net_sales != 0,
+            combined["promotional_rebates"] / net_sales * 100.0,
+            0.0,
+        )
+
+    return combined.replace({np.nan: None}).to_dict(orient="records")
 
 
 
@@ -1890,6 +2020,44 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         })
 
     return sku_metrics, daily_series
+
+
+def fetch_last_30_days_current_data(
+    user_id,
+    country,
+    curr_start: date,
+    curr_end: date,
+    as_of: date,
+):
+    """Combine archived transactions before this month with current live orders."""
+    if isinstance(as_of, datetime):
+        as_of = as_of.date()
+
+    current_month_start = date(as_of.year, as_of.month, 1)
+    historic_end = min(curr_end, current_month_start - timedelta(days=1))
+    historic_data, historic_daily = ([], [])
+    if curr_start < current_month_start and curr_start <= historic_end:
+        historic_data, historic_daily = fetch_previous_period_data(
+            user_id,
+            country,
+            curr_start,
+            historic_end,
+        )
+
+    live_start = max(curr_start, current_month_start)
+    live_data, live_daily = ([], [])
+    if live_start <= curr_end:
+        live_data, live_daily = fetch_current_mtd_data(
+            user_id,
+            country,
+            live_start,
+            curr_end,
+        )
+
+    combined_data = combine_period_sku_metrics(historic_data, live_data)
+    combined_daily = sorted(historic_daily + live_daily, key=lambda row: row["date"])
+    return combined_data, combined_daily
+
 
 def fetch_current_ai_values_from_skuwisemonthly(
     user_id: int,
