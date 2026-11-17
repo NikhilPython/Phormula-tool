@@ -3775,9 +3775,6 @@ def skutableprofit():
                         existing_reimbursement_vs_sales = safe_float(
                             row_dict.get("reimbursement_vs_sales")
                         )
-                        existing_reimbursement_vs_cm2 = safe_float(
-                            row_dict.get("rembursment_vs_cm2_margins")
-                        )
 
                         if existing_reimbursement_vs_sales == 0:
                             row_dict["reimbursement_vs_sales"] = round(
@@ -3785,11 +3782,14 @@ def skutableprofit():
                                 2
                             )
 
-                        if existing_reimbursement_vs_cm2 == 0:
-                            row_dict["rembursment_vs_cm2_margins"] = round(
-                                safe_divide(rembursement_fee, cm2_profit_total) * 100,
-                                2
-                            )
+                        displayed_cm2_profit = row_dict.get("total_cm2_profit")
+                        if displayed_cm2_profit is None or displayed_cm2_profit == "":
+                            displayed_cm2_profit = row_dict.get("cm2_profit")
+
+                        row_dict["rembursment_vs_cm2_margins"] = round(
+                            abs(safe_divide(rembursement_fee, displayed_cm2_profit)) * 100,
+                            2,
+                        )
 
                     row_dict["brand_spend"] = round(brand_spend_total, 2)
                     row_dict["dealsvouchar_ads"] = round(dealsvouchar_ads_total, 2)
