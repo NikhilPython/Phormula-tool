@@ -2228,6 +2228,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
+      let agedSurchargeFailed = false;
 
       // Reset progress
       setCurrentStep(1);
@@ -2332,25 +2333,30 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       setStep(6, "Inventory", 0, "Syncing aged surcharge inventory data...");
 
       // 1) Hit aged-surcharge FIRST
-      await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
-        await syncInventoryAgedSurchargeOnce({
-          country: countryUsed,
-          marketplace_id: marketplaceIdUsed,
-          month: mNum,
-          year: y,
-          store_in_db: true,
-        });
+      try {
+        await runEtaUnit(`inventorySurcharge:${y}-${two(mNum)}`, async () => {
+          await syncInventoryAgedSurchargeOnce({
+            country: countryUsed,
+            marketplace_id: marketplaceIdUsed,
+            month: mNum,
+            year: y,
+            store_in_db: true,
+          });
 
-        alreadyHitApiKeys.add(
-          liveDataApiKey(
-            "amazon_inventory_aged_surcharge",
-            dashboardCountry,
-            marketplaceIdUsed,
-            y,
-            two(mNum)
-          )
-        );
-      });
+          alreadyHitApiKeys.add(
+            liveDataApiKey(
+              "amazon_inventory_aged_surcharge",
+              dashboardCountry,
+              marketplaceIdUsed,
+              y,
+              two(mNum)
+            )
+          );
+        });
+      } catch (surchargeError) {
+        console.error(`Aged surcharge sync failed for ${y}-${two(mNum)}:`, surchargeError);
+        agedSurchargeFailed = true;
+      }
 
       setStep(6, "Inventory", 35, "Syncing aged inventory data...");
 
@@ -2377,7 +2383,14 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
         })
       );
 
-      setStep(6, "Inventory", 100, "Inventory data synced successfully");
+      setStep(
+        6,
+        "Inventory",
+        100,
+        agedSurchargeFailed
+          ? "Continuing remaining inventory sync..."
+          : "Inventory data synced successfully"
+      );
       markStepComplete(6);
 
       // Step 7: Live Data
@@ -2434,7 +2447,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast generated successfully.`
           : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.`
       );
-
       localStorage.setItem("selectedPlatform", dashboardPlatformForCountry(countryUsed));
       window.dispatchEvent(new Event("storage"));
 
@@ -2471,6 +2483,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
+      let agedSurchargeFailed = false;
 
       // Reset progress
       setCurrentStep(1);
@@ -2744,28 +2757,33 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             )} (${i + 1}/${surchargeMonths.length})...`
           );
 
-          await runEtaUnit(
-            `inventorySurcharge:${y}-${two(mNum)}`,
-            async () => {
-              await syncInventoryAgedSurchargeOnce({
-                country: countryUsed,
-                marketplace_id: marketplaceIdUsed,
-                month: mNum,
-                year: y,
-                store_in_db: true,
-              });
+          try {
+            await runEtaUnit(
+              `inventorySurcharge:${y}-${two(mNum)}`,
+              async () => {
+                await syncInventoryAgedSurchargeOnce({
+                  country: countryUsed,
+                  marketplace_id: marketplaceIdUsed,
+                  month: mNum,
+                  year: y,
+                  store_in_db: true,
+                });
 
-              alreadyHitApiKeys.add(
-                liveDataApiKey(
-                  "amazon_inventory_aged_surcharge",
-                  dashboardCountry,
-                  marketplaceIdUsed,
-                  y,
-                  two(mNum)
-                )
-              );
-            }
-          );
+                alreadyHitApiKeys.add(
+                  liveDataApiKey(
+                    "amazon_inventory_aged_surcharge",
+                    dashboardCountry,
+                    marketplaceIdUsed,
+                    y,
+                    two(mNum)
+                  )
+                );
+              }
+            );
+          } catch (surchargeError) {
+            console.error(`Aged surcharge sync failed for ${y}-${two(mNum)}:`, surchargeError);
+            agedSurchargeFailed = true;
+          }
         }
 
         // ---------------------------------------------------------
@@ -2824,7 +2842,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           6,
           "Inventory",
           100,
-          "Inventory data synced successfully"
+          agedSurchargeFailed
+            ? "Continuing remaining inventory sync..."
+            : "Inventory data synced successfully"
         );
 
         markStepComplete(6);
@@ -2948,7 +2968,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             : `${selectedPeriod} months`
           }, ok ${ok}, failed ${fail}. Dashboard graphs are ready.`
       );
-
       localStorage.setItem(
         "selectedPlatform",
         dashboardPlatformForCountry(countryUsed)
