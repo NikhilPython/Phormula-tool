@@ -1385,7 +1385,16 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
 
     if "cogs" in df.columns and safe_num(df["cogs"]).abs().sum() > 0:
         cogs_by = (
-            df.assign(cogs=safe_num(df["cogs"]))
+            df.assign(cogs=safe_num(df["cogs"]).abs())
+            .groupby("sku", as_index=False)["cogs"]
+            .sum()
+        )
+    elif (
+        "cost_of_unit_sold" in df.columns
+        and safe_num(df["cost_of_unit_sold"]).abs().sum() > 0
+    ):
+        cogs_by = (
+            df.assign(cogs=safe_num(df["cost_of_unit_sold"]).abs())
             .groupby("sku", as_index=False)["cogs"]
             .sum()
         )
@@ -1727,6 +1736,14 @@ def fetch_previous_period_data(user_id, country, prev_start: date, prev_end: dat
         _, dashboard_totals, _ = previous_period_metrics_from_df(
             df, country_key, sku_metrics=sku_metrics, include_daily=False
         )
+        for field in ("net_taxes", "net_credits", "other_transactions"):
+            dashboard_totals[field] = round(
+                float(pd.to_numeric(
+                    pd.Series([row.get(field, 0.0) for row in sku_metrics]),
+                    errors="coerce",
+                ).fillna(0.0).sum()),
+                2,
+            )
         return sku_metrics, daily_series, dashboard_totals
     return sku_metrics, daily_series
 
@@ -1813,7 +1830,9 @@ def combine_period_sku_metrics(*row_groups):
 
 
 
-def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
+def fetch_current_mtd_data(
+    user_id, country, curr_start: date, curr_end: date, *, include_dashboard_totals=False
+):
     """
     Returns:
       sku_metrics: list of per-SKU metrics from liveorders
@@ -1872,7 +1891,7 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         res = conn.execute(query_live, params)
         rows = res.fetchall()
         if not rows:
-            return [], []
+            return ([], [], {}) if include_dashboard_totals else ([], [])
 
         df = pd.DataFrame(rows, columns=res.keys())
 
@@ -2213,6 +2232,24 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
 
         })
 
+    if include_dashboard_totals:
+        from app.utils.amazon_utils import previous_period_metrics_from_df
+
+        _, dashboard_totals, _ = previous_period_metrics_from_df(
+            df,
+            country,
+            sku_metrics=sku_metrics,
+            include_daily=False,
+        )
+        for field in ("net_taxes", "net_credits", "other_transactions"):
+            dashboard_totals[field] = round(
+                float(pd.to_numeric(
+                    pd.Series([row.get(field, 0.0) for row in sku_metrics]),
+                    errors="coerce",
+                ).fillna(0.0).sum()),
+                2,
+            )
+        return sku_metrics, daily_series, dashboard_totals
     return sku_metrics, daily_series
 
 
@@ -2222,6 +2259,8 @@ def fetch_last_30_days_current_data(
     curr_start: date,
     curr_end: date,
     as_of: date,
+    *,
+    include_dashboard_totals=False,
 ):
     """Combine archived transactions before this month with current live orders."""
     if isinstance(as_of, datetime):
@@ -2229,30 +2268,66 @@ def fetch_last_30_days_current_data(
 
     current_month_start = date(as_of.year, as_of.month, 1)
     historic_end = min(curr_end, current_month_start - timedelta(days=1))
-    historic_data, historic_daily = ([], [])
+    historic_data, historic_daily, historic_totals = ([], [], {})
     if curr_start < current_month_start and curr_start <= historic_end:
-        historic_data, historic_daily = fetch_previous_period_data(
-            user_id,
-            country,
-            curr_start,
-            historic_end,
-        )
+        if include_dashboard_totals:
+            historic_data, historic_daily, historic_totals = fetch_previous_period_data(
+                user_id, country, curr_start, historic_end,
+                include_dashboard_totals=True,
+            )
+        else:
+            historic_data, historic_daily = fetch_previous_period_data(
+                user_id, country, curr_start, historic_end
+            )
 
     live_start = max(curr_start, current_month_start)
-    live_data, live_daily = ([], [])
+    live_data, live_daily, live_totals = ([], [], {})
     if live_start <= curr_end:
-        live_data, live_daily = fetch_current_mtd_data(
-            user_id,
-            country,
-            live_start,
-            curr_end,
-        )
+        if include_dashboard_totals:
+            live_data, live_daily, live_totals = fetch_current_mtd_data(
+                user_id, country, live_start, curr_end,
+                include_dashboard_totals=True,
+            )
+        else:
+            live_data, live_daily = fetch_current_mtd_data(
+                user_id, country, live_start, curr_end
+            )
 
     combined_data = combine_period_sku_metrics(historic_data, live_data)
     combined_daily = sorted(historic_daily + live_daily, key=lambda row: row["date"])
     for row in combined_daily:
         if "shipment_quantity" in row:
             row["quantity"] = row["shipment_quantity"]
+    if include_dashboard_totals:
+        additive_fields = (
+            "storage_fee", "shipping_charges", "platform_management_fees",
+            "fba_disposal", "other_adjustment", "misc_transaction", "lost_total",
+            "platform_fee", "platform_fee_inventory_storage", "platformfeenew",
+            "advertising_fees",
+            "cogs", "amazon_fees", "tax_and_credits", "previous_net_reimbursement",
+            "net_taxes", "net_credits", "other_transactions",
+            "brand_spend", "dealsvouchar_ads", "placement_fee", "customs_fee",
+            "short_term_storage_fee", "long_term_storage_fee", "shipment_fees",
+            "debt_payment", "disbursement",
+        )
+        totals = {
+            field: float(historic_totals.get(field, 0) or 0)
+            + float(live_totals.get(field, 0) or 0)
+            for field in additive_fields
+        }
+        totals["advertising_total"] = totals["advertising_fees"]
+        totals["net_reimbursement"] = totals["previous_net_reimbursement"]
+        totals["cm2_profit"] = (
+            float(historic_totals.get("profit", 0) or 0)
+            + float(live_totals.get("profit", 0) or 0)
+            - totals["advertising_fees"]
+            - totals["platform_fee"]
+        )
+        totals["net_sales"] = (
+            float(historic_totals.get("net_sales", 0) or 0)
+            + float(live_totals.get("net_sales", 0) or 0)
+        )
+        return combined_data, combined_daily, totals
     return combined_data, combined_daily
 
 

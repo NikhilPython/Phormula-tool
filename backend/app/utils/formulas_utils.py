@@ -298,31 +298,39 @@ def uk_cogs(
     want_breakdown: Optional[bool] = None,
     **kwargs
 ) -> Tuple[float, pd.DataFrame, List[str]]:
-
-    # Prefer dashboard-aligned computation when possible
-    if "price_in_gbp" in df.columns and "total_quantity" in df.columns:
-        w = df.copy()
-        if "sku" in w.columns:
-            w["sku"] = w["sku"].astype(str).str.strip()
-            w = w.loc[sku_mask(w)]
-        else:
-            return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
-
-        w["price_in_gbp"] = safe_num(w["price_in_gbp"])
-        w["total_quantity"] = safe_num(w["total_quantity"])
-
-        by = w.groupby("sku", as_index=False)[["price_in_gbp", "total_quantity"]].mean()
-        by["cogs"] = (by["price_in_gbp"] * by["total_quantity"]).abs()
-        by["__metric__"] = by["cogs"]
-
-        per_sku = by[["sku", "__metric__", "cogs"]]
-        total = float(per_sku["__metric__"].sum())
-        return total, per_sku, ["cogs"]
-
-    # Fallback to old behavior
     sku_df = df.copy()
     if "sku" in sku_df.columns:
+        sku_df["sku"] = sku_df["sku"].astype(str).str.strip()
         sku_df = sku_df.loc[sku_mask(sku_df)]
+    else:
+        return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
+
+    for source_column in ("cogs", "cost_of_unit_sold"):
+        if source_column not in sku_df.columns:
+            continue
+        values = safe_num(sku_df[source_column]).abs()
+        if values.sum() == 0:
+            continue
+
+        by = (
+            sku_df.assign(cogs=values)
+            .groupby("sku", as_index=False)["cogs"]
+            .sum()
+        )
+        by["__metric__"] = by["cogs"]
+        per_sku = by[["sku", "__metric__", "cogs"]]
+        return float(per_sku["__metric__"].sum()), per_sku, ["cogs"]
+
+    # Derive COGS from unit price only when no transaction-level cost total exists.
+    if "price_in_gbp" in sku_df.columns and "total_quantity" in sku_df.columns:
+        sku_df["price_in_gbp"] = safe_num(sku_df["price_in_gbp"])
+        sku_df["total_quantity"] = safe_num(sku_df["total_quantity"])
+
+        by = sku_df.groupby("sku", as_index=False)[["price_in_gbp", "total_quantity"]].mean()
+        by["cogs"] = (by["price_in_gbp"] * by["total_quantity"]).abs()
+        by["__metric__"] = by["cogs"]
+        per_sku = by[["sku", "__metric__", "cogs"]]
+        return float(per_sku["__metric__"].sum()), per_sku, ["cogs"]
 
     if "cost_of_unit_sold" not in sku_df.columns:
         return 0.0, pd.DataFrame(columns=["sku", "__metric__", "cogs"]), ["cogs"]
