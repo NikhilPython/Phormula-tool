@@ -768,10 +768,11 @@ export default function DashboardLiveSalesTab({
                                         <LiveBiLineGraph
                                             dailySeries={finalBiDailySeriesHome}
                                             periods={finalBiPeriods}
+                                            periodMode={comparisonPeriod}
                                             loading={!shouldShowDummyUi && biUiLoading}
                                             error={shouldShowDummyUi ? null : biError}
-                                            selectedStartDay={selectedStartDay}
-                                            selectedEndDay={selectedEndDay}
+                                            selectedStartDay={comparisonPeriod === "last30" ? null : selectedStartDay}
+                                            selectedEndDay={comparisonPeriod === "last30" ? null : selectedEndDay}
                                             currentDataEndDate={dashboardAllowedEndISO}
                                             currencySymbol={currencySymbol}
                                         />

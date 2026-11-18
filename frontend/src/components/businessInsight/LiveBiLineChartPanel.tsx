@@ -19,6 +19,7 @@ const ReactECharts = dynamic(() => import("echarts-for-react"), {
 });
 
 type ChartMetric = "net_sales" | "quantity";
+type PeriodMode = "mtd" | "last30";
 
 type DailyPoint = {
   date: string; // YYYY-MM-DD
@@ -55,6 +56,7 @@ type Props = {
   selectedEndDay?: number | null;
   currencySymbol?: string;
   fullMonthMode?: boolean;
+  periodMode?: PeriodMode;
   currentDataEndDate?: string | null;
 };
 
@@ -119,6 +121,7 @@ const LiveLineChart: React.FC<{
   showPrevious?: boolean;
   showCurrent?: boolean;
   fullMonthMode?: boolean;
+  periodMode?: PeriodMode;
   height?: number;
 }> = ({
   dataPrev,
@@ -134,6 +137,7 @@ const LiveLineChart: React.FC<{
   showPrevious = true,
   showCurrent = true,
   fullMonthMode = false,
+  periodMode = "mtd",
   height,
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -141,7 +145,8 @@ const LiveLineChart: React.FC<{
 
     const getDay = (dateStr: string) => Number(dateStr?.split("-")?.[2]);
 
-    const rangeActive = selectedStartDay != null && selectedEndDay != null;
+    const isLast30Days = periodMode === "last30";
+    const rangeActive = !isLast30Days && selectedStartDay != null && selectedEndDay != null;
     const s = rangeActive ? clampDay(Math.min(selectedStartDay!, selectedEndDay!)) : null;
     const e = rangeActive ? clampDay(Math.max(selectedStartDay!, selectedEndDay!)) : null;
     const currentPeriodStartDay = useMemo(() => {
@@ -152,11 +157,30 @@ const LiveLineChart: React.FC<{
       const day = getDay(currentDataEndDate || "");
       return Number.isFinite(day) ? clampDay(day) : null;
     }, [currentDataEndDate]);
+    const shiftIsoDate = (isoDate: string | null | undefined, days: number) => {
+      if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "";
+      const date = new Date(`${isoDate}T00:00:00.000Z`);
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    };
+    const last30CurrentStart = isLast30Days ? shiftIsoDate(currentDataEndDate, -29) : "";
+    const last30PreviousStart = isLast30Days ? shiftIsoDate(currentDataEndDate, -59) : "";
+    const getSeriesAxisDay = (point: DailyPoint, isCurrent: boolean) => {
+      if (!isLast30Days) return getDay(point.date);
+      const startDate = isCurrent ? last30CurrentStart : last30PreviousStart;
+      if (!startDate) return NaN;
+      const pointTime = Date.parse(`${point.date}T00:00:00.000Z`);
+      const startTime = Date.parse(`${startDate}T00:00:00.000Z`);
+      if (!Number.isFinite(pointTime) || !Number.isFinite(startTime)) return NaN;
+      return Math.floor((pointTime - startTime) / 86400000) + 1;
+    };
     const shouldCapCurrentToDataEnd = useMemo(() => {
+      if (isLast30Days) return false;
       if (!currentDataEndDate) return false;
       return getPeriodMonthKey(currentPeriod, currLabel) === currentDataEndDate.slice(0, 7);
-    }, [currentDataEndDate, currentPeriod, currLabel]);
+    }, [isLast30Days, currentDataEndDate, currentPeriod, currLabel]);
     const expectedCurrentEndDay = useMemo(() => {
+      if (isLast30Days) return currentDataEndDate ? 30 : null;
       const explicitEndDay = getDay(getPeriodEndDate(currentPeriod));
       const periodEndDay = Number.isFinite(explicitEndDay) ? clampDay(explicitEndDay) : null;
 
@@ -167,7 +191,7 @@ const LiveLineChart: React.FC<{
       }
 
       return shouldCapCurrentToDataEnd ? currentDataEndDay : null;
-    }, [currentPeriod, shouldCapCurrentToDataEnd, currentDataEndDay]);
+    }, [isLast30Days, currentDataEndDate, currentPeriod, shouldCapCurrentToDataEnd, currentDataEndDay]);
 
     // ✅ responsive sizing
     const [isCompactView, setIsCompactView] = useState(false);
@@ -284,14 +308,14 @@ const LiveLineChart: React.FC<{
           hasRealMetricValue(point) &&
           (!shouldCapCurrentToDataEnd || !currentDataEndDate || point.date <= currentDataEndDate)
         )
-        .map((d) => getDay(d.date))
-        .filter(Number.isFinite)
+        .map((point) => getSeriesAxisDay(point, true))
+        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= 30)))
         .sort((a, b) => a - b);
 
       const prevDays = dataPrev
         .filter(hasRealMetricValue)
-        .map((d) => getDay(d.date))
-        .filter(Number.isFinite)
+        .map((point) => getSeriesAxisDay(point, false))
+        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= 30)))
         .sort((a, b) => a - b);
 
       const toAxisDays = (days: number[]): AxisDay[] =>
@@ -308,7 +332,7 @@ const LiveLineChart: React.FC<{
           (showCurrent &&
             dataCurr.some(
               (point) =>
-                getDay(point.date) === onlyDay &&
+                getSeriesAxisDay(point, true) === onlyDay &&
                 hasRealMetricValue(point) &&
                 (!shouldCapCurrentToDataEnd ||
                   !currentDataEndDate ||
@@ -317,7 +341,7 @@ const LiveLineChart: React.FC<{
         const previousHasValue =
           showPrevious &&
           dataPrev.some(
-            (point) => getDay(point.date) === onlyDay && hasRealMetricValue(point)
+            (point) => getSeriesAxisDay(point, false) === onlyDay && hasRealMetricValue(point)
           );
 
         if (!currentHasValue && !previousHasValue) return toAxisDays(days);
@@ -366,7 +390,7 @@ const LiveLineChart: React.FC<{
       // ✅ Normal mode:
       // show only current MTD days, e.g. July 1-2 and June 1-2.
       if (currDays.length || expectedCurrentEndDay != null) {
-        const minDay = currDays[0] ?? currentPeriodStartDay;
+        const minDay = isLast30Days ? 1 : currDays[0] ?? currentPeriodStartDay;
         const maxDay = maxCurrentVisibleDay ?? currDays[currDays.length - 1];
 
         return withSingleDayLineSpan(
@@ -384,7 +408,7 @@ const LiveLineChart: React.FC<{
       }
 
       return [];
-    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate, showCurrent, showPrevious]);
+    }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate, showCurrent, showPrevious, isLast30Days, getSeriesAxisDay]);
 
     const xAxis = useMemo(() => axisDays.map(({ day }) => String(day)), [axisDays]);
     const xAxisLabelFormatter = useMemo(
@@ -400,10 +424,10 @@ const LiveLineChart: React.FC<{
       return axisDays.map(({ day, __isPad }) => {
         if (__isPad) return null;
 
-        const pt = dataPrev.find((d) => getDay(d.date) === day);
+        const pt = dataPrev.find((point) => getSeriesAxisDay(point, false) === day);
         return pickValue(pt);
       });
-    }, [axisDays, dataPrev, metric]);
+    }, [axisDays, dataPrev, metric, getSeriesAxisDay]);
 
     const currData = useMemo(() => {
       return axisDays.map(({ day, __isPad }) => {
@@ -411,13 +435,13 @@ const LiveLineChart: React.FC<{
 
         const pt = dataCurr.find(
           (d) =>
-            getDay(d.date) === day &&
+            getSeriesAxisDay(d, true) === day &&
             (!shouldCapCurrentToDataEnd || !currentDataEndDate || d.date <= currentDataEndDate)
         );
         const value = pickValue(pt);
         return day === expectedCurrentEndDay && value == null ? 0 : value;
       });
-    }, [axisDays, dataCurr, metric, expectedCurrentEndDay, shouldCapCurrentToDataEnd, currentDataEndDate]);
+    }, [axisDays, dataCurr, metric, expectedCurrentEndDay, shouldCapCurrentToDataEnd, currentDataEndDate, getSeriesAxisDay]);
 
     /**
      * ✅ Critical fix:
@@ -748,6 +772,7 @@ export default function LiveBiLineChartPanel({
   selectedEndDay,
   currencySymbol,
   fullMonthMode = false,
+  periodMode = "mtd",
   currentDataEndDate,
 }: Props) {
 
@@ -816,13 +841,17 @@ export default function LiveBiLineChartPanel({
   }, [selectedStartDay, selectedEndDay]);
 
   const prevLegend = useMemo(
-    () => `${stripDayRange(periods?.previous?.label || monthTickLabel(periods?.previous))}${rangeSuffix}`,
-    [periods, rangeSuffix]
+    () => periodMode === "last30"
+      ? "Previous 30 days"
+      : `${stripDayRange(periods?.previous?.label || monthTickLabel(periods?.previous))}${rangeSuffix}`,
+    [periodMode, periods, rangeSuffix]
   );
 
   const currLegend = useMemo(
-    () => `${stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))}${rangeSuffix}`,
-    [periods, rangeSuffix]
+    () => periodMode === "last30"
+      ? "Last 30 days"
+      : `${stripDayRange(periods?.current_mtd?.label || monthTickLabel(periods?.current_mtd))}${rangeSuffix}`,
+    [periodMode, periods, rangeSuffix]
   );
 
   return (
@@ -950,6 +979,7 @@ export default function LiveBiLineChartPanel({
                   : currLegend
               }
               currentPeriod={periods?.current_mtd}
+              periodMode={periodMode}
               currentDataEndDate={currentDataEndDate}
               currencySymbol={currencySymbol}
               selectedStartDay={isExpanded ? null : selectedStartDay}

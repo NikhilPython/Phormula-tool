@@ -1251,81 +1251,6 @@ const currencyForCountry = (countryName: string): CurrencyCode => {
     return "USD";
 };
 
-const normalizeDeltaKey = (value: unknown) =>
-    String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ")
-        .replace(/[^\w\s+&-]/g, "");
-
-const attachNetSalesDeltaToLiveRows = (
-    currentRows: MonthlySkuwiseTableRow[],
-    previousRows: any[]
-): MonthlySkuwiseTableRow[] => {
-    const previousMap = new Map<string, any>();
-
-    previousRows.forEach((row: any) => {
-        const sku = String(row?.sku || "").trim().toUpperCase();
-
-        const name = normalizeDeltaKey(
-            normalizeProductDisplayName(row?.product_name || row?.sku || "")
-        );
-
-        if (sku && sku !== "GRAND_TOTAL" && sku !== "TOTAL") {
-            previousMap.set(`sku:${sku}`, row);
-        }
-
-        if (
-            name &&
-            name !== "total" &&
-            name !== "grand total" &&
-            name !== "others"
-        ) {
-            previousMap.set(`name:${name}`, row);
-        }
-    });
-
-    return currentRows.map((row) => {
-        if (row.isTotal || row.isOthers) return row;
-
-        const sku = String(row?.sku || "").trim().toUpperCase();
-
-        const name = normalizeDeltaKey(
-            normalizeProductDisplayName(row?.product_name || row?.sku || "")
-        );
-
-        const previousRow =
-            previousMap.get(`sku:${sku}`) ||
-            previousMap.get(`name:${name}`);
-
-        if (!previousRow) {
-            return {
-                ...row,
-                previous_net_sales: 0,
-                net_sales_delta: 0,
-                net_sales_delta_percentage: null,
-            };
-        }
-
-        const currentNetSales = toNumber(row.net_sales);
-        const previousNetSales = toNumber(previousRow?.net_sales);
-
-        const delta = currentNetSales - previousNetSales;
-
-        const deltaPct =
-            previousNetSales !== 0
-                ? (delta / Math.abs(previousNetSales)) * 100
-                : null;
-
-        return {
-            ...row,
-            previous_net_sales: previousNetSales,
-            net_sales_delta: delta,
-            net_sales_delta_percentage: deltaPct,
-        };
-    });
-};
-
 const fmtPct2 = (v: number) => `${(Number(v) || 0).toFixed(2)}%`;
 
 const SALES_DATA_EPSILON = 1e-9;
@@ -7078,6 +7003,12 @@ export default function DashboardPage() {
                 previousRow?.product_name,
                 actionRow?.product_name,
             ].find((value) => !isMissingDisplayName(value));
+            const backendNetSalesDeltaPct =
+                r.net_sales_delta_percentage ??
+                actionRow?.["Net Sales Growth (%)"]?.value ??
+                actionRow?.net_sales_growth_pct;
+            const backendPreviousNetSales =
+                r.previous_net_sales ?? actionRow?.net_sales_prev ?? previousRow?.net_sales;
             const rawTax = Number(r.net_taxes ?? r.tax ?? 0);
             const tax = countryName === "uk" ? Math.abs(rawTax) : rawTax;
             const credits = Number(r.credits ?? r.net_credits ?? 0);
@@ -7119,11 +7050,9 @@ export default function DashboardPage() {
                 refund_sales: Number(r.refund_sales ?? 0),
                 net_sales_tax_and_credits: Number(r.tax_and_credits ?? 0),
                 net_sales: Number(r.net_sales ?? 0),
-                previous_net_sales: Number(previousRow?.net_sales ?? 0),
-                net_sales_delta: Number(r.net_sales ?? 0) - Number(previousRow?.net_sales ?? 0),
-                net_sales_delta_percentage: previousRow && Number(previousRow.net_sales) !== 0
-                    ? ((Number(r.net_sales ?? 0) - Number(previousRow.net_sales)) / Math.abs(Number(previousRow.net_sales))) * 100
-                    : null,
+                previous_net_sales: backendPreviousNetSales,
+                net_sales_delta: r.net_sales_delta ?? actionRow?.net_sales_delta,
+                net_sales_delta_percentage: backendNetSalesDeltaPct ?? null,
 
                 promotional_rebates: Number(r.promotional_rebates ?? 0),
                 promotional_rebates_percentage: Number(r.promotional_rebates_percentage ?? 0),
@@ -10457,15 +10386,11 @@ export default function DashboardPage() {
             return dummyMonthlySkuwiseRowsForTable;
         }
 
-        return attachNetSalesDeltaToLiveRows(
-            monthlySkuwiseRowsForTable,
-            previousSkuwiseRowsForDelta
-        );
+        return monthlySkuwiseRowsForTable;
     }, [
         shouldShowDummyUi,
         dummyMonthlySkuwiseRowsForTable,
         monthlySkuwiseRowsForTable,
-        previousSkuwiseRowsForDelta,
     ]);
 
     const dashboardHasFetchedCurrentSalesData = useMemo(() => {
@@ -13588,10 +13513,7 @@ export default function DashboardPage() {
         // limited to nine products and an aggregated "Others" row, depending
         // on the user's current table sort, which would make the overview omit
         // valid low-performing SKUs.
-        const overviewSkuRows = attachNetSalesDeltaToLiveRows(
-            monthlySkuwiseRowsDisplay,
-            previousSkuwiseRowsForDelta
-        );
+        const overviewSkuRows = monthlySkuwiseRowsDisplay;
 
         const readBackendCm2ProfitDelta = (row: any): number | undefined => {
             const flatValue = row?.cm2_profit_growth_pct;
