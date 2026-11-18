@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import bindparam, create_engine, text
 from dotenv import load_dotenv
 from config import Config
 from calendar import month_name,monthrange
@@ -1080,6 +1080,48 @@ def fetch_adsdaily_sku_mtd_ads(
     }
 
     return sku_map, totals
+
+
+def fetch_sponsored_brands_spend(
+    user_id: int,
+    country: str,
+    start_date: date,
+    end_date: date,
+) -> float | None:
+    if start_date > end_date:
+        return 0.0
+
+    country_key = _normalise_ads_country(country)
+    country_aliases = {
+        "uk": ["UK", "GB", "GREAT BRITAIN", "UNITED KINGDOM"],
+        "us": ["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"],
+    }.get(country_key, [country_key.upper()])
+
+    query = text("""
+        SELECT COALESCE(SUM(spend), 0.0)
+        FROM public.amazon_sponsored_brands_keywords
+        WHERE user_id = :user_id
+          AND UPPER(TRIM(COALESCE(country, ''))) IN :country_aliases
+          AND start_date >= :start_date
+          AND start_date <= :end_date
+          AND UPPER(COALESCE(time_unit, '')) = 'DAILY'
+    """).bindparams(bindparam("country_aliases", expanding=True))
+
+    try:
+        with engine_live.connect() as conn:
+            total = conn.execute(query, {
+                "user_id": int(user_id),
+                "country_aliases": country_aliases,
+                "start_date": start_date,
+                "end_date": end_date,
+            }).scalar()
+        return float(total or 0.0)
+    except Exception as e:
+        print(
+            "[WARN] Could not read Sponsored Brands spend "
+            f"for {country_key} from {start_date} through {end_date}: {e}"
+        )
+        return None
 
 
 def attach_adsdaily_mtd_ads_to_growth_rows(
@@ -2515,6 +2557,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
         "fba_fees",
         "tax_and_credits",
         "cogs",
+        "brand_spend",
         "ads_spend",
         "cm2_profit",
         "cm2_profit_per",
@@ -2549,6 +2592,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
         "net_sales",
         "unit_wise_profitability",
         "cogs",
+        "brand_spend",
         "ads_spend",
         "cm2_profit",
         "cm2_profit_per",
@@ -2610,6 +2654,10 @@ def fetch_current_ai_values_from_skuwisemonthly(
     "amazon_fees": get_total(
         ["amazon_fees", "marketplace_fees"],
         0.0,
+    ),
+    "brand_spend": get_total(
+        ["brand_spend"],
+        float(sku_df["brand_spend"].sum()),
     ),
     "total_asp": get_total(
         ["asp"],

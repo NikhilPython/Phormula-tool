@@ -17,7 +17,7 @@ from dateutil.relativedelta import relativedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges, get_last_30_days_ranges,fetch_previous_period_data,fetch_current_mtd_data,fetch_last_30_days_current_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,fetch_adsdaily_sku_mtd_ads,
-attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_current_inventory_snapshot, get_ai_refresh_slot,fetch_live_target_context,fetch_previous_cm2_profit_from_skuwisemonthly)
+attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_current_inventory_snapshot, get_ai_refresh_slot,fetch_live_target_context,fetch_previous_cm2_profit_from_skuwisemonthly,fetch_sponsored_brands_spend)
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -4819,6 +4819,8 @@ def live_mtd_vs_previous(period_mode=None):
         #   prev_start/prev_end = 1 May to 24 May
         # Aggregated product-wise by SKU.
         # -------------------------------------------------
+        last30_brand_spend_total = None
+        last30_brand_spend_by_sku = {}
         try:
             prev_ads_sku_map, prev_ads_totals = fetch_adsdaily_sku_mtd_ads(
                 user_id=user_id,
@@ -4865,6 +4867,66 @@ def live_mtd_vs_previous(period_mode=None):
                 "start_date": curr_start.isoformat(),
                 "end_date": curr_end.isoformat(),
             }
+
+        if period_mode == "last_30_days" and country in {"uk", "us"}:
+            month_start = date(curr_end.year, curr_end.month, 1)
+            historic_ads_end = min(curr_end, month_start - timedelta(days=1))
+            historic_brand_by_sku = {}
+            if curr_start < month_start and curr_start <= historic_ads_end:
+                historic_ads_sku_map, _ = fetch_adsdaily_sku_mtd_ads(
+                    user_id=user_id,
+                    country=country,
+                    start_date=curr_start,
+                    end_date=historic_ads_end,
+                )
+                historic_brand_by_sku = {
+                    str(sku).strip().upper(): float(metrics.get("brand_spend", 0) or 0)
+                    for sku, metrics in historic_ads_sku_map.items()
+                }
+            historical_brand_total = fetch_sponsored_brands_spend(
+                user_id=user_id,
+                country=country,
+                start_date=curr_start,
+                end_date=historic_ads_end,
+            )
+
+            current_month_sku_rows, current_month_totals, _ = (
+                fetch_current_ai_values_from_skuwisemonthly(
+                    user_id=user_id,
+                    country=country,
+                    curr_end=curr_end,
+                )
+            )
+            current_month_brand_by_sku = {
+                str(row.get("sku") or "").strip().upper(): float(
+                    row.get("brand_spend", 0) or 0
+                )
+                for row in current_month_sku_rows
+                if str(row.get("sku") or "").strip()
+            }
+            last30_brand_spend_by_sku = {
+                sku: historic_brand_by_sku.get(sku, 0.0)
+                + current_month_brand_by_sku.get(sku, 0.0)
+                for sku in set(historic_brand_by_sku) | set(current_month_brand_by_sku)
+            }
+            last30_brand_spend_total = (
+                (
+                    historical_brand_total
+                    if historical_brand_total is not None
+                    else sum(historic_brand_by_sku.values())
+                )
+                + float(current_month_totals.get("brand_spend", 0) or 0)
+            )
+
+            for row in last_30_current_sku_items:
+                sku = str(row.get("sku") or "").strip()
+                if not sku:
+                    continue
+                brand_spend = last30_brand_spend_by_sku.get(sku.upper(), 0.0)
+                row["brand_spend"] = brand_spend
+                ads_metrics = dict(curr_ads_sku_map.get(sku, {}))
+                ads_metrics["brand_spend"] = brand_spend
+                curr_ads_sku_map[sku] = ads_metrics
 
         # ---------------------------
         # FULL PREVIOUS MONTH + DAILY SERIES: UK / US / GLOBAL
@@ -7005,6 +7067,8 @@ def live_mtd_vs_previous(period_mode=None):
                 user_id=user_id,
                 period_end=curr_end,
             )
+            if last30_brand_spend_total is not None:
+                last30_period_totals["brand_spend"] = last30_brand_spend_total
             current_total_row = next(
                 (
                     row for row in response_payload["skuwise_items"]
@@ -7016,9 +7080,10 @@ def live_mtd_vs_previous(period_mode=None):
                 last30_period_totals["advertising_fees"] = float(
                     current_total_row.get("ads_spend", 0) or 0
                 )
-                last30_period_totals["brand_spend"] = float(
-                    current_total_row.get("brand_spend", 0) or 0
-                )
+                if last30_brand_spend_total is None:
+                    last30_period_totals["brand_spend"] = float(
+                        current_total_row.get("brand_spend", 0) or 0
+                    )
                 last30_period_totals["advertising_total"] = (
                     last30_period_totals["advertising_fees"]
                     + last30_period_totals["brand_spend"]
