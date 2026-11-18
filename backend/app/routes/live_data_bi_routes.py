@@ -180,6 +180,26 @@ def remove_total_rows(items):
     return clean
 
 
+def _calculate_total_cm2_profit(cm2_profit, row):
+    def number(value):
+        try:
+            return float(value or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    return (
+        number(cm2_profit)
+        - number(row.get("brand_spend"))
+        - number(row.get("dealsvouchar_ads"))
+        - abs(number(row.get("shipping_charges")))
+        - abs(number(row.get("storage_fee")))
+        + abs(number(row.get("lost_total")))
+        - abs(number(row.get("fba_disposal")))
+        - abs(number(row.get("platform_management_fees")))
+        + number(row.get("other_adjustment"))
+    )
+
+
 def _enrich_skuwise_period_rows(
     items, country, currency_code, ads_by_sku=None, user_id=None, period_end=None
 ):
@@ -217,17 +237,10 @@ def _enrich_skuwise_period_rows(
             )
         total_ads = ads_spend + brand_spend + number(row.get("dealsvouchar_ads"))
         cm2_profit = profit - ads_spend
-        total_cm2_profit = (
-            cm2_profit
-            - brand_spend
-            - number(row.get("dealsvouchar_ads"))
-            - abs(number(row.get("shipping_charges")))
-            - abs(number(row.get("storage_fee")))
-            + abs(number(row.get("lost_total")))
-            - abs(number(row.get("fba_disposal")))
-            - abs(number(row.get("platform_management_fees")))
-            + number(row.get("other_adjustment"))
-        )
+        total_cm2_profit = _calculate_total_cm2_profit(cm2_profit, {
+            **row,
+            "brand_spend": brand_spend,
+        })
         total_quantity = net_quantity
         reimbursement = number(row.get("current_net_reimbursement"))
         marketplace_fees = number(row.get("marketplace_fees")) or (
@@ -7119,17 +7132,40 @@ def live_mtd_vs_previous(period_mode=None):
                 current_total_row["cm2_profit"] = last30_period_totals.get(
                     "cm2_profit", current_total_row.get("cm2_profit", 0)
                 )
-                current_total_row["total_cm2_profit"] = current_total_row["cm2_profit"]
+                total_cm2_profit = _calculate_total_cm2_profit(
+                    current_total_row["cm2_profit"],
+                    {**current_total_row, **last30_period_totals},
+                )
+                last30_period_totals["total_cm2_profit"] = total_cm2_profit
+                current_total_row["total_cm2_profit"] = total_cm2_profit
                 total_net_sales = float(current_total_row.get("net_sales", 0) or 0)
                 current_total_row["cm2_profit_per"] = (
                     current_total_row["cm2_profit"] / total_net_sales * 100
                     if total_net_sales else 0
                 )
-                current_total_row["total_cm2_margins"] = current_total_row["cm2_profit_per"]
+                total_cm2_margin = (
+                    total_cm2_profit / total_net_sales * 100
+                    if total_net_sales else 0
+                )
+                last30_period_totals["total_cm2_margins"] = total_cm2_margin
+                current_total_row["total_cm2_margins"] = total_cm2_margin
                 if "net_reimbursement" in last30_period_totals:
                     current_total_row["current_net_reimbursement"] = (
                         last30_period_totals["net_reimbursement"]
                     )
+                reimbursement = float(
+                    current_total_row.get("current_net_reimbursement", 0) or 0
+                )
+                reimbursement_vs_cm2 = (
+                    reimbursement / total_cm2_profit * 100
+                    if total_cm2_profit else 0
+                )
+                last30_period_totals["reimbursement_vs_cm2_margins"] = (
+                    reimbursement_vs_cm2
+                )
+                current_total_row["reimbursement_vs_cm2_margins"] = (
+                    reimbursement_vs_cm2
+                )
             response_payload["previous_skuwise_items"] = _build_skuwise_period_payload(
                 last_30_previous_sku_items,
                 country,
