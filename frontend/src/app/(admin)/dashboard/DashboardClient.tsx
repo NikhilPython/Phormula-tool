@@ -7571,6 +7571,20 @@ export default function DashboardPage() {
         );
     }, [monthlySkuwiseRowsDisplay]);
 
+    // Source the country dashboard's sales cards from the same selected-period
+    // total row as the P&L breakdown, so MTD and Last 30 days stay in sync.
+    const productwiseCardTotals = useMemo(() => {
+        if (!grandTotalRowDisplay) return null;
+        const row = grandTotalRowDisplay as any;
+        return {
+            asp: toNumberSafe(row.asp),
+            grossSales: toNumberSafe(row.gross_sales),
+            grossSalesPerUnit: row.gross_sales_per_unit == null ? null : toNumberSafe(row.gross_sales_per_unit),
+            netSales: toNumberSafe(row.net_sales),
+            netSalesPerUnit: row.net_sales_per_unit == null ? null : toNumberSafe(row.net_sales_per_unit),
+        };
+    }, [grandTotalRowDisplay]);
+
     const marketplaceFeesFromTable = useMemo(() => {
         const fba = Number(grandTotalRowDisplay?.fba_fees ?? 0);
         const selling = Number(grandTotalRowDisplay?.selling_fees ?? 0);
@@ -9964,9 +9978,11 @@ export default function DashboardPage() {
                 ? dummyStatData.asp.current
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.asp
-                    : (showLiveBI && hasSelectedPeriodBiData
-                        ? biCardKpis.curr.asp
-                        : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
+                    : (!isStickyGlobal && productwiseCardTotals
+                        ? productwiseCardTotals.asp
+                        : showLiveBI && hasSelectedPeriodBiData
+                            ? biCardKpis.curr.asp
+                            : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)),
 
             previous: shouldShowDummyUi
                 ? dummyStatData.asp.previous
@@ -10000,9 +10016,11 @@ export default function DashboardPage() {
                 ? dummyStatData.netSales.current
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.netSales
-                    : (showLiveBI && hasSelectedPeriodBiData
-                        ? biCardKpis.curr.netSales
-                        : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
+                    : (!isStickyGlobal && productwiseCardTotals
+                        ? productwiseCardTotals.netSales
+                        : showLiveBI && hasSelectedPeriodBiData
+                            ? biCardKpis.curr.netSales
+                            : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)),
 
             previous: shouldShowDummyUi
                 ? dummyStatData.netSales.previous
@@ -10029,7 +10047,9 @@ export default function DashboardPage() {
             previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
             currentPerUnit: isStickyGlobal && comparisonPeriod !== "last30"
                 ? stickyTableTotals.netSalesPerUnit
-                : mtdNetSalesCurrentPerUnitDisplay,
+                : (!isStickyGlobal && productwiseCardTotals?.netSalesPerUnit != null
+                    ? productwiseCardTotals.netSalesPerUnit
+                    : mtdNetSalesCurrentPerUnitDisplay),
             previousPerUnit: isStickyGlobal && comparisonPeriod !== "last30"
                 ? stickyPreviousTotals.netSalesPerUnit
                 : mtdNetSalesPreviousPerUnitDisplay,
@@ -14853,6 +14873,7 @@ export default function DashboardPage() {
                                 renderCountryMtdCards={renderCountryMtdCards}
                                 useBiForAmazonCards={useBiForAmazonCards}
                                 biCardKpis={biCardKpis}
+                                productwiseCardTotals={productwiseCardTotals}
                                 mtdUnitsCurrent={mtdUnitsCurrent}
                                 mtdUnitsPrevious={mtdUnitsPrevious}
                                 mtdUnitsDelta={mtdUnitsDelta}
