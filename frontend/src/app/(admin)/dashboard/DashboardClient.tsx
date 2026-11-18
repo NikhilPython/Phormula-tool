@@ -711,9 +711,21 @@ function computePlSummaryTotals(
     const skuTotals = computePlSummaryTotalsFromSkuwise(apiRows);
     if (isLast30Days) {
         const totals = data?.last30_totals;
-        if (!totals || typeof totals !== "object") return skuTotals;
-        const has = (key: string) => Object.prototype.hasOwnProperty.call(totals, key);
-        const value = (key: string) => toNumber(totals[key]);
+        const last30Totals = totals && typeof totals === "object" ? totals : {};
+        const has = (key: string) => Object.prototype.hasOwnProperty.call(last30Totals, key);
+        const value = (key: string) => toNumber(last30Totals[key]);
+        const currentNetReimbursement =
+            data?.current_net_reimbursement ??
+            data?.derived_totals?.current_net_reimbursement ??
+            (has("current_net_reimbursement")
+                ? value("current_net_reimbursement")
+                : has("net_reimbursement")
+                    ? value("net_reimbursement")
+                    : skuTotals.net_reimbursement);
+        const debtPayment = data?.debt_payment ??
+            (has("debt_payment") ? value("debt_payment") : skuTotals.debt_payment);
+        const disbursement = data?.disbursement ??
+            (has("disbursement") ? value("disbursement") : skuTotals.disbursement);
 
         return {
             ...skuTotals,
@@ -748,9 +760,9 @@ function computePlSummaryTotals(
                 ? value("platform_fee_inventory_storage")
                 : skuTotals.inventory_storage_fees,
             platform_fee: has("platform_fee") ? value("platform_fee") : skuTotals.platform_fee,
-            debt_payment: has("debt_payment") ? value("debt_payment") : skuTotals.debt_payment,
-            disbursement: has("disbursement") ? value("disbursement") : skuTotals.disbursement,
-            net_reimbursement: has("net_reimbursement") ? value("net_reimbursement") : skuTotals.net_reimbursement,
+            debt_payment: toNumber(debtPayment),
+            disbursement: toNumber(disbursement),
+            net_reimbursement: toNumber(currentNetReimbursement),
             cm2_profit: has("cm2_profit") ? value("cm2_profit") : skuTotals.cm2_profit,
             cm2_margins: has("cm2_profit") && has("net_sales") && value("net_sales")
                 ? (value("cm2_profit") / value("net_sales")) * 100
@@ -7103,6 +7115,9 @@ export default function DashboardPage() {
                         Number(r.return_quantity ?? r.returns_quantity ?? r.return_qty ?? 0)
                     )
                 ),
+                current_net_reimbursement: Number(r.current_net_reimbursement ?? 0),
+                debt_payment: Number(r.debt_payment ?? 0),
+                disbursement: Number(r.disbursement ?? 0),
                 asp: Number(r.asp ?? 0),
                 gross_sales: Number(r.gross_sales ?? 0),
                 refund_sales: Number(r.refund_sales ?? 0),
@@ -9397,6 +9412,10 @@ export default function DashboardPage() {
     ]);
 
     const reimbursementForSummary = useMemo(() => {
+        if (comparisonPeriod === "last30") {
+            return toNumber(plSummaryTotals.net_reimbursement);
+        }
+
         if (platform === "global") {
             return toNumber(
                 plSummaryTotals.net_reimbursement ??
@@ -9407,6 +9426,7 @@ export default function DashboardPage() {
 
         return toNumber(targets_reimbursement?.current);
     }, [
+        comparisonPeriod,
         platform,
         plSummaryTotals.net_reimbursement,
         data,
