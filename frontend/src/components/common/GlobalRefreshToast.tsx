@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 
 const baseURL =
@@ -28,9 +29,21 @@ type RefreshStatus = {
 };
 
 export default function GlobalRefreshToast() {
+  const pathname = usePathname();
+
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    if (pathname?.startsWith("/live-dashboard/")) return;
+
+    const scheduleNextCheck = () => {
+      if (cancelled || timer) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        void checkRefreshStatus();
+      }, 3000);
+    };
 
     const checkRefreshStatus = async () => {
       try {
@@ -61,7 +74,10 @@ export default function GlobalRefreshToast() {
           }
         );
 
-        if (!response.ok) return;
+        if (!response.ok) {
+          scheduleNextCheck();
+          return;
+        }
 
         const result = (await response.json()) as RefreshStatus;
 
@@ -69,45 +85,60 @@ export default function GlobalRefreshToast() {
 
         const refreshId = String(result.refresh_id || "");
 
-        if (!refreshId) return;
-
-        const notifiedId = localStorage.getItem(NOTIFIED_REFRESH_KEY);
-
-        if (result.status === "completed" && notifiedId !== refreshId) {
-          localStorage.setItem(NOTIFIED_REFRESH_KEY, refreshId);
-
-          toast.success("All data updated successfully", {
-            duration: 5000,
-          });
+        if (result.status === "running" || result.status === "saving") {
+          scheduleNextCheck();
+          return;
         }
 
-        if (result.status === "failed" && notifiedId !== refreshId) {
-          localStorage.setItem(NOTIFIED_REFRESH_KEY, refreshId);
+        if (refreshId) {
+          const notifiedId = localStorage.getItem(NOTIFIED_REFRESH_KEY);
 
-          toast.error(
-            result.error || "Refresh failed. Please try again.",
-            { duration: 7000 }
-          );
+          if (result.status === "completed" && notifiedId !== refreshId) {
+            localStorage.setItem(NOTIFIED_REFRESH_KEY, refreshId);
+
+            toast.success("All data updated successfully", {
+              duration: 5000,
+            });
+          }
+
+          if (result.status === "failed" && notifiedId !== refreshId) {
+            localStorage.setItem(NOTIFIED_REFRESH_KEY, refreshId);
+
+            toast.error(
+              result.error || "Refresh failed. Please try again.",
+              { duration: 7000 }
+            );
+          }
+        }
+
+        if (localStorage.getItem(REFRESH_SCOPE_KEY) === savedScope) {
+          localStorage.removeItem(REFRESH_SCOPE_KEY);
         }
       } catch (error) {
         console.error("Global refresh status check failed:", error);
+        scheduleNextCheck();
       }
     };
 
     void checkRefreshStatus();
 
-    timer = setInterval(() => {
+    const handleRefreshScopeChange = (event: StorageEvent) => {
+      if (event.key !== REFRESH_SCOPE_KEY || !event.newValue) return;
+      if (timer) clearTimeout(timer);
+      timer = undefined;
       void checkRefreshStatus();
-    }, 3000);
+    };
+    window.addEventListener("storage", handleRefreshScopeChange);
 
     return () => {
       cancelled = true;
 
       if (timer) {
-        clearInterval(timer);
+        clearTimeout(timer);
       }
+      window.removeEventListener("storage", handleRefreshScopeChange);
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

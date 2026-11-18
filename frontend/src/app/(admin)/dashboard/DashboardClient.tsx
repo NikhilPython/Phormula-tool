@@ -5266,6 +5266,7 @@ export default function DashboardPage() {
     const [refreshStatusChecking, setRefreshStatusChecking] = useState(true);
     const [verifiedRefreshScope, setVerifiedRefreshScope] = useState<string | null>(null);
     const [trackedRefreshId, setTrackedRefreshId] = useState<string | null>(null);
+    const refreshPollingActiveRef = useRef(false);
     const [refreshStatus, setRefreshStatus] = useState<{
         status: "idle" | "running" | "completed" | "failed";
         message: string;
@@ -5310,6 +5311,7 @@ export default function DashboardPage() {
                     result.status === "running" || result.status === "saving" ? "running" :
                         result.status === "completed" ? "completed" :
                             result.status === "failed" ? "failed" : "idle";
+                refreshPollingActiveRef.current = state === "running";
                 setRefreshStatus({
                     status: state,
                     message: state === "running"
@@ -5333,6 +5335,7 @@ export default function DashboardPage() {
             } catch (error) {
                 if (cancelled) return;
                 // Fail closed: API/auth errors must NEVER enable Refresh.
+                refreshPollingActiveRef.current = true;
                 setRefreshStatus({ status: "running", message: "Verifying refresh status; retrying..." });
                 setVerifiedRefreshScope(null);
             } finally {
@@ -5340,7 +5343,9 @@ export default function DashboardPage() {
             }
         };
         void check();
-        const poll = window.setInterval(() => { void check(); }, 3000);
+        const poll = window.setInterval(() => {
+            if (refreshPollingActiveRef.current) void check();
+        }, 3000);
         return () => { cancelled = true; window.clearInterval(poll); };
     }, [refreshStorageKey, refreshRequest, refreshScope]);
 
@@ -5350,7 +5355,10 @@ export default function DashboardPage() {
         const result = await refreshRequest("PATCH", { refresh_id, step, state, ...(error ? { error } : {}) });
         if (state === "running") refreshStepRef.current.add(step);
         else refreshStepRef.current.delete(step);
-        if (state === "failed") refreshStepRef.current.clear();
+        if (state === "failed") {
+            refreshStepRef.current.clear();
+            refreshPollingActiveRef.current = false;
+        }
         setRefreshStatus({
             status: result.status === "failed" ? "failed" : "running",
             message: state === "running" ? `Updating ${step.replace(/_/g, " ")}...` :
@@ -6379,6 +6387,7 @@ export default function DashboardPage() {
     const handleHardRefresh = useCallback(async () => {
         if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey ||
             trackedRefreshId || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
+        refreshPollingActiveRef.current = true;
         setRefreshStatus({ status: "running", message: "Queuing background refresh..." });
         try {
             if (platform === "global") {
@@ -6389,6 +6398,7 @@ export default function DashboardPage() {
                 ];
                 const result = await refreshRequest("POST", { ...refreshScope, steps });
                 const rid = String(result.refresh_id);
+                refreshPollingActiveRef.current = true;
                 refreshIdRef.current = rid;
                 refreshStepRef.current.clear();
                 setTrackedRefreshId(rid);
@@ -6422,6 +6432,7 @@ export default function DashboardPage() {
                     refreshIdRef.current = null;
                     refreshStepRef.current.clear();
                     setTrackedRefreshId(null);
+                    refreshPollingActiveRef.current = false;
                     setRefreshStatus({ status: "failed", message, refreshId: rid });
                 }
                 return;
@@ -6439,6 +6450,7 @@ export default function DashboardPage() {
             if (!response.ok || result?.success !== true) {
                 if (response.status === 409) {
                     // Another tab/session already queued the same cache key.
+                    refreshPollingActiveRef.current = true;
                     setRefreshStatus({ status: "running", message: "Refresh already in progress..." });
                     const active = await refreshRequest("GET", refreshScope);
                     if (active.refresh_id) {
@@ -6451,6 +6463,7 @@ export default function DashboardPage() {
             }
             const rid = String(result.refresh_id);
 
+            refreshPollingActiveRef.current = true;
             setTrackedRefreshId(rid);
 
             window.localStorage.setItem(refreshStorageKey, rid);
@@ -6462,6 +6475,7 @@ export default function DashboardPage() {
             );
             setRefreshStatus({ status: "running", message: "Background refresh started...", completed: 0, total: result.total });
         } catch (error) {
+            refreshPollingActiveRef.current = false;
             setRefreshStatus({ status: "failed", message: error instanceof Error ? error.message : "Refresh could not start" });
         }
     }, [refreshStatusChecking, verifiedRefreshScope, refreshStorageKey, trackedRefreshId,
@@ -9180,6 +9194,7 @@ export default function DashboardPage() {
                     setTrackedRefreshId(null);
                     refreshIdRef.current = null;
                     refreshStepRef.current.clear();
+                    refreshPollingActiveRef.current = false;
                     setLastRefreshAt(Date.now());
                     setRefreshStatus({ status: "completed", message: "All data updated successfully" });
                 }
@@ -9194,6 +9209,7 @@ export default function DashboardPage() {
                 setTrackedRefreshId(null);
                 refreshIdRef.current = null;
                 refreshStepRef.current.clear();
+                refreshPollingActiveRef.current = false;
                 setRefreshStatus({ status: "failed", message: err?.message || "Cache save failed" });
             });
     }, [
