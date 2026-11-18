@@ -46,6 +46,7 @@ export default function DashboardLiveSalesTab({
     renderCountryMtdCards,
     useBiForAmazonCards,
     biCardKpis,
+    productwiseCardTotals,
     mtdUnitsCurrent,
     mtdUnitsPrevious,
     mtdUnitsDelta,
@@ -453,14 +454,16 @@ export default function DashboardLiveSalesTab({
                                                     current={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.asp.current
-                                                            : showLiveBI && rangeActive
-                                                                ? biCardKpis.curr.asp
-                                                                : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
+                                                            : platform !== "global" && productwiseCardTotals
+                                                                ? productwiseCardTotals.asp
+                                                                : useBiForAmazonCards
+                                                                    ? biCardKpis.curr.asp
+                                                                    : convertToDisplayCurrency(uk.aspGBP ?? 0, amazonDataCurrency)
                                                     }
                                                     previous={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.asp.previous
-                                                            : showLiveBI && rangeActive
+                                                            : useBiForAmazonCards
                                                                 ? biCardKpis.prev.asp
                                                                 : convertToDisplayCurrency(prev.asp, amazonDataCurrency)
                                                     }
@@ -481,14 +484,16 @@ export default function DashboardLiveSalesTab({
                                                     current={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.grossSales.current
-                                                            : showLiveBI && rangeActive
-                                                                ? biCardKpis.curr.grossSales
-                                                                : convertToDisplayCurrency(uk.grossSalesGBP ?? 0, amazonDataCurrency)
+                                                            : platform !== "global" && productwiseCardTotals
+                                                                ? productwiseCardTotals.grossSales
+                                                                : useBiForAmazonCards
+                                                                    ? biCardKpis.curr.grossSales
+                                                                    : convertToDisplayCurrency(uk.grossSalesGBP ?? 0, amazonDataCurrency)
                                                     }
                                                     previous={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.grossSales.previous
-                                                            : showLiveBI && rangeActive
+                                                            : useBiForAmazonCards
                                                                 ? biCardKpis.prev.grossSales
                                                                 : convertToDisplayCurrency(prev.grossSales ?? 0, amazonDataCurrency)
                                                     }
@@ -502,7 +507,9 @@ export default function DashboardLiveSalesTab({
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                                                    currentPerUnit={mtdGrossSalesCurrentPerUnitDisplay}
+                                                    currentPerUnit={platform !== "global" && productwiseCardTotals?.grossSalesPerUnit != null
+                                                        ? productwiseCardTotals.grossSalesPerUnit
+                                                        : mtdGrossSalesCurrentPerUnitDisplay}
                                                     previousPerUnit={mtdGrossSalesPreviousPerUnitDisplay}
                                                     perUnitFormatter={formatDisplayAmountNoDecimals}
                                                     bottomLabel={prevLabel}
@@ -514,14 +521,16 @@ export default function DashboardLiveSalesTab({
                                                     current={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.netSales.current
-                                                            : showLiveBI && rangeActive
-                                                                ? biCardKpis.curr.netSales
-                                                                : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)
+                                                            : platform !== "global" && productwiseCardTotals
+                                                                ? productwiseCardTotals.netSales
+                                                                : useBiForAmazonCards
+                                                                    ? biCardKpis.curr.netSales
+                                                                    : convertToDisplayCurrency(uk.netSalesGBP ?? 0, amazonDataCurrency)
                                                     }
                                                     previous={
                                                         shouldShowDummyUi
                                                             ? dummyStatData.netSales.previous
-                                                            : showLiveBI && rangeActive
+                                                            : useBiForAmazonCards
                                                                 ? biCardKpis.prev.netSales
                                                                 : convertToDisplayCurrency(prev.netSales, amazonDataCurrency)
                                                     }
@@ -533,7 +542,9 @@ export default function DashboardLiveSalesTab({
                                                     loading={!shouldShowDummyUi && (loading || biLoading)}
                                                     formatter={(val) => formatDisplayAmount(val, "Net Sales")}
                                                     previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                                                    currentPerUnit={mtdNetSalesCurrentPerUnitDisplay}
+                                                    currentPerUnit={platform !== "global" && productwiseCardTotals?.netSalesPerUnit != null
+                                                        ? productwiseCardTotals.netSalesPerUnit
+                                                        : mtdNetSalesCurrentPerUnitDisplay}
                                                     previousPerUnit={mtdNetSalesPreviousPerUnitDisplay}
                                                     perUnitFormatter={formatDisplayAmountNoDecimals}
                                                     bottomLabel={prevLabel}
