@@ -3201,10 +3201,16 @@ def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[
             "platform_fee_inventory_storage": 0.0,
             "platformfeenew": 0.0,
             "storage_fee": 0.0,
+            "short_term_storage_fee": 0.0,
+            "long_term_storage_fee": 0.0,
             "shipping_charges": 0.0,
+            "shipment_fees": 0.0,
+            "placement_fee": 0.0,
+            "customs_fee": 0.0,
             "platform_management_fees": 0.0,
             "fba_disposal": 0.0,
             "other_adjustment": 0.0,
+            "dealsvouchar_ads": 0.0,
         }
 
     work = df.copy()
@@ -3373,11 +3379,39 @@ def _extract_other_component_totals_from_transactions(df: pd.DataFrame) -> dict[
             abs(sum_total_where_desc_contains(["FBAStorageBilling"]))
             + abs(sum_total_where_desc_contains(["FBALongTermStorageBilling"]))
         ),
+        "short_term_storage_fee": abs(
+            sum_total_where_desc_contains(["FBAStorageBilling"])
+        ),
+        "long_term_storage_fee": abs(
+            sum_total_where_desc_contains(["FBALongTermStorageBilling"])
+        ),
         "shipping_charges": (
             abs(sum_total_where_desc_contains(["FBAInboundConvenience", "AWDProcessingFee"]))
             + abs(sum_total_where_desc_contains(["AGSGlobalInboundTransportation"]))
             + abs(sum_total_where_desc_contains(["AWDTransportationFee"]))
         ),
+        "placement_fee": abs(
+            sum_total_where_desc_contains(["FBAInboundConvenience", "AWDProcessingFee"])
+        ),
+        "customs_fee": abs(
+            sum_total_where_desc_contains(["AGSGlobalInboundTransportation"])
+        ),
+        "shipment_fees": abs(
+            sum_total_where_desc_contains(["AWDTransportationFee"])
+        ),
+        "dealsvouchar_ads": abs(sum_total_where_desc_contains([
+            "Cost of Advertising",
+            "Coupon Redemption Fee",
+            "Deals",
+            "Lightning Deal",
+            "CouponPerformanceEvent",
+            "CouponParticipationEvent",
+            "SellerDealComplete",
+            "VineCharge",
+            "SellerPoweredCoupon",
+            "DealParticipationEvent",
+            "DealPerformanceEvent",
+        ])),
         "platform_management_fees": abs(sum_total_where_desc_contains([
             "PaidServicesCharge", "Subscription",
         ])),
@@ -3533,11 +3567,8 @@ def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metri
 
     asp = (net_sales_total / total_quantity) if total_quantity else 0.0
 
-    # -------------------------
-    # ✅ NEW: COGS (cost_of_unit_sold * quantity)
-    # -------------------------
-    unit_cost = safe_num(df.get("cost_of_unit_sold", 0.0))
-    cogs_total = float((unit_cost).sum())
+    # Keep the total aligned with the same per-SKU COGS calculation exposed by the API.
+    cogs_total = sum(float(row.get("cogs", 0.0) or 0.0) for row in sku_metrics)
 
     # -------------------------
     # ✅ NEW: Amazon fee (selling_fees + fba_fees) with signs preserved
@@ -3623,6 +3654,7 @@ def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metri
     profit_percentage = (cm2_profit / net_sales_total * 100) if net_sales_total else 0.0
 
     previous_net_reimbursement = compute_net_reimbursement_from_df(df)
+    debt_and_disbursement = compute_debt_payment_disbursement_from_df(df)
 
     prev_totals = {
         **{
@@ -3630,8 +3662,11 @@ def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metri
             for key in (
                 "storage_fee", "shipping_charges", "platform_management_fees",
                 "fba_disposal", "other_adjustment",
+                "short_term_storage_fee", "long_term_storage_fee", "shipment_fees",
+                "placement_fee", "customs_fee", "dealsvouchar_ads",
             )
         },
+        **debt_and_disbursement,
         "quantity": round(quantity_total, 2),
         "return_quantity": round(float(return_quantity.sum()), 2),
         "total_quantity": round(total_quantity, 2),

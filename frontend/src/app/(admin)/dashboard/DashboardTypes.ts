@@ -496,6 +496,11 @@ export type PlSummaryTotals = {
     other_adjustment?: number;
 
     other_transactions: number;
+    cogs?: number;
+    amazon_fees?: number;
+    net_taxes?: number;
+    net_credits?: number;
+    tax_and_credits?: number;
     platform_fee: number;
     inventory_storage_fees: number;
     platform_fee_inventory_storage: number;

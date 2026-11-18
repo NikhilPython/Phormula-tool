@@ -259,6 +259,7 @@ def _enrich_skuwise_period_rows(
                 if str(country).lower() == "us"
                 else number(row.get("other_transactions", row.get("other_transaction_fees")))
             ),
+            "advertising_fees": ads_spend,
             "product_spend": product_spend,
             "display_spend": display_spend,
             "brand_spend": brand_spend,
@@ -4709,13 +4710,15 @@ def live_mtd_vs_previous(period_mode=None):
             user_id, country, prev_start, prev_end
         )
 
+        last30_period_totals = {}
         if period_mode == "last_30_days" and country in {"uk", "us"}:
-            curr_data, curr_daily = fetch_last_30_days_current_data(
+            curr_data, curr_daily, last30_period_totals = fetch_last_30_days_current_data(
                 user_id,
                 country,
                 curr_start,
                 curr_end,
                 ranges["meta"]["today"],
+                include_dashboard_totals=True,
             )
         else:
             curr_data, curr_daily = fetch_current_mtd_data(
@@ -7002,6 +7005,66 @@ def live_mtd_vs_previous(period_mode=None):
                 user_id=user_id,
                 period_end=curr_end,
             )
+            current_total_row = next(
+                (
+                    row for row in response_payload["skuwise_items"]
+                    if str(row.get("sku") or "").upper() == "TOTAL"
+                ),
+                {},
+            )
+            if current_total_row:
+                last30_period_totals["advertising_fees"] = float(
+                    current_total_row.get("ads_spend", 0) or 0
+                )
+                last30_period_totals["brand_spend"] = float(
+                    current_total_row.get("brand_spend", 0) or 0
+                )
+                last30_period_totals["advertising_total"] = (
+                    last30_period_totals["advertising_fees"]
+                    + last30_period_totals["brand_spend"]
+                    + float(last30_period_totals.get("dealsvouchar_ads", 0) or 0)
+                )
+                last30_period_totals["cm2_profit"] = float(
+                    current_total_row.get("cm2_profit", 0) or 0
+                )
+                total_fields = (
+                    "advertising_fees", "amazon_fees", "brand_spend", "cogs",
+                    "customs_fee", "dealsvouchar_ads", "debt_payment",
+                    "disbursement", "fba_disposal", "lost_total",
+                    "misc_transaction", "net_credits", "net_sales", "net_taxes",
+                    "other_adjustment", "other_transactions", "placement_fee",
+                    "platform_fee", "platform_fee_inventory_storage",
+                    "platform_management_fees", "platformfeenew",
+                    "short_term_storage_fee", "long_term_storage_fee",
+                    "shipment_fees", "shipping_charges", "storage_fee",
+                    "tax_and_credits",
+                )
+                for field in total_fields:
+                    if field in last30_period_totals:
+                        current_total_row[field] = last30_period_totals[field]
+
+                current_total_row["dealsvouchar_ads"] = last30_period_totals.get(
+                    "dealsvouchar_ads", current_total_row.get("dealsvouchar_ads", 0)
+                )
+                current_total_row["brand_spend"] = last30_period_totals["brand_spend"]
+                current_total_row["ads_spend"] = last30_period_totals.get(
+                    "advertising_fees", current_total_row.get("ads_spend", 0)
+                )
+                current_total_row["total_ads"] = last30_period_totals["advertising_total"]
+                current_total_row["cm2_profit"] = last30_period_totals.get(
+                    "cm2_profit", current_total_row.get("cm2_profit", 0)
+                )
+                current_total_row["total_cm2_profit"] = current_total_row["cm2_profit"]
+                total_net_sales = float(current_total_row.get("net_sales", 0) or 0)
+                current_total_row["cm2_profit_per"] = (
+                    current_total_row["cm2_profit"] / total_net_sales * 100
+                    if total_net_sales else 0
+                )
+                current_total_row["total_cm2_margins"] = current_total_row["cm2_profit_per"]
+                if "net_reimbursement" in last30_period_totals:
+                    current_total_row["current_net_reimbursement"] = (
+                        last30_period_totals["net_reimbursement"]
+                    )
             response_payload["previous_skuwise_items"] = _build_skuwise_period_payload(
                 last_30_previous_sku_items,
                 country,
@@ -7010,6 +7073,7 @@ def live_mtd_vs_previous(period_mode=None):
                 user_id=user_id,
                 period_end=prev_end,
             )
+            response_payload["last30_totals"] = last30_period_totals
 
         # # ---------------------------
         # # SEND EMAIL

@@ -695,16 +695,70 @@ function computePlSummaryTotalsFromSkuwise(rows: any[]): PlSummaryTotals {
 function computePlSummaryTotals(
     data: any,
     skuwiseRows: any[],
-    platform?: PlatformId
+    platform?: PlatformId,
+    isLast30Days = false
 ): PlSummaryTotals {
-    const apiRows =
+    const apiRows = isLast30Days
+        ? skuwiseRows || []
+        : (
         platform === "global" && Array.isArray(data?.skuwise_items_global)
             ? data.skuwise_items_global
             : Array.isArray(data?.skuwise_items)
                 ? data.skuwise_items
-                : skuwiseRows || [];
+                : skuwiseRows || []
+        );
 
     const skuTotals = computePlSummaryTotalsFromSkuwise(apiRows);
+    if (isLast30Days) {
+        const totals = data?.last30_totals;
+        if (!totals || typeof totals !== "object") return skuTotals;
+        const has = (key: string) => Object.prototype.hasOwnProperty.call(totals, key);
+        const value = (key: string) => toNumber(totals[key]);
+
+        return {
+            ...skuTotals,
+            advertising_total: has("advertising_total") ? value("advertising_total") : skuTotals.advertising_total,
+            cogs: has("cogs") ? value("cogs") : skuTotals.cogs,
+            amazon_fees: has("amazon_fees") ? value("amazon_fees") : skuTotals.amazon_fees,
+            net_taxes: has("net_taxes") ? value("net_taxes") : skuTotals.net_taxes,
+            net_credits: has("net_credits") ? value("net_credits") : skuTotals.net_credits,
+            tax_and_credits: has("tax_and_credits") ? value("tax_and_credits") : skuTotals.tax_and_credits,
+            other_transactions: has("other_transactions") ? value("other_transactions") : skuTotals.other_transactions,
+            dealsvouchar_ads: has("dealsvouchar_ads") ? value("dealsvouchar_ads") : skuTotals.dealsvouchar_ads,
+            placement_fee: has("placement_fee") ? value("placement_fee") : skuTotals.placement_fee,
+            placement_fees: has("placement_fee") ? value("placement_fee") : skuTotals.placement_fees,
+            shipping_charges: has("shipping_charges") ? value("shipping_charges") : skuTotals.shipping_charges,
+            shipment_fees: has("shipment_fees") ? value("shipment_fees") : skuTotals.shipment_fees,
+            shipment_charges: has("shipment_fees") ? value("shipment_fees") : skuTotals.shipment_charges,
+            customs_fee: has("customs_fee") ? value("customs_fee") : skuTotals.customs_fee,
+            customs_fees: has("customs_fee") ? value("customs_fee") : skuTotals.customs_fees,
+            storage_fee: has("storage_fee") ? value("storage_fee") : skuTotals.storage_fee,
+            storage_fees: has("storage_fee") ? value("storage_fee") : skuTotals.storage_fees,
+            short_term_storage_fee: has("short_term_storage_fee") ? value("short_term_storage_fee") : skuTotals.short_term_storage_fee,
+            long_term_storage_fee: has("long_term_storage_fee") ? value("long_term_storage_fee") : skuTotals.long_term_storage_fee,
+            platform_management_fees: has("platform_management_fees") ? value("platform_management_fees") : skuTotals.platform_management_fees,
+            other_adjustment: has("other_adjustment") ? value("other_adjustment") : skuTotals.other_adjustment,
+            fba_disposal: has("fba_disposal") ? value("fba_disposal") : skuTotals.fba_disposal,
+            misc_transaction: has("misc_transaction") ? value("misc_transaction") : skuTotals.misc_transaction,
+            lost_total: has("lost_total") ? value("lost_total") : skuTotals.lost_total,
+            platform_fee_inventory_storage: has("platform_fee_inventory_storage")
+                ? value("platform_fee_inventory_storage")
+                : skuTotals.platform_fee_inventory_storage,
+            inventory_storage_fees: has("platform_fee_inventory_storage")
+                ? value("platform_fee_inventory_storage")
+                : skuTotals.inventory_storage_fees,
+            platform_fee: has("platform_fee") ? value("platform_fee") : skuTotals.platform_fee,
+            debt_payment: has("debt_payment") ? value("debt_payment") : skuTotals.debt_payment,
+            disbursement: has("disbursement") ? value("disbursement") : skuTotals.disbursement,
+            net_reimbursement: has("net_reimbursement") ? value("net_reimbursement") : skuTotals.net_reimbursement,
+            cm2_profit: has("cm2_profit") ? value("cm2_profit") : skuTotals.cm2_profit,
+            cm2_margins: has("cm2_profit") && has("net_sales") && value("net_sales")
+                ? (value("cm2_profit") / value("net_sales")) * 100
+                : skuTotals.cm2_margins,
+            net_sales: has("net_sales") ? value("net_sales") : skuTotals.net_sales,
+        };
+    }
+
     const derivedSource =
         data?.derived_totals ||
         data?.summary ||
@@ -7592,8 +7646,14 @@ export default function DashboardPage() {
     const mtdUnitsDelta = toNumber(backendDashboardMetric("units").change_percentage);
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
-        return computePlSummaryTotals(data, monthlySkuwiseRows, platform);
-    }, [data, monthlySkuwiseRows, platform]);
+        const isLast30Days = comparisonPeriod === "last30";
+        return computePlSummaryTotals(
+            isLast30Days ? liveBiPayload : data,
+            monthlySkuwiseRows,
+            platform,
+            isLast30Days
+        );
+    }, [data, liveBiPayload, monthlySkuwiseRows, platform, comparisonPeriod]);
 
     const totalRowCm2Profit = useMemo(() => {
         return toNumber(
