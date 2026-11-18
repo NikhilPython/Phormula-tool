@@ -250,6 +250,9 @@ export type Cm1ProfitPieApi = {
 
 export type BiApiResponse = {
     message?: string;
+    skuwise_items?: BiSkuwiseItem[];
+    previous_skuwise_items?: BiSkuwiseItem[];
+    all_action_rows?: Array<Record<string, any>>;
     periods?: {
         previous?: PeriodInfo;
         current_mtd?: PeriodInfo;
@@ -318,6 +321,22 @@ export type BiAlignedTotals = {
     cm2_profit_change_percentage?: number;
     cm2_margin_change_percentage?: number;
     promotions_change_percentage?: number;
+};
+
+export type BiSkuwiseItem = Partial<MonthlySkuwiseRow> & {
+    sku?: string;
+    product_name?: string | number;
+    country?: string;
+    currency?: string;
+    quantity?: number;
+    total_quantity?: number;
+    net_quantity?: number;
+    refund_quantity?: number;
+    shipment_quantity?: number;
+    shipment_sales?: number;
+    product_sales?: number;
+    tax_and_credits?: number;
+    unit_wise_profitability?: number;
 };
 
 export type InventoryAlertRecord = Record<string, { alert?: string; alert_type?: string }>;
