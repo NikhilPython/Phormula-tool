@@ -2681,12 +2681,17 @@ export default function DashboardPage() {
             return;
         }
 
-        const country =
-            platform === "amazon-us"
-                ? "US"
-                : platform === "amazon-ca"
-                    ? "CA"
-                    : "UK";
+        const countries =
+            platform === "global"
+                ? ["UK", "US"]
+                : platform === "amazon-us"
+                    ? ["US"]
+                    : platform === "amazon-ca"
+                        ? ["CA"]
+                        : ["UK"];
+        const adsReportCountries = countries.filter(
+            (country) => country === "UK" || country === "US"
+        );
 
         adsBackgroundLoadingRef.current = true;
         adsBackgroundErrorRef.current = null;
@@ -2694,32 +2699,43 @@ export default function DashboardPage() {
         try {
             // For tracked refresh, only acknowledge a report after its awaited
             // API request resolves. Preserve parallel Ads reports for performance.
-            const runReport = async (step: string, task: () => Promise<void>) => {
+            const runCountriesStep = async (
+                step: string,
+                stepCountries: string[],
+                task: (country: string) => Promise<void>
+            ) => {
                 if (trackStep) await trackStep(step, "running");
-                await task();
+                await Promise.all(stepCountries.map(task));
                 if (trackStep) await trackStep(step, "completed");
             };
             const adsSeedTasks = [
-                runReport("sp_report", () => ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
-                runReport("sb_report", () => ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
+                runCountriesStep("sp_report", countries, (country) =>
+                    ensureSpReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
             ];
-            if (country === "UK" || country === "US") {
-                adsSeedTasks.push(runReport("sd_report", () => ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)));
+            if (adsReportCountries.length) {
+                adsSeedTasks.push(
+                    runCountriesStep("sb_report", adsReportCountries, (country) =>
+                        ensureSbKeywordReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync)),
+                    runCountriesStep("sd_report", adsReportCountries, (country) =>
+                        ensureSdReportSeedOncePerDay(baseURL, jwtToken, country, forceReportSync))
+                );
             }
             await Promise.all(adsSeedTasks);
 
             const { monthName, year } = getRegionYearMonth(activeDateRegion);
             const month = monthToNumber(monthName.toLowerCase());
-            const include = country === "UK" || country === "US" ? ["SP", "SD", "SB"] : ["SP"];
 
-            const adsDbPayload = {
-                month,
-                year,
-                country,
-                include,
-            };
-
-            const callAdsDbSync = async (url: string, fallbackName: string) => {
+            const callAdsDbSync = async (
+                url: string,
+                fallbackName: string,
+                country: string
+            ) => {
+                const adsDbPayload = {
+                    month,
+                    year,
+                    country,
+                    include: country === "UK" || country === "US" ? ["SP", "SD", "SB"] : ["SP"],
+                };
                 const res = await fetch(url, {
                     method: "POST",
                     headers: {
@@ -2756,13 +2772,10 @@ export default function DashboardPage() {
                 return json;
             };
 
-            if (trackStep) await trackStep("monthly_ads_db", "running");
-            await callAdsDbSync(MONTHLY_SP_ENDPOINT, "monthly_sp_sd_to_db");
-            if (trackStep) await trackStep("monthly_ads_db", "completed");
-
-            if (trackStep) await trackStep("daily_ads_db", "running");
-            await callAdsDbSync(DAILY_SP_SD_SB_ENDPOINT, "daily_sp_sd_sb_to_db");
-            if (trackStep) await trackStep("daily_ads_db", "completed");
+            await runCountriesStep("monthly_ads_db", countries, (country) =>
+                callAdsDbSync(MONTHLY_SP_ENDPOINT, "monthly_sp_sd_to_db", country));
+            await runCountriesStep("daily_ads_db", countries, (country) =>
+                callAdsDbSync(DAILY_SP_SD_SB_ENDPOINT, "daily_sp_sd_sb_to_db", country));
 
 
             adsSeededRef.current = true;
@@ -5231,7 +5244,7 @@ export default function DashboardPage() {
     // One tracked manual refresh per dashboard cache key. The old cache remains
     // published until all required steps finish and the final snapshot is saved.
     const refreshIdRef = useRef<string | null>(null);
-    const refreshStepRef = useRef<string | null>(null);
+    const refreshStepRef = useRef(new Set<string>());
     // A full browser reload destroys React state. Persist only the server run ID,
     // never a fake completion flag or a bearer token.
     const refreshStorageKey = useMemo(() => [
@@ -5335,12 +5348,13 @@ export default function DashboardPage() {
         const refresh_id = refreshIdRef.current;
         if (!refresh_id) return;
         const result = await refreshRequest("PATCH", { refresh_id, step, state, ...(error ? { error } : {}) });
-        if (state === "running") refreshStepRef.current = step;
-        if (state === "completed" && refreshStepRef.current === step) refreshStepRef.current = null;
-        if (state === "failed") refreshStepRef.current = null;
+        if (state === "running") refreshStepRef.current.add(step);
+        else refreshStepRef.current.delete(step);
+        if (state === "failed") refreshStepRef.current.clear();
         setRefreshStatus({
             status: result.status === "failed" ? "failed" : "running",
-            message: state === "running" ? `Updating ${step.replace(/_/g, " ")}...` : "Updating dashboard...",
+            message: state === "running" ? `Updating ${step.replace(/_/g, " ")}...` :
+                state === "failed" ? error || "Refresh failed" : "Updating dashboard...",
             completed: result.completed,
             total: result.total,
         });
@@ -6356,13 +6370,64 @@ export default function DashboardPage() {
     }, []);
 
 
-    // Manual refresh is now enqueued on the backend. Never start the expensive
-    // Amazon report pipeline in a browser event handler; it must survive F5/logout.
+    // Country refreshes use the durable backend task; Global refreshes must
+    // synchronize both marketplaces and rebuild their combined dashboard cache.
     const handleHardRefresh = useCallback(async () => {
         if (refreshStatusChecking || verifiedRefreshScope !== refreshStorageKey ||
             trackedRefreshId || refreshStatus.status === "running" || pageLoading || dashboardBusy) return;
         setRefreshStatus({ status: "running", message: "Queuing background refresh..." });
         try {
+            if (platform === "global") {
+                const steps = [
+                    "mtd_transactions",
+                    "inventory_current",
+                    "sp_report",
+                    "sb_report",
+                    "sd_report",
+                    "monthly_ads_db",
+                    "daily_ads_db",
+                    "live_mtd_bi",
+                ];
+                const result = await refreshRequest("POST", { ...refreshScope, steps });
+                const rid = String(result.refresh_id);
+                refreshIdRef.current = rid;
+                refreshStepRef.current.clear();
+                setTrackedRefreshId(rid);
+                window.localStorage.setItem(refreshStorageKey, rid);
+                window.localStorage.setItem("live-dashboard-refresh-scope", JSON.stringify(refreshScope));
+                setRefreshStatus({
+                    status: "running",
+                    message: "Refreshing Global dashboard...",
+                    completed: 0,
+                    total: steps.length,
+                    refreshId: rid,
+                });
+
+                try {
+                    await runDashboardLoadWithSteps({
+                        forceAdsReportSync: true,
+                        forceInventoryInsightsRefresh: true,
+                        trackStep: updateRefreshStep,
+                    });
+                    isManualRefreshRef.current = true;
+                    shouldPostCacheRef.current = true;
+                    setCacheSaveTick((tick) => tick + 1);
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : "Global refresh failed";
+                    const failedStep = refreshStepRef.current.values().next().value || "mtd_transactions";
+                    try {
+                        await updateRefreshStep(failedStep, "failed", message);
+                    } catch (trackingError) {
+                        console.error("Could not record failed Global refresh step:", trackingError);
+                    }
+                    refreshIdRef.current = null;
+                    refreshStepRef.current.clear();
+                    setTrackedRefreshId(null);
+                    setRefreshStatus({ status: "failed", message, refreshId: rid });
+                }
+                return;
+            }
+
             const token = window.localStorage.getItem("jwtToken");
             if (!token) throw new Error("Session token missing");
             const response = await fetch(`${baseURL}/amazon_api/live-dashboard/refresh/background`, {
@@ -6401,7 +6466,8 @@ export default function DashboardPage() {
             setRefreshStatus({ status: "failed", message: error instanceof Error ? error.message : "Refresh could not start" });
         }
     }, [refreshStatusChecking, verifiedRefreshScope, refreshStorageKey, trackedRefreshId,
-        refreshStatus.status, pageLoading, dashboardBusy, refreshScope, refreshRequest]);
+        refreshStatus.status, pageLoading, dashboardBusy, platform, refreshScope, refreshRequest,
+        runDashboardLoadWithSteps, updateRefreshStep]);
 
     useEffect(() => {
 
@@ -9114,7 +9180,7 @@ export default function DashboardPage() {
                     }
                     setTrackedRefreshId(null);
                     refreshIdRef.current = null;
-                    refreshStepRef.current = null;
+                    refreshStepRef.current.clear();
                     setLastRefreshAt(Date.now());
                     setRefreshStatus({ status: "completed", message: "All data updated successfully" });
                 }
@@ -9128,7 +9194,7 @@ export default function DashboardPage() {
                 }
                 setTrackedRefreshId(null);
                 refreshIdRef.current = null;
-                refreshStepRef.current = null;
+                refreshStepRef.current.clear();
                 setRefreshStatus({ status: "failed", message: err?.message || "Cache save failed" });
             });
     }, [
