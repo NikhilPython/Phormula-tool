@@ -163,8 +163,22 @@ const LiveLineChart: React.FC<{
       date.setUTCDate(date.getUTCDate() + days);
       return date.toISOString().slice(0, 10);
     };
-    const last30CurrentStart = isLast30Days ? shiftIsoDate(currentDataEndDate, -29) : "";
-    const last30PreviousStart = isLast30Days ? shiftIsoDate(currentDataEndDate, -59) : "";
+    const earliestSeriesDate = (points: DailyPoint[]) =>
+      points.map((point) => point.date).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort()[0] || "";
+    const last30CurrentStart = isLast30Days
+      ? getPeriodStartDate(currentPeriod) || earliestSeriesDate(dataCurr) || shiftIsoDate(currentDataEndDate, -29)
+      : "";
+    const last30PreviousStart = isLast30Days
+      ? earliestSeriesDate(dataPrev) || shiftIsoDate(currentDataEndDate, -59)
+      : "";
+    const last30CurrentEnd = getPeriodEndDate(currentPeriod) || currentDataEndDate || "";
+    const last30DayCount = (() => {
+      const start = Date.parse(`${last30CurrentStart}T00:00:00.000Z`);
+      const end = Date.parse(`${last30CurrentEnd}T00:00:00.000Z`);
+      return Number.isFinite(start) && Number.isFinite(end) && end >= start
+        ? Math.floor((end - start) / 86400000) + 1
+        : 30;
+    })();
     const getSeriesAxisDay = (point: DailyPoint, isCurrent: boolean) => {
       if (!isLast30Days) return getDay(point.date);
       const startDate = isCurrent ? last30CurrentStart : last30PreviousStart;
@@ -180,7 +194,7 @@ const LiveLineChart: React.FC<{
       return getPeriodMonthKey(currentPeriod, currLabel) === currentDataEndDate.slice(0, 7);
     }, [isLast30Days, currentDataEndDate, currentPeriod, currLabel]);
     const expectedCurrentEndDay = useMemo(() => {
-      if (isLast30Days) return currentDataEndDate ? 30 : null;
+      if (isLast30Days) return currentDataEndDate ? last30DayCount : null;
       const explicitEndDay = getDay(getPeriodEndDate(currentPeriod));
       const periodEndDay = Number.isFinite(explicitEndDay) ? clampDay(explicitEndDay) : null;
 
@@ -191,7 +205,7 @@ const LiveLineChart: React.FC<{
       }
 
       return shouldCapCurrentToDataEnd ? currentDataEndDay : null;
-    }, [isLast30Days, currentDataEndDate, currentPeriod, shouldCapCurrentToDataEnd, currentDataEndDay]);
+    }, [isLast30Days, currentDataEndDate, currentPeriod, shouldCapCurrentToDataEnd, currentDataEndDay, last30DayCount]);
 
     // ✅ responsive sizing
     const [isCompactView, setIsCompactView] = useState(false);
@@ -309,13 +323,13 @@ const LiveLineChart: React.FC<{
           (!shouldCapCurrentToDataEnd || !currentDataEndDate || point.date <= currentDataEndDate)
         )
         .map((point) => getSeriesAxisDay(point, true))
-        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= 30)))
+        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= last30DayCount)))
         .sort((a, b) => a - b);
 
       const prevDays = dataPrev
         .filter(hasRealMetricValue)
         .map((point) => getSeriesAxisDay(point, false))
-        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= 30)))
+        .filter((day) => Number.isFinite(day) && (!isLast30Days || (day >= 1 && day <= last30DayCount)))
         .sort((a, b) => a - b);
 
       const toAxisDays = (days: number[]): AxisDay[] =>
@@ -410,7 +424,15 @@ const LiveLineChart: React.FC<{
       return [];
     }, [rangeActive, s, e, dataPrev, dataCurr, metric, fullMonthMode, expectedCurrentEndDay, currentPeriodStartDay, shouldCapCurrentToDataEnd, currentDataEndDate, showCurrent, showPrevious, isLast30Days, getSeriesAxisDay]);
 
-    const xAxis = useMemo(() => axisDays.map(({ day }) => String(day)), [axisDays]);
+    const xAxis = useMemo(
+      () => axisDays.map(({ day }) => {
+        if (!isLast30Days || !last30CurrentStart) return String(day);
+        const date = new Date(`${shiftIsoDate(last30CurrentStart, day - 1)}T00:00:00.000Z`);
+        if (!Number.isFinite(date.getTime())) return String(day);
+        return `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}`;
+      }),
+      [axisDays, isLast30Days, last30CurrentStart]
+    );
     const xAxisLabelFormatter = useMemo(
       () => (value: string, index: number) =>
         axisDays[index]?.__isPad ? "" : value,
