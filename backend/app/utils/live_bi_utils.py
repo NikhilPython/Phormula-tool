@@ -15,7 +15,10 @@ from app.utils.uk_prompts_utils import LIVE_BI_PROMPT_1_ANALYSIS, LIVE_BI_INVENT
 
 from app.utils.formulas_utils import (
     uk_sales,
+    uk_tax,
     uk_credits,
+    uk_cogs,
+    us_cogs,
     uk_profit,
     us_sales,
     us_profit,
@@ -950,6 +953,15 @@ def fetch_adsdaily_sku_mtd_ads(
     if df.empty:
         return {}, empty_totals
 
+    ad_type_by_sku = {}
+    if "ad_type" in df.columns:
+        ad_types = (
+            df.assign(ad_type=df["ad_type"].fillna("").astype(str).str.strip())
+            .groupby("sku")["ad_type"]
+            .agg(lambda values: ", ".join(sorted({value for value in values if value})))
+        )
+        ad_type_by_sku = ad_types.to_dict()
+
     numeric_cols = [
         "spend",
         "ads_spend_total",
@@ -1042,6 +1054,7 @@ def fetch_adsdaily_sku_mtd_ads(
             "ctr": round((clicks / impressions) * 100, 2) if impressions else 0.0,
             "cpc": round(ads_spend / clicks, 2) if clicks else 0.0,
             "conversion_rate": round((sale_units / clicks) * 100, 2) if clicks else 0.0,
+            "ad_type": ad_type_by_sku.get(sku, ""),
         }
 
     total_ads_spend = sum(v["ads_spend"] for v in sku_map.values())
@@ -1328,30 +1341,71 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
 
     if country_key == "us":
         _, tax_credit_by, _ = us_tax_and_credits(df, country=country_key)
+        _, cogs_by, _ = us_cogs(df, country=country_key)
         _, profit_by, _ = us_profit(df, country=country_key)
-
         if tax_credit_by is not None and not tax_credit_by.empty:
-            tax_credit_by = tax_credit_by.rename(columns={"__metric__": "tax_credit_metric"})
+            tax_credit_by = tax_credit_by.rename(
+                columns={"__metric__": "tax_credit_metric"}
+            )
         else:
-            tax_credit_by = pd.DataFrame(columns=["sku", "tax_credit_metric"])
+            tax_credit_by = pd.DataFrame(
+                columns=["sku", "tax_credit_metric", "net_taxes", "net_credits"]
+            )
     else:
-        _, tax_credit_by, _ = uk_credits(
+        _, net_taxes_by, _ = uk_tax(df, country=country_key)
+        _, net_credits_by, _ = uk_credits(
             df,
             country=country_key,
         )
-
+        _, cogs_by, _ = uk_cogs(df, country=country_key)
         _, profit_by, _ = uk_profit(
             df,
             country=country_key,
             debug=False,
         )
-
-
-
-        if tax_credit_by is not None and not tax_credit_by.empty:
-            tax_credit_by = tax_credit_by.rename(columns={"__metric__": "tax_credit_metric"})
+        if net_taxes_by is None or net_taxes_by.empty:
+            net_taxes_by = pd.DataFrame(columns=["sku", "net_taxes"])
         else:
-            tax_credit_by = pd.DataFrame(columns=["sku", "tax_credit_metric"])
+            net_taxes_by = net_taxes_by[["sku", "__metric__"]].rename(
+                columns={"__metric__": "net_taxes"}
+            )
+        if net_credits_by is None or net_credits_by.empty:
+            net_credits_by = pd.DataFrame(columns=["sku", "net_credits"])
+        else:
+            net_credits_by = net_credits_by[["sku", "__metric__"]].rename(
+                columns={"__metric__": "net_credits"}
+            )
+        tax_credit_by = net_taxes_by.merge(
+            net_credits_by, on="sku", how="outer"
+        ).fillna(0.0)
+        tax_credit_by["tax_credit_metric"] = (
+            safe_num(tax_credit_by.get("net_taxes", 0.0))
+            + safe_num(tax_credit_by.get("net_credits", 0.0))
+        )
+
+    if "cogs" in df.columns and safe_num(df["cogs"]).abs().sum() > 0:
+        cogs_by = (
+            df.assign(cogs=safe_num(df["cogs"]))
+            .groupby("sku", as_index=False)["cogs"]
+            .sum()
+        )
+
+    if cogs_by is None or cogs_by.empty:
+        cogs_by = pd.DataFrame(columns=["sku", "cogs"])
+    elif "__metric__" in cogs_by.columns and "cogs" not in cogs_by.columns:
+        cogs_by = cogs_by.rename(columns={"__metric__": "cogs"})
+    elif "cogs" not in cogs_by.columns:
+        cogs_by = cogs_by.rename(columns={"__metric__": "cogs"})
+    if "net_taxes" not in tax_credit_by.columns:
+        tax_credit_by["net_taxes"] = 0.0
+    if "net_credits" not in tax_credit_by.columns:
+        tax_credit_by["net_credits"] = 0.0
+
+    misc_columns = [column for column in ("misc_transaction", "other_transaction_fees", "other") if column in df.columns]
+    if misc_columns:
+        misc_by = df.groupby("sku", as_index=False)[misc_columns].sum()
+    else:
+        misc_by = pd.DataFrame(columns=["sku"])
 
     if profit_by is not None and not profit_by.empty:
         profit_by = profit_by.rename(columns={"__metric__": "profit_metric"})
@@ -1359,12 +1413,15 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
         profit_by = pd.DataFrame(columns=["sku", "profit_metric"])
 
     # ---- merge everything ----
+    sales_metrics = sales_metrics.drop(columns=["cogs"], errors="ignore")
     metrics = (
         sales_metrics
         .merge(name_df, on="sku", how="left")
         .merge(promotional_rebates_df, on="sku", how="left")
         .merge(amazon_fees_df, on="sku", how="left")  # ✅ NEW
-        .merge(tax_credit_by[["sku", "tax_credit_metric"]], on="sku", how="left")
+        .merge(tax_credit_by[["sku", "tax_credit_metric", "net_taxes", "net_credits"]], on="sku", how="left")
+        .merge(cogs_by[["sku", "cogs"]], on="sku", how="left")
+        .merge(misc_by, on="sku", how="left")
         .merge(profit_by[["sku", "profit_metric"]], on="sku", how="left")
     )
 
@@ -1378,6 +1435,22 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
     metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
     metrics["tax_credit_metric"] = safe_num(metrics.get("tax_credit_metric", 0.0))
     metrics["profit_metric"] = safe_num(metrics.get("profit_metric", 0.0))
+
+    metrics["cogs"] = safe_num(metrics.get("cogs", 0.0))
+    metrics["net_taxes"] = safe_num(metrics.get("net_taxes", 0.0))
+    metrics["net_credits"] = safe_num(metrics.get("net_credits", 0.0))
+    metrics["amazon_fees"] = metrics["selling_fees"].abs() + metrics["fba_fees"].abs()
+    metrics["marketplace_fees"] = metrics["amazon_fees"]
+    for column in ("misc_transaction", "other_transaction_fees", "other"):
+        if column not in metrics.columns:
+            metrics[column] = 0.0
+    for column in misc_columns:
+        metrics[column] = safe_num(metrics.get(column, 0.0))
+    metrics["other_transactions"] = (
+        metrics["net_credits"] + metrics["misc_transaction"] - metrics["net_taxes"].abs()
+        if country_key == "us"
+        else metrics["other_transaction_fees"]
+    )
 
     metrics["tax_and_credits"] = metrics["tax_credit_metric"]
 
@@ -1419,6 +1492,15 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
         "gross_sales",  # ✅ NEW
         "selling_fees",  # ✅ NEW
         "fba_fees",  # ✅ NEW
+        "cogs",
+        "amazon_fees",
+        "marketplace_fees",
+        "net_taxes",
+        "net_credits",
+        "misc_transaction",
+        "other_transaction_fees",
+        "other",
+        "other_transactions",
         "tax_and_credits",  # ✅ NEW
         "asp",
         "profit",
@@ -1686,6 +1768,16 @@ def combine_period_sku_metrics(*row_groups):
             aggregations[column] = "first"
 
     combined = df.groupby("sku", as_index=False, sort=False).agg(aggregations)
+    if {"shipment_quantity", "refund_quantity"}.issubset(combined.columns):
+        shipment_quantity = pd.to_numeric(
+            combined["shipment_quantity"], errors="coerce"
+        ).fillna(0.0)
+        refund_quantity = pd.to_numeric(
+            combined["refund_quantity"], errors="coerce"
+        ).fillna(0.0)
+        combined["quantity"] = shipment_quantity
+        combined["net_quantity"] = shipment_quantity - refund_quantity
+
     quantity = pd.to_numeric(
         combined["quantity"] if "quantity" in combined else pd.Series(0.0, index=combined.index),
         errors="coerce",
@@ -1739,7 +1831,17 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         quantity,
         cogs,
         product_sales,
+        product_sales_tax,
+        postage_credits,
+        shipping_credits,
+        shipping_credits_tax,
+        gift_wrap_credits,
+        giftwrap_credits_tax,
         promotional_rebates,
+        promotional_rebates_tax,
+        marketplace_facilitator_tax,
+        selling_fees,
+        fba_fees,
         gross_sales,              -- ✅ NEW (read from DB)
         profit,
         total,
@@ -1813,6 +1915,13 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["cogs"] = safe_num(df.get("cogs", 0))
     df["product_sales"] = safe_num(df.get("product_sales", 0))
     df["promotional_rebates"] = safe_num(df.get("promotional_rebates", 0))
+    for column in (
+        "product_sales_tax", "postage_credits", "shipping_credits",
+        "shipping_credits_tax", "gift_wrap_credits", "giftwrap_credits_tax",
+        "promotional_rebates_tax", "marketplace_facilitator_tax",
+        "selling_fees", "fba_fees", "other_transaction_fees", "other",
+    ):
+        df[column] = safe_num(df.get(column, 0.0))
 
     # ✅ gross_sales from DB (fallback compute if missing)
     if "gross_sales" in df.columns:
@@ -1844,9 +1953,17 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         | bucket_lower.str.contains("refund|return", case=False, na=False, regex=True)
     )
 
+    unit_type = df["type"].str.strip().str.casefold()
+    units = df["quantity"].abs()
+    has_sku = df["sku"].notna()
+
     # Keep live BI sales aligned with /amazon_api/finances/mtd_transactions.
     df["refund_sales"] = 0.0
     df.loc[return_mask, "refund_sales"] = df.loc[return_mask, "product_sales"].abs()
+    df["shipment_sales"] = df["product_sales"].where(~return_mask, 0.0)
+    df["shipment_quantity"] = units.where(~return_mask, 0.0).where(has_sku, 0.0)
+    df["refund_quantity"] = units.where(return_mask, 0.0).where(has_sku, 0.0)
+
     df["net_sales"] = (
         df["gross_sales"]
         - df["refund_sales"].abs()
@@ -1856,16 +1973,16 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
     df["quantity_filtered"] = 0.0
     df.loc[~return_mask, "quantity_filtered"] = df.loc[~return_mask, "quantity"].abs()
     if str(country or "").strip().lower() in {"uk", "us"}:
-        # Live BI quantity means net units, like monthly total_quantity.
-        # Do not count reimbursement/adjustment quantities or infer units from
-        # descriptions. Keep signed refunds in the daily series so summing a
-        # selected date range deducts each refund exactly once.
-        unit_type = df["type"].str.strip().str.casefold()
-        units = df["quantity"].abs()
+        # Keep the existing net-unit quantity for live MTD consumers while
+        # exposing shipment and refund components for period aggregation.
+        df["shipment_quantity"] = units.where(unit_type.eq("shipment"), 0.0).where(has_sku, 0.0)
+        df["refund_quantity"] = units.where(unit_type.eq("refund"), 0.0).where(has_sku, 0.0)
+        df["shipment_sales"] = df["product_sales"].where(unit_type.eq("shipment"), 0.0)
         df["quantity_filtered"] = (
-            units.where(unit_type.eq("shipment"), 0.0)
-            - units.where(unit_type.eq("refund"), 0.0)
-        ).where(df["sku"].notna(), 0.0)
+            df["shipment_quantity"] - df["refund_quantity"]
+        )
+
+    df["net_quantity"] = df["shipment_quantity"] - df["refund_quantity"]
 
     # ----------------------------
     # Fee extraction (LIVEORDERS-SPECIFIC)
@@ -1933,14 +2050,59 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
           .agg(
               product_name=("product_name", "first"),
               quantity=("quantity_filtered", "sum"),
+              shipment_quantity=("shipment_quantity", "sum"),
+              refund_quantity=("refund_quantity", "sum"),
+              net_quantity=("net_quantity", "sum"),
+              shipment_sales=("shipment_sales", "sum"),
               product_sales=("product_sales", "sum"),
               gross_sales=("gross_sales", "sum"),  # ✅ NEW
               refund_sales=("refund_sales", "sum"),
               promotional_rebates=("promotional_rebates", "sum"),
+              promotional_rebates_tax=("promotional_rebates_tax", "sum"),
               profit=("profit", "sum"),
               cogs=("cogs", "sum"),
+              selling_fees=("selling_fees", "sum"),
+              fba_fees=("fba_fees", "sum"),
+              product_sales_tax=("product_sales_tax", "sum"),
+              postage_credits=("postage_credits", "sum"),
+              shipping_credits=("shipping_credits", "sum"),
+              shipping_credits_tax=("shipping_credits_tax", "sum"),
+              gift_wrap_credits=("gift_wrap_credits", "sum"),
+              giftwrap_credits_tax=("giftwrap_credits_tax", "sum"),
+              marketplace_facilitator_tax=("marketplace_facilitator_tax", "sum"),
+              other_transaction_fees=("other_transaction_fees", "sum"),
+              other=("other", "sum"),
               __has_mapping__=("__has_mapping__", "max"),
           )
+    )
+
+    if str(country or "").strip().lower() == "us":
+        _, taxes_credits_by, _ = us_tax_and_credits(df, country="us")
+        taxes_credits_by = taxes_credits_by[["sku", "net_taxes", "net_credits"]]
+    else:
+        _, net_taxes_by, _ = uk_tax(df, country="uk")
+        _, net_credits_by, _ = uk_credits(df, country="uk")
+        taxes_credits_by = (
+            net_taxes_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_taxes"})
+            .merge(
+                net_credits_by[["sku", "__metric__"]].rename(columns={"__metric__": "net_credits"}),
+                on="sku",
+                how="outer",
+            )
+            .fillna(0.0)
+        )
+    sku_agg = sku_agg.merge(taxes_credits_by, on="sku", how="left").fillna(
+        {"net_taxes": 0.0, "net_credits": 0.0}
+    )
+    sku_agg["tax"] = sku_agg["net_taxes"]
+    sku_agg["credits"] = sku_agg["net_credits"]
+    sku_agg["tax_and_credits"] = sku_agg["net_taxes"] + sku_agg["net_credits"]
+    sku_agg["amazon_fees"] = sku_agg["selling_fees"].abs() + sku_agg["fba_fees"].abs()
+    sku_agg["marketplace_fees"] = sku_agg["amazon_fees"]
+    sku_agg["other_transactions"] = (
+        sku_agg["net_credits"] + sku_agg["other"] - sku_agg["net_taxes"].abs()
+        if str(country or "").strip().lower() == "us"
+        else sku_agg["other_transaction_fees"]
     )
 
     sku_agg["net_sales"] = (
@@ -1969,6 +2131,21 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
 
     daily_qty = df.groupby("date_only", as_index=False)["quantity_filtered"].sum()
     qty_map = {d: float(v) for d, v in zip(daily_qty["date_only"], daily_qty["quantity_filtered"])}
+    daily_shipment_qty = df.groupby("date_only", as_index=False)["shipment_quantity"].sum()
+    shipment_qty_map = {
+        d: float(v)
+        for d, v in zip(daily_shipment_qty["date_only"], daily_shipment_qty["shipment_quantity"])
+    }
+    daily_refund_qty = df.groupby("date_only", as_index=False)["refund_quantity"].sum()
+    refund_qty_map = {
+        d: float(v)
+        for d, v in zip(daily_refund_qty["date_only"], daily_refund_qty["refund_quantity"])
+    }
+    daily_shipment_sales = df.groupby("date_only", as_index=False)["shipment_sales"].sum()
+    shipment_sales_map = {
+        d: float(v)
+        for d, v in zip(daily_shipment_sales["date_only"], daily_shipment_sales["shipment_sales"])
+    }
 
     daily_ps = df.groupby("date_only", as_index=False)["product_sales"].sum()
     ps_map = {d: float(v) for d, v in zip(daily_ps["date_only"], daily_ps["product_sales"])}
@@ -1995,7 +2172,20 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         # ✅ NEW: reimbursement from raw transactions
         remb_map[d] = float(compute_net_reimbursement_from_df(day_df))
 
-    all_days = sorted(set(qty_map) | set(ps_map) | set(gs_map) | set(refund_map) | set(promo_map) | set(profit_map) | set(pf_map) | set(ad_map) | set(remb_map))
+    all_days = sorted(
+        set(qty_map)
+        | set(shipment_qty_map)
+        | set(refund_qty_map)
+        | set(shipment_sales_map)
+        | set(ps_map)
+        | set(gs_map)
+        | set(refund_map)
+        | set(promo_map)
+        | set(profit_map)
+        | set(pf_map)
+        | set(ad_map)
+        | set(remb_map)
+    )
     for d in all_days:
         net_sales = (
             gs_map.get(d, 0.0)
@@ -2006,6 +2196,10 @@ def fetch_current_mtd_data(user_id, country, curr_start: date, curr_end: date):
         daily_series.append({
             "date": d.isoformat(),
             "quantity": qty_map.get(d, 0.0),
+            "shipment_quantity": shipment_qty_map.get(d, 0.0),
+            "refund_quantity": refund_qty_map.get(d, 0.0),
+            "net_quantity": shipment_qty_map.get(d, 0.0) - refund_qty_map.get(d, 0.0),
+            "shipment_sales": shipment_sales_map.get(d, 0.0),
             "net_sales": net_sales,
             "product_sales": ps_map.get(d, 0.0),
             "gross_sales": gs_map.get(d, 0.0),   # ✅ NEW
@@ -2056,6 +2250,9 @@ def fetch_last_30_days_current_data(
 
     combined_data = combine_period_sku_metrics(historic_data, live_data)
     combined_daily = sorted(historic_daily + live_daily, key=lambda row: row["date"])
+    for row in combined_daily:
+        if "shipment_quantity" in row:
+            row["quantity"] = row["shipment_quantity"]
     return combined_data, combined_daily
 
 

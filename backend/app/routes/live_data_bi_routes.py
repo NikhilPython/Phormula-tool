@@ -180,16 +180,228 @@ def remove_total_rows(items):
     return clean
 
 
-def _build_skuwise_period_payload(items, country, currency_code):
+def _enrich_skuwise_period_rows(
+    items, country, currency_code, ads_by_sku=None, user_id=None, period_end=None
+):
     rows = [dict(row) for row in remove_total_rows(items) if isinstance(row, dict)]
-    if not rows:
-        return []
 
     for row in rows:
+        def number(value):
+            try:
+                return float(value or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        sku = str(row.get("sku") or "").strip()
+        ads = (ads_by_sku or {}).get(sku, {})
+        shipment_quantity = number(row.get("shipment_quantity", row.get("quantity")))
+        refund_quantity = number(row.get("refund_quantity", row.get("return_quantity")))
+        net_quantity = shipment_quantity - refund_quantity
+        net_sales = number(row.get("net_sales"))
+        profit = number(row.get("profit"))
+        product_spend = number(ads.get("product_spend")) or number(row.get("product_spend"))
+        display_spend = number(ads.get("display_spend")) or number(row.get("display_spend"))
+        brand_spend = number(ads.get("brand_spend")) or number(row.get("brand_spend"))
+        ads_spend = product_spend + display_spend
+        if not ads_spend and not brand_spend:
+            ads_spend = number(ads.get("ads_spend"))
+        sp_ads_sales = number(ads.get("sp_ads_sales", row.get("sp_ads_sales")))
+        sd_ads_sales = number(ads.get("sd_ads_sales", row.get("sd_ads_sales")))
+        sb_ads_sales = number(ads.get("sb_ads_sales", row.get("sb_ads_sales")))
+        ads_sale_amount = sp_ads_sales + sd_ads_sales + sb_ads_sales
+        if not ads_sale_amount:
+            ads_sale_amount = (
+                number(ads.get("ads_sales"))
+                or number(ads.get("sale_amount"))
+                or number(row.get("ads_sale_amount"))
+            )
+        total_ads = ads_spend + brand_spend + number(row.get("dealsvouchar_ads"))
+        cm2_profit = profit - ads_spend
+        total_cm2_profit = (
+            cm2_profit
+            - brand_spend
+            - number(row.get("dealsvouchar_ads"))
+            - abs(number(row.get("shipping_charges")))
+            - abs(number(row.get("storage_fee")))
+            + abs(number(row.get("lost_total")))
+            - abs(number(row.get("fba_disposal")))
+            - abs(number(row.get("platform_management_fees")))
+            + number(row.get("other_adjustment"))
+        )
+        total_quantity = net_quantity
+        reimbursement = number(row.get("current_net_reimbursement"))
+        marketplace_fees = number(row.get("marketplace_fees")) or (
+            abs(number(row.get("selling_fees"))) + abs(number(row.get("fba_fees")))
+        )
+        amazon_fees = number(row.get("amazon_fees")) or marketplace_fees
+        net_taxes = number(row.get("net_taxes", row.get("tax")))
+        net_credits = number(row.get("net_credits", row.get("credits")))
+        misc_transaction = number(row.get("misc_transaction"))
+
+        row.update({
+            "quantity": shipment_quantity,
+            "shipment_quantity": shipment_quantity,
+            "refund_quantity": refund_quantity,
+            "return_quantity": refund_quantity,
+            "net_quantity": net_quantity,
+            "total_quantity": net_quantity,
+            "asp": net_sales / total_quantity if total_quantity else 0.0,
+            "unit_wise_profitability": profit / total_quantity if total_quantity else 0.0,
+            "marketplace_fees": marketplace_fees,
+            "amazon_fees": amazon_fees,
+            "net_taxes": net_taxes,
+            "net_credits": net_credits,
+            "tax": net_taxes,
+            "credits": net_credits,
+            "misc_transaction": misc_transaction,
+            "other_transactions": (
+                net_credits + misc_transaction - abs(net_taxes)
+                if str(country).lower() == "us"
+                else number(row.get("other_transactions", row.get("other_transaction_fees")))
+            ),
+            "product_spend": product_spend,
+            "display_spend": display_spend,
+            "brand_spend": brand_spend,
+            "ads_spend": ads_spend,
+            "ads_spend_raw": (
+                number(ads.get("spend"))
+                or number(row.get("ads_spend_raw"))
+                or ads_spend
+            ),
+            "ads_clicks": number(ads.get("clicks", row.get("ads_clicks"))),
+            "ads_impressions": number(ads.get("impressions", row.get("ads_impressions"))),
+            "ads_sale_units": number(ads.get("sale_units", row.get("ads_sale_units"))),
+            "ads_sale_amount": ads_sale_amount,
+            "sp_ads_sales": sp_ads_sales,
+            "sd_ads_sales": sd_ads_sales,
+            "sb_ads_sales": sb_ads_sales,
+            "ads_acos": ads_spend / ads_sale_amount * 100 if ads_sale_amount else 0.0,
+            "ads_roas": ads_sale_amount / ads_spend if ads_spend else 0.0,
+            "ads_conversion_rate": (
+                number(ads.get("sale_units", row.get("ads_sale_units")))
+                / number(ads.get("clicks", row.get("ads_clicks")))
+                * 100
+                if number(ads.get("clicks", row.get("ads_clicks")))
+                else 0.0
+            ),
+            "acos": ads_spend / net_sales * 100 if net_sales else 0.0,
+            "cm1_profit_per": profit / net_sales * 100 if net_sales else 0.0,
+            "cm1_profit_per_unit": profit / net_quantity if net_quantity else 0.0,
+            "cm2_profit": cm2_profit,
+            "cm2_profit_per": cm2_profit / net_sales * 100 if net_sales else 0.0,
+            "cm2_profit_per_unit": cm2_profit / net_quantity if net_quantity else 0.0,
+            "profit_percentage": profit / net_sales * 100 if net_sales else 0.0,
+            "promotional_rebates_percentage": (
+                number(row.get("promotional_rebates")) / net_sales * 100
+                if net_sales else 0.0
+            ),
+            "total_ads": total_ads,
+            "total_cm2_profit": total_cm2_profit,
+            "total_cm2_margins": total_cm2_profit / net_sales * 100 if net_sales else 0.0,
+            "tacos_total_advertising_cost_of_sale": total_ads / net_sales * 100 if net_sales else 0.0,
+            "reimbursement_vs_cm2_margins": (
+                reimbursement / total_cm2_profit * 100 if total_cm2_profit else 0.0
+            ),
+            "reimbursement_vs_sales": reimbursement / net_sales * 100 if net_sales else 0.0,
+        })
+
+        row.setdefault("current_net_reimbursement", 0.0)
+        row.setdefault("tax_and_credits", number(row.get("tax")) + number(row.get("credits")))
+        for field in (
+            "advertising_fees", "amazon_fees", "cogs", "customs_fee",
+            "dealsvouchar_ads", "debt_payment", "disbursement", "fba_disposal",
+            "fba_fees", "gross_sales", "net_sales", "profit", "gift_wrap_credits",
+            "giftwrap_credits_tax", "long_term_storage_fee",
+            "lost_total", "marketplace_facilitator_tax", "misc_transaction", "other",
+            "other_transaction_fees", "other_transactions", "net_taxes", "net_credits",
+            "other_adjustment", "placement_fee", "platform_fee", "platformfeenew",
+            "platform_fee_inventory_storage", "platform_management_fees",
+            "postage_credits", "product_sales", "product_sales_tax",
+            "promotional_rebates_tax", "promotional_rebates", "refund_sales",
+            "selling_fees", "shipment_fees", "shipment_sales", "shipping_charges",
+            "shipping_credits_tax", "short_term_storage_fee", "storage_fee",
+        ):
+            row.setdefault(field, 0.0)
+        row["ad_type"] = ads.get("ad_type", row.get("ad_type", ""))
+        if period_end:
+            row["month"] = period_end.strftime("%B").lower()
+            row["year"] = period_end.year
+        if not row.get("generated_at_utc"):
+            row["generated_at_utc"] = datetime.now(timezone.utc).isoformat()
+        if user_id is not None:
+            row["user_id"] = int(user_id)
         row["country"] = country
         row["currency"] = currency_code
 
+    period_net_sales = sum(
+        float(row.get("net_sales", 0) or 0) for row in rows
+    )
+    for row in rows:
+        net_sales = float(row.get("net_sales", 0) or 0)
+        row["sales_mix"] = net_sales / period_net_sales * 100 if period_net_sales else 0.0
+
+    return rows
+
+
+def _build_skuwise_period_payload(
+    items, country, currency_code, ads_by_sku=None, user_id=None, period_end=None
+):
+    rows = _enrich_skuwise_period_rows(
+        items,
+        country,
+        currency_code,
+        ads_by_sku=ads_by_sku,
+        user_id=user_id,
+        period_end=period_end,
+    )
+    if not rows:
+        return []
+
     rows_with_total = _append_total_row(rows, country)
+    total = rows_with_total[-1]
+    shipment_quantity = float(total.get("shipment_quantity", total.get("quantity", 0)) or 0)
+    refund_quantity = float(total.get("refund_quantity", total.get("return_quantity", 0)) or 0)
+    net_quantity = shipment_quantity - refund_quantity
+    net_sales = float(total.get("net_sales", 0) or 0)
+    profit = float(total.get("profit", 0) or 0)
+    cm2_profit = float(total.get("cm2_profit", 0) or 0)
+    total_cm2_profit = float(total.get("total_cm2_profit", 0) or 0)
+    ads_spend = float(total.get("ads_spend", 0) or 0)
+    ads_sale_amount = float(total.get("ads_sale_amount", 0) or 0)
+    ads_clicks = float(total.get("ads_clicks", 0) or 0)
+    ads_sale_units = float(total.get("ads_sale_units", 0) or 0)
+    total_ads = float(total.get("total_ads", 0) or 0)
+    reimbursement = float(total.get("current_net_reimbursement", 0) or 0)
+    total.update({
+        "quantity": shipment_quantity,
+        "shipment_quantity": shipment_quantity,
+        "refund_quantity": refund_quantity,
+        "return_quantity": refund_quantity,
+        "net_quantity": net_quantity,
+        "total_quantity": net_quantity,
+        "asp": net_sales / net_quantity if net_quantity else 0.0,
+        "unit_wise_profitability": profit / net_quantity if net_quantity else 0.0,
+        "cm1_profit_per": profit / net_sales * 100 if net_sales else 0.0,
+        "cm1_profit_per_unit": profit / net_quantity if net_quantity else 0.0,
+        "cm2_profit_per": cm2_profit / net_sales * 100 if net_sales else 0.0,
+        "cm2_profit_per_unit": cm2_profit / net_quantity if net_quantity else 0.0,
+        "profit_percentage": profit / net_sales * 100 if net_sales else 0.0,
+        "ads_acos": ads_spend / ads_sale_amount * 100 if ads_sale_amount else 0.0,
+        "ads_roas": ads_sale_amount / ads_spend if ads_spend else 0.0,
+        "ads_conversion_rate": ads_sale_units / ads_clicks * 100 if ads_clicks else 0.0,
+        "acos": ads_spend / net_sales * 100 if net_sales else 0.0,
+        "promotional_rebates_percentage": (
+            float(total.get("promotional_rebates", 0) or 0) / net_sales * 100
+            if net_sales else 0.0
+        ),
+        "total_cm2_margins": total_cm2_profit / net_sales * 100 if net_sales else 0.0,
+        "tacos_total_advertising_cost_of_sale": total_ads / net_sales * 100 if net_sales else 0.0,
+        "reimbursement_vs_cm2_margins": (
+            reimbursement / total_cm2_profit * 100 if total_cm2_profit else 0.0
+        ),
+        "reimbursement_vs_sales": reimbursement / net_sales * 100 if net_sales else 0.0,
+        "sales_mix": 100.0,
+    })
     for row in rows_with_total:
         row["currency"] = currency_code
     return rows_with_total
@@ -4253,6 +4465,30 @@ def live_mtd_vs_previous(period_mode=None):
             if period_mode == "last_30_days":
                 current_uk_sku_items = remove_total_rows(current_mtd_uk_sku_items)
                 current_us_sku_items = remove_total_rows(current_mtd_us_sku_items)
+                current_uk_ads, _ = fetch_adsdaily_sku_mtd_ads(
+                    user_id, "uk", curr_start, curr_end
+                )
+                current_us_ads, _ = fetch_adsdaily_sku_mtd_ads(
+                    user_id, "us", curr_start, curr_end
+                )
+                previous_uk_ads, _ = fetch_adsdaily_sku_mtd_ads(
+                    user_id, "uk", prev_start, prev_end
+                )
+                previous_us_ads, _ = fetch_adsdaily_sku_mtd_ads(
+                    user_id, "us", prev_start, prev_end
+                )
+                current_uk_sku_items = _enrich_skuwise_period_rows(
+                    current_uk_sku_items, "uk", "GBP", current_uk_ads, user_id, curr_end
+                )
+                current_us_sku_items = _enrich_skuwise_period_rows(
+                    current_us_sku_items, "us", "USD", current_us_ads, user_id, curr_end
+                )
+                prev_uk_items = _enrich_skuwise_period_rows(
+                    prev_uk_items, "uk", "GBP", previous_uk_ads, user_id, prev_end
+                )
+                prev_us_items = _enrich_skuwise_period_rows(
+                    prev_us_items, "us", "USD", previous_us_ads, user_id, prev_end
+                )
                 current_conversion_rate = fetch_conversion_rate(
                     country="us",
                     year=curr_end.year,
@@ -4268,6 +4504,22 @@ def live_mtd_vs_previous(period_mode=None):
                 current_global_sku_items = _build_global_skuwise(
                     current_us_df,
                     current_uk_df,
+                )
+                previous_conversion_rate = fetch_conversion_rate(
+                    country="us",
+                    year=prev_end.year,
+                    month_name=month_name[prev_end.month].lower(),
+                    user_currency="gbp",
+                    selected_currency="usd",
+                ) or 1.0
+                previous_uk_df = _convert_uk_to_usd(
+                    _items_to_df(prev_uk_items, "uk"),
+                    previous_conversion_rate,
+                )
+                previous_us_df = _items_to_df(prev_us_items, "us")
+                prev_global_items = _build_global_skuwise(
+                    previous_us_df,
+                    previous_uk_df,
                 )
 
             response_payload = {
@@ -4403,31 +4655,43 @@ def live_mtd_vs_previous(period_mode=None):
                         current_global_sku_items,
                         "global",
                         "USD",
+                        user_id=user_id,
+                        period_end=curr_end,
                     ),
                     "previous_skuwise_items_global": _build_skuwise_period_payload(
                         prev_global_items,
                         "global",
                         "USD",
+                        user_id=user_id,
+                        period_end=prev_end,
                     ),
                     "skuwise_items_uk": _build_skuwise_period_payload(
                         current_uk_sku_items,
                         "uk",
                         "GBP",
+                        user_id=user_id,
+                        period_end=curr_end,
                     ),
                     "previous_skuwise_items_uk": _build_skuwise_period_payload(
                         prev_uk_items,
                         "uk",
                         "GBP",
+                        user_id=user_id,
+                        period_end=prev_end,
                     ),
                     "skuwise_items_us": _build_skuwise_period_payload(
                         current_us_sku_items,
                         "us",
                         "USD",
+                        user_id=user_id,
+                        period_end=curr_end,
                     ),
                     "previous_skuwise_items_us": _build_skuwise_period_payload(
                         prev_us_items,
                         "us",
                         "USD",
+                        user_id=user_id,
+                        period_end=prev_end,
                     ),
                 })
 
@@ -6734,11 +6998,17 @@ def live_mtd_vs_previous(period_mode=None):
                 last_30_current_sku_items,
                 country,
                 currency_code,
+                ads_by_sku=curr_ads_sku_map,
+                user_id=user_id,
+                period_end=curr_end,
             )
             response_payload["previous_skuwise_items"] = _build_skuwise_period_payload(
                 last_30_previous_sku_items,
                 country,
                 currency_code,
+                ads_by_sku=prev_ads_sku_map,
+                user_id=user_id,
+                period_end=prev_end,
             )
 
         # # ---------------------------
@@ -7158,10 +7428,53 @@ def _convert_uk_to_usd(df, rate):
         "profit",
         "cogs",
         "ads_spend",
+        "ads_spend_raw",
+        "ads_sale_amount",
+        "sp_ads_sales",
+        "sd_ads_sales",
+        "sb_ads_sales",
+        "product_spend",
+        "display_spend",
+        "brand_spend",
+        "total_ads",
         "advertising",
         "platform_fee",
         "cm2_profit",
         "unit_wise_profitability",
+        "cm1_profit_per_unit",
+        "cm2_profit_per_unit",
+        "total_cm2_profit",
+        "marketplace_fees",
+        "amazon_fees",
+        "tax",
+        "credits",
+        "net_taxes",
+        "net_credits",
+        "other_transactions",
+        "customs_fee",
+        "advertising_fees",
+        "dealsvouchar_ads",
+        "fba_disposal",
+        "gift_wrap_credits",
+        "giftwrap_credits_tax",
+        "lost_total",
+        "marketplace_facilitator_tax",
+        "misc_transaction",
+        "other",
+        "other_adjustment",
+        "placement_fee",
+        "platform_fee_inventory_storage",
+        "platform_management_fees",
+        "platformfeenew",
+        "postage_credits",
+        "product_sales_tax",
+        "promotional_rebates_tax",
+        "shipment_fees",
+        "shipping_charges",
+        "shipping_credits_tax",
+        "short_term_storage_fee",
+        "long_term_storage_fee",
+        "storage_fee",
         "selling_fees",
         "fba_fees",
         "promotional_rebates",
