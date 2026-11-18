@@ -33,6 +33,13 @@ type DashboardPageHeaderProps<TTab extends string = string> = {
     comparisonPeriodLoading?: boolean;
 };
 
+type Period = "mtd" | "last30";
+
+const PERIOD_OPTIONS: { value: Period; label: string }[] = [
+    { value: "mtd", label: "MTD" },
+    { value: "last30", label: "Last 30 days" },
+];
+
 export default function DashboardPageHeader<TTab extends string = string>({
     brandName,
     countryName,
@@ -82,119 +89,122 @@ export default function DashboardPageHeader<TTab extends string = string>({
     return (
         <div ref={stickyHeaderRef} className="sticky top-0 z-40 bg-[#F7F7F7]">
             <div className="bg-[#F7F7F7]">
-               <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col items-start gap-2 lg:flex-row lg:items-center lg:justify-between">
 
-    {/* LEFT SIDE */}
-    <div className="flex w-full min-w-0 flex-col leading-tight lg:w-auto">
-        <p className="mb-1 truncate text-xs text-charcoal-500 sm:text-sm 2xl:text-lg">
-            Let&apos;s get started,{" "}
-            <span className="text-green-500">{brandName}!</span>
-        </p>
+                    {/* LEFT SIDE */}
+                    <div className="flex w-full min-w-0 flex-col leading-tight lg:w-auto">
+                        <p className="mb-1 truncate text-xs text-charcoal-500 sm:text-sm 2xl:text-lg">
+                            Let&apos;s get started,{" "}
+                            <span className="text-green-500">{brandName}!</span>
+                        </p>
 
-        <div className="flex w-full flex-wrap items-center gap-1 lg:w-auto">
-            <PageBreadcrumb
-                pageTitle="Sales Dashboard - Amazon"
-                variant="page"
-                textSize="2xl"
-            />
+                        <div className="flex w-full flex-wrap items-center gap-1 lg:w-auto">
+                            <PageBreadcrumb
+                                pageTitle="Sales Dashboard - Amazon"
+                                variant="page"
+                                textSize="2xl"
+                            />
 
-            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                {countryName === "global"
-                    ? "Global"
-                    : countryName.toUpperCase()}
-            </span>
+                            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                                {countryName === "global"
+                                    ? "Global"
+                                    : countryName.toUpperCase()}
+                            </span>
 
-            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
-                - {formattedMonthYear}
-            </span>
-        </div>
-    </div>
+                            <span className="text-base font-bold text-green-500 sm:text-xl lg:text-lg 2xl:text-2xl">
+                                - {formattedMonthYear}
+                            </span>
+                        </div>
+                    </div>
 
-    {/* RIGHT SIDE */}
-    <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:w-auto lg:flex-col lg:items-end lg:justify-start lg:gap-1">
-        <AiButton
-            onClick={handleHardRefresh}
-            disabled={pageLoading}
-            className={`shrink-0 rounded-md border shadow-sm
+                    {/* RIGHT SIDE */}
+                    <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:w-auto lg:flex-col lg:items-end lg:justify-start lg:gap-1">
+                        <AiButton
+                            onClick={handleHardRefresh}
+                            disabled={pageLoading}
+                            className={`shrink-0 rounded-md shadow-sm
                 px-2 py-1 text-[10px]
                 sm:px-3 sm:py-1.5 sm:text-xs
                 2xl:text-sm
-                ${
-                    pageLoading
-                        ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
-                        : "border-gray-300 bg-white hover:bg-gray-50"
-                }`}
-        >
-            {pageLoading ? "Refreshing…" : "Refresh"}
-        </AiButton>
+                ${pageLoading
+                                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400"
+                                    : "border-gray-300 bg-white hover:bg-gray-50"
+                                }`}
+                        >
+                            {pageLoading ? "Refreshing…" : "Refresh"}
+                        </AiButton>
 
-        {lastRefreshAt != null && (
-            <span className="whitespace-nowrap text-xs text-gray-500 2xl:text-sm">
-                Last Updated at{" "}
-                {lastUpdatedTimeText ||
-                    (activeDateRegion === "US"
-                        ? formatUSTime12hr(lastRefreshAt)
-                        : activeDateRegion === "CA"
-                            ? formatLastUpdatedDateTime(
-                                  lastRefreshAt,
-                                  "America/Toronto"
-                              )
-                            : formatUKTime12hr(lastRefreshAt))}
-            </span>
-        )}
-    </div>
-</div>
+                        {lastRefreshAt != null && (
+                            <span className="whitespace-nowrap text-xs text-gray-500 2xl:text-sm">
+                                Last Updated at{" "}
+                                {lastUpdatedTimeText ||
+                                    (activeDateRegion === "US"
+                                        ? formatUSTime12hr(lastRefreshAt)
+                                        : activeDateRegion === "CA"
+                                            ? formatLastUpdatedDateTime(
+                                                lastRefreshAt,
+                                                "America/Toronto"
+                                            )
+                                            : formatUKTime12hr(lastRefreshAt))}
+                            </span>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {showTabs && (
-                <div className="border-b border-gray-200 bg-[#F7F7F7] max-[480px]:py-1 max-[640px]:pb-2 sm:py-2">
-                    {onComparisonPeriodChange && (
-                        <div className="mb-2 flex items-center justify-end gap-2">
-                            <span className="text-xs font-medium text-[#50627A]">Compare</span>
-                            <div className="inline-flex rounded-lg border border-[#D9E2E8] bg-white p-1" role="group" aria-label="Comparison period">
-                                {([
-                                    ["mtd", "MTD"],
-                                    ["last30", "Last 30 days"],
-                                ] as const).map(([value, label]) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        aria-pressed={comparisonPeriod === value}
-                                        disabled={comparisonPeriodLoading}
-                                        onClick={() => onComparisonPeriodChange(value)}
-                                        className={`rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:cursor-wait disabled:opacity-60 ${comparisonPeriod === value ? "bg-[#5EA68E] text-white" : "text-[#37455F] hover:bg-gray-100"}`}
-                                    >
-                                        {comparisonPeriodLoading && comparisonPeriod !== value ? "Loading…" : label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    <div className="flex items-center gap-3">
-                        <div className="min-w-0 flex-1 overflow-x-auto">
+                <div className="border-b border-gray-200 bg-[#F7F7F7] py-2">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 lg:flex-nowrap">
+
+                        {/* TABS: flexible, scrolls horizontally if space runs out */}
+                        <div className="order-1 min-w-0 basis-full overflow-x-auto lg:basis-0 lg:flex-1">
                             <SegmentedToggle<TTab>
                                 value={activeTab}
                                 options={TOP_TABS.map((t) => ({ value: t.id, label: t.label }))}
                                 onChange={(tab) => {
                                     shouldScrollTabTopRef.current = true;
-
                                     setActiveTab(tab);
                                     syncTabToHash(tab);
                                 }}
-                                className="mt-2 w-full"
+                                className="w-full"
                                 compact
                                 textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
                             />
                         </div>
 
+                        {/* PERIOD TOGGLE: fixed width, divider on desktop */}
+                        {onComparisonPeriodChange && (
+                            <div className="order-2 flex shrink-0 items-center gap-3 lg:self-stretch">
+                                <span
+                                    aria-hidden="true"
+                                    className="hidden w-px self-stretch bg-gray-300 lg:block"
+                                />
+                                <SegmentedToggle<Period>
+                                    value={comparisonPeriod}
+                                    options={PERIOD_OPTIONS}
+                                    onChange={onComparisonPeriodChange}
+                                    disabled={comparisonPeriodLoading}
+                                    compact
+                                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                                />
+                            </div>
+                        )}
+
+                        {/* BACK: far right */}
                         {onBackToOverview && (
                             <button
                                 type="button"
                                 onClick={onBackToOverview}
-                                className="mt-2 inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F] px-3 py-2 text-[10px] font-semibold text-[#F8EDCE] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 sm:px-4 sm:text-sm"
+                                title="Back to overview"
+                                aria-label="Back to overview"
+                                className="order-3 ml-auto inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#37455F]
+                        px-3 py-2 text-[10px] font-semibold text-[#F8EDCE] shadow-sm transition
+                        hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E]
+                        focus:ring-offset-2 sm:text-sm lg:ml-0"
                             >
                                 <ArrowLeft size={15} />
-                                Back to overview
+                                <span className="hidden xl:inline">Back to overview</span>
+                                <span className="xl:hidden">Overview</span>
                             </button>
                         )}
                     </div>

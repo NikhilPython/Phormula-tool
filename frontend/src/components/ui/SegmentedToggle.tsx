@@ -17,6 +17,7 @@ interface SegmentedToggleProps<T extends SegmentedValue = SegmentedValue> {
   textSizeClass?: string;
   compact?: boolean;
   laptopFit?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -24,7 +25,7 @@ interface SegmentedToggleProps<T extends SegmentedValue = SegmentedValue> {
  * - Natural width by default
  * - No extra empty space on the right
  * - Still supports horizontal scroll if parent is too narrow
- */  
+ */
 export default function SegmentedToggle<T extends SegmentedValue = SegmentedValue>({
   value,
   options,
@@ -33,6 +34,7 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
   textSizeClass,
   compact = true,
   laptopFit = false,
+  disabled = false,
 }: SegmentedToggleProps<T>) {
   const containerPad = compact ? "p-1" : "p-1";
   const gap = compact ? "gap-1" : "gap-1";
@@ -81,6 +83,7 @@ export default function SegmentedToggle<T extends SegmentedValue = SegmentedValu
                 onClick={() => onChange(opt.value)}
                 className={[
                   "flex-none",
+                  disabled ? "cursor-wait opacity-60" : "",
                   laptopFit
                     ? "lg:max-2xl:min-w-0 lg:max-2xl:flex-1 lg:max-2xl:px-1.5"
                     : "",
