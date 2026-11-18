@@ -5363,11 +5363,13 @@ export default function DashboardPage() {
     const runDashboardLoadWithSteps = useCallback(async ({
         dataOnlyRefresh = false,
         forceAdsReportSync = false,
+        skipAdsSync = false,
         forceInventoryInsightsRefresh = false,
         trackStep,
     }: {
         dataOnlyRefresh?: boolean;
         forceAdsReportSync?: boolean;
+        skipAdsSync?: boolean;
         forceInventoryInsightsRefresh?: boolean;
         trackStep?: (step: string, state: "running" | "completed") => Promise<void>;
     } = {}) => {
@@ -5431,7 +5433,9 @@ export default function DashboardPage() {
             const jwtToken =
                 typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-            if (platform !== "shopify" && jwtToken) {
+            if (skipAdsSync) {
+                setStep(1, "MTD Fetching", 38, "Using saved Amazon Ads data...");
+            } else if (platform !== "shopify" && jwtToken) {
                 setStep(1, "MTD Fetching", 38, "Starting ads sync in background...");
                 if (forceAdsReportSync) {
                     // Ads is expensive and can take minutes. Await ALL report downloads
@@ -5478,7 +5482,7 @@ export default function DashboardPage() {
             setStep(2, "Inventory Fetch", 100, "Inventory ready");
             markStepComplete(2);
 
-            if (forceAdsReportSync) {
+            if (forceAdsReportSync && !skipAdsSync) {
                 await runAdsBackgroundSync({ forceReportSync: true, trackStep });
                 ensureDashboardLoadActive();
                 // Ads DB writes change profitability; rebuild MTD after Ads finishes.
@@ -6381,11 +6385,6 @@ export default function DashboardPage() {
                 const steps = [
                     "mtd_transactions",
                     "inventory_current",
-                    "sp_report",
-                    "sb_report",
-                    "sd_report",
-                    "monthly_ads_db",
-                    "daily_ads_db",
                     "live_mtd_bi",
                 ];
                 const result = await refreshRequest("POST", { ...refreshScope, steps });
@@ -6405,7 +6404,7 @@ export default function DashboardPage() {
 
                 try {
                     await runDashboardLoadWithSteps({
-                        forceAdsReportSync: true,
+                        skipAdsSync: true,
                         forceInventoryInsightsRefresh: true,
                         trackStep: updateRefreshStep,
                     });
