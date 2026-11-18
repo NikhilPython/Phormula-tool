@@ -179,6 +179,22 @@ def remove_total_rows(items):
 
     return clean
 
+
+def _build_skuwise_period_payload(items, country, currency_code):
+    rows = [dict(row) for row in remove_total_rows(items) if isinstance(row, dict)]
+    if not rows:
+        return []
+
+    for row in rows:
+        row["country"] = country
+        row["currency"] = currency_code
+
+    rows_with_total = _append_total_row(rows, country)
+    for row in rows_with_total:
+        row["currency"] = currency_code
+    return rows_with_total
+
+
 def fetch_global_previous_mtd_ads_from_adsdaily(
     user_id: int,
     prev_start: date,
@@ -4110,14 +4126,14 @@ def live_mtd_vs_previous(period_mode=None):
             # Current MTD daily series
             # Used by daily_series.current_mtd_global / current_mtd_uk / current_mtd_us
             # -------------------------------------------------
-            _, current_mtd_uk_raw = safe_fetch_current_mtd_data_for_global(
+            current_mtd_uk_sku_items, current_mtd_uk_raw = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "uk",
                 curr_start,
                 curr_end,
             )
 
-            _, current_mtd_us_raw = safe_fetch_current_mtd_data_for_global(
+            current_mtd_us_sku_items, current_mtd_us_raw = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "us",
                 curr_start,
@@ -4230,6 +4246,30 @@ def live_mtd_vs_previous(period_mode=None):
                 weekly_email_summary_json=global_weekly_email_summary_json,
             )
 
+            current_global_sku_items = curr_global_items
+            current_uk_sku_items = curr_uk_items
+            current_us_sku_items = curr_us_items
+
+            if period_mode == "last_30_days":
+                current_uk_sku_items = remove_total_rows(current_mtd_uk_sku_items)
+                current_us_sku_items = remove_total_rows(current_mtd_us_sku_items)
+                current_conversion_rate = fetch_conversion_rate(
+                    country="us",
+                    year=curr_end.year,
+                    month_name=month_name[curr_end.month].lower(),
+                    user_currency="gbp",
+                    selected_currency="usd",
+                ) or 1.0
+                current_uk_df = _convert_uk_to_usd(
+                    _items_to_df(current_uk_sku_items, "uk"),
+                    current_conversion_rate,
+                )
+                current_us_df = _items_to_df(current_us_sku_items, "us")
+                current_global_sku_items = _build_global_skuwise(
+                    current_us_df,
+                    current_uk_df,
+                )
+
             response_payload = {
                 "message": "Live GLOBAL MTD vs previous-month-same-period comparison",
                 "country": "global",
@@ -4328,11 +4368,11 @@ def live_mtd_vs_previous(period_mode=None):
                 },
 
                 "skuwise_items": {
-                    "current_global": curr_global_items,
+                    "current_global": current_global_sku_items,
                     "previous_global": prev_global_items,
-                    "current_uk": curr_uk_items,
+                    "current_uk": current_uk_sku_items,
                     "previous_uk": prev_uk_items,
-                    "current_us": curr_us_items,
+                    "current_us": current_us_sku_items,
                     "previous_us": prev_us_items,
                 },
 
@@ -4356,6 +4396,40 @@ def live_mtd_vs_previous(period_mode=None):
                     "previous": previous_global_payload.get("conversion"),
                 },
             }
+
+            if period_mode == "last_30_days":
+                response_payload.update({
+                    "skuwise_items_global": _build_skuwise_period_payload(
+                        current_global_sku_items,
+                        "global",
+                        "USD",
+                    ),
+                    "previous_skuwise_items_global": _build_skuwise_period_payload(
+                        prev_global_items,
+                        "global",
+                        "USD",
+                    ),
+                    "skuwise_items_uk": _build_skuwise_period_payload(
+                        current_uk_sku_items,
+                        "uk",
+                        "GBP",
+                    ),
+                    "previous_skuwise_items_uk": _build_skuwise_period_payload(
+                        prev_uk_items,
+                        "uk",
+                        "GBP",
+                    ),
+                    "skuwise_items_us": _build_skuwise_period_payload(
+                        current_us_sku_items,
+                        "us",
+                        "USD",
+                    ),
+                    "previous_skuwise_items_us": _build_skuwise_period_payload(
+                        prev_us_items,
+                        "us",
+                        "USD",
+                    ),
+                })
 
             try:
                 response_payload = round_numeric_values(response_payload, ndigits=2)
@@ -4383,6 +4457,17 @@ def live_mtd_vs_previous(period_mode=None):
             curr_data, curr_daily = fetch_current_mtd_data(
                 user_id, country, curr_start, curr_end
             )
+
+        last_30_current_sku_items = (
+            [dict(row) for row in curr_data or []]
+            if period_mode == "last_30_days"
+            else []
+        )
+        last_30_previous_sku_items = (
+            [dict(row) for row in prev_data_aligned or []]
+            if period_mode == "last_30_days"
+            else []
+        )
 
         # ✅ Current values for AI only, from skuwisemonthly monthly table
         if period_mode == "last_30_days":
@@ -6638,6 +6723,23 @@ def live_mtd_vs_previous(period_mode=None):
             "remaining_skus_journey_summary": remaining_skus_journey,
             "remaining_skus_block": remaining_skus_block,
         }
+
+        if period_mode == "last_30_days":
+            currency_code = {
+                "uk": "GBP",
+                "us": "USD",
+                "ca": "CAD",
+            }.get(country, "USD")
+            response_payload["skuwise_items"] = _build_skuwise_period_payload(
+                last_30_current_sku_items,
+                country,
+                currency_code,
+            )
+            response_payload["previous_skuwise_items"] = _build_skuwise_period_payload(
+                last_30_previous_sku_items,
+                country,
+                currency_code,
+            )
 
         # # ---------------------------
         # # SEND EMAIL
