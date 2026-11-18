@@ -5118,6 +5118,8 @@ export default function DashboardPage() {
             if (cached) {
                 setLiveBiPayload(cached.payload);
                 setBiAlignedTotals(cached.totals);
+                setBiDailySeries(cached.payload?.daily_series || null);
+                setBiPeriods(cached.payload?.periods || null);
             } else {
                 await fetchLiveBiPayload({ skipLoader: false });
             }
@@ -5132,6 +5134,8 @@ export default function DashboardPage() {
         if (cached) {
             setLiveBiPayload(cached.payload);
             setBiAlignedTotals(cached.totals);
+            setBiDailySeries(cached.payload?.daily_series || null);
+            setBiPeriods(cached.payload?.periods || null);
             setComparisonPeriod("last30");
             return;
         }
