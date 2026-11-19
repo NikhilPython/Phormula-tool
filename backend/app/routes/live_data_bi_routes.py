@@ -180,6 +180,16 @@ def remove_total_rows(items):
     return clean
 
 
+def _has_period_units(row):
+    value = row.get("quantity")
+    if value is None:
+        value = row.get("total_quantity", row.get("net_quantity", 0))
+    try:
+        return float(value or 0) != 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _calculate_total_cm2_profit(cm2_profit, row):
     def number(value):
         try:
@@ -7166,6 +7176,15 @@ def live_mtd_vs_previous(period_mode=None):
                 current_total_row["reimbursement_vs_cm2_margins"] = (
                     reimbursement_vs_cm2
                 )
+            response_payload["skuwise_items"] = [
+                row
+                for row in response_payload["skuwise_items"]
+                if str(row.get("sku") or "").strip().upper()
+                in {"TOTAL", "GRAND_TOTAL"}
+                or str(row.get("product_name") or "").strip().lower()
+                in {"total", "grand total"}
+                or _has_period_units(row)
+            ]
             response_payload["previous_skuwise_items"] = _build_skuwise_period_payload(
                 last_30_previous_sku_items,
                 country,
