@@ -1482,6 +1482,10 @@ def compute_sku_metrics_from_df(df: pd.DataFrame, country: str | None = "uk") ->
     metrics["promotional_rebates"] = safe_num(metrics.get("promotional_rebates", 0.0))
     metrics["promotional_rebates_tax"] = safe_num(metrics.get("promotional_rebates_tax", 0.0))
     metrics["gross_sales"] = safe_num(metrics.get("gross_sales", 0.0))  # ✅ NEW
+    metrics["net_sales"] = (
+        safe_num(metrics.get("net_sales", 0.0))
+        - metrics["promotional_rebates"].abs()
+    )
     metrics["selling_fees"] = safe_num(metrics.get("selling_fees", 0.0))
     metrics["fba_fees"] = safe_num(metrics.get("fba_fees", 0.0))
     metrics["tax_credit_metric"] = safe_num(metrics.get("tax_credit_metric", 0.0))
