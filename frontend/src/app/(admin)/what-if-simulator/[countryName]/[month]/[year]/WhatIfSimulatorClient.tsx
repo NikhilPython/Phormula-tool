@@ -837,7 +837,7 @@ export default function WhatIfSimulatorClient() {
 
   return (
     <div className="relative w-full space-y-3 pb-10">
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden ">
         <div className="border-b border-slate-200 bg-[#F7F7F7] px-4 py-4 md:px-6">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
