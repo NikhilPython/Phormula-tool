@@ -470,7 +470,7 @@ export default function ProfileClient() {
             </p>
           </div>
 
-          <div className="w-full rounded-2xl border border-[#DCE8E2] bg-[#F7FBF9] px-4 py-3 md:w-auto md:min-w-[310px]">
+          {/* <div className="w-full rounded-2xl border border-[#DCE8E2] bg-[#F7FBF9] px-4 py-3 md:w-auto md:min-w-[310px]">
             <div className="flex items-start gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#159A67] shadow-sm">
                 <FiClock size={17} />
@@ -490,7 +490,7 @@ export default function ProfileClient() {
                 )}
               </div>
             </div>
-          </div>
+          </div> */}
         </div>
 
         <div className="mt-3">

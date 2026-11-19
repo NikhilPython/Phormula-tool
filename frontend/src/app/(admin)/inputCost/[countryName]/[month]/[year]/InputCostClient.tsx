@@ -4088,7 +4088,7 @@ export default function InputCostPage({ params }: Params) {
   const INPUT_COST_TAB_HASHES: InputCostTab[] = [
     'inventory-insights',
     'sku-info',
-    'extra',
+    // 'extra',
     'recon-table',
     'lost-compensation',
   ];
@@ -7363,7 +7363,7 @@ export default function InputCostPage({ params }: Params) {
     () => [
       { value: 'inventory-insights' as const, label: 'Inventory Insights' },
       { value: 'sku-info' as const, label: 'SKU Information' },
-      { value: 'extra' as const, label: 'Warehouse' },
+      // { value: 'extra' as const, label: 'Warehouse' },
       { value: 'recon-table' as const, label: 'Recon Table' },
       { value: 'lost-compensation' as const, label: 'Lost vs Compensation' },
     ],

@@ -10,6 +10,7 @@ import {
   FiEdit3,
   FiEye,
   FiLock,
+  FiSearch,
   FiPlus,
   FiUser,
   FiX,
@@ -186,6 +187,45 @@ function Panel({
   );
 }
 
+function InfoCard({
+  title,
+  subtitle,
+  status,
+  headerRight,
+  children,
+  className,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  status?: React.ReactNode;
+  headerRight?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={cx(
+        "relative h-full rounded-2xl border border-[#E3E8E5] bg-white shadow-[0_12px_34px_rgba(39,49,64,0.055)] overflow-hidden transition-all duration-300",
+        className
+      )}
+    >
+      <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm 2xl:text-base font-bold text-charcoal-500 capitalize">{title}</h2>
+            {status}
+          </div>
+          {subtitle && <div className="mt-1">{subtitle}</div>}
+        </div>
+        {headerRight && <div className="shrink-0">{headerRight}</div>}
+      </div>
+      <div className="p-4 2xl:p-5">
+        {children}
+      </div>
+    </section>
+  );
+}
+
 function ReadOnlyField({
   label,
   value,
@@ -267,6 +307,7 @@ export default function WorkspaceSetupOnboarding({
 
   const [skuCountryFilter, setSkuCountryFilter] = useState("all");
   const [skuStatusFilter, setSkuStatusFilter] = useState("all");
+  const [skuSearch, setSkuSearch] = useState("");
 
   const companySectionRef = useRef<HTMLDivElement | null>(null);
   const productSectionRef = useRef<HTMLDivElement | null>(null);
@@ -564,7 +605,7 @@ export default function WorkspaceSetupOnboarding({
         return {
           "S. No.": row.s_no || "",
           "Product Name": row.product_name || "",
-          "Product Barcode": row.product_barcode || "-",
+          "Barcode": row.product_barcode || "-",
           "ASIN": row.asin || "-",
           "Country": row.country || "-",
           "SKU": row.sku || "-",
@@ -579,7 +620,7 @@ export default function WorkspaceSetupOnboarding({
       const headers = [
         "S. No.",
         "Product Name",
-        "Product Barcode",
+        "Barcode",
         "ASIN",
         "Country",
         "SKU",
@@ -962,6 +1003,8 @@ export default function WorkspaceSetupOnboarding({
   }, [flattenedSkuRows]);
 
   const filteredSkuRows = useMemo(() => {
+    const query = skuSearch.trim().toLowerCase().replace(/\s+/g, " ");
+
     return flattenedSkuRows.filter((row: any) => {
       const country = String(row.country || "").trim().toUpperCase();
       const status = String(row.product_status || "Active")
@@ -976,9 +1019,17 @@ export default function WorkspaceSetupOnboarding({
         skuStatusFilter === "all" ||
         status === skuStatusFilter.toLowerCase();
 
-      return matchesCountry && matchesStatus;
+      const matchesSearch =
+        !query ||
+        [row.product_name, row.asin, row.sku, row.product_barcode].some((value) =>
+          String(value ?? "")
+            .toLowerCase()
+            .includes(query)
+        );
+
+      return matchesCountry && matchesStatus && matchesSearch;
     });
-  }, [flattenedSkuRows, skuCountryFilter, skuStatusFilter]);
+  }, [flattenedSkuRows, skuCountryFilter, skuStatusFilter, skuSearch]);
 
   // Re-index the S.No for the filtered view so it always counts 1 to N
   const displaySkuRows = useMemo(() => {
@@ -999,7 +1050,7 @@ export default function WorkspaceSetupOnboarding({
         headerClassName: "!text-left",
         cellClassName: "!text-left",
       },
-      { key: "product_barcode", header: "Product Barcode" },
+      { key: "product_barcode", header: "Barcode" },
       { key: "asin", header: "ASIN" },
       { key: "country", header: "Country" },
       { key: "sku", header: "SKU" },
@@ -1098,7 +1149,7 @@ export default function WorkspaceSetupOnboarding({
               <div className="flex items-start justify-between gap-3 border-b border-[#E8ECEA] px-5 py-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">1. Personal details</h2>
+                    <h2 className="text-sm capitalize 2xl:text-base font-bold text-charcoal-500">1. Personal details</h2>
                     <StatusPill tone={isPersonalComplete ? "green" : "blue"}>
                       {isPersonalComplete ? "Completed" : "In progress"}
                     </StatusPill>
@@ -1112,7 +1163,7 @@ export default function WorkspaceSetupOnboarding({
                   <button
                     type="button"
                     onClick={() => setIsPersonalEditing(true)}
-                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
+                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-charcoal-500 hover:bg-[#F5F8F6]"
                   >
                     <FiEdit3 size={14} /> Edit details
                   </button>
@@ -1283,7 +1334,7 @@ export default function WorkspaceSetupOnboarding({
                 <div className="flex flex-col gap-3 border-b border-[#E8ECEA] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">2. Company info</h2>
+                      <h2 className="text-sm capitalize 2xl:text-base font-bold text-charcoal-500">2. Company Information</h2>
 
                       {guideStep === "company" ? (
                         <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
@@ -1307,7 +1358,7 @@ export default function WorkspaceSetupOnboarding({
                     <button
                       type="button"
                       onClick={() => setIsCompanyEditing(true)}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-[#37455F] hover:bg-[#F5F8F6]"
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#DDE5E1] px-3 text-xs font-semibold text-charcoal-500 hover:bg-[#F5F8F6]"
                     >
                       <FiEdit3 size={14} /> {isCompanyComplete ? "Edit details" : "Add details"}
                     </button>
@@ -1440,294 +1491,305 @@ export default function WorkspaceSetupOnboarding({
           "grid grid-cols-1 gap-5 xl:items-stretch flex-1",
           productOnlyView ? "xl:grid-cols-1" : isSetupComplete ? "xl:grid-cols-2" : "xl:grid-cols-3"
         )}>
-          {productOnlyView || !isSetupComplete ? <div ref={productSectionRef} className="h-full flex flex-col scroll-mt-24">
-            <Panel
-              className={cx(
-                "product-panel relative overflow-hidden transition-all duration-300 flex flex-col h-full",
-                guideStep === "sku" &&
-                "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
-                !canAccessProductControls && "bg-[#FAFBFA]"
-              )}
+          {(productOnlyView || !isSetupComplete) && (
+            <div
+              ref={productSectionRef}
+              className="h-full flex flex-col scroll-mt-24"
             >
-              <div className={cx("flex h-full flex-col flex-1", productOnlyView ? "p-4" : "p-5")}>
-                <div className={cx("flex gap-4", productOnlyView && "w-full justify-between")}>
-                  <div className={cx(productOnlyView && "w-full")}>
-                    <div className={cx("flex items-center gap-2", productOnlyView ? "justify-between" : "flex-wrap")}>
-                      {productOnlyView ? (
-                        <PageBreadcrumb
-                          pageTitle="Product & inventory controls"
-                          variant="table"
-                          align="left"
-                        />
-                      ) : (
-                        <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
-                          3. Product & inventory controls
-                        </h2>
-                      )}
+              <Panel
+                className={cx(
+                  "product-panel relative flex h-full flex-col overflow-hidden transition-all duration-300",
+                  guideStep === "sku" &&
+                  "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
+                  !canAccessProductControls && "bg-[#FAFBFA]"
+                )}
+              >
+                {/* Header: same bar as InfoCard */}
+                <div className="flex min-h-[58px] flex-wrap items-center gap-2 border-b border-[#E8ECEA] px-5 py-3">
+                  <h2 className="text-sm font-bold text-[#37455F] 2xl:text-base">
+                    Product &amp; Inventory Controls
+                  </h2>
 
-                      {guideStep === "sku" ? (
-                        <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                          Step 3 · Next step
-                        </span>
-                      ) : (
-                        <StatusPill tone={hasSkuSheet ? "green" : canAccessProductControls ? "blue" : "gray"}>
-                          {hasSkuSheet ? "SKU uploaded" : canAccessProductControls ? "Ready" : "Locked"}
-                        </StatusPill>
-                      )}
-                    </div>
+                  {guideStep === "sku" && (
+                    <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
+                      Step 3 · Next step
+                    </span>
+                  )}
+                </div>
 
-                    <p className={cx("text-xs 2xl:text-sm font-bold text-charcoal-500", productOnlyView ? "mt-1.5" : "mt-2")}>
+                {/* Body: everything lives inside one padded container */}
+                <div className="flex flex-1 flex-col p-5">
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-[#37455F] 2xl:text-sm">
                       {hasSkuSheet
-                        ? "Your SKU sheet is ready"
+                        ? "Keep your catalog and stock current"
                         : guideStep === "sku"
                           ? "Upload your SKU sheet to continue"
                           : "SKU upload is locked"}
                     </p>
 
-                    <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-charcoal-500">
+                    <p className="text-[11px] leading-4 text-[#78847E] 2xl:text-xs 2xl:leading-5">
                       {hasSkuSheet
-                        ? "Your product data is available. You can replace the sheet whenever you need to update your catalog."
+                        ? "Upload an updated sheet to refresh your local warehouse stock and product catalog in one go."
                         : guideStep === "sku"
                           ? "Company information is complete. Upload your product sheet now to unlock marketplace integrations."
                           : "Complete Company Info first. SKU upload will unlock automatically after that."}
                     </p>
                   </div>
-                </div>
 
-                <button
-                  type="button"
-                  disabled={!canAccessProductControls}
-                  onClick={skuModal.openModal}
-                  className={cx(
-                    cx(
-                      "flex flex-1 w-full flex-col items-center justify-center rounded-2xl border border-dashed text-center transition",
-                      productOnlyView ? "mt-3 min-h-[118px] px-4 py-3" : "mt-5 px-5 py-5"
-                    ),
-                    canAccessProductControls
-                      ? "border-[#B9D8C9] bg-[#FBFEFC] hover:border-green-500 hover:bg-[#F4FBF7]"
-                      : "cursor-not-allowed border-[#DDE2DF] bg-[#F5F6F5] opacity-70"
-                  )}
-                >
-                  {canAccessProductControls ? (
-                    <FiCloud className="text-green-500" size={28} />
-                  ) : (
-                    <FiLock className="text-[#8D9792]" size={23} />
-                  )}
-                  <span className="mt-2 text-[12px] 2xl:text-[14px] font-bold text-[#37455F]">
-                    {hasSkuSheet
-                      ? "Replace or update your SKU sheet"
-                      : canAccessProductControls
-                        ? "Upload SKU sheet"
-                        : "SKU upload locked"}
-                  </span>
-                  <span className="mt-1 text-[11px] 2xl:text-xs text-charcoal-500">
-                    {canAccessProductControls
-                      ? "Click to browse · .xlsx, .xls, .csv"
-                      : "Complete Company Info to unlock"}
-                  </span>
-
-                  {!canAccessProductControls && (
-                    <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#F1F3F2] px-3 py-1 text-[10px] font-bold text-[#74807A]">
-                      <FiLock size={11} /> Locked until Step 1 is complete
-                    </span>
-                  )}
-                </button>
-
-                <div className={cx("flex flex-wrap items-center justify-center gap-4", productOnlyView ? "mt-2" : "mt-3")}>
-                  <button
-                    type="button"
-                    onClick={handleDownloadSkuTemplate}
-                    className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a]"
+                  {/* Upload area: fills the remaining height */}
+                  <div
+                    role="button"
+                    tabIndex={canAccessProductControls ? 0 : -1}
+                    aria-disabled={!canAccessProductControls}
+                    onClick={() => {
+                      if (canAccessProductControls) skuModal.openModal();
+                    }}
+                    onKeyDown={(e) => {
+                      if (!canAccessProductControls) return;
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        skuModal.openModal();
+                      }
+                    }}
+                    className={cx(
+                      "mt-4 flex min-h-[150px] w-full flex-1 flex-col rounded-xl border border-dashed px-4 pb-3 pt-5 text-center transition",
+                      canAccessProductControls
+                        ? "cursor-pointer border-[#B9D8C9] bg-[#FBFEFC] hover:border-green-500 hover:bg-[#F4FBF7]"
+                        : "cursor-not-allowed border-[#DDE2DF] bg-[#F5F6F5] opacity-70"
+                    )}
                   >
-                    Download format here
-                    <FiDownload size={14} />
-                  </button>
+                    {/* Centered content */}
+                    <div className="flex flex-1 flex-col items-center justify-center">
+                      {canAccessProductControls ? (
+                        <FiCloud className="text-green-500" size={28} />
+                      ) : (
+                        <FiLock className="text-[#8D9792]" size={23} />
+                      )}
 
+                      <span className="mt-2 text-[12px] font-bold text-[#37455F] 2xl:text-[14px]">
+                        {hasSkuSheet
+                          ? "Replace or update your SKU sheet"
+                          : canAccessProductControls
+                            ? "Upload SKU sheet"
+                            : "SKU upload locked"}
+                      </span>
+
+                      <span className="mt-1 text-[11px] text-[#78847E] 2xl:text-xs">
+                        {canAccessProductControls
+                          ? "Click to browse · .xlsx, .xls, .csv"
+                          : "Complete Company Info to unlock"}
+                      </span>
+
+                      {!canAccessProductControls && (
+                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#F1F3F2] px-3 py-1 text-[10px] font-bold text-[#74807A]">
+                          <FiLock size={11} /> Locked until Step 1 is complete
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Download format: pinned to the bottom of the dropzone */}
+                    <div className="mt-3 flex justify-center border-t border-dashed border-[#B9D8C9]/60 pt-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadSkuTemplate();
+                        }}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+                      >
+                        Download format here
+                        <FiDownload size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* View your SKU: only shown once a sheet exists */}
                   {hasSkuSheet && (
-                    <>
-                      <span className="h-4 w-px bg-[#DDE5E1]" />
-
+                    <div className="mt-4 flex justify-center">
                       <button
                         type="button"
                         onClick={handleViewSkuSheet}
-                        className="inline-flex items-center gap-1.5 text-[12px] 2xl:text-[13px] font-semibold text-green-500 transition hover:text-[#315c78]"
+                        className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
                       >
                         View your SKU
                         <FiEye size={14} />
                       </button>
-                    </>
+                    </div>
                   )}
+
+                  {/* Actions: inside the padded body, so they can't touch the card edge */}
+                  {/* <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={handleDownloadSkuTemplate}
+                      className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+                    >
+                      Download format here
+                      <FiDownload size={14} />
+                    </button>
+
+                    {hasSkuSheet && (
+                      <>
+                        <span className="h-4 w-px bg-[#DDE5E1]" />
+
+                        <button
+                          type="button"
+                          onClick={handleViewSkuSheet}
+                          className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+                        >
+                          View your SKU
+                          <FiEye size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div> */}
                 </div>
-              </div>
-              {!canAccessProductControls && !productOnlyView && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
-                  <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
-                    <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
-                      <FiLock size={16} />
-                    </span>
-                    <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">Step 3 is locked</p>
-                    <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
-                      Complete Company Info first to unlock Product & Inventory Controls.
-                    </p>
+
+                {!canAccessProductControls && !productOnlyView && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                    <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
+                      <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
+                        <FiLock size={16} />
+                      </span>
+
+                      <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">
+                        Step 3 is locked
+                      </p>
+
+                      <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
+                        Complete Company Info first to unlock Product & Inventory Controls.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-            </Panel>
-          </div> : null}
+                )}
+              </Panel>
+            </div>
+          )}
 
           {!productOnlyView && (
-            <Panel className="relative min-h-[220px] overflow-hidden">
-              <div className="flex items-center justify-between gap-3 border-b border-[#E8ECEA] px-5 py-4">
-                <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
-                  {isSetupComplete ? "3. Plans and Subscription" : "4. Plans and Subscription"}
-                </h2>
-                {!isSetupComplete && (
-                  <StatusPill tone={hasPlanAccess ? "green" : hasSkuSheet ? "blue" : "gray"}>
-                    {hasPlanAccess ? "Paid" : hasSkuSheet ? "Payment required" : "Locked"}
+            <InfoCard
+              title={
+                isSetupComplete
+                  ? "3. Plans and Subscription"
+                  : "4. Plans and Subscription"
+              }
+              subtitle={
+                <p className="text-xs text-[#78847E]">
+                  View and manage your plans and subscription details.
+                </p>
+              }
+              status={
+                !isSetupComplete ? (
+                  <StatusPill
+                    tone={
+                      hasPlanAccess
+                        ? "green"
+                        : hasSkuSheet
+                          ? "blue"
+                          : "gray"
+                    }
+                  >
+                    {hasPlanAccess
+                      ? "Paid"
+                      : hasSkuSheet
+                        ? "Payment required"
+                        : "Locked"}
                   </StatusPill>
-                )}
-              </div>
-              {isSetupComplete ? (
-                <div className="min-h-[165px] p-5" />
-              ) : (
-                <div className="flex min-h-[165px] flex-col items-start justify-between gap-4 p-5">
-                  <p className="text-[11px] 2xl:text-xs leading-5 text-[#78847E]">
-                    {hasSkuSheet
-                      ? "Complete the plan payment to unlock marketplace integrations."
-                      : "Upload your SKU sheet in Step 3 before continuing to plan payment."}
-                  </p>
-
-                  <div className="flex w-full justify-center">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="primary"
-                      disabled={!hasSkuSheet || hasPlanAccess}
-                      onClick={handlePlanPayment}
-                    >
-                      {hasPlanAccess ? "Paid" : "Pay"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {!hasSkuSheet && !isSetupComplete && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
-                  <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
-                    <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
-                      <FiLock size={16} />
-                    </span>
-                    <p className="mt-2 text-[12px] font-bold text-[#56615C] 2xl:text-[14px]">Step 4 is locked</p>
-                    <p className="mt-1 text-[10px] leading-4 text-[#8A948F] 2xl:text-[11px]">
-                      Complete Step 3 and upload your SKU sheet before continuing to plan payment.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </Panel>
+                ) : undefined
+              }
+              className="min-h-[175px]"
+            >
+              <div className="min-h-[165px]" />
+            </InfoCard>
           )}
 
           {!productOnlyView && <div ref={integrationSectionRef} className="h-full scroll-mt-24">
-            <Panel
+            <InfoCard
+              title={isSetupComplete ? "4. Integrations" : "5. Integrations"}
+              status={
+                guideStep === "integration" ? (
+                  <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
+                    Step 5 · Final step
+                  </span>
+                ) : (
+                  <StatusPill tone={hasIntegration ? "green" : canAccessIntegrations ? "blue" : "gray"}>
+                    {hasIntegration ? "Connected" : canAccessIntegrations ? "Ready to connect" : "Locked"}
+                  </StatusPill>
+                )
+              }
+              subtitle={
+                <>
+                  {/* <p className="text-xs 2xl:text-sm font-bold text-charcoal-500">
+                    {hasIntegration
+                      ? "Marketplace connection status"
+                      : guideStep === "integration"
+                        ? "Connect your marketplace to finish setup"
+                        : "Marketplace integrations are locked"}
+                  </p> */}
+                  <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-[#78847E]">
+                    {hasIntegration
+                      ? "Connect or manage your marketplace integrations below."
+                      : guideStep === "integration"
+                        ? "Your plan is paid and SKU sheet is ready. Connect Amazon or Amazon Ads to complete workspace setup."
+                        : !hasSkuSheet
+                          ? "Upload your SKU sheet first to unlock plan payment."
+                          : "Complete plan payment in Step 4 to unlock marketplace integrations."}
+                  </p>
+                </>
+              }
+              headerRight={
+                <div className={cx(!canAccessIntegrations && "pointer-events-none opacity-50")}>
+                  <IntegrationToggleButton />
+                </div>
+              }
               className={cx(
-                "relative overflow-hidden transition-all duration-300",
                 guideStep === "integration" &&
                 "border-green-500 ring-4 ring-green-500/10 shadow-[0_14px_38px_rgba(21,154,103,0.12)]",
                 !canAccessIntegrations && "bg-[#FAFBFA]"
               )}
             >
-              <div className="flex h-full flex-col p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex gap-4">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-sm 2xl:text-base font-bold text-[#37455F]">
-                          {isSetupComplete ? "4. Integrations" : "5. Integrations"}
-                        </h2>
-
-                        {guideStep === "integration" ? (
-                          <span className="rounded-full bg-green-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white shadow-sm">
-                            Step 5 · Final step
-                          </span>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {connectedPlatforms.map((platform) => (
+                  <div
+                    key={platform.id}
+                    className="rounded-2xl border border-[#E1E7E3] bg-[#FCFDFC] p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
+                        {platform.id === "amazon-ads" ? (
+                          <img
+                            src="/images/AmazonAds.jpg"
+                            alt="Amazon Ads"
+                            className="h-7 w-7 object-contain"
+                          />
                         ) : (
-                          <StatusPill tone={hasIntegration ? "green" : canAccessIntegrations ? "blue" : "gray"}>
-                            {hasIntegration ? "Connected" : canAccessIntegrations ? "Ready to connect" : "Locked"}
-                          </StatusPill>
+                          <SiAmazon className="text-[#202A38]" size={24} />
                         )}
                       </div>
-
-                      <p className="mt-2 text-xs 2xl:text-sm font-bold text-charcoal-500">
-                        {hasIntegration
-                          ? "Marketplace connection status"
-                          : guideStep === "integration"
-                            ? "Connect your marketplace to finish setup"
-                            : "Marketplace integrations are locked"}
-                      </p>
-
-                      <p className="mt-1 text-[11px] 2xl:text-xs leading-4 2xl:leading-5 text-[#78847E]">
-                        {hasIntegration
-                          ? "Connect or manage your marketplace integrations below."
-                          : guideStep === "integration"
-                            ? "Your plan is paid and SKU sheet is ready. Connect Amazon or Amazon Ads to complete workspace setup."
-                            : !hasSkuSheet
-                              ? "Upload your SKU sheet first to unlock plan payment."
-                              : "Complete plan payment in Step 4 to unlock marketplace integrations."}
-                      </p>
+                      {platform.countryCode && (
+                        <ReactCountryFlag svg countryCode={platform.countryCode} className="text-lg" />
+                      )}
                     </div>
-                  </div>
 
-                  <div className={cx(!canAccessIntegrations && "pointer-events-none opacity-50")}>
-                    <IntegrationToggleButton />
-                  </div>
-                </div>
-
-                <div className="mt-5 border-t border-[#EDF0EE] pt-4">
-                  <p className="text-[11px] 2xl:text-xs font-bold text-[#37455F]">Marketplace status</p>
-                  <p className="mt-0.5 text-[10px] 2xl:text-[11px] text-[#8A948F]">
-                    These cards show the current connection status.
-                  </p>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {connectedPlatforms.map((platform) => (
-                    <div
-                      key={platform.id}
-                      className="rounded-2xl border border-[#E1E7E3] bg-[#FCFDFC] p-4"
+                    <p className="mt-3 text-xs 2xl:text-sm font-bold text-charcoal-500">{platform.label}</p>
+                    <span
+                      className={cx(
+                        "mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold",
+                        platform.connected
+                          ? "bg-[#EAF7F1] text-green-500"
+                          : "bg-[#F1F3F2] text-[#8A948F]"
+                      )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
-                          {platform.id === "amazon-ads" ? (
-                            <img
-                              src="/images/AmazonAds.jpg"
-                              alt="Amazon Ads"
-                              className="h-7 w-7 object-contain"
-                            />
-                          ) : (
-                            <SiAmazon className="text-[#202A38]" size={24} />
-                          )}
-                        </div>
-                        {platform.countryCode && (
-                          <ReactCountryFlag svg countryCode={platform.countryCode} className="text-lg" />
-                        )}
-                      </div>
-
-                      <p className="mt-3 text-xs 2xl:text-sm font-bold text-charcoal-500">{platform.label}</p>
-                      <span
-                        className={cx(
-                          "mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold",
-                          platform.connected
-                            ? "bg-[#EAF7F1] text-green-500"
-                            : "bg-[#F1F3F2] text-[#8A948F]"
-                        )}
-                      >
-                        {platform.connected ? "Connected" : "Not connected"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                      {platform.connected ? "Connected" : "Not connected"}
+                    </span>
+                  </div>
+                ))}
               </div>
 
               {!canAccessIntegrations && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[1px]">
                   <div className="max-w-[330px] rounded-2xl border border-[#E1E6E3] bg-white px-5 py-4 text-center shadow-sm">
                     <span className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F3F2] text-[#74807A]">
                       <FiLock size={16} />
@@ -1743,10 +1805,10 @@ export default function WorkspaceSetupOnboarding({
                   </div>
                 </div>
               )}
-            </Panel>
+            </InfoCard>
           </div>}
         </div>
-      </div>
+      </div >
 
       <Modal
         isOpen={skuModal.isOpen}
@@ -1783,7 +1845,7 @@ export default function WorkspaceSetupOnboarding({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8ECEA] pb-3">
             {/* Left: Title */}
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-[#37455F] dark:text-white">
+              <h2 className="text-base font-bold text-charcoal-500 dark:text-white">
                 View your SKU
               </h2>
               <p className="mt-1 text-xs text-[#78847E] dark:text-gray-400">
@@ -1794,12 +1856,39 @@ export default function WorkspaceSetupOnboarding({
             {/* Right: Filters + Actions */}
             <div className="flex flex-wrap items-center justify-end gap-2">
 
+              {/* Search */}
+              <div className="relative">
+                <FiSearch
+                  size={14}
+                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8A948F]"
+                />
+                <input
+                  type="text"
+                  value={skuSearch}
+                  onChange={(e) => setSkuSearch(e.target.value)}
+                  placeholder="Product, ASIN, SKU or barcode"
+                  aria-label="Search by product name, ASIN, SKU or barcode"
+                  className="h-9 w-[240px] rounded-lg border border-[#DDE5E1] bg-white pl-8 pr-8 text-xs font-medium text-charcoal-500 outline-none placeholder:font-normal placeholder:text-[#9AA5A0] focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+                />
+                {skuSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setSkuSearch("")}
+                    aria-label="Clear search"
+                    title="Clear search"
+                    className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[#8A948F] hover:bg-[#F5F8F6]"
+                  >
+                    <FiX size={13} />
+                  </button>
+                )}
+              </div>
+
               {/* Country Filter */}
               <select
                 aria-label="Filter by country"
                 value={skuCountryFilter}
                 onChange={(e) => setSkuCountryFilter(e.target.value)}
-                className="h-9 w-[125px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+                className="h-9 w-[125px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-charcoal-500 outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
               >
                 <option value="all">All Countries</option>
                 {skuCountryOptions.map((country: string) => (
@@ -1814,7 +1903,7 @@ export default function WorkspaceSetupOnboarding({
                 aria-label="Filter by product status"
                 value={skuStatusFilter}
                 onChange={(e) => setSkuStatusFilter(e.target.value)}
-                className="h-9 w-[135px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
+                className="h-9 w-[135px] rounded-lg border border-[#DDE5E1] bg-white px-2 text-xs font-medium text-charcoal-500 outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
               >
                 <option value="all">All Statuses</option>
                 {skuStatusOptions.map((status: string) => (
@@ -1825,18 +1914,21 @@ export default function WorkspaceSetupOnboarding({
               </select>
 
               {/* Reset Filters */}
-              {(skuCountryFilter !== "all" || skuStatusFilter !== "all") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSkuCountryFilter("all");
-                    setSkuStatusFilter("all");
-                  }}
-                  className="h-9 rounded-lg px-2 text-[11px] font-semibold text-[#5EA68E] hover:bg-[#F4FBF7]"
-                >
-                  Reset
-                </button>
-              )}
+              {(skuCountryFilter !== "all" ||
+                skuStatusFilter !== "all" ||
+                skuSearch.trim() !== "") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSkuCountryFilter("all");
+                      setSkuStatusFilter("all");
+                      setSkuSearch("");
+                    }}
+                    className="h-9 rounded-lg px-2 text-[11px] font-semibold text-[#5EA68E] hover:bg-[#F4FBF7]"
+                  >
+                    Reset
+                  </button>
+                )}
 
               {/* Icon-only Download */}
               <button
@@ -1896,73 +1988,9 @@ export default function WorkspaceSetupOnboarding({
           ) : (
             <div className="mt-5 min-w-0 w-full">
 
-              {/* <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-                <div className="flex flex-wrap gap-3">
-                  <div className="min-w-[170px]">
-                    <label className="mb-1.5 block text-xs font-semibold text-[#37455F] dark:text-gray-300">
-                      Filter by Country
-                    </label>
-
-                    <select
-                      value={skuCountryFilter}
-                      onChange={(e) => setSkuCountryFilter(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-[#DDE5E1] bg-white px-3 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
-                    >
-                      <option value="all">All Countries</option>
-
-                      {skuCountryOptions.map((country: string) => (
-                        <option key={country} value={country}>
-                          {country}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="min-w-[190px]">
-                    <label className="mb-1.5 block text-xs font-semibold text-[#37455F] dark:text-gray-300">
-                      Filter by Product Status
-                    </label>
-
-                    <select
-                      value={skuStatusFilter}
-                      onChange={(e) => setSkuStatusFilter(e.target.value)}
-                      className="h-10 w-full rounded-lg border border-[#DDE5E1] bg-white px-3 text-xs font-medium text-[#37455F] outline-none focus:border-[#5EA68E] dark:bg-gray-800 dark:text-white"
-                    >
-                      <option value="all">All Statuses</option>
-
-                      {skuStatusOptions.map((status: string) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSkuCountryFilter("all");
-                    setSkuStatusFilter("all");
-                  }}
-                  disabled={
-                    skuCountryFilter === "all" &&
-                    skuStatusFilter === "all"
-                  }
-                  className="h-10 rounded-lg border border-[#DDE5E1] px-4 text-xs font-semibold text-[#5EA68E] transition hover:bg-[#F4FBF7] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Reset Filters
-                </button>
-
-              </div>
-
-              <div className="mb-2 text-xs text-[#78847E]">
-                Showing {filteredSkuRows.length} of {flattenedSkuRows.length} SKU records
-              </div> */}
-
               {/* SKU TABLE */}
               <DataTable
+                key={`${skuCountryFilter}|${skuStatusFilter}|${skuSearch}`}
                 columns={SKU_VIEW_COLUMNS}
                 data={displaySkuRows as TableRow[]}
                 stickyColumnKeys={["s_no", "product_name"]}
@@ -1989,11 +2017,13 @@ export default function WorkspaceSetupOnboarding({
         </div>
       </Modal>
 
-      {showForgotPasswordModal && (
-        <ForgotPasswordModal
-          onClose={() => setShowForgotPasswordModal(false)}
-        />
-      )}
-    </div>
+      {
+        showForgotPasswordModal && (
+          <ForgotPasswordModal
+            onClose={() => setShowForgotPasswordModal(false)}
+          />
+        )
+      }
+    </div >
   );
 }

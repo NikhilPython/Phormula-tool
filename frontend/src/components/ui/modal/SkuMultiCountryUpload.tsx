@@ -116,6 +116,37 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
           cellClassName: "!text-left",
         };
       }
+      if (key === "product_status") {
+        return {
+          key,
+          header,
+          width: "170px",
+          render: (row: any) => {
+            const raw = String(row.product_status ?? "").trim().toLowerCase();
+
+            const currentStatus: "Active" | "Discontinued" =
+              raw === "discontinued" || raw === "discontinuous"
+                ? "Discontinued"
+                : "Active";
+
+            const statusTintClass =
+              currentStatus === "Active"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-rose-200 bg-rose-50 text-rose-700";
+
+            return (
+              <div className="flex w-full items-center justify-center">
+                <span
+                  aria-label={`Product status for ${String(row.product_name)}: ${currentStatus}`}
+                  className={`inline-flex min-w-[120px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold ${statusTintClass}`}
+                >
+                  {currentStatus}
+                </span>
+              </div>
+            );
+          },
+        };
+      }
       return { key, header };
     });
   }, []);

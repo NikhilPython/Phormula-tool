@@ -1206,10 +1206,10 @@ const AppSidebar: React.FC = () => {
           name: "SKU Information",
           path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#sku-info`,
         },
-        {
-          name: "Upload Warehouse Data",
-          path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#extra`,
-        },
+        // {
+        //   name: "Upload Warehouse Data",
+        //   path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#extra`,
+        // },
         {
           name: "Recon Table",
           path: `/inputCost/${currentParams.countryName}/${currentParams.month}/${currentParams.year}#recon-table`,

@@ -35,6 +35,7 @@ import { IoMdLock } from "react-icons/io";
 import { useRouter } from 'next/navigation';
 import DownloadIconButton from "../ui/button/DownloadButton";
 import { exportCurrencyRatesExcel } from "@/lib/excel/exportCurrentInventoryExcel";
+import ReactCountryFlag from "react-country-flag";
 
 type ObjectivesPageClientProps = {
   country?: string;
@@ -323,8 +324,8 @@ function InfoCard({
   title,
   children,
   action,
-  className,
-  contentClassName,
+  className = "",
+  contentClassName = "",
 }: {
   title: React.ReactNode;
   children: React.ReactNode;
@@ -333,14 +334,18 @@ function InfoCard({
   contentClassName?: string;
 }) {
   return (
-    <div className=" relative h-full rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-center justify-between px-4 py-3">
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">{title}</h3>
-        {action}
+    <section
+      className={`relative flex h-full flex-col overflow-hidden rounded-2xl border border-[#E3E8E5] bg-white shadow-[0_12px_34px_rgba(39,49,64,0.055)] transition-all duration-300 ${className}`}
+    >
+      <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-[#E8ECEA] px-5 py-3">
+        <h2 className="flex min-w-0 items-center text-sm font-bold text-[#37455F] 2xl:text-base">
+          {title}
+        </h2>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className="h-px w-full bg-gray-200 dark:bg-gray-800" />
-      <div className="p-4">{children}</div>
-    </div>
+
+      <div className={`flex-1 p-5 ${contentClassName}`}>{children}</div>
+    </section>
   );
 }
 
@@ -715,7 +720,7 @@ function ObjectiveEditActions({
       type="button"
       onClick={() => view.onStartEdit(country)}
       disabled={view.editingCountry !== null}
-      className="h-9 w-9 text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
+      className="flex h-8 w-8 items-center justify-center text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-300"
       aria-label={`Edit ${country.toUpperCase()} objectives`}
       title={`Edit ${country.toUpperCase()} objectives`}
     >
@@ -931,94 +936,119 @@ function ObjectivesAccordion({ view }: { view: ObjectivesViewProps }) {
   );
 }
 
+const COUNTRY_META: Record<string, { name: string; flag?: string }> = {
+  us: { name: "United States", flag: "US" },
+  uk: { name: "United Kingdom", flag: "GB" },
+  ca: { name: "Canada", flag: "CA" },
+  global: { name: "Global" },
+};
+
 function ObjectivesPager({ view }: { view: ObjectivesViewProps }) {
   const { countries, editingCountry } = view;
   const [index, setIndex] = useState(0);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Keep the index valid if the country list changes after load.
+  const isLocked = editingCountry !== null;
+  const hasMultiple = countries.length > 1;
+
   useEffect(() => {
     if (index > countries.length - 1) {
       setIndex(Math.max(countries.length - 1, 0));
     }
   }, [countries.length, index]);
 
-  const country = countries[index];
-  if (!country) return null;
+  const goTo = (i: number) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: el.clientWidth * i, behavior: "smooth" });
+    setIndex(i);
+  };
 
-  const hasMultiple = countries.length > 1;
-  const hasPrev = index > 0;
-  const hasNext = index < countries.length - 1;
-  // Switching while editing would discard the draft, so lock the arrows.
-  const isLocked = editingCountry !== null;
-  const currency = view.getCurrency(country);
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el || !el.clientWidth) return;
+    const next = Math.round(el.scrollLeft / el.clientWidth);
+    if (next !== index && next >= 0 && next < countries.length) {
+      setIndex(next);
+    }
+  };
 
-  const arrowCls =
-    "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-300 dark:hover:bg-gray-800";
+  const activeCountry = countries[index] ?? countries[0];
+  if (!activeCountry) return null;
 
   return (
-    <div className="h-full overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 px-4 py-2">
-        <div className="flex min-w-0 items-center gap-1">
-          {hasMultiple && (
-            <button
-              type="button"
-              onClick={() => setIndex((i) => i - 1)}
-              disabled={!hasPrev || isLocked}
-              aria-label="Previous country"
-              title={isLocked ? "Save or cancel to switch country" : "Previous country"}
-              className={arrowCls}
-            >
-              <FiChevronLeft size={18} />
-            </button>
-          )}
+    <InfoCard
+      title="Objectives"
+      action={<ObjectiveEditActions view={view} country={activeCountry} />}
+      className="h-full"
+      contentClassName="flex flex-col"
+    >
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className={`flex w-full snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isLocked ? "overflow-x-hidden" : "overflow-x-auto"
+          }`}
+      >
+        {countries.map((c) => {
+          const currency = view.getCurrency(c);
+          const meta = COUNTRY_META[c.toLowerCase()] ?? { name: c.toUpperCase() };
 
-          <PageBreadcrumb
-            pageTitle={`${country.toUpperCase()} Objectives`}
-            variant="table"
-            align="left"
-          />
+          return (
+            <div key={c} className="w-full min-w-0 shrink-0 snap-center">
+              {/* Country name on the left, flag on the right end */}
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <span className="text-base font-bold text-green-500 2xl:text-xl">
+                  {meta.name}
+                </span>
 
-          {hasMultiple && (
-            <button
-              type="button"
-              onClick={() => setIndex((i) => i + 1)}
-              disabled={!hasNext || isLocked}
-              aria-label="Next country"
-              title={isLocked ? "Save or cancel to switch country" : "Next country"}
-              className={arrowCls}
-            >
-              <FiChevronRight size={18} />
-            </button>
-          )}
-        </div>
+                {meta.flag && (
+                  <ReactCountryFlag
+                    svg
+                    countryCode={meta.flag}
+                    aria-label={meta.name}
+                    style={{ width: "2.1em", height: "1.5em", borderRadius: 3 }}
+                    className="shrink-0 shadow-sm"
+                  />
+                )}
+              </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          {/* {hasMultiple && (
-            <span
-              aria-live="polite"
-              className="text-xs text-gray-500 dark:text-gray-400"
-            >
-              {index + 1} of {countries.length}
-            </span>
-          )} */}
-          <ObjectiveEditActions view={view} country={country} />
-        </div>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
+                {OBJECTIVE_FIELDS.map(({ key, label }) => (
+                  <InfoItem
+                    key={key}
+                    label={key === "target" ? `Target (${currency})` : label}
+                    value={
+                      <ObjectiveFieldValue
+                        view={view}
+                        country={c}
+                        field={key}
+                      />
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="h-px w-full bg-gray-200 dark:bg-gray-800" />
-
-      {/* Fields */}
-      <div className="grid grid-cols-1 gap-x-6 gap-y-6 p-4 sm:grid-cols-2">
-        {OBJECTIVE_FIELDS.map(({ key, label }) => (
-          <InfoItem
-            key={key}
-            label={key === "target" ? `Target (${currency})` : label}
-            value={<ObjectiveFieldValue view={view} country={country} field={key} />}
-          />
-        ))}
-      </div>
-    </div>
+      {hasMultiple && (
+        <div className="mt-auto flex items-center justify-center gap-2 pt-6">
+          {countries.map((c, i) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => goTo(i)}
+              disabled={isLocked}
+              aria-label={`Show ${c.toUpperCase()} objectives`}
+              title={isLocked ? "Save or cancel to switch country" : c.toUpperCase()}
+              className={`h-2 rounded-full transition-all duration-300 disabled:cursor-not-allowed ${i === index ? "w-5 bg-[#5FA896]" : "w-2 bg-gray-300 hover:bg-gray-400"
+                }`}
+            />
+          ))}
+        </div>
+      )}
+    </InfoCard>
   );
 }
 
@@ -2501,264 +2531,45 @@ export default function ObjectivesPageClient({
       >
 
         {activeTab === "settings_configuration" && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3 items-stretch">
-              {/* Targets & Objectives */}
-              {/* <section className="flex flex-col h-full">
-                <div className="flex flex-col flex-1 h-full">
-                  <InfoCard
-                    title={
-                      <div className="flex items-center gap-4">
-                        <PageBreadcrumb
-                          pageTitle={`${activeCardCountry.toUpperCase()} Objectives`}
-                          variant="table"
-                          align="left"
-                        />
-                        {visibleObjectiveCountries.length > 1 && (
-                          <SegmentedToggle<string>
-                            value={activeCardCountry}
-                            onChange={(next) => {
-                              if (editingObjectiveCountry && editingObjectiveCountry !== next) {
-                                cancelObjectiveCardEdit();
-                              }
-                              setActiveObjectiveCountry(next);
-                            }}
-                            options={visibleObjectiveCountries.map((c) => ({
-                              value: c,
-                              label: c.toUpperCase(),
-                            }))}
-                            compact
-                            textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
-                          />
-                        )}
-                      </div>
-                    }
-                    action={
-                      canEditBusinessOverview ? (
-                        activeCardIsEditing ? (
-                          <div className="flex items-center gap-2">
-                            <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                              <FiCheck />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              onClick={cancelObjectiveCardEdit}
-                            >
-                              <FiX />
-                            </Button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => startObjectiveCardEdit(activeCardCountry)}
-                            className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            type="button"
-                            disabled={isPreviewMode || editingObjectiveCountry !== null}
-                            aria-label={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
-                            title={`Edit ${activeCardCountry.toUpperCase()} strategic objectives`}
-                          >
-                            <FiEdit className="text-lg" />
-                          </button>
-                        )
-                      ) : null
-                    }
-                  >
-                    <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
-                      <InfoItem
-                        label="Growth"
-                        value={
-                          activeCardIsEditing && objectiveCountryDraft ? (
-                            <select
-                              value={objectiveCountryDraft.growth_intent}
-                              onChange={(e) =>
-                                setObjectiveCountryDraft((prev) =>
-                                  prev
-                                    ? {
-                                      ...prev,
-                                      growth_intent: e.target
-                                        .value as UserObjectiveForm["growth_intent"],
-                                    }
-                                    : prev
-                                )
-                              }
-                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            >
-                              {GROWTH_OPTIONS.map((v) => (
-                                <option key={v} value={v}>
-                                  {v.charAt(0).toUpperCase() + v.slice(1)}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            prettifyObjectiveValue(activeCardObjective.growth_intent)
-                          )
-                        }
-                      />
+          <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 ">
+            {/* Card 1 */}
+            <section className="flex h-full flex-col">
+              <ObjectivesPager view={objectivesViewProps} />
+            </section>
 
-                      <InfoItem
-                        label="Profit"
-                        value={
-                          activeCardIsEditing && objectiveCountryDraft ? (
-                            <select
-                              value={objectiveCountryDraft.profit_priority}
-                              onChange={(e) =>
-                                setObjectiveCountryDraft((prev) =>
-                                  prev
-                                    ? {
-                                      ...prev,
-                                      profit_priority: e.target
-                                        .value as UserObjectiveForm["profit_priority"],
-                                    }
-                                    : prev
-                                )
-                              }
-                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            >
-                              {PROFIT_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            prettifyObjectiveValue(activeCardObjective.profit_priority)
-                          )
-                        }
-                      />
+            {/* Card 2 */}
+            <section className="flex h-full flex-col">
+              <WorkspaceSetupOnboarding
+                view="productControls"
+                className="flex h-full flex-col [&_.product-panel]:flex-1"
+              />
+            </section>
 
-                      <InfoItem
-                        label="Inventory Dilution"
-                        value={
-                          activeCardIsEditing && objectiveCountryDraft ? (
-                            <select
-                              value={
-                                objectiveCountryDraft.inventory_clearance_priority
-                                  ? "yes"
-                                  : "no"
-                              }
-                              onChange={(e) =>
-                                setObjectiveCountryDraft((prev) =>
-                                  prev
-                                    ? {
-                                      ...prev,
-                                      inventory_clearance_priority:
-                                        e.target.value === "yes",
-                                    }
-                                    : prev
-                                )
-                              }
-                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            >
-                              <option value="yes">Yes</option>
-                              <option value="no">No</option>
-                            </select>
-                          ) : activeCardObjective.inventory_clearance_priority ? (
-                            "Yes"
-                          ) : (
-                            "No"
-                          )
-                        }
-                      />
-
-                      <InfoItem
-                        label="Country"
-                        value={
-                          activeCardIsEditing && objectiveCountryDraft ? (
-                            <select
-                              value={objectiveCountryDraft.country}
-                              onChange={(e) => {
-                                const nextCountry = e.target.value.toLowerCase();
-                                const existing =
-                                  objectivesByCountry[nextCountry] ||
-                                  buildDefaultObjectiveForCountry(nextCountry);
-
-                                setObjectiveCountryDraft(existing);
-                                setObjectiveTargetDraft(
-                                  String(
-                                    Number(targetSummaries[nextCountry]?.target_sales ?? 0)
-                                  )
-                                );
-                              }}
-                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            >
-                              {integratedCountries.map((c) => (
-                                <option key={c} value={c}>
-                                  {c.toUpperCase()}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            activeCardCountry.toUpperCase()
-                          )
-                        }
-                      />
-
-                      <InfoItem
-                        label={`Target (${activeCardCurrency})`}
-                        value={
-                          activeCardIsEditing ? (
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={objectiveTargetDraft}
-                              onChange={(e) => setObjectiveTargetDraft(e.target.value)}
-                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                              placeholder="Enter target"
-                            />
-                          ) : (
-                            money(activeCardRawTarget, activeCardCurrency)
-                          )
-                        }
-                      />
-                    </div>
-                  </InfoCard>
-                </div>
-              </section> */}
-
-              <section className="flex flex-col h-full">
-                <ObjectivesPager view={objectivesViewProps} />
-              </section>
-
-              {/* Product & Inventory Controls */}
-              <section className="flex flex-col h-full">
-                <WorkspaceSetupOnboarding
-                  view="productControls"
-                  className="h-full flex flex-col [&_.product-panel]:flex-1"
-                />
-              </section>
-
-              {/* Warehouse Local Stock */}
-              <section className="flex flex-col h-full">
-                <div className="h-full flex flex-col flex-1 [&>*]:h-full">
-                  <WarehouseStockControls country={country} />
-                </div>
-              </section>
-            </div>
-
-            {/* Currency Rates Download Section */}
-            <section>
+            {/* Card 3 */}
+            {/* <section className="flex h-full flex-col">
               <InfoCard
-                title={<PageBreadcrumb pageTitle="Currency Rates" variant="table" align="left" />}
+                title="Currency Rates"
                 action={
                   <DownloadIconButton
                     onClick={handleDownloadCurrencyRates}
                     disabled={isDownloadingRates}
                   />
                 }
+                className="h-full"
               >
-                <div className="text-sm text-gray-500 dark:text-gray-400">
-                  Download the latest currency exchange rates and formats for your marketplace reporting.
-                </div>
+                <p className="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                  Download the latest currency exchange rates and formats for your
+                  marketplace reporting.
+                </p>
               </InfoCard>
-            </section>
+            </section> */}
           </div>
         )}
 
         {activeTab === "business_summary" && (
           <div className="grid grid-cols-1 gap-4">
             <InfoCard
-              title={<PageBreadcrumb pageTitle="Business Summary" variant="table" align="left" />}
+              title="Business Summary"
               action={
                 canEditBusinessOverview ? (
                   !isBusinessSummaryEditMode ? (
@@ -2936,7 +2747,7 @@ export default function ObjectivesPageClient({
             </InfoCard>
 
             <InfoCard
-              title={<PageBreadcrumb pageTitle="Business Journey" variant="table" align="left" />}
+              title="Business Journey"
             >
               <BusinessJourneyPanel
                 journey={businessJourney}
@@ -2949,13 +2760,7 @@ export default function ObjectivesPageClient({
               {(expandedChart === null || expandedChart === "targetSales") && (
                 <div className={expandedChart === "targetSales" ? "lg:col-span-2" : ""}>
                   <InfoCard
-                    title={
-                      <PageBreadcrumb
-                        pageTitle="Target vs Monthwise Sales"
-                        variant="table"
-                        align="left"
-                      />
-                    }
+                    title="Target vs Monthwise Sales"
                     action={
                       <button
                         type="button"
@@ -2999,13 +2804,7 @@ export default function ObjectivesPageClient({
               {(expandedChart === null || expandedChart === "objectiveMoM") && (
                 <div className={expandedChart === "objectiveMoM" ? "lg:col-span-2" : ""}>
                   <InfoCard
-                    title={
-                      <PageBreadcrumb
-                        pageTitle="Objective MoM"
-                        variant="table"
-                        align="left"
-                      />
-                    }
+                    title="Objective MoM"
                     action={
                       <button
                         type="button"
@@ -3055,233 +2854,6 @@ export default function ObjectivesPageClient({
 
           </div>
         )}
-
-
-        {/* {activeTab === "targets_and_objectives" && (
-          <div className="grid grid-cols-1 gap-4">
-            <div className="flex items-center justify-between">
-              <PageBreadcrumb
-                pageTitle="Strategic Objectives and Monthly Targets"
-                variant="table"
-                align="left"
-              />
-            </div>
-
-            {visibleObjectiveCountries.map((cardCountryKey) => {
-              const displayCountry = cardCountryKey;
-
-              const cardCountry = displayCountry.toLowerCase();
-
-              const cardObjective =
-                objectivesByCountry[cardCountry] ||
-                buildDefaultObjectiveForCountry(cardCountry);
-
-              const isEditingThisCard = editingObjectiveCountry === cardCountry;
-
-
-              const cardPlatform = countryToPlatform(cardCountry);
-              const cardCurrency = platformToCurrencyCode(cardPlatform) || homeCurrencyCode;
-
-              const rawTarget = Number(targetSummaries[cardCountry]?.target_sales ?? 0);
-
-              return (
-                <InfoCard
-                  key={cardCountryKey}
-                  title={
-                    <div className="flex items-center gap-2">
-                      <PageBreadcrumb
-                        pageTitle={`${cardCountry.toUpperCase()} Objectives`}
-                        variant="table"
-                        align="left"
-                      />
-                    </div>
-                  }
-                  action={
-                    canEditBusinessOverview ? (
-                      isEditingThisCard ? (
-                        <div className="flex items-center gap-2">
-                          <Button size="icon" onClick={handleStrategicObjectivesSave}>
-                            <FiCheck />
-                          </Button>
-
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={cancelObjectiveCardEdit}
-                          >
-                            <FiX />
-                          </Button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => startObjectiveCardEdit(cardCountry)}
-                          className="h-9 w-9 text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                          type="button"
-                          disabled={isPreviewMode || editingObjectiveCountry !== null}
-                          aria-label={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                          title={`Edit ${cardCountry.toUpperCase()} strategic objectives`}
-                        >
-                          <FiEdit className="text-lg" />
-                        </button>
-                      )
-                    ) : null
-                  }
-                >
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <InfoItem
-                      label="Growth"
-                      value={
-                        isEditingThisCard && objectiveCountryDraft ? (
-                          <select
-                            value={objectiveCountryDraft.growth_intent}
-                            onChange={(e) =>
-                              setObjectiveCountryDraft((prev) =>
-                                prev
-                                  ? {
-                                    ...prev,
-                                    growth_intent:
-                                      e.target.value as UserObjectiveForm["growth_intent"],
-                                  }
-                                  : prev
-                              )
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          >
-                            {GROWTH_OPTIONS.map((v) => (
-                              <option key={v} value={v}>
-                                {v.charAt(0).toUpperCase() + v.slice(1)}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          prettifyObjectiveValue(cardObjective.growth_intent)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="Profit"
-                      value={
-                        isEditingThisCard && objectiveCountryDraft ? (
-                          <select
-                            value={objectiveCountryDraft.profit_priority}
-                            onChange={(e) =>
-                              setObjectiveCountryDraft((prev) =>
-                                prev
-                                  ? {
-                                    ...prev,
-                                    profit_priority:
-                                      e.target.value as UserObjectiveForm["profit_priority"],
-                                  }
-                                  : prev
-                              )
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          >
-                            {PROFIT_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          prettifyObjectiveValue(cardObjective.profit_priority)
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="Inventory Dilution"
-                      value={
-                        isEditingThisCard && objectiveCountryDraft ? (
-                          <select
-                            value={
-                              objectiveCountryDraft.inventory_clearance_priority
-                                ? "yes"
-                                : "no"
-                            }
-                            onChange={(e) =>
-                              setObjectiveCountryDraft((prev) =>
-                                prev
-                                  ? {
-                                    ...prev,
-                                    inventory_clearance_priority:
-                                      e.target.value === "yes",
-                                  }
-                                  : prev
-                              )
-                            }
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          >
-                            <option value="yes">Yes</option>
-                            <option value="no">No</option>
-                          </select>
-                        ) : cardObjective.inventory_clearance_priority ? (
-                          "Yes"
-                        ) : (
-                          "No"
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label="Country"
-                      value={
-                        isEditingThisCard && objectiveCountryDraft ? (
-                          <select
-                            value={objectiveCountryDraft.country}
-                            onChange={(e) => {
-                              const nextCountry = e.target.value.toLowerCase();
-
-                              const existing =
-                                objectivesByCountry[nextCountry] ||
-                                buildDefaultObjectiveForCountry(nextCountry);
-
-                              setObjectiveCountryDraft(existing);
-
-                              setObjectiveTargetDraft(
-                                String(Number(targetSummaries[nextCountry]?.target_sales ?? 0))
-                              );
-                            }}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                          >
-                            {integratedCountries.map((c) => (
-                              <option key={c} value={c}>
-                                {c.toUpperCase()}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          cardCountry.toUpperCase()
-                        )
-                      }
-                    />
-
-                    <InfoItem
-                      label={`Target (${cardCurrency})`}
-                      value={
-                        isEditingThisCard ? (
-                          <input
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={objectiveTargetDraft}
-                            onChange={(e) => setObjectiveTargetDraft(e.target.value)}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
-                            placeholder="Enter target"
-                          />
-                        ) : (
-                          money(rawTarget, cardCurrency)
-                        )
-                      }
-                    />
-                  </div>
-                </InfoCard>
-              );
-            }
-            )}
-          </div>
-        )} */}
       </PreviewLockedSection>
     </div>
   );
