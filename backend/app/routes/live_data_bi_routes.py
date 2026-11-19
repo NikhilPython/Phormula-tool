@@ -2852,6 +2852,8 @@ def live_mtd_vs_previous(period_mode=None):
             return jsonify({"error": "Invalid token payload: user_id missing"}), 401
 
         country = (request.args.get("countryName", "uk") or "uk").strip().lower()
+        if country == "glabol":
+            country = "global"
         as_of = request.args.get("as_of")
 
         # ---------------------------
