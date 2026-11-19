@@ -4458,6 +4458,9 @@ def target_summary():
                 }
             }), 200
 
+        # Find the latest target saved on or before the requested month.
+        # If the user has not entered a target for this month, the previous
+        # target remains active instead of dropping the chart line to zero.
         get_sql = text(f"""
             SELECT
                 id,
@@ -4472,16 +4475,57 @@ def target_summary():
                 updated_at
             FROM {target_table_name}
             WHERE user_id = :user_id
-              AND LOWER(month) = LOWER(:month)
-              AND year = :year
               AND LOWER(country) = LOWER(:country)
+              AND (
+                    year < :year
+                    OR (
+                        year = :year
+                        AND CASE LOWER(month)
+                            WHEN 'january' THEN 1
+                            WHEN 'february' THEN 2
+                            WHEN 'march' THEN 3
+                            WHEN 'april' THEN 4
+                            WHEN 'may' THEN 5
+                            WHEN 'june' THEN 6
+                            WHEN 'july' THEN 7
+                            WHEN 'august' THEN 8
+                            WHEN 'september' THEN 9
+                            WHEN 'october' THEN 10
+                            WHEN 'november' THEN 11
+                            WHEN 'december' THEN 12
+                            ELSE 0
+                        END <= :month_number
+                    )
+              )
+            ORDER BY
+                year DESC,
+                CASE LOWER(month)
+                    WHEN 'january' THEN 1
+                    WHEN 'february' THEN 2
+                    WHEN 'march' THEN 3
+                    WHEN 'april' THEN 4
+                    WHEN 'may' THEN 5
+                    WHEN 'june' THEN 6
+                    WHEN 'july' THEN 7
+                    WHEN 'august' THEN 8
+                    WHEN 'september' THEN 9
+                    WHEN 'october' THEN 10
+                    WHEN 'november' THEN 11
+                    WHEN 'december' THEN 12
+                    ELSE 0
+                END DESC,
+                updated_at DESC,
+                id DESC
             LIMIT 1
         """)
+
+        requested_month_number = datetime.strptime(month_name, "%B").month
 
         row = db_session.execute(get_sql, {
             'user_id': user_id,
             'month': month_name,
             'year': year,
+            'month_number': requested_month_number,
             'country': country
         }).fetchone()
 
@@ -4519,23 +4563,37 @@ def target_summary():
         target_sales_value = float(row[4])
         fresh_shortfall_total = round(target_sales_value - fresh_net_sales_total, 2)
 
+        # The returned month/year identify the requested chart month.
+        # target_source_month/year identify where the active target was saved.
+        is_saved_for_requested_month = (
+            str(row[1]).strip().lower() == month_name.strip().lower()
+            and int(row[2]) == int(year)
+        )
+
         return jsonify({
-            'message': 'Target summary fetched successfully',
+            'message': (
+                'Target summary fetched successfully'
+                if is_saved_for_requested_month
+                else 'Previous target carried forward successfully'
+            ),
             'data': {
-                'id': row[0],
+                'id': row[0] if is_saved_for_requested_month else None,
                 'user_id': user_id,
-                'month': row[1],
-                'year': row[2],
-                'country': row[3],
+                'month': month_name,
+                'year': year,
+                'country': country,
                 'target_sales': round(target_sales_value, 2),
                 'cashflow_total': fresh_cashflow_total,
                 'net_sales_total': fresh_net_sales_total,
                 'shortfall_total': fresh_shortfall_total,
                 'created_at': row[8].isoformat() if row[8] else None,
                 'updated_at': row[9].isoformat() if row[9] else None,
+                'target_source_month': row[1],
+                'target_source_year': row[2],
+                'is_carried_forward': not is_saved_for_requested_month,
                 'table_name': target_table_name,
                 'source_details': details,
-                'is_saved': True
+                'is_saved': is_saved_for_requested_month
             }
         }), 200
 
