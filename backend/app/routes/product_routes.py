@@ -2758,13 +2758,58 @@ def build_table_candidates(user_id, country, month, year):
 
 def select_asp_query(asp_table):
     """Return a SQLAlchemy select query based on available ASP-like columns."""
-    if hasattr(asp_table.c, 'asp'):
-        return select(asp_table.c.product_name, asp_table.c.asp)
-    if hasattr(asp_table.c, 'net_credits'):
-        return select(asp_table.c.product_name, asp_table.c.net_credits.label('asp'))
-    if hasattr(asp_table.c, 'average_selling_price'):
-        return select(asp_table.c.product_name, asp_table.c.average_selling_price.label('asp'))
-    return None
+    available_columns = set(asp_table.c.keys())
+    metric_columns = [
+        column
+        for column in (
+            'asp',
+            'average_selling_price',
+            'net_sales',
+            'total_quantity',
+            'net_units_sold',
+            'quantity',
+        )
+        if column in available_columns
+    ]
+    if not metric_columns:
+        return None
+
+    return select(asp_table.c.product_name, *[asp_table.c[column] for column in metric_columns])
+
+
+def normalize_asp_row(row):
+    """Use a stored positive ASP or derive it from net sales and units."""
+    row = dict(row)
+
+    for field in ('asp', 'average_selling_price'):
+        try:
+            value = float(row.get(field) or 0)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return {
+                'product_name': row.get('product_name'),
+                'asp': value,
+            }
+
+    try:
+        net_sales = float(row.get('net_sales') or 0)
+    except (TypeError, ValueError):
+        net_sales = 0
+
+    units = 0
+    for field in ('total_quantity', 'net_units_sold', 'quantity'):
+        try:
+            units = float(row.get(field) or 0)
+        except (TypeError, ValueError):
+            continue
+        if units > 0:
+            break
+
+    return {
+        'product_name': row.get('product_name'),
+        'asp': net_sales / units if net_sales > 0 and units > 0 else 0,
+    }
 
 @product_bp.route('/asp-data', methods=['GET'])
 def get_asp_data():
@@ -2824,7 +2869,7 @@ def get_asp_data():
                     results = conn.execute(query).mappings().all()
 
                 for row in results:
-                    row_dict = dict(row)
+                    row_dict = normalize_asp_row(row)
                     if not is_valid_product_name(row_dict.get("product_name")):
                         continue
                     row_dict['source_country'] = c
@@ -2867,7 +2912,7 @@ def get_asp_data():
 
         asp_data = []
         for r in results:
-            d = dict(r)
+            d = normalize_asp_row(r)
             if not is_valid_product_name(d.get("product_name")):
                 continue
             asp_data.append(d)

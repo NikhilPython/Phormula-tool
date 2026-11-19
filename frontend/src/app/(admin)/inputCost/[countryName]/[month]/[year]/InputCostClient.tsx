@@ -4774,40 +4774,61 @@ export default function InputCostPage({ params }: Params) {
     [skuData, skuInfoCountryName]
   );
 
-  const getCurrencyRate = (currency: string | undefined, country: string) => {
-    if (!currency || !currencyRates || Object.keys(currencyRates).length === 0) return 1;
-    const possibleKeys = [
-      `${currency}_${country}`,
-      `${currency.toLowerCase()}_${country.toLowerCase()}`,
-      `${currency.toUpperCase()}_${country.toLowerCase()}`,
-      currency,
-      currency.toLowerCase(),
-      currency.toUpperCase(),
+  const getCurrencyRate = (currency: string | undefined, country: string): number | null => {
+    if (!currency) return null;
+
+    const sourceCurrency = currency.trim().toUpperCase();
+    const normalizedCountry = country.trim().toLowerCase();
+    const targetCurrency =
+      normalizedCountry === 'global' ? 'USD' : getCurrencyForCountry(normalizedCountry);
+
+    if (sourceCurrency === targetCurrency) return 1;
+
+    const exactRate = currencyRates[
+      `${sourceCurrency}_${targetCurrency}_${normalizedCountry}`.toLowerCase()
     ];
-    for (const key of possibleKeys) {
-      if (currencyRates[key] !== undefined) return currencyRates[key];
+    if (exactRate !== undefined && Number.isFinite(exactRate)) return exactRate;
+
+    if (normalizedCountry === 'global') {
+      const usdRate = currencyRates[`${sourceCurrency}_usd_global`];
+      if (usdRate !== undefined && Number.isFinite(usdRate)) return usdRate;
     }
-    return 1;
+
+    return null;
   };
 
   const getAspForProduct = (productName: string, targetCountry: string | null = null) => {
     if (!aspData || Object.keys(aspData).length === 0) return null;
+    const normalizeProductName = (value: string) =>
+      value.trim().toLowerCase().replace(/\s+/g, ' ');
+    const normalizedProductName = normalizeProductName(productName);
 
     if (targetCountry && countryName === 'global') {
+      const countryKey = `${normalizedProductName}|${targetCountry.toLowerCase()}`;
+      if (aspData[countryKey] !== undefined) return aspData[countryKey];
       const countrySpecificKey = `${productName}_${targetCountry}`;
       if (aspData[countrySpecificKey] !== undefined) return aspData[countrySpecificKey];
       for (const key in aspData) {
-        if (key.includes(`_${targetCountry}`) && key.includes(productName)) return aspData[key];
+        const [keyProductName, keyCountry] = key.split(/_(?=[^_]+$)/);
+        if (
+          keyCountry?.toLowerCase() === targetCountry.toLowerCase() &&
+          normalizeProductName(keyProductName) === normalizedProductName
+        ) {
+          return aspData[key];
+        }
       }
     }
 
     if (countryName === 'global') {
       if (aspData[productName] !== undefined) return aspData[productName];
       for (const key in aspData) {
-        if (key.includes(productName) || productName.includes(key)) return aspData[key];
+        if (normalizeProductName(key) === normalizedProductName) return aspData[key];
       }
     } else {
-      return aspData[productName] ?? null;
+      if (aspData[productName] !== undefined) return aspData[productName];
+      for (const key in aspData) {
+        if (normalizeProductName(key) === normalizedProductName) return aspData[key];
+      }
     }
 
     return null;
@@ -4825,9 +4846,11 @@ export default function InputCostPage({ params }: Params) {
       // ✅ Preview / dummy case → show 0 instead of N/A
       if (isNA) return '0.00';
 
-      if (!asp || asp === 0) return '0.00';
+      const aspValue = Number(asp);
+      if (asp === null || !Number.isFinite(aspValue) || aspValue <= 0) return 'N/A';
+      if (price === undefined || price === null || !Number.isFinite(Number(price))) return 'N/A';
 
-      const safePrice = price ?? 0;
+      const safePrice = Number(price);
 
       let convertedPrice: number;
 
@@ -4837,23 +4860,25 @@ export default function InputCostPage({ params }: Params) {
         if (sourceCurrency === targetCurrency) {
           convertedPrice = safePrice;
         } else {
-          const sourceToUsdRate = getCurrencyRate(sourceCurrency, 'global') || 1;
-          const usdToTargetRate = getCurrencyRate(targetCurrency, targetCountry) || 1;
+          const sourceToUsdRate = getCurrencyRate(sourceCurrency, 'global');
+          const usdToTargetRate = getCurrencyRate('USD', targetCountry);
+          if (sourceToUsdRate === null || usdToTargetRate === null) return 'N/A';
           convertedPrice = safePrice * sourceToUsdRate * usdToTargetRate;
         }
       } else {
         const currencyRate = getCurrencyRate(sourceCurrency, targetCountry);
+        if (currencyRate === null) return 'N/A';
         convertedPrice = safePrice * currencyRate;
       }
 
-      const grossMargin = ((asp - convertedPrice) / asp) * 100;
+      const grossMargin = ((aspValue - convertedPrice) / aspValue) * 100;
 
       // ✅ Handle NaN/Infinity safely
-      if (!isFinite(grossMargin)) return '0.00';
+      if (!isFinite(grossMargin)) return 'N/A';
 
       return grossMargin.toFixed(2);
     } catch {
-      return '0.00';
+      return 'N/A';
     }
   };
 
@@ -4872,19 +4897,38 @@ export default function InputCostPage({ params }: Params) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
-        const rates: Array<{ user_currency: string; country: string; conversion_rate: number }> =
-          await response.json();
+        const payload = await response.json();
+        const rates: Array<{
+          user_currency: string;
+          country: string;
+          selected_currency: string;
+          conversion_rate: number;
+        }> = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.currency_rates)
+            ? payload.currency_rates
+            : [];
         const map: Record<string, number> = {};
         rates.forEach((rate) => {
-          const keys = [
-            `${rate.user_currency}_${rate.country}`,
-            `${rate.user_currency.toLowerCase()}_${rate.country.toLowerCase()}`,
-            `${rate.user_currency.toUpperCase()}_${rate.country.toLowerCase()}`,
-            rate.user_currency,
-            rate.user_currency.toLowerCase(),
-            rate.user_currency.toUpperCase(),
-          ];
-          keys.forEach((k) => (map[k] = rate.conversion_rate));
+          const sourceCurrency = String(rate.user_currency || '').trim().toUpperCase();
+          const targetCurrency = String(rate.selected_currency || '').trim().toUpperCase();
+          const country = String(rate.country || '').trim().toLowerCase();
+          const conversionRate = Number(rate.conversion_rate);
+          if (
+            !sourceCurrency ||
+            !targetCurrency ||
+            !country ||
+            !Number.isFinite(conversionRate) ||
+            conversionRate <= 0
+          ) {
+            return;
+          }
+
+          map[`${sourceCurrency}_${targetCurrency}_${country}`.toLowerCase()] =
+            conversionRate;
+          if (targetCurrency === 'USD') {
+            map[`${sourceCurrency}_usd_global`] = conversionRate;
+          }
         });
         setCurrencyRates(map);
       }
@@ -4893,7 +4937,10 @@ export default function InputCostPage({ params }: Params) {
     }
   };
 
-  const fetchAspData = async () => {
+  const fetchAspData = async (
+    rows: SkuRow[],
+    isCancelled: () => boolean
+  ) => {
     if (isNA) {
       setAspData(DUMMY_ASP_DATA);
       return;
@@ -4923,10 +4970,26 @@ export default function InputCostPage({ params }: Params) {
     })();
 
     try {
+      const normalizeProductName = (value: string) =>
+        value.trim().toLowerCase().replace(/\s+/g, ' ');
+      const requiredProducts =
+        countryName === 'global'
+          ? rows.flatMap((row) =>
+              ['uk', 'us', 'canada']
+                .filter((market) => !isEmptyCellValue(row[`sku_${market}`]))
+                .map((market) => `${normalizeProductName(row.product_name)}|${market}`)
+            )
+          : rows.map((row) => normalizeProductName(row.product_name));
+      const map: Record<string, number> = {};
       let currentMonthIndex = monthNames.indexOf(normalizedMonth);
       let currentYear = normalizedYear;
+      if (currentMonthIndex < 0) {
+        currentMonthIndex = 11;
+        currentYear--;
+      }
 
       for (let attempt = 0; attempt < 12; attempt++) {
+        if (isCancelled()) return;
         const monthName = monthNames[currentMonthIndex];
         try {
           const response = await fetch(
@@ -4937,14 +5000,34 @@ export default function InputCostPage({ params }: Params) {
             }
           );
           if (response.ok) {
-            const aspArray: Array<{ product_name: string; asp: number; source_country?: string }> =
+            const aspArray: Array<{
+              product_name: string;
+              asp: number;
+              source_country?: string;
+            }> =
               await response.json();
-            const map: Record<string, number> = {};
             aspArray.forEach((item) => {
-              map[item.product_name] = item.asp;
+              const productName = normalizeProductName(
+                String(item.product_name || '')
+              );
+              const asp = Number(item.asp);
+              if (!productName || !Number.isFinite(asp) || asp <= 0) return;
+
+              if (countryName === 'global') {
+                const sourceCountry = String(item.source_country || '').toLowerCase();
+                if (!sourceCountry) return;
+                const key = `${productName}|${sourceCountry}`;
+                if (map[key] === undefined) map[key] = asp;
+              } else if (map[productName] === undefined) {
+                map[productName] = asp;
+              }
             });
-            setAspData(map);
-            return;
+            if (
+              requiredProducts.length > 0 &&
+              requiredProducts.every((product) => map[product] !== undefined)
+            ) {
+              break;
+            }
           }
         } catch {
           // continue
@@ -4955,10 +5038,10 @@ export default function InputCostPage({ params }: Params) {
           currentYear--;
         }
       }
-      setAspData({});
+      if (!isCancelled()) setAspData(map);
     } catch (e) {
       console.error('Error in fetchAspData', e);
-      setAspData({});
+      if (!isCancelled()) setAspData({});
     }
   };
 
@@ -5050,9 +5133,19 @@ export default function InputCostPage({ params }: Params) {
   useEffect(() => {
     fetchSkuData();
     fetchCurrencyRates();
-    fetchAspData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countryName, monthParam, yearParam, isNA]);
+
+  useEffect(() => {
+    if (!isNA && skuData.length === 0) return;
+
+    let cancelled = false;
+    void fetchAspData(skuData, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skuData, countryName, monthParam, yearParam, isNA]);
 
   useEffect(() => {
     void fetchAiSummary();
@@ -5830,7 +5923,16 @@ export default function InputCostPage({ params }: Params) {
     const currency = row.currency;
     const grossMargin = calculateGrossMargin(currentPrice, currency, targetCountry, row.product_name);
 
-    if (grossMargin === 'N/A') return <span className="gross-margin-na">N/A</span>;
+    if (grossMargin === 'N/A') {
+      return (
+        <span
+          className="gross-margin-na"
+          title="No positive ASP or required currency rate is available for this product."
+        >
+          N/A
+        </span>
+      );
+    }
     const marginValue = parseFloat(grossMargin);
     const className = marginValue >= 0 ? 'gross-margin-positive' : 'gross-margin-negative';
     return <span className={className}>{grossMargin}%</span>;
@@ -6353,6 +6455,9 @@ export default function InputCostPage({ params }: Params) {
   }, [
     skuInfoVisibleColumns,
     skuData,
+    aspData,
+    currencyRates,
+    isNA,
     isEditing,
     editedPrices,
     skuInfoCountryName,
