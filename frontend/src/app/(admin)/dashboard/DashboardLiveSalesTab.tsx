@@ -118,6 +118,8 @@ export default function DashboardLiveSalesTab({
     dashboardCompletedTimeZone,
 }: DashboardLiveSalesTabProps) {
     const RangePicker = DashboardRangePicker;
+    const useSelectedPeriodCards = comparisonPeriod === "last30";
+    const selectedPeriodPreviousLabel = useSelectedPeriodCards ? "Previous 30 days" : prevLabel;
     const formatAmountWithPct = (
         amount: number | null | undefined,
         pct: number | null | undefined,
@@ -237,44 +239,56 @@ export default function DashboardLiveSalesTab({
                                     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 auto-rows-fr">
                                         <AmazonStatCard
                                             label="Units"
-                                            current={shouldShowDummyUi ? dummyStatData.units.current : globalMtdCardData.units}
-                                            previous={shouldShowDummyUi ? dummyStatData.units.previous : globalMtdCardData.prevUnits}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.units.current
+                                                : useSelectedPeriodCards ? biCardKpis.curr.units : globalMtdCardData.units}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.units.previous
+                                                : useSelectedPeriodCards ? biCardKpis.prev.units : globalMtdCardData.prevUnits}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.units.deltaPct
-                                                    : globalMtdCardData.unitsDelta
+                                                    : useSelectedPeriodCards ? biCardKpis.deltas.units : globalMtdCardData.unitsDelta
                                             }
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={fmtInt}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#FDD36F] border-t-4 border-t-[#FDD36F]"
                                         />
 
                                         <AmazonStatCard
                                             label="ASP"
-                                            current={shouldShowDummyUi ? dummyStatData.asp.current : globalMtdCardData.asp}
-                                            previous={shouldShowDummyUi ? dummyStatData.asp.previous : globalMtdCardData.prevAsp}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.asp.current
+                                                : useSelectedPeriodCards ? biCardKpis.curr.asp : globalMtdCardData.asp}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.asp.previous
+                                                : useSelectedPeriodCards ? biCardKpis.prev.asp : globalMtdCardData.prevAsp}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.asp.deltaPct
-                                                    : globalMtdCardData.aspDelta
+                                                    : useSelectedPeriodCards ? biCardKpis.deltas.asp : globalMtdCardData.aspDelta
                                             }
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={formatDisplayAmount}
                                             previousFormatter={formatDisplayAmount}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#B75A5A] border-t-4 border-t-[#B75A5A]"
                                         />
 
 
                                         <AmazonStatCard
                                             label="Gross Sales"
-                                            current={shouldShowDummyUi ? dummyStatData.grossSales.current : globalMtdCardData.grossSales}
-                                            previous={shouldShowDummyUi ? dummyStatData.grossSales.previous : globalMtdCardData.prevGrossSales}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.grossSales.current
+                                                : useSelectedPeriodCards ? biCardKpis.curr.grossSales : globalMtdCardData.grossSales}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.grossSales.previous
+                                                : useSelectedPeriodCards ? biCardKpis.prev.grossSales : globalMtdCardData.prevGrossSales}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.grossSales.deltaPct
-                                                    : globalMtdCardData.grossSalesDelta
+                                                    : useSelectedPeriodCards ? biCardKpis.deltas.grossSales : globalMtdCardData.grossSalesDelta
                                             }
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
@@ -282,26 +296,34 @@ export default function DashboardLiveSalesTab({
                                             currentPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.grossSales.currentPerUnit
-                                                    : globalMtdCardData.grossSalesPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdGrossSalesCurrentPerUnitDisplay
+                                                        : globalMtdCardData.grossSalesPerUnit
                                             }
                                             previousPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.grossSales.previousPerUnit
-                                                    : globalMtdCardData.prevGrossSalesPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdGrossSalesPreviousPerUnitDisplay
+                                                        : globalMtdCardData.prevGrossSalesPerUnit
                                             }
                                             perUnitFormatter={formatDisplayAmountNoDecimals}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#ED9F50] border-t-4 border-t-[#ED9F50]"
                                         />
 
                                         <AmazonStatCard
                                             label="Net Sales"
-                                            current={shouldShowDummyUi ? dummyStatData.netSales.current : globalMtdCardData.netSales}
-                                            previous={shouldShowDummyUi ? dummyStatData.netSales.previous : globalMtdCardData.prevNetSales}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.netSales.current
+                                                : useSelectedPeriodCards ? biCardKpis.curr.netSales : globalMtdCardData.netSales}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.netSales.previous
+                                                : useSelectedPeriodCards ? biCardKpis.prev.netSales : globalMtdCardData.prevNetSales}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.netSales.deltaPct
-                                                    : globalMtdCardData.netSalesDelta
+                                                    : useSelectedPeriodCards ? biCardKpis.deltas.netSales : globalMtdCardData.netSalesDelta
                                             }
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={(val) => formatDisplayAmount(val, "Net Sales")}
@@ -309,112 +331,144 @@ export default function DashboardLiveSalesTab({
                                             currentPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.netSales.currentPerUnit
-                                                    : globalMtdCardData.netSalesPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdNetSalesCurrentPerUnitDisplay
+                                                        : globalMtdCardData.netSalesPerUnit
                                             }
                                             previousPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.netSales.previousPerUnit
-                                                    : globalMtdCardData.prevNetSalesPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdNetSalesPreviousPerUnitDisplay
+                                                        : globalMtdCardData.prevNetSalesPerUnit
                                             }
                                             perUnitFormatter={formatDisplayAmountNoDecimals}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#75BBDA] border-t-4 border-t-[#75BBDA]"
                                         />
 
 
                                         <AmazonStatCard
                                             label="Cost of Ads"
-                                            current={shouldShowDummyUi ? dummyStatData.costOfAds.current : globalMtdCardData.ads}
-                                            previous={shouldShowDummyUi ? dummyStatData.costOfAds.previous : globalMtdCardData.prevAds}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.costOfAds.current
+                                                : useSelectedPeriodCards ? mtdCostOfAdsCurrentDisplay : globalMtdCardData.ads}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.costOfAds.previous
+                                                : useSelectedPeriodCards ? mtdCostOfAdsPreviousDisplay : globalMtdCardData.prevAds}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.costOfAds.deltaPct
-                                                    : globalMtdCardData.adsDelta
+                                                    : useSelectedPeriodCards ? mtdCostOfAdsDelta : globalMtdCardData.adsDelta
                                             }
                                             inverseDelta
                                             currentPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.costOfAds.currentPerUnit
-                                                    : globalMtdCardData.adsPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdCostOfAdsCurrentPerUnitDisplay
+                                                        : globalMtdCardData.adsPerUnit
                                             }
                                             previousPerUnit={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.costOfAds.previousPerUnit
-                                                    : globalMtdCardData.prevAdsPerUnit
+                                                    : useSelectedPeriodCards
+                                                        ? mtdCostOfAdsPreviousPerUnitDisplay
+                                                        : globalMtdCardData.prevAdsPerUnit
                                             }
                                             perUnitFormatter={formatDisplayAmountNoDecimals}
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
                                             previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#C49466] border-t-4 border-t-[#C49466]"
                                         />
 
                                         <AmazonStatCard
                                             label="TACoS"
-                                            current={shouldShowDummyUi ? dummyStatData.tacos.current : globalMtdCardData.tacos}
-                                            previous={shouldShowDummyUi ? dummyStatData.tacos.previous : globalMtdCardData.prevTacos}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.tacos.current
+                                                : useSelectedPeriodCards ? mtdTacosCurrent : globalMtdCardData.tacos}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.tacos.previous
+                                                : useSelectedPeriodCards ? mtdTacosPrevious : globalMtdCardData.prevTacos}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.tacos.deltaPct
-                                                    : globalMtdCardData.tacosDelta
+                                                    : useSelectedPeriodCards ? mtdTacosDelta : globalMtdCardData.tacosDelta
                                             }
                                             inverseDelta
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || previousSkuwiseGlobalLoading)}
                                             formatter={fmtPct2}
                                             previousFormatter={fmtPct2}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#3A8EA4] border-t-4 border-t-[#3A8EA4]"
                                         />
 
                                         <AmazonStatCard
                                             label="CM2 Profit"
-                                            current={shouldShowDummyUi ? dummyStatData.cm2Profit.current : globalMtdCardData.cm2Profit}
-                                            previous={shouldShowDummyUi ? dummyStatData.cm2Profit.previous : globalMtdCardData.prevCm2Profit}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.cm2Profit.current
+                                                : useSelectedPeriodCards ? mtdCm2ProfitCurrentDisplay : globalMtdCardData.cm2Profit}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.cm2Profit.previous
+                                                : useSelectedPeriodCards ? mtdCm2ProfitPreviousDisplay : globalMtdCardData.prevCm2Profit}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.cm2Profit.deltaPct
-                                                    : globalMtdCardData.cm2ProfitDelta
+                                                    : useSelectedPeriodCards ? mtdCm2ProfitDelta : globalMtdCardData.cm2ProfitDelta
                                             }
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={(val) => formatCurrentAmountWithPct(
                                                 val,
-                                                shouldShowDummyUi ? dummyStatData.cm2ProfitPct.current : globalMtdCardData.cm2Pct,
+                                                shouldShowDummyUi
+                                                    ? dummyStatData.cm2ProfitPct.current
+                                                    : useSelectedPeriodCards ? mtdCm2ProfitPctCurrent : globalMtdCardData.cm2Pct,
                                                 "CM2 Profit"
                                             )}
                                             previousFormatter={(val) => formatAmountWithPct(
                                                 val,
-                                                shouldShowDummyUi ? dummyStatData.cm2ProfitPct.previous : globalMtdCardData.prevCm2Pct,
+                                                shouldShowDummyUi
+                                                    ? dummyStatData.cm2ProfitPct.previous
+                                                    : useSelectedPeriodCards ? mtdCm2ProfitPctPrevious : globalMtdCardData.prevCm2Pct,
                                                 "CM2 Profit"
                                             )}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#A8BF7A] border-t-4 border-t-[#A8BF7A]"
                                         />
 
                                         <AmazonStatCard
                                             label="Promotions"
-                                            current={shouldShowDummyUi ? dummyStatData.promotions.current : globalMtdCardData.promotions}
-                                            previous={shouldShowDummyUi ? dummyStatData.promotions.previous : globalMtdCardData.prevPromotions}
+                                            current={shouldShowDummyUi
+                                                ? dummyStatData.promotions.current
+                                                : useSelectedPeriodCards ? mtdPromotionsCurrentDisplay : globalMtdCardData.promotions}
+                                            previous={shouldShowDummyUi
+                                                ? dummyStatData.promotions.previous
+                                                : useSelectedPeriodCards ? mtdPromotionsPreviousDisplay : globalMtdCardData.prevPromotions}
                                             deltaPct={
                                                 shouldShowDummyUi
                                                     ? dummyStatData.promotions.deltaPct
-                                                    : globalMtdCardData.promotionsDelta
+                                                    : useSelectedPeriodCards ? mtdPromotionsDelta : globalMtdCardData.promotionsDelta
                                             }
                                             inverseDelta
                                             loading={!shouldShowDummyUi && (loading || shopifyLoading || biLoading || previousSkuwiseGlobalLoading)}
                                             formatter={(val) => formatCurrentAmountWithPct(
                                                 val,
-                                                shouldShowDummyUi ? dummyStatData.promotionsPct.current : globalMtdCardData.promotionsPct,
+                                                shouldShowDummyUi
+                                                    ? dummyStatData.promotionsPct.current
+                                                    : useSelectedPeriodCards ? mtdPromotionsPctCurrent : globalMtdCardData.promotionsPct,
                                                 "Promotions",
                                                 true
                                             )}
                                             previousFormatter={(val) => formatAmountWithPct(
                                                 val,
-                                                shouldShowDummyUi ? dummyStatData.promotionsPct.previous : globalMtdCardData.prevPromotionsPct,
+                                                shouldShowDummyUi
+                                                    ? dummyStatData.promotionsPct.previous
+                                                    : useSelectedPeriodCards ? mtdPromotionsPctPrevious : globalMtdCardData.prevPromotionsPct,
                                                 "Promotions",
                                                 true
                                             )}
-                                            bottomLabel={prevLabel}
+                                            bottomLabel={selectedPeriodPreviousLabel}
                                             className="border-[#7B9A6D] border-t-4 border-t-[#7B9A6D]"
                                         />
                                     </div>
@@ -800,6 +854,7 @@ export default function DashboardLiveSalesTab({
                     <div className="w-full self-start">
 
                         <SalesTargetStatsCard
+                            comparisonPeriod={comparisonPeriod}
                             regions={regions}
                             value={targetRegion}
                             onChange={setTargetRegion}

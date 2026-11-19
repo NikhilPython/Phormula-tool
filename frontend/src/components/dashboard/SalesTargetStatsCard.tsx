@@ -24,6 +24,7 @@ type BiAlignedTotalsCard = {
 };
 
 type Props = {
+  comparisonPeriod?: "mtd" | "last30";
   regions: Record<RegionKey, RegionMetrics>;
   value: RegionKey;
   onChange: (r: RegionKey) => void;
@@ -53,6 +54,7 @@ type Props = {
 };
 
 export default function SalesTargetStatsCard({
+  comparisonPeriod = "mtd",
   regions,
   value,
   onChange,
@@ -208,18 +210,26 @@ export default function SalesTargetStatsCard({
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 gap-3 text-sm h-auto lg:h-full">
           {[
             { title: "Today", value: formatHomeK(todayHome), helper: "\u00A0" },
-            { title: "MTD Sales", value: formatHomeK(currMtd), helper: "\u00A0" },
+            {
+              title: comparisonPeriod === "last30" ? "Last 30 Days Sales" : "MTD Sales",
+              value: formatHomeK(currMtd),
+              helper: "\u00A0",
+            },
             { title: "Target", value: formatHomeK(targetToUse), helper: "\u00A0" },
-            { title: `${prevLabel} MTD`, value: formatHomeK(prevMtd), helper: "\u00A0" },
+            {
+              title: comparisonPeriod === "last30" ? "Previous 30 days" : `${prevLabel} MTD`,
+              value: formatHomeK(prevMtd),
+              helper: "\u00A0",
+            },
             {
               title: "Sales Trend",
               value: `${salesTrendPctToUse >= 0 ? "+" : ""}${salesTrendPctToUse.toFixed(2)}%`,
-              helper: `vs ${prevLabel} MTD`,
+              helper: comparisonPeriod === "last30" ? "vs Previous 30 days" : `vs ${prevLabel} MTD`,
             },
             {
               title: "Target Trend",
               value: `${targetTrendPctToUse >= 0 ? "+" : ""}${targetTrendPctToUse.toFixed(2)}%`,
-              helper: `MTD vs Target`,
+              helper: comparisonPeriod === "last30" ? "Last 30 days vs Target" : "MTD vs Target",
             },
           ].map((t) => (
             <div

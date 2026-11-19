@@ -5180,17 +5180,26 @@ export default function DashboardPage() {
             const json: BiApiResponse & Record<string, any> = await response.json();
             if (!json?.aligned_totals) throw new Error("Last 30 days response is missing aligned_totals");
 
-            // `skuwise_items` is the source of the period's P&L rows. Its total
-            // rows also carry the sales, unit, ASP, and profit values used by
-            // the dashboard metric cards; retain aligned totals for metrics
+            // Period SKUwise total rows carry sales, unit, ASP, and profit
+            // values used by metric cards; retain aligned totals for metrics
             // (such as CM2 and advertising) that are not present in those rows.
             const findSkuwiseTotal = (rows: any[]) => rows.find((row) => {
                 const sku = String(row?.sku || "").trim().toUpperCase();
                 const name = String(row?.product_name || "").trim().toLowerCase();
                 return ["TOTAL", "GRAND_TOTAL"].includes(sku) || ["total", "grand total"].includes(name);
             });
-            const currentSkuTotal = findSkuwiseTotal(json.skuwise_items || []);
-            const previousSkuTotal = findSkuwiseTotal(json.previous_skuwise_items || []);
+            const currentSkuwiseItems = biCountryName === "global"
+                ? json.skuwise_items_global
+                : json.skuwise_items;
+            const previousSkuwiseItems = biCountryName === "global"
+                ? json.previous_skuwise_items_global
+                : json.previous_skuwise_items;
+            const currentSkuTotal = findSkuwiseTotal(
+                Array.isArray(currentSkuwiseItems) ? currentSkuwiseItems : []
+            );
+            const previousSkuTotal = findSkuwiseTotal(
+                Array.isArray(previousSkuwiseItems) ? previousSkuwiseItems : []
+            );
             const withSkuwiseTotals = { ...json.aligned_totals };
             const applySkuwiseTotal = (row: any, prefix: "current" | "previous") => {
                 if (!row) return;
@@ -5200,6 +5209,11 @@ export default function DashboardPage() {
                 const asp = Number(row.asp);
                 const profit = Number(row.profit);
                 const promotions = Number(row.promotional_rebates);
+                const advertising = Number(row.total_ads ?? row.ads_spend);
+                const cm2Profit = Number(row.total_cm2_profit ?? row.cm2_profit);
+                const cm2Margin = Number(row.total_cm2_margins ?? row.cm2_profit_per);
+                const tacos = Number(row.tacos_total_advertising_cost_of_sale);
+                const promotionsPct = Number(row.promotional_rebates_percentage);
                 const assign = (key: string, value: number) => {
                     if (Number.isFinite(value)) (withSkuwiseTotals as any)[`total_${prefix}_${key}`] = value;
                 };
@@ -5208,7 +5222,21 @@ export default function DashboardPage() {
                 assign("gross_sales", grossSales);
                 assign("asp", asp);
                 assign("profit", profit);
+                assign("profit_cm2", cm2Profit);
+                assign("profit_percentage", Number.isFinite(cm2Margin)
+                    ? cm2Margin
+                    : netSales !== 0 ? (cm2Profit / netSales) * 100 : 0);
+                assign("advertising", advertising);
+                assign("tacos", Number.isFinite(tacos)
+                    ? tacos
+                    : netSales !== 0 ? (advertising / netSales) * 100 : 0);
                 assign("promotional_rebates", promotions);
+                assign("promotional_rebates_percentage", Number.isFinite(promotionsPct)
+                    ? promotionsPct
+                    : netSales !== 0 ? (promotions / netSales) * 100 : 0);
+                if (Number.isFinite(advertising) && Number.isFinite(quantity) && quantity !== 0) {
+                    assign("cost_of_ads_per_unit", advertising / quantity);
+                }
                 if (Number.isFinite(netSales) && Number.isFinite(quantity) && quantity !== 0) {
                     assign("net_sales_per_unit", netSales / quantity);
                 }
@@ -5227,6 +5255,10 @@ export default function DashboardPage() {
             withSkuwiseTotals.net_sales_change_percentage = pctChange(withSkuwiseTotals.total_current_net_sales, withSkuwiseTotals.total_previous_net_sales) ?? withSkuwiseTotals.net_sales_change_percentage;
             withSkuwiseTotals.gross_sales_change_percentage = pctChange(withSkuwiseTotals.total_current_gross_sales, withSkuwiseTotals.total_previous_gross_sales) ?? withSkuwiseTotals.gross_sales_change_percentage;
             withSkuwiseTotals.asp_change_percentage = pctChange(withSkuwiseTotals.total_current_asp, withSkuwiseTotals.total_previous_asp) ?? withSkuwiseTotals.asp_change_percentage;
+            withSkuwiseTotals.advertising_change_percentage = pctChange(withSkuwiseTotals.total_current_advertising, withSkuwiseTotals.total_previous_advertising) ?? withSkuwiseTotals.advertising_change_percentage;
+            withSkuwiseTotals.tacos_change_percentage = pctChange(withSkuwiseTotals.total_current_tacos, withSkuwiseTotals.total_previous_tacos) ?? withSkuwiseTotals.tacos_change_percentage;
+            withSkuwiseTotals.cm2_profit_change_percentage = pctChange(withSkuwiseTotals.total_current_profit_cm2, withSkuwiseTotals.total_previous_profit_cm2) ?? withSkuwiseTotals.cm2_profit_change_percentage;
+            withSkuwiseTotals.promotions_change_percentage = pctChange(withSkuwiseTotals.total_current_promotional_rebates, withSkuwiseTotals.total_previous_promotional_rebates) ?? withSkuwiseTotals.promotions_change_percentage;
             json.aligned_totals = withSkuwiseTotals;
             setLiveBiPayload(json);
             setBiAlignedTotals(withSkuwiseTotals);
@@ -7130,7 +7162,9 @@ export default function DashboardPage() {
         });
 
         const previousSkuwiseItems = comparisonPeriod === "last30"
-            ? liveBiPayload?.previous_skuwise_items ?? []
+            ? (platform === "global"
+                ? liveBiPayload?.previous_skuwise_items_global ?? []
+                : liveBiPayload?.previous_skuwise_items ?? [])
             : [];
         const previousBySku = new Map<string, any>(
             (Array.isArray(previousSkuwiseItems) ? previousSkuwiseItems : [])
@@ -8454,19 +8488,32 @@ export default function DashboardPage() {
         const prevDerived = previousSkuwiseGlobalData?.derived_totals_global || {};
         const prevDashboard = previousSkuwiseGlobalData?.dashboard_totals_global || {};
 
-        const currentNetSales = toNumber(
-            stickyTableTotals.netSales ??
-            plSummaryTotals.net_sales ??
-            (data as any)?.derived_totals?.net_sales
-        );
+        const currentNetSales = comparisonPeriod === "last30"
+            ? toNumber(
+                biAlignedTotalsHome?.total_current_net_sales ??
+                stickyTableTotals.netSales ??
+                plSummaryTotals.net_sales
+            )
+            : toNumber(
+                stickyTableTotals.netSales ??
+                plSummaryTotals.net_sales ??
+                (data as any)?.derived_totals?.net_sales
+            );
 
         // Previous MTD / same selected period
-        const previousNetSales = toNumber(
-            prevDashboard.net_sales ??
-            (data as any)?.dashboard_card_metrics?.net_sales?.previous ??
-            prevAligned.total_previous_net_sales ??
-            prevDerived.net_sales
-        );
+        const previousNetSales = comparisonPeriod === "last30"
+            ? toNumber(
+                biAlignedTotalsHome?.total_previous_net_sales ??
+                prevDashboard.net_sales ??
+                prevAligned.total_previous_net_sales ??
+                prevDerived.net_sales
+            )
+            : toNumber(
+                prevDashboard.net_sales ??
+                (data as any)?.dashboard_card_metrics?.net_sales?.previous ??
+                prevAligned.total_previous_net_sales ??
+                prevDerived.net_sales
+            );
 
         // Previous full-month net sales
         const previousNetSalesFullMonth = toNumber(
@@ -8499,6 +8546,9 @@ export default function DashboardPage() {
         };
     }, [
         data,
+        comparisonPeriod,
+        biAlignedTotalsHome?.total_current_net_sales,
+        biAlignedTotalsHome?.total_previous_net_sales,
         stickyTableTotals.netSales,
         plSummaryTotals.net_sales,
         plSummaryTotals.net_reimbursement,
@@ -8522,7 +8572,9 @@ export default function DashboardPage() {
                 globalTargetCardTotals.previousNetSales,
 
             total_previous_net_sales_full_month:
-                globalTargetCardTotals.previousNetSalesFullMonth,
+                comparisonPeriod === "last30"
+                    ? biAlignedTotalsHome?.total_previous_net_sales_full_month
+                    : globalTargetCardTotals.previousNetSalesFullMonth,
 
             total_current_rembursement_fee:
                 globalTargetCardTotals.currentReimbursement,
@@ -8531,11 +8583,15 @@ export default function DashboardPage() {
                 globalTargetCardTotals.previousReimbursement,
 
             total_current_advertising:
-                stickyTableTotals.costOfAds,
+                comparisonPeriod === "last30"
+                    ? biAlignedTotalsHome?.total_current_advertising
+                    : stickyTableTotals.costOfAds,
 
             total_previous_advertising:
-                prevDashboard?.advertising_fees ??
-                previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_advertising ?? 0,
+                comparisonPeriod === "last30"
+                    ? biAlignedTotalsHome?.total_previous_advertising
+                    : prevDashboard?.advertising_fees ??
+                    previousSkuwiseGlobalData?.aligned_totals_global?.total_previous_advertising ?? 0,
 
             total_current_profit:
                 stickyTableTotals.cm2Profit,
@@ -8552,6 +8608,7 @@ export default function DashboardPage() {
         };
     }, [
         platform,
+        comparisonPeriod,
         biAlignedTotalsHome,
         globalTargetCardTotals,
         stickyTableTotals.costOfAds,
@@ -10043,23 +10100,31 @@ export default function DashboardPage() {
             : null;
 
     const stickyKpiPreviousLabel = comparisonPeriod === "last30" ? "Previous 30 days" : prevLabel;
+    const useGlobalLast30Totals =
+        isStickyGlobal && comparisonPeriod === "last30";
     const stickyKpiItems = [
         {
             label: "Units",
             current: shouldShowDummyUi
                 ? dummyStatData.units.current
+                : useGlobalLast30Totals
+                    ? biCardKpis.curr.units
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.units
                     : (useBiForAmazonCards ? biCardKpis.curr.units : mtdUnitsCurrent),
 
             previous: shouldShowDummyUi
                 ? dummyStatData.units.previous
+                : useGlobalLast30Totals
+                    ? biCardKpis.prev.units
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.units
                     : (useBiForAmazonCards ? biCardKpis.prev.units : mtdUnitsPrevious),
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.units.deltaPct
+                : useGlobalLast30Totals
+                    ? biCardKpis.deltas.units
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? globalMtdCardData.unitsDelta
                     : (useBiForAmazonCards ? biCardKpis.deltas.units : mtdUnitsDelta),
@@ -10077,6 +10142,8 @@ export default function DashboardPage() {
             label: "ASP",
             current: shouldShowDummyUi
                 ? dummyStatData.asp.current
+                : useGlobalLast30Totals
+                    ? biCardKpis.curr.asp
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.asp
                     : (!isStickyGlobal && productwiseCardTotals
@@ -10087,6 +10154,8 @@ export default function DashboardPage() {
 
             previous: shouldShowDummyUi
                 ? dummyStatData.asp.previous
+                : useGlobalLast30Totals
+                    ? biCardKpis.prev.asp
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.asp
                     : (showLiveBI && hasSelectedPeriodBiData
@@ -10095,6 +10164,8 @@ export default function DashboardPage() {
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.asp.deltaPct
+                : useGlobalLast30Totals
+                    ? biCardKpis.deltas.asp
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? globalMtdCardData.aspDelta
                     : (useBiForAmazonCards
@@ -10115,6 +10186,8 @@ export default function DashboardPage() {
             label: "Net Sales",
             current: shouldShowDummyUi
                 ? dummyStatData.netSales.current
+                : useGlobalLast30Totals
+                    ? biCardKpis.curr.netSales
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.netSales
                     : (!isStickyGlobal && productwiseCardTotals
@@ -10125,6 +10198,8 @@ export default function DashboardPage() {
 
             previous: shouldShowDummyUi
                 ? dummyStatData.netSales.previous
+                : useGlobalLast30Totals
+                    ? biCardKpis.prev.netSales
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.netSales
                     : (showLiveBI && hasSelectedPeriodBiData
@@ -10133,6 +10208,8 @@ export default function DashboardPage() {
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.netSales.deltaPct
+                : useGlobalLast30Totals
+                    ? biCardKpis.deltas.netSales
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? globalMtdCardData.netSalesDelta
                     : (useBiForAmazonCards
@@ -10148,11 +10225,15 @@ export default function DashboardPage() {
             previousFormatter: (val: number) => formatDisplayAmount(val, "Net Sales"),
             currentPerUnit: isStickyGlobal && comparisonPeriod !== "last30"
                 ? stickyTableTotals.netSalesPerUnit
+                : useGlobalLast30Totals
+                    ? mtdNetSalesCurrentPerUnitDisplay
                 : (!isStickyGlobal && productwiseCardTotals?.netSalesPerUnit != null
                     ? productwiseCardTotals.netSalesPerUnit
                     : mtdNetSalesCurrentPerUnitDisplay),
             previousPerUnit: isStickyGlobal && comparisonPeriod !== "last30"
                 ? stickyPreviousTotals.netSalesPerUnit
+                : useGlobalLast30Totals
+                    ? mtdNetSalesPreviousPerUnitDisplay
                 : mtdNetSalesPreviousPerUnitDisplay,
             perUnitFormatter: formatDisplayAmountNoDecimals,
             bottomLabel: stickyKpiPreviousLabel,
@@ -10162,18 +10243,24 @@ export default function DashboardPage() {
             label: "Cost of Ads",
             current: shouldShowDummyUi
                 ? dummyStatData.costOfAds.current
+                : useGlobalLast30Totals
+                    ? mtdCostOfAdsCurrentDisplay
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.costOfAds
                     : mtdCostOfAdsCurrentDisplay,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.costOfAds.previous
+                : useGlobalLast30Totals
+                    ? mtdCostOfAdsPreviousDisplay
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.costOfAds
                     : mtdCostOfAdsPreviousDisplay,
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.costOfAds.deltaPct
+                : useGlobalLast30Totals
+                    ? mtdCostOfAdsDelta
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? globalMtdCardData.adsDelta
                     : mtdCostOfAdsDelta,
@@ -10181,11 +10268,15 @@ export default function DashboardPage() {
             inverseDelta: true,
             currentPerUnit: shouldShowDummyUi
                 ? dummyStatData.costOfAds.currentPerUnit
+                : useGlobalLast30Totals
+                    ? mtdCostOfAdsCurrentPerUnitDisplay
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.costOfAdsPerUnit
                     : mtdCostOfAdsCurrentPerUnitDisplay,
             previousPerUnit: shouldShowDummyUi
                 ? dummyStatData.costOfAds.previousPerUnit
+                : useGlobalLast30Totals
+                    ? mtdCostOfAdsPreviousPerUnitDisplay
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.costOfAdsPerUnit
                     : mtdCostOfAdsPreviousPerUnitDisplay,
@@ -10203,16 +10294,17 @@ export default function DashboardPage() {
 
         {
             label: "TACoS",
-            // Always use the monthly GRAND TOTAL source used by
-            // /dashboard/action-items. The cached fallback resolves from that
-            // same source, so reload cannot briefly show dashboard_card_metrics
-            // before the Action Items request completes.
+            // MTD uses the monthly total; Global Last 30 Days uses its period row.
             current: shouldShowDummyUi
                 ? dummyStatData.tacos.current
+                : useGlobalLast30Totals
+                    ? mtdTacosCurrent
                 : tacosFromDisplayedCardsForSummary,
 
             previous: shouldShowDummyUi
                 ? dummyStatData.tacos.previous
+                : useGlobalLast30Totals
+                    ? mtdTacosPrevious
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.tacos
                     : mtdTacosPrevious,
@@ -10221,6 +10313,8 @@ export default function DashboardPage() {
             // result for that displayed current/previous pair.
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.tacos.deltaPct
+                : useGlobalLast30Totals
+                    ? mtdTacosDelta
                 : comparisonPeriod === "last30"
                     ? mtdTacosDelta
                     : dashboardActionSourceMetrics?.tacos != null
@@ -10243,6 +10337,11 @@ export default function DashboardPage() {
             label: "CM2 Profit",
             current: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.current
+                : useGlobalLast30Totals
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_current_profit_cm2 ?? totalRowCm2Profit,
+                        biSourceCurrency
+                    )
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.cm2Profit
                     : comparisonPeriod === "last30"
@@ -10251,6 +10350,11 @@ export default function DashboardPage() {
 
             previous: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.previous
+                : useGlobalLast30Totals
+                    ? convertToDisplayCurrency(
+                        biAlignedTotals?.total_previous_profit_cm2 ?? 0,
+                        biSourceCurrency
+                    )
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyPreviousTotals.cm2Profit
                     : comparisonPeriod === "last30"
@@ -10259,6 +10363,8 @@ export default function DashboardPage() {
 
             deltaPct: shouldShowDummyUi
                 ? dummyStatData.cm2Profit.deltaPct
+                : useGlobalLast30Totals
+                    ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? globalMtdCardData.cm2ProfitDelta
                     : comparisonPeriod === "last30"
@@ -10276,6 +10382,8 @@ export default function DashboardPage() {
                     val,
                     shouldShowDummyUi
                         ? dummyStatData.cm2ProfitPct.current
+                        : useGlobalLast30Totals
+                            ? toNumber(biAlignedTotals?.total_current_profit_percentage)
                         : isStickyGlobal
                             ? stickyTableTotals.cm2MarginPct
                             : hasSelectedPeriodBiData
@@ -10288,6 +10396,8 @@ export default function DashboardPage() {
                     val,
                     shouldShowDummyUi
                         ? dummyStatData.cm2ProfitPct.previous
+                        : useGlobalLast30Totals
+                            ? toNumber(biAlignedTotals?.total_previous_profit_percentage)
                         : isStickyGlobal
                             ? stickyPreviousTotals.cm2MarginPct
                             : hasSelectedPeriodBiData
