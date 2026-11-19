@@ -815,21 +815,35 @@ def _run_feepreview_upload_pipeline_from_fee_table(
     # 8) SKU join update (one SQL)
     # -----------------------------
     sku_table_name = f"sku_{user_id}_data_table"
+    country_key = {
+        "united states": "us",
+        "united kingdom": "uk",
+    }.get(str(country).strip().lower())
+    asin_column = f"asin_{country_key}" if country_key else None
+    barcode_column = f"product_barcode_{country_key}" if country_key else None
     with user_engine.begin() as conn:
         try:
             insp = sa_inspect(conn)
             if insp.has_table(sku_table_name):
-                conn.execute(
-                    text(f"""
-                        UPDATE {table_name} t
-                        SET product_barcode = s.product_barcode,
-                            sku_cost_price   = s.price
-                        FROM {sku_table_name} s
-                        WHERE t.user_id = :user_id
-                          AND t.asin = s.asin
-                    """),
-                    {"user_id": user_id},
-                )
+                sku_columns = {
+                    column["name"] for column in insp.get_columns(sku_table_name)
+                }
+                if asin_column not in sku_columns and "asin" in sku_columns:
+                    asin_column = "asin"
+                if barcode_column not in sku_columns and "product_barcode" in sku_columns:
+                    barcode_column = "product_barcode"
+                if asin_column in sku_columns and barcode_column in sku_columns:
+                    conn.execute(
+                        text(f"""
+                            UPDATE {table_name} t
+                            SET product_barcode = s."{barcode_column}",
+                                sku_cost_price   = s.price
+                            FROM "{sku_table_name}" s
+                            WHERE t.user_id = :user_id
+                              AND t.asin = s."{asin_column}"
+                        """),
+                        {"user_id": user_id},
+                    )
         except Exception:
             logger.exception("SKU join update failed (ignored)")
 

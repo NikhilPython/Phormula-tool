@@ -268,16 +268,16 @@ def filter_discontinuous_inventory_rows(rows, user_id, country_key):
         return rows
 
     master_df = pd.read_sql_table(table_name, primary_engine)
-    if "product_status" not in master_df.columns:
-        return rows
-
     sku_column = f"sku_{country_key}"
-    if sku_column not in master_df.columns:
+    status_column = f"product_status_{country_key}"
+    if status_column not in master_df.columns:
+        status_column = "product_status"
+    if sku_column not in master_df.columns or status_column not in master_df.columns:
         return rows
 
     discontinued_df = master_df[
-        master_df["product_status"].fillna("Continuous").astype(str).str.strip().str.lower()
-        == "discontinuous"
+        master_df[status_column].fillna("Active").astype(str).str.strip().str.lower()
+        .isin({"discontinued", "discontinuous"})
     ]
     discontinued_skus = {
         str(value).strip().lower()

@@ -1436,22 +1436,39 @@ def feepreviewupload():
 
 
         sku_table_name = f"sku_{user_id}_data_table"
+        country_key = {
+            "uk": "uk",
+            "gb": "uk",
+            "united kingdom": "uk",
+            "us": "us",
+            "usa": "us",
+            "united states": "us",
+        }.get(str(country).strip().lower())
+        sku_asin_column = f"asin_{country_key}" if country_key else None
+        sku_barcode_column = f"product_barcode_{country_key}" if country_key else None
+        asin_mapping = {}
+
         with user_engine.connect() as conn:
             sku_data_table = Table(sku_table_name, metadata, autoload_with=user_engine)
-
-            query = text(f"""
-                SELECT asin, product_barcode, price 
-                FROM {sku_table_name}
-                WHERE asin IN (SELECT asin FROM {table_name} WHERE user_id = :user_id)
-            """)
-
-            result = conn.execute(query, {"user_id": user_id})
-
-            # Fetch rows as dictionaries
-            rows = [dict(zip(result.keys(), row)) for row in result.fetchall()]
-
-            # Now safely access dictionary keys
-            asin_mapping = {row['asin']: (row['product_barcode'], row['price']) for row in rows}
+            sku_columns = set(sku_data_table.c.keys())
+            if sku_asin_column in sku_columns and sku_barcode_column in sku_columns:
+                query = select(
+                    sku_data_table.c[sku_asin_column],
+                    sku_data_table.c[sku_barcode_column],
+                    sku_data_table.c.price,
+                ).where(
+                    sku_data_table.c[sku_asin_column].in_(
+                        select(user_specific_table.c.asin).where(
+                            user_specific_table.c.user_id == user_id
+                        )
+                    )
+                )
+                rows = conn.execute(query).all()
+                asin_mapping = {
+                    row[0]: (row[1], row[2])
+                    for row in rows
+                    if row[0]
+                }
 
         # Update user_{country}_table with fetched data
         with user_engine.begin() as conn:

@@ -25,6 +25,8 @@ const FIXED_COLUMNS = [
   "local_stock",
 ] as const;
 
+const OPTIONAL_COLUMNS = ["product_status"] as const;
+
 const HEADER_LABELS: Record<string, string> = {
   s_no: "S. No.",
   product_name: "Product Name",
@@ -35,6 +37,7 @@ const HEADER_LABELS: Record<string, string> = {
   landing_cost: "Landing Cost",
   currency: "Currency",
   local_stock: "Local Stock",
+  product_status: "Product Status",
 };
 
 function toTitleCase(value: string) {
@@ -74,6 +77,9 @@ function normalizeHeader(key: string): string {
 
     local_stock: "local_stock",
     stock: "local_stock",
+
+    product_status: "product_status",
+    status: "product_status",
   };
 
   return aliases[raw] || raw;
@@ -98,7 +104,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
   }, []);
 
   const buildColumns = React.useCallback((): ColumnDef<TableRow>[] => {
-    return FIXED_COLUMNS.map((key) => {
+    return [...FIXED_COLUMNS, ...OPTIONAL_COLUMNS].map((key) => {
       const header = HEADER_LABELS[key] || toTitleCase(key);
       if (key === "s_no") return { key, header, width: "64px" };
       if (key === "product_name") {
@@ -140,7 +146,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
       .map((row, index) => {
         const out: Row = {};
 
-        const allColumns = [...FIXED_COLUMNS];
+        const allColumns = [...FIXED_COLUMNS, ...OPTIONAL_COLUMNS];
 
         allColumns.forEach((col) => {
           out[col] = "";
@@ -341,6 +347,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
             "ASIN": row.asin,
             "Landing Cost": row.landing_cost,
             "Currency": row.currency,
+            product_status: row.product_status,
           });
         }
         
@@ -352,6 +359,9 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
           item[`asin_${country}`] = row.asin;
           item[`product_barcode_${country}`] = row.product_barcode;
           item[`local_stock_${country}`] = row.local_stock;
+          if (row.product_status) {
+            item[`product_status_${country}`] = row.product_status;
+          }
         }
       });
 

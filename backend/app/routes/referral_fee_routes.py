@@ -684,6 +684,7 @@ def fetch_and_store_fees():
     amazon_client.set_refresh_token(au.refresh_token)
 
     table_name = f"sku_{user_id}_data_table"
+    country = MKT_TO_COUNTRY.get(marketplace_id, "Unknown")
 
     try:
         # -------- load user's SKU table --------
@@ -694,12 +695,25 @@ def fetch_and_store_fees():
 
         metadata = MetaData()
         sku_tbl = Table(table_name, metadata, autoload_with=user_engine)
+        country_key = {
+            "united states": "us",
+            "united kingdom": "uk",
+        }.get(country.strip().lower())
+        asin_column = f"asin_{country_key}" if country_key else None
+        sku_columns = set(sku_tbl.c.keys())
+        if asin_column not in sku_columns and "asin" in sku_columns:
+            asin_column = "asin"
 
-        # We only need ASIN
         with user_engine.connect() as conn:
-            rows = conn.execute(
-                select(sku_tbl.c.asin).where(sku_tbl.c.asin.isnot(None))
-            ).all()
+            rows = (
+                conn.execute(
+                    select(sku_tbl.c[asin_column]).where(
+                        sku_tbl.c[asin_column].isnot(None)
+                    )
+                ).all()
+                if asin_column in sku_columns
+                else []
+            )
 
         if not rows:
             return jsonify({
@@ -709,14 +723,13 @@ def fetch_and_store_fees():
                 "message": "No ASINs found."
             }), 200
 
-        asins = [r._mapping["asin"] for r in rows if r._mapping.get("asin")]
+        asins = [row[0] for row in rows if row[0]]
 
         stored, skipped = 0, 0
         failures = []
         rows_to_commit = []
         skip_reasons = {}
         skip_details = []
-        country = MKT_TO_COUNTRY.get(marketplace_id, "Unknown")
 
         def mark_skipped(reason, asin=None, detail=None):
             nonlocal skipped

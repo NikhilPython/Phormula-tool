@@ -1443,137 +1443,32 @@ def multiCountry():
     metadata = MetaData()
     table_name = f"sku_{user_id}_data_table"
 
-    # ✅ Updated schema includes local_stock + in_transit_units
     user_specific_table = Table(
         table_name, metadata,
         Column('id', Integer, primary_key=True),
         Column('user_id', Integer, nullable=False),
         Column('s_no', Integer, nullable=True),
         Column('product_name', String(255), nullable=True),
-        Column('product_barcode', String(255), nullable=True),
         Column('product_barcode_uk', String(255), nullable=True),
         Column('product_barcode_us', String(255), nullable=True),
         Column('sku_uk', String(255), nullable=True),
         Column('sku_us', String(255), nullable=True),
         Column('sku_canada', String(255), nullable=True),
-        Column('asin', String(255), nullable=True),
         Column('asin_uk', String(255), nullable=True),
         Column('asin_us', String(255), nullable=True),
         Column('price', Float, nullable=True),
         Column('currency', String(255), nullable=True),
-
-        # ✅ NEW
-        Column('local_stock', Integer, nullable=True, server_default=text("0")),
         Column('local_stock_uk', Integer, nullable=True, server_default=text("0")),
         Column('local_stock_us', Integer, nullable=True, server_default=text("0")),
-        Column('in_transit_units', Integer, nullable=True, server_default=text("0")),
-        Column('product_status', String(32), nullable=True, server_default=text("'Active'")),
         Column('product_status_uk', String(32), nullable=True, server_default=text("'Active'")),
         Column('product_status_us', String(32), nullable=True, server_default=text("'Active'")),
         Column('product_status_canada', String(32), nullable=True, server_default=text("'Active'")),
-
-        Column('month', String(20), nullable=True),
-        Column('year', String(20), nullable=True),
 
         # ✅ Tracks the timestamp of the last SKU file upload for every row
         Column('last_upload_sku_file', DateTime(timezone=True), nullable=True),
     )
 
     # ---------- helpers ----------
-    def _month_name_from_num(mi: int):
-        if 1 <= mi <= 12:
-            return calendar.month_name[mi]  # "January"
-        return None
-
-    def _parse_mm_yyyy(val):
-        """
-        Accepts '01/2024', '1/2024', '01-2024', '2024-01'
-        Returns (month_name, year_str) or (None, None)
-        """
-        if val in (None, ''):
-            return None, None
-
-        s = str(val).strip()
-        if not s:
-            return None, None
-
-        s = s.replace('.', '/').replace('-', '/')
-        parts = s.split('/')
-
-        if len(parts) == 2 and parts[0].strip().isdigit() and parts[1].strip().isdigit():
-            a, b = parts[0].strip(), parts[1].strip()
-
-            # MM/YYYY
-            if len(b) == 4:
-                mi = int(a)
-                month_name = _month_name_from_num(mi)
-                if month_name:
-                    return month_name, b
-
-            # YYYY/MM
-            if len(a) == 4:
-                yi = a
-                mi = int(b)
-                month_name = _month_name_from_num(mi)
-                if month_name:
-                    return month_name, yi
-
-        return None, None
-
-    def _extract_month_year(row_dict):
-        """
-        Priority:
-          1) date column (normalized key: 'date') -> pandas Timestamp/datetime
-          2) date string MM/YYYY (csv)
-          3) fallback separate month/year columns
-        """
-        date_val = _pick(row_dict, ['date', 'Date'])
-
-        month = None
-        year = None
-
-        # 1) datetime-like
-        if date_val not in (None, '') and hasattr(date_val, 'month') and hasattr(date_val, 'year'):
-            try:
-                mi = int(date_val.month)
-                yi = int(date_val.year)
-                month = _month_name_from_num(mi)
-                year = str(yi)
-                if month and year:
-                    return month, year
-            except Exception:
-                pass
-
-        # 2) string MM/YYYY
-        m2, y2 = _parse_mm_yyyy(date_val)
-        if m2 and y2:
-            return m2, y2
-
-        # 3) fallback month/year columns
-        month_raw = _pick(row_dict, ['month', 'Month', 'mon', 'mm'])
-        year_raw = _pick(row_dict, ['year', 'Year', 'yyyy', 'yy'])
-
-        # normalize month
-        if month_raw not in (None, ''):
-            s = str(month_raw).strip()
-            if s.isdigit():
-                month = _month_name_from_num(int(s))
-            else:
-                s_lower = s.lower()
-                for i in range(1, 13):
-                    if s_lower in (calendar.month_name[i].lower(), calendar.month_abbr[i].lower()):
-                        month = calendar.month_name[i]
-                        break
-
-        # normalize year
-        if year_raw not in (None, ''):
-            y = str(year_raw).strip()
-            if y.isdigit() and len(y) == 2:
-                y = "20" + y
-            year = y
-
-        return month, year
-
     def _safe_int(val, default=0):
         try:
             if val in (None, ''):
@@ -1587,6 +1482,19 @@ def multiCountry():
             return None
         x = str(x).strip()
         return x if x else None
+
+    def _normalize_product_status(value):
+        if value is None or not str(value).strip():
+            return None
+        normalized = str(value).strip().lower()
+        status_aliases = {
+            'active': 'Active',
+            'discontinued': 'Discontinued',
+            'discontinuous': 'Discontinued',
+        }
+        if normalized not in status_aliases:
+            raise ValueError(f"Invalid product status '{value}'. Use Active or Discontinued.")
+        return status_aliases[normalized]
 
     # Preserve independently edited marketplace statuses across SKU-sheet reuploads.
     prior_status = {}
@@ -1671,27 +1579,27 @@ def multiCountry():
                 asin_us = asin_us or asin
                 product_barcode_us = product_barcode_us or product_barcode
 
-            # ✅ month/year from template "Date"
-            month, year = _extract_month_year(row)
-
             # ✅ NEW: read stock columns (support different headers)
             local_stock = _safe_int(_pick(row, ['local_stock', 'local stock', 'Local Stock']), default=0)
             local_stock_uk_input = _pick(row, ['local_stock_uk', 'uk_local_stock'])
             local_stock_us_input = _pick(row, ['local_stock_us', 'us_local_stock'])
             local_stock_uk = _safe_int(local_stock_uk_input, default=0) if local_stock_uk_input is not None else (local_stock if country == 'UK' else None)
             local_stock_us = _safe_int(local_stock_us_input, default=0) if local_stock_us_input is not None else (local_stock if country == 'US' else None)
-            in_transit_units = _safe_int(_pick(row, ['in_transit_units', 'in transit units', 'In Transit Units']), default=0)
             raw_status = _pick(row, ['product_status', 'status', 'sku_status', 'product status'])
-            product_status = str(raw_status or 'Active').strip().lower()
-            status_aliases = {'active': 'Active', 'discontinued': 'Discontinued'}
-            if product_status not in status_aliases:
-                raise ValueError(f"Invalid product status '{raw_status}'. Use Active or Discontinued.")
-            product_status = status_aliases[product_status]
+            product_status_uk = _normalize_product_status(
+                _pick(row, ['product_status_uk']) or (raw_status if country == 'UK' else None)
+            )
+            product_status_us = _normalize_product_status(
+                _pick(row, ['product_status_us']) or (raw_status if country == 'US' else None)
+            )
+            product_status_canada = _normalize_product_status(
+                _pick(row, ['product_status_canada']) or (raw_status if country == 'Canada' else None)
+            )
 
             # Skip fully empty lines (include stock too)
             if not any([
                 s_no, product_name, product_barcode, asin, sku_uk, sku_us, sku_canada,
-                price_value, currency, month, year, local_stock, in_transit_units, raw_status
+                price_value, currency, local_stock, raw_status
             ]):
                 continue
 
@@ -1699,30 +1607,21 @@ def multiCountry():
                 'user_id': user_id,
                 's_no': s_no,
                 'product_name': _s(product_name),
-                'product_barcode': _s(product_barcode),
                 'product_barcode_uk': _s(product_barcode_uk),
                 'product_barcode_us': _s(product_barcode_us),
                 'sku_uk': _s(sku_uk),
                 'sku_us': _s(sku_us),
                 'sku_canada': _s(sku_canada),
-                'asin': _s(asin),
                 'asin_uk': _s(asin_uk),
                 'asin_us': _s(asin_us),
                 'price': price_value,
                 'currency': _s(currency),
 
-                # ✅ NEW
-                'local_stock': local_stock,
                 'local_stock_uk': local_stock_uk,
                 'local_stock_us': local_stock_us,
-                'in_transit_units': in_transit_units,
-                'product_status': product_status,
-                'product_status_uk': _s(_pick(row, ['product_status_uk'])) or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_uk') or 'Active',
-                'product_status_us': _s(_pick(row, ['product_status_us'])) or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_us') or 'Active',
-                'product_status_canada': _s(_pick(row, ['product_status_canada'])) or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_canada') or 'Active',
-
-                'month': _s(month),
-                'year': _s(year),
+                'product_status_uk': product_status_uk or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_uk') or 'Active',
+                'product_status_us': product_status_us or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_us') or 'Active',
+                'product_status_canada': product_status_canada or prior_status.get(str(product_name or '').strip().casefold(), {}).get('product_status_canada') or 'Active',
 
                 # ✅ Record the timestamp of this SKU file upload
                 'last_upload_sku_file': datetime.now(timezone.utc),
@@ -1731,9 +1630,10 @@ def multiCountry():
         # Consolidate country-specific rows into one SKU master row per product.
         # Explicit marketplace fields override only that marketplace; never copy UK values to US.
         merged = {}
-        marketplace_fields = ('sku_uk','sku_us','sku_canada','asin_uk','asin_us',
-                              'product_barcode_uk','product_barcode_us',
-                              'local_stock_uk','local_stock_us')
+        marketplace_fields = ('sku_uk','sku_us','sku_canada',
+                              'asin_uk','asin_us','product_barcode_uk','product_barcode_us',
+                              'local_stock_uk','local_stock_us',
+                              'product_status_uk','product_status_us','product_status_canada')
         for item in inserts:
             key = str(item.get('product_name') or '').strip().casefold()
             if not key:
@@ -1749,7 +1649,7 @@ def multiCountry():
                         raise ValueError(f'Conflicting {field} values for product {item.get("product_name")}.')
                     current[field] = item[field]
             # Keep original common fields for compatibility; do not let country 2 erase country 1.
-            for field in ('s_no','product_barcode','asin','price','currency','month','year'):
+            for field in ('s_no','price','currency'):
                 if current.get(field) is None and item.get(field) is not None:
                     current[field] = item[field]
         inserts = list(merged.values())
@@ -1838,10 +1738,8 @@ def get_current_sku_sheet():
                 id,
                 s_no,
                 product_name,
-                product_barcode,
                 product_barcode_uk,
                 product_barcode_us,
-                asin,
                 asin_uk,
                 asin_us,
                 sku_uk,
@@ -1849,14 +1747,9 @@ def get_current_sku_sheet():
                 sku_canada,
                 price AS landing_cost,
                 currency,
-                month,
-                year,
-                local_stock,
                 local_stock_uk,
                 local_stock_us,
-                in_transit_units,
                 {", ".join((field if field in _existing_cols else "'Active' AS " + field) for field in ('product_status_uk','product_status_us','product_status_canada'))},
-                {"CASE WHEN LOWER(TRIM(COALESCE(product_status, 'Active'))) IN ('discontinued', 'discontinuous') THEN 'Discontinued' ELSE 'Active' END AS product_status" if 'product_status' in _existing_cols else "'Active' AS product_status"},
                 {"last_upload_sku_file" if 'last_upload_sku_file' in _existing_cols else "NULL AS last_upload_sku_file"}
             FROM {table_name}
             WHERE user_id = :user_id
@@ -1875,40 +1768,9 @@ def get_current_sku_sheet():
 
         df = df.astype(object).where(pd.notnull(df), None)
 
-        month_map = {
-            "january": "01",
-            "february": "02",
-            "march": "03",
-            "april": "04",
-            "may": "05",
-            "june": "06",
-            "july": "07",
-            "august": "08",
-            "september": "09",
-            "october": "10",
-            "november": "11",
-            "december": "12",
-        }
-
-        rows = []
-        for row in df.to_dict(orient="records"):
-            month = str(row.get("month") or "").strip().lower()
-            year = str(row.get("year") or "").strip()
-            month_number = month_map.get(month)
-
-            row["date"] = (
-                f"{month_number}/{year}"
-                if month_number and year
-                else ""
-            )
-
-            row.pop("month", None)
-            row.pop("year", None)
-            rows.append(row)
-
         return jsonify({
             'success': True,
-            'rows': rows
+            'rows': df.to_dict(orient="records")
         }), 200
 
     except Exception as e:
@@ -1947,10 +1809,8 @@ def download_current_sku_sheet():
                 id,
                 s_no,
                 product_name,
-                product_barcode,
                 product_barcode_uk,
                 product_barcode_us,
-                asin,
                 asin_uk,
                 asin_us,
                 sku_uk,
@@ -1958,14 +1818,9 @@ def download_current_sku_sheet():
                 sku_canada,
                 price AS landing_cost,
                 currency,
-                month,
-                year,
-                local_stock,
                 local_stock_uk,
                 local_stock_us,
-                in_transit_units,
-                {", ".join((field if field in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Active' AS " + field) for field in ('product_status_uk','product_status_us','product_status_canada'))},
-                {"CASE WHEN LOWER(TRIM(COALESCE(product_status, 'Active'))) IN ('discontinued', 'discontinuous') THEN 'Discontinued' ELSE 'Active' END AS product_status" if 'product_status' in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Active' AS product_status"}
+                {", ".join((field if field in {c['name'] for c in inspect(engine).get_columns(table_name)} else "'Active' AS " + field) for field in ('product_status_uk','product_status_us','product_status_canada'))}
             FROM {table_name}
             WHERE user_id = :user_id
             ORDER BY s_no NULLS LAST
@@ -1981,40 +1836,11 @@ def download_current_sku_sheet():
         if df.empty:
             return jsonify({'error': 'SKU sheet is empty'}), 404
 
-        month_map = {
-            "january": "01",
-            "february": "02",
-            "march": "03",
-            "april": "04",
-            "may": "05",
-            "june": "06",
-            "july": "07",
-            "august": "08",
-            "september": "09",
-            "october": "10",
-            "november": "11",
-            "december": "12",
-        }
-
-        df["date"] = df.apply(
-            lambda row: (
-                f"{month_map.get(str(row.get('month') or '').strip().lower(), '')}/"
-                f"{str(row.get('year') or '').strip()}"
-            ).strip("/")
-            if row.get("month") and row.get("year")
-            else "",
-            axis=1
-        )
-
-        df.drop(columns=["month", "year"], inplace=True, errors="ignore")
-
         column_order = [
             "s_no",
             "product_name",
-            "product_barcode",
             "product_barcode_uk",
             "product_barcode_us",
-            "asin",
             "asin_uk",
             "asin_us",
             "sku_uk",
@@ -2022,12 +1848,8 @@ def download_current_sku_sheet():
             "sku_canada",
             "landing_cost",
             "currency",
-            "date",
-            "local_stock",
             "local_stock_uk",
             "local_stock_us",
-            "in_transit_units",
-            "product_status",
             "product_status_uk",
             "product_status_us",
             "product_status_canada",
@@ -2037,10 +1859,8 @@ def download_current_sku_sheet():
         df.rename(columns={
             "s_no": "S. No.",
             "product_name": "Product Name",
-            "product_barcode": "Product Barcode",
             "product_barcode_uk": "Product Barcode_UK",
             "product_barcode_us": "Product Barcode_US",
-            "asin": "ASIN",
             "asin_uk": "ASIN_UK",
             "asin_us": "ASIN_US",
             "sku_uk": "SKU_UK",
@@ -2048,12 +1868,8 @@ def download_current_sku_sheet():
             "sku_canada": "SKU_CANADA",
             "landing_cost": "Landing Cost",
             "currency": "Currency",
-            "date": "Date",
-            "local_stock": "Local Stock",
             "local_stock_uk": "Local Stock_UK",
             "local_stock_us": "Local Stock_US",
-            "in_transit_units": "In Transit Units",
-            "product_status": "Product Status",
             "product_status_uk": "Product Status_UK",
             "product_status_us": "Product Status_US",
             "product_status_canada": "Product Status_CANADA",

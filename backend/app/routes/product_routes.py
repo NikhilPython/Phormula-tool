@@ -2940,18 +2940,6 @@ def skup():
         with user_engine.begin() as conn:
             existing_columns = {col["name"] for col in inspect(conn).get_columns(table_name)}
 
-            if "local_stock" not in existing_columns:
-                conn.execute(text(f'''
-                    ALTER TABLE "{table_name}"
-                    ADD COLUMN local_stock INTEGER DEFAULT 0;
-                '''))
-
-            if "in_transit_units" not in existing_columns:
-                conn.execute(text(f'''
-                    ALTER TABLE "{table_name}"
-                    ADD COLUMN in_transit_units INTEGER DEFAULT 0;
-                '''))
-
             if "last_upload_sku_file" not in existing_columns:
                 conn.execute(text(f'''
                     ALTER TABLE "{table_name}"
@@ -3031,22 +3019,6 @@ def update_prices():
             if "price" in updates and updates["price"] is not None:
                 try:
                     update_data["price"] = float(updates["price"])
-                except Exception:
-                    failed_products.append(product_name)
-                    continue
-
-            # local_stock (optional)
-            if "local_stock" in updates and updates["local_stock"] is not None:
-                try:
-                    update_data["local_stock"] = int(updates["local_stock"])
-                except Exception:
-                    failed_products.append(product_name)
-                    continue
-
-            # in_transit_units (optional)
-            if "in_transit_units" in updates and updates["in_transit_units"] is not None:
-                try:
-                    update_data["in_transit_units"] = int(updates["in_transit_units"])
                 except Exception:
                     failed_products.append(product_name)
                     continue
@@ -5095,13 +5067,6 @@ def upload_warehouse_data():
                     '''))
                     existing_columns.add(stock_col)
 
-            if 'local_stock' not in existing_columns:
-                conn.execute(text(f'''
-                    ALTER TABLE "{sku_table_name}"
-                    ADD COLUMN local_stock INTEGER DEFAULT 0
-                '''))
-                existing_columns.add('local_stock')
-
             for _, wrow in warehouse_df.iterrows():
                 pname = str(wrow.get('product_name') or '').strip()
                 sku_uk_val = str(wrow.get('sku_uk') or '').strip()
@@ -5127,17 +5092,6 @@ def upload_warehouse_data():
 
                 if not set_clauses:
                     continue
-
-                # Keep generic local_stock in sync with page country or active stock
-                if 'local_stock' in existing_columns:
-                    if country == 'uk' and has_uk:
-                        set_clauses.append('local_stock = :stock_uk')
-                    elif country == 'us' and has_us:
-                        set_clauses.append('local_stock = :stock_us')
-                    elif has_uk:
-                        set_clauses.append('local_stock = :stock_uk')
-                    elif has_us:
-                        set_clauses.append('local_stock = :stock_us')
 
                 set_sql = ', '.join(set_clauses)
                 row_updated = False

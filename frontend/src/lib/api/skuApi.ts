@@ -13,21 +13,24 @@ export type UploadSkuMultiCountryRes = {
 };
 
 export type SkuSheetRow = {
-   id?: number | string;
-   s_no?: number | null;
-   last_upload_sku_file?: string | null;
+  id?: number | string;
+  s_no?: number | null;
+  last_upload_sku_file?: string | null;
   product_name?: string | null;
-  product_barcode?: string | null;
-  asin?: string | null;
+  product_barcode_uk?: string | null;
+  product_barcode_us?: string | null;
+  asin_uk?: string | null;
+  asin_us?: string | null;
   sku_uk?: string | null;
   sku_us?: string | null;
   sku_canada?: string | null;
   landing_cost?: number | null;
   currency?: string | null;
-  date?: string | null;
-  local_stock?: number | null;
-  in_transit_units?: number | null;
-  product_status?: "Active" | "Discontinued" | null;
+  local_stock_uk?: number | null;
+  local_stock_us?: number | null;
+  product_status_uk?: "Active" | "Discontinued" | null;
+  product_status_us?: "Active" | "Discontinued" | null;
+  product_status_canada?: "Active" | "Discontinued" | null;
 };
 
 export type CurrentSkuSheetRes = {
