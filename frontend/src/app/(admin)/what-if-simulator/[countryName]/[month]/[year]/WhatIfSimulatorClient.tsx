@@ -14,7 +14,7 @@ type CostKey =
   | "otherFees"
   | "shipping";
 type CostInputs = Record<CostKey, number>;
-type ScenarioInput = { units: number; asp: number; ads: number };
+type ScenarioInput = { units: number; asp: number };
 type SliderDirection = "up" | "down" | null;
 type AiScenarioInsight = { signature: string; text: string };
 type InventoryPosition = { onHand: number; inbound: number; monthLabel: string; partial: boolean };
@@ -28,6 +28,8 @@ type HistoricalSku = {
   costAmounts: CostInputs;
   totalAds: number;
   hasTotalAds: boolean;
+  netTaxes: number;
+  netCredits: number;
 };
 type HistoricalData = {
   rows: HistoricalSku[];
@@ -35,9 +37,9 @@ type HistoricalData = {
   units: number;
   sales: number;
   totalAds: number;
+  netTaxes: number;
+  netCredits: number;
   costAmounts: CostInputs;
-  isUsFormula: boolean;
-  isUkFormula: boolean;
   sourceAvailable: boolean;
 };
 
@@ -151,7 +153,6 @@ function formatCurrency(value: number, currency: string, precision = 0) {
     return `${currency} ${Number(value || 0).toFixed(precision)}`;
   }
 }
-const formatRoas = (value: number | null) => value !== null && Number.isFinite(value) ? `${value.toFixed(2)}×` : "—";
 const formatNumber = (value: number) => Math.round(Number(value) || 0).toLocaleString();
 const emptyCosts = (): CostInputs => ({
   cogs: 0,
@@ -248,6 +249,8 @@ function normalizeHistory(payload: any, monthLabel: string, country: string): Hi
     const asp = absolute(aspRead.found ? aspRead.value : (units > 0 ? netSales / units : 0));
     const { amounts } = costAmountsFromRow(row, isUkFormula, isUsFormula);
     const totalAds = readField(row, ["total_ads"]);
+    const netTaxes = readField(row, ["net_taxes", "tax"]);
+    const netCredits = readField(row, ["net_credits", "credits"]);
 
     return {
       key: sku || `${normalizeKey(name)}-${index}`,
@@ -259,6 +262,8 @@ function normalizeHistory(payload: any, monthLabel: string, country: string): Hi
       costAmounts: amounts,
       totalAds: totalAds.found ? absolute(totalAds.value) : 0,
       hasTotalAds: totalAds.found,
+      netTaxes: absolute(netTaxes.value),
+      netCredits: netCredits.value,
     } satisfies HistoricalSku;
   }).filter((row) => row.sku !== "—" || row.name);
 
@@ -273,6 +278,14 @@ function normalizeHistory(payload: any, monthLabel: string, country: string): Hi
   const totalAds = rowAds.found
     ? absolute(rowAds.value)
     : rows.filter((row) => row.hasTotalAds).reduce((sum, row) => sum + row.totalAds, 0);
+  const totalNetTaxesRead = readField(totalRow, ["net_taxes", "tax"]);
+  const totalNetCreditsRead = readField(totalRow, ["net_credits", "credits"]);
+  const netTaxes = totalNetTaxesRead.found
+    ? absolute(totalNetTaxesRead.value)
+    : rows.reduce((sum, row) => sum + row.netTaxes, 0);
+  const netCredits = totalNetCreditsRead.found
+    ? totalNetCreditsRead.value
+    : rows.reduce((sum, row) => sum + row.netCredits, 0);
   const costAmounts = emptyCosts();
   (Object.keys(costAmounts) as CostKey[]).forEach((key) => {
     const productTotal = rows.reduce((sum, row) => sum + row.costAmounts[key], 0);
@@ -280,15 +293,27 @@ function normalizeHistory(payload: any, monthLabel: string, country: string): Hi
     const totalFound = totalRecord.found[key];
     costAmounts[key] = totalFound && totalValue !== 0 ? totalValue : productTotal || (totalFound ? totalValue : 0);
   });
-  const hasData = rows.length > 0 || sales > 0 || totalAds > 0 || Object.values(costAmounts).some((value) => value !== 0);
-  return { rows, monthLabel, units, sales, totalAds, costAmounts, isUsFormula, isUkFormula, sourceAvailable: hasData };
+  const hasData = rows.length > 0 || sales > 0 || totalAds > 0 || netTaxes !== 0 || netCredits !== 0 || Object.values(costAmounts).some((value) => value !== 0);
+  return { rows, monthLabel, units, sales, totalAds, netTaxes, netCredits, costAmounts, sourceAvailable: hasData };
 }
 
-function MetricCard({ label, value, hint, accent = "border-slate-200", highlighted = false }: { label: string; value: string; hint?: string; accent?: string; highlighted?: boolean }) {
+function MetricCard({
+  label,
+  value,
+  hint,
+  accent = "border-slate-200",
+  highlighted = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  accent?: string;
+  highlighted?: boolean;
+}) {
   return (
-    <div className={`rounded-xl border border-t-4 p-4 shadow-sm ${accent} ${highlighted ? "bg-[#f0f7f4]" : "bg-white"}`}>
+    <div className={`rounded-xl border border-t-4 p-4 shadow-sm ${accent} ${highlighted ? "bg-[#F7F7F7]" : "bg-white"}`}>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-bold text-slate-900">{value}</p>
+      <div className="mt-2 text-xl font-bold text-slate-900">{value}</div>
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
     </div>
   );
@@ -302,6 +327,7 @@ function RangeSlider({
   step,
   format,
   currencyPrefix,
+  accent = "border-[#FDD36F]",
   onChange,
 }: {
   label: string;
@@ -311,6 +337,7 @@ function RangeSlider({
   step: number;
   format: (value: number) => string;
   currencyPrefix?: string;
+  accent?: string;
   onChange: (value: number) => void;
 }) {
   const [draftValue, setDraftValue] = useState(String(value));
@@ -332,10 +359,33 @@ function RangeSlider({
     }
   };
 
+  const percentage = sliderMax > 0 ? (Math.min(value, sliderMax) / sliderMax) * 100 : 0;
+
   return (
-    <div className="block rounded-2xl border border-slate-200 bg-white p-4">
+    <div className={`block rounded-xl border border-t-4 bg-white p-4 shadow-sm ${accent}`}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-slate-700">{label}</span>
+        <span className="text-sm font-medium text-charcoal-500">{label}</span>
+      </div>
+      <div className="relative mt-4 flex h-5 items-center">
+        <input
+          type="range"
+          min={0}
+          max={sliderMax}
+          step={step}
+          value={Math.min(value, sliderMax)}
+          onChange={(event) => onChange(Number(event.target.value))}
+          aria-label={`${label} slider`}
+          style={{ "--slider-progress": `${percentage}%` } as React.CSSProperties}
+          className="thin-range-slider"
+        />
+      </div>
+      <span className="mt-1 flex justify-between gap-2 text-[11px] text-slate-400">
+        <span>0</span>
+        <span>Previous month: {format(baseline)}</span>
+        <span>{format(sliderMax)}</span>
+      </span>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="text-xs text-charcoal-400">Scenario value</span>
         <label className="flex w-36 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
           {currencyPrefix && <span className="text-xs text-slate-500">{currencyPrefix}</span>}
           <input
@@ -359,23 +409,6 @@ function RangeSlider({
           />
         </label>
       </div>
-      <div className="relative mt-5 h-6">
-        <input
-          type="range"
-          min={0}
-          max={sliderMax}
-          step={step}
-          value={Math.min(value, sliderMax)}
-          onChange={(event) => onChange(Number(event.target.value))}
-          aria-label={`${label} slider`}
-          className="absolute inset-0 z-10 block h-6 w-full cursor-pointer accent-[#5EA68E]"
-        />
-      </div>
-      <span className="mt-1 flex justify-between gap-2 text-[11px] text-slate-400">
-        <span>0</span>
-        <span>Previous month: {format(baseline)}</span>
-        <span>{format(sliderMax)}</span>
-      </span>
     </div>
   );
 }
@@ -403,13 +436,13 @@ export default function WhatIfSimulatorClient() {
   const [inventoryPosition, setInventoryPosition] = useState<InventoryPosition | null>(null);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState("");
-  const [overallInput, setOverallInput] = useState<ScenarioInput>({ units: 0, asp: 0, ads: 0 });
-  const [changedInputs, setChangedInputs] = useState<Record<keyof ScenarioInput, boolean>>({ units: false, asp: false, ads: false });
-  const [inputDirections, setInputDirections] = useState<Record<keyof ScenarioInput, SliderDirection>>({ units: null, asp: null, ads: null });
-  const [targetRoasGoal, setTargetRoasGoal] = useState("");
-  const [targetRoasChanged, setTargetRoasChanged] = useState(false);
+  const [overallInput, setOverallInput] = useState<ScenarioInput>({ units: 0, asp: 0 });
+  const [changedInputs, setChangedInputs] = useState<Record<keyof ScenarioInput, boolean>>({ units: false, asp: false });
+  const [inputDirections, setInputDirections] = useState<Record<keyof ScenarioInput, SliderDirection>>({ units: null, asp: null });
   const [targetTacosGoal, setTargetTacosGoal] = useState("");
   const [targetTacosChanged, setTargetTacosChanged] = useState(false);
+  const [additionalExpense, setAdditionalExpense] = useState(0);
+  const [additionalExpenseChanged, setAdditionalExpenseChanged] = useState(false);
   const [overallCosts, setOverallCosts] = useState<CostInputs>(emptyCosts());
   const [aiInsight, setAiInsight] = useState<AiScenarioInsight | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -425,12 +458,12 @@ export default function WhatIfSimulatorClient() {
       setInventoryPosition(null);
       setInventoryLoading(false);
       setInventoryError("");
-      setChangedInputs({ units: false, asp: false, ads: false });
-      setInputDirections({ units: null, asp: null, ads: null });
-      setTargetRoasGoal("");
-      setTargetRoasChanged(false);
+      setChangedInputs({ units: false, asp: false });
+      setInputDirections({ units: null, asp: null });
       setTargetTacosGoal("");
       setTargetTacosChanged(false);
+      setAdditionalExpense(0);
+      setAdditionalExpenseChanged(false);
       setError("Select a valid month and year to load the previous month’s data.");
       return;
     }
@@ -445,10 +478,12 @@ export default function WhatIfSimulatorClient() {
       setInventoryPosition(null);
       setInventoryLoading(true);
       setInventoryError("");
-      setChangedInputs({ units: false, asp: false, ads: false });
-      setInputDirections({ units: null, asp: null, ads: null });
-      setTargetRoasGoal("");
-      setTargetRoasChanged(false);
+      setChangedInputs({ units: false, asp: false });
+      setInputDirections({ units: null, asp: null });
+      setTargetTacosGoal("");
+      setTargetTacosChanged(false);
+      setAdditionalExpense(0);
+      setAdditionalExpenseChanged(false);
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
         if (!token) throw new Error("Sign in to load previous-month data.");
@@ -475,26 +510,8 @@ export default function WhatIfSimulatorClient() {
         setOverallInput({
           units: Math.round(normalized.units),
           asp: Number((normalized.units > 0 ? normalized.sales / normalized.units : 0).toFixed(2)),
-          ads: normalized.totalAds,
         });
         setOverallCosts({ ...normalized.costAmounts });
-        const baselineCm1 = normalized.sales
-          - normalized.costAmounts.cogs
-          - normalized.costAmounts.amazonFees
-          + normalized.costAmounts.otherTransactionFees;
-        const baselineCm2 = baselineCm1
-          - absolute(normalized.totalAds)
-          + normalized.costAmounts.inventoryCharges
-          - normalized.costAmounts.shortTermStorage
-          - normalized.costAmounts.longTermStorage
-          - absolute(normalized.costAmounts.otherFees)
-          - (normalized.isUsFormula ? normalized.costAmounts.shipping : 0);
-        const baselineContributionRate = normalized.sales > 0
-          ? (baselineCm2 + absolute(normalized.totalAds)) / normalized.sales
-          : 0;
-        const initialTargetRoas = baselineContributionRate > 0 ? 1 / baselineContributionRate : null;
-        setTargetRoasGoal(initialTargetRoas !== null && Number.isFinite(initialTargetRoas) ? initialTargetRoas.toFixed(2) : "");
-
         const initialTargetTacos =
           normalized.sales > 0
             ? (absolute(normalized.totalAds) / normalized.sales) * 100
@@ -582,17 +599,16 @@ export default function WhatIfSimulatorClient() {
     return () => controller.abort();
   }, [country, month, year, previousMonthName, previousYear, profileHomeCurrency]);
 
-  const isUkFormula = ["uk", "gb", "united kingdom", "great britain"].includes(country);
-  const isUsFormula = ["us", "usa", "united states", "global"].includes(country);
-  const calculateProfit = (sales: number, ads: number, costs: CostInputs) => {
-    const cm1 = sales - costs.cogs - costs.amazonFees + costs.otherTransactionFees;
-    const cm2 = cm1
-      - absolute(ads)
-      + costs.inventoryCharges
-      - costs.shortTermStorage
-      - costs.longTermStorage
-      - absolute(costs.otherFees)
-      - (isUsFormula ? costs.shipping : 0);
+  const calculateProfit = (
+    sales: number,
+    ads: number,
+    costs: CostInputs,
+    netTaxes = 0,
+    netCredits = 0,
+    additional = 0,
+  ) => {
+    const cm1 = sales - costs.amazonFees - absolute(netTaxes) - netCredits;
+    const cm2 = cm1 - absolute(ads) - absolute(additional);
     return { cm1, cm2 };
   };
 
@@ -604,7 +620,9 @@ export default function WhatIfSimulatorClient() {
       sales: monthData.sales,
       asp: monthData.units > 0 ? monthData.sales / monthData.units : 0,
       ads: monthData.totalAds,
-      cm2: calculateProfit(monthData.sales, monthData.totalAds, monthData.costAmounts).cm2,
+      netTaxes: monthData.netTaxes,
+      netCredits: monthData.netCredits,
+      cm2: calculateProfit(monthData.sales, monthData.totalAds, monthData.costAmounts, monthData.netTaxes, monthData.netCredits).cm2,
     }));
   const unitRecords = historicalBenchmarkRows;
   const adsRecords = historicalBenchmarkRows;
@@ -621,7 +639,13 @@ export default function WhatIfSimulatorClient() {
   const baselineAsp = history && history.units > 0 ? history.sales / history.units : overallInput.asp;
   const unitsSliderMax = Math.max(100, Math.ceil(Math.max(history?.units || overallInput.units || 1, highestUnitsMonth?.units || 0) * 3));
   const aspSliderMax = Math.max(1, baselineAsp * 3, (highestAspMonth?.asp || 0) * 3);
-  const adsSliderMax = Math.max(100, Math.ceil(Math.max(history?.totalAds || overallInput.ads || 1, highestAdsMonth?.ads || 0) * 3));
+  const overallSales = overallInput.units * overallInput.asp;
+  const parsedTargetTacosGoal = targetTacosGoal.trim() === "" ? null : numberValue(targetTacosGoal);
+  const targetTacosGoalValue = parsedTargetTacosGoal !== null && parsedTargetTacosGoal >= 0
+    ? parsedTargetTacosGoal
+    : null;
+  const adsBudget = targetTacosGoalValue !== null ? overallSales * targetTacosGoalValue / 100 : 0;
+  const baselineAds = history?.totalAds ?? 0;
   const unitDirection = inputDirections.units ?? "up";
   const unitRecordMonth = unitDirection === "down" ? lowestUnitsMonth : highestUnitsMonth;
   const unitCm2Month = unitDirection === "down" ? lowestCm2Month : highestCm2Month;
@@ -649,29 +673,25 @@ export default function WhatIfSimulatorClient() {
   const aspHistoryInsight = aspRecordMonth
     ? `CM2 was ${aspDirection === "down" ? "lowest" : "highest"} at ${formatCurrency(aspRecordMonth.cm2, currency)} in ${aspRecordMonth.month}, when ASP was ${formatCurrency(aspRecordMonth.asp, currency, 2)}. ${aspMatchesCm2Month ? "Your scenario matches that ASP." : overallInput.asp > aspRecordMonth.asp ? "Your scenario ASP is above that level." : "Your scenario ASP is below that level."}`
     : benchmarkError ? "Past sales data could not be loaded to compare ASP and CM2." : "No past sales data was found to compare ASP and CM2.";
-  const adsDirection = inputDirections.ads ?? "up";
+  const adsDirection = adsBudget >= baselineAds ? "up" : "down";
   const adsRecordMonth = adsDirection === "down" ? lowestAdsMonth : highestAdsMonth;
   const adsHistoryInsight = adsRecordMonth
-    ? `Your ${adsDirection === "down" ? "lowest" : "highest"} monthly ads spend was ${formatCurrency(adsRecordMonth.ads, currency)} in ${adsRecordMonth.month}. ${overallInput.ads > adsRecordMonth.ads ? "Your planned ads are above that level." : overallInput.ads === adsRecordMonth.ads ? "Your planned ads match that level." : "Your planned ads are below that level."}`
+    ? `Your ${adsDirection === "down" ? "lowest" : "highest"} monthly ads spend was ${formatCurrency(adsRecordMonth.ads, currency)} in ${adsRecordMonth.month}. ${adsBudget > adsRecordMonth.ads ? "This budget is above that level." : adsBudget === adsRecordMonth.ads ? "This budget matches that level." : "This budget is below that level."}`
     : benchmarkError ? "Past ads data could not be loaded for comparison." : "No past ads data was found for comparison.";
-  const overallSales = overallInput.units * overallInput.asp;
-  // Blended ROAS = Total net sales / Total ads spend
-  const blendedRoas =
-    overallInput.ads > 0
-      ? overallSales / overallInput.ads
-      : null;
-
-  // TACoS = Total ads spend / Total net sales × 100
-  const currentTacos =
-    overallSales > 0
-      ? (absolute(overallInput.ads) / overallSales) * 100
-      : null;
-
   const costScale = history && history.units > 0 ? overallInput.units / history.units : 1;
   const overallCostTotals = Object.fromEntries(
     (Object.keys(overallCosts) as CostKey[]).map((key) => [key, overallCosts[key] * costScale]),
   ) as CostInputs;
-  const overallProfit = calculateProfit(overallSales, overallInput.ads, overallCostTotals);
+  const projectedNetTaxes = (history?.netTaxes ?? 0) * costScale;
+  const projectedNetCredits = (history?.netCredits ?? 0) * costScale;
+  const overallProfit = calculateProfit(
+    overallSales,
+    adsBudget,
+    overallCostTotals,
+    projectedNetTaxes,
+    projectedNetCredits,
+    additionalExpense,
+  );
   const result = {
     units: overallInput.units,
     sales: overallSales,
@@ -680,78 +700,36 @@ export default function WhatIfSimulatorClient() {
   };
   const margin = result.sales > 0 ? (result.cm2 / result.sales) * 100 : 0;
   const baselineProfit = history
-    ? calculateProfit(history.sales, history.totalAds, history.costAmounts)
+    ? calculateProfit(history.sales, history.totalAds, history.costAmounts, history.netTaxes, history.netCredits)
     : { cm1: 0, cm2: 0 };
+  const cm1Margin = result.sales > 0 ? (result.cm1 / result.sales) * 100 : 0;
   const baselineMargin = history && history.sales > 0 ? (baselineProfit.cm2 / history.sales) * 100 : 0;
-  const baselineAds = history?.totalAds ?? 0;
-  const preAdsContribution = result.cm2 + absolute(overallInput.ads);
-  const preAdsContributionRate = result.sales > 0 ? preAdsContribution / result.sales : 0;
-  const rawBreakEvenRoas = preAdsContributionRate > 0 ? 1 / preAdsContributionRate : null;
-  const breakEvenRoas = rawBreakEvenRoas !== null && Number.isFinite(rawBreakEvenRoas) ? rawBreakEvenRoas : null;
-  const rawAdSalesAtBreakEvenRoas = breakEvenRoas !== null ? breakEvenRoas * overallInput.ads : null;
-  const adSalesAtBreakEvenRoas = rawAdSalesAtBreakEvenRoas !== null && Number.isFinite(rawAdSalesAtBreakEvenRoas)
-    ? rawAdSalesAtBreakEvenRoas
-    : null;
-  const baselinePreAdsContribution = baselineProfit.cm2 + absolute(baselineAds);
-  const baselinePreAdsContributionRate = history && history.sales > 0 ? baselinePreAdsContribution / history.sales : 0;
-  const rawBaselineBreakEvenRoas = baselinePreAdsContributionRate > 0 ? 1 / baselinePreAdsContributionRate : null;
-  const baselineBreakEvenRoas = rawBaselineBreakEvenRoas !== null && Number.isFinite(rawBaselineBreakEvenRoas)
-    ? rawBaselineBreakEvenRoas
-    : null;
-  const rawBaselineAdSalesAtBreakEvenRoas = baselineBreakEvenRoas !== null ? baselineBreakEvenRoas * baselineAds : null;
-  const baselineAdSalesAtBreakEvenRoas = rawBaselineAdSalesAtBreakEvenRoas !== null && Number.isFinite(rawBaselineAdSalesAtBreakEvenRoas)
-    ? rawBaselineAdSalesAtBreakEvenRoas
-    : null;
-  const parsedTargetRoasGoal = targetRoasGoal.trim() === "" ? null : numberValue(targetRoasGoal);
-  const targetRoasGoalValue = parsedTargetRoasGoal !== null && parsedTargetRoasGoal >= 0 ? parsedTargetRoasGoal : null;
-  const parsedTargetTacosGoal = targetTacosGoal.trim() === ""
-    ? null
-    : numberValue(targetTacosGoal);
-
-  const targetTacosGoalValue =
-    parsedTargetTacosGoal !== null && parsedTargetTacosGoal >= 0
-      ? parsedTargetTacosGoal
-      : null;
-  const rawAdSalesAtRoasGoal = targetRoasGoalValue !== null ? targetRoasGoalValue * overallInput.ads : null;
-  const adSalesAtRoasGoal = rawAdSalesAtRoasGoal !== null && Number.isFinite(rawAdSalesAtRoasGoal)
-    ? rawAdSalesAtRoasGoal
-    : null;
-  const cm2Change = result.cm2 - baselineProfit.cm2;
-  const marginChange = margin - baselineMargin;
-  const comparisonMax = Math.max(Math.abs(result.cm2), Math.abs(baselineProfit.cm2), 1);
   const scenarioInputsChanged =
     Object.values(changedInputs).some(Boolean) ||
-    targetRoasChanged ||
-    targetTacosChanged;
+    targetTacosChanged ||
+    additionalExpenseChanged;
   const scenarioInsightsLoading = scenarioInputsChanged && (benchmarkLoading || (changedInputs.units && inventoryLoading));
   const signedCurrency = (value: number) => `${value >= 0 ? "+" : "−"}${formatCurrency(Math.abs(value), currency)}`;
   const aspChangeImpact = overallInput.units * (overallInput.asp - baselineAsp);
-  const adsChangeImpact = -(overallInput.ads - baselineAds);
-  const aspImpactInsight = `At ${formatNumber(overallInput.units)} planned units, ASP ${formatCurrency(baselineAsp, currency, 2)} → ${formatCurrency(overallInput.asp, currency, 2)} changes projected net sales and CM1/CM2 by ${signedCurrency(aspChangeImpact)}, holding units and ads constant.`;
-  const adsImpactInsight = `Ads ${formatCurrency(baselineAds, currency)} → ${formatCurrency(overallInput.ads, currency)} changes projected CM2 by ${signedCurrency(adsChangeImpact)}. Net sales and CM1 stay the same when only ads changes.`;
-  const breakEvenRoasInsight = breakEvenRoas !== null && adSalesAtBreakEvenRoas !== null
-    ? `Estimated break-even ROAS is ${formatRoas(breakEvenRoas)}. At this ads plan, about ${formatCurrency(adSalesAtBreakEvenRoas, currency)} in ad-attributed sales would cover spend at the projected contribution rate.`
-    : "A positive break-even target ROAS cannot be estimated because projected contribution before ads is not positive.";
-  const targetRoasGoalInsight = targetRoasGoalValue !== null
-    ? `Your target ROAS is ${formatRoas(targetRoasGoalValue)}${breakEvenRoas !== null ? ` versus estimated break-even at ${formatRoas(breakEvenRoas)}` : ""}${adSalesAtRoasGoal !== null ? `, equivalent to about ${formatCurrency(adSalesAtRoasGoal, currency)} in ad-attributed sales at this ads budget` : ""}. This goal does not change projected CM2 by itself.`
-    : "Enter a target ROAS to set an ad-attributed sales goal; the goal alone does not change projected CM2.";
-
-  const targetTacosGoalInsight =
-    targetTacosGoalValue !== null
-      ? `Your Target TACoS is ${targetTacosGoalValue.toFixed(2)}%. Current projected TACoS is ${currentTacos !== null ? `${currentTacos.toFixed(2)}%` : "unavailable"
-      }. This is an efficiency goal and does not independently change projected CM2.`
-      : "Enter a Target TACoS to set your advertising spend as a percentage of total net sales.";
+  const aspAdsBudgetImpact = aspChangeImpact * (targetTacosGoalValue ?? 0) / 100;
+  const aspCm2Impact = aspChangeImpact - aspAdsBudgetImpact;
+  const aspImpactInsight = `At ${formatNumber(overallInput.units)} units, ASP ${formatCurrency(baselineAsp, currency, 2)} → ${formatCurrency(overallInput.asp, currency, 2)} changes projected sales and CM1 by ${signedCurrency(aspChangeImpact)}. The ads budget changes by ${signedCurrency(aspAdsBudgetImpact)}, so CM2 changes by ${signedCurrency(aspCm2Impact)}.`;
+  const adsChangeImpact = -(adsBudget - baselineAds);
+  const adsImpactInsight = `Target TACoS sets ads budget to ${formatCurrency(adsBudget, currency)}. Compared with previous-month ads of ${formatCurrency(baselineAds, currency)}, this changes CM2 by ${signedCurrency(adsChangeImpact)}.`;
+  const targetTacosGoalInsight = targetTacosGoalValue !== null
+    ? `Target TACoS ${targetTacosGoalValue.toFixed(2)}% calculates an ads budget of ${formatCurrency(adsBudget, currency)} from projected sales.`
+    : "Enter a Target TACoS to calculate the ads budget from projected sales.";
+  const additionalExpenseInsight = `Additional expense of ${formatCurrency(additionalExpense, currency)} is deducted from CM2.`;
 
   const scenarioInsightPoints = [
     changedInputs.units ? unitsHistoryInsight : null,
     changedInputs.units ? inventoryInsight || null : null,
     changedInputs.asp ? aspHistoryInsight : null,
     changedInputs.asp ? aspImpactInsight : null,
-    changedInputs.ads ? adsHistoryInsight : null,
-    changedInputs.ads ? adsImpactInsight : null,
-    scenarioInputsChanged ? breakEvenRoasInsight : null,
-    targetRoasChanged ? targetRoasGoalInsight : null,
+    (changedInputs.units || changedInputs.asp || targetTacosChanged) ? adsHistoryInsight : null,
+    (changedInputs.units || changedInputs.asp || targetTacosChanged) ? adsImpactInsight : null,
     targetTacosChanged ? targetTacosGoalInsight : null,
+    additionalExpenseChanged ? additionalExpenseInsight : null,
   ].filter((point): point is string => Boolean(point));
   const scenarioSignature = JSON.stringify({
     country,
@@ -759,8 +737,8 @@ export default function WhatIfSimulatorClient() {
     year,
     currency,
     inputs: overallInput,
-    targetRoasGoal: targetRoasGoalValue,
     targetTacosGoal: targetTacosGoalValue,
+    additionalExpense,
     costs: overallCosts,
     history: history
       ? {
@@ -768,6 +746,8 @@ export default function WhatIfSimulatorClient() {
         units: history.units,
         sales: history.sales,
         totalAds: history.totalAds,
+        netTaxes: history.netTaxes,
+        netCredits: history.netCredits,
         costAmounts: history.costAmounts,
       }
       : null,
@@ -812,59 +792,32 @@ export default function WhatIfSimulatorClient() {
             cm1: baselineProfit.cm1,
             cm2: baselineProfit.cm2,
             cm2_margin: baselineMargin,
-            estimated_break_even_roas: baselineBreakEvenRoas,
-            ad_sales_at_break_even_roas: baselineAdSalesAtBreakEvenRoas,
-            target_roas_goal: null,
-            ad_sales_at_target_roas_goal: null,
+            target_tacos_goal: history && history.sales > 0 ? (history.totalAds / history.sales) * 100 : null,
           },
           scenario: {
             month: "Current scenario",
             units: result.units,
             asp: overallInput.asp,
-            ads: overallInput.ads,
+            ads: adsBudget,
             net_sales: result.sales,
             cm1: result.cm1,
             cm2: result.cm2,
             cm2_margin: margin,
-            estimated_break_even_roas: breakEvenRoas,
-            ad_sales_at_break_even_roas: adSalesAtBreakEvenRoas,
-            target_roas_goal: targetRoasGoalValue,
-            ad_sales_at_target_roas_goal: adSalesAtRoasGoal,
+            target_tacos_goal: targetTacosGoalValue,
+            additional_expense: additionalExpense,
           },
           internal_cost_context: {
             baseline: {
-              cogs: history?.costAmounts.cogs ?? 0,
               amazon_fees: history?.costAmounts.amazonFees ?? 0,
-              other_transaction_fees: history?.costAmounts.otherTransactionFees ?? 0,
-              inventory_charges_and_reimbursement: history?.costAmounts.inventoryCharges ?? 0,
-              short_term_storage_fees: history?.costAmounts.shortTermStorage ?? 0,
-              long_term_storage_fees: history?.costAmounts.longTermStorage ?? 0,
-              other_fees: history?.costAmounts.otherFees ?? 0,
-              shipping_charges: isUsFormula ? history?.costAmounts.shipping ?? 0 : 0,
-              tacos:
-                history && history.sales > 0
-                  ? (history.totalAds / history.sales) * 100
-                  : null,
-
-              blended_roas:
-                history && history.totalAds > 0
-                  ? history.sales / history.totalAds
-                  : null,
-
-              target_tacos_goal: null,
+              net_taxes: history?.netTaxes ?? 0,
+              net_credits: history?.netCredits ?? 0,
+              additional_expense: 0,
             },
             scenario: {
-              cogs: overallCostTotals.cogs,
               amazon_fees: overallCostTotals.amazonFees,
-              other_transaction_fees: overallCostTotals.otherTransactionFees,
-              inventory_charges_and_reimbursement: overallCostTotals.inventoryCharges,
-              short_term_storage_fees: overallCostTotals.shortTermStorage,
-              long_term_storage_fees: overallCostTotals.longTermStorage,
-              other_fees: overallCostTotals.otherFees,
-              shipping_charges: isUsFormula ? overallCostTotals.shipping : 0,
-              tacos: currentTacos,
-              blended_roas: blendedRoas,
-              target_tacos_goal: targetTacosGoalValue,
+              net_taxes: projectedNetTaxes,
+              net_credits: projectedNetCredits,
+              additional_expense: additionalExpense,
             },
           },
         }),
@@ -883,18 +836,18 @@ export default function WhatIfSimulatorClient() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-5 px-4 pb-10 pt-6 lg:px-7">
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="bg-gradient-to-r from-[#eef8f3] via-white to-[#f4f8f6] px-5 py-6 md:px-7">
+    <div className="relative w-full space-y-3 pb-10">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-[#F7F7F7] px-4 py-4 md:px-6">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#4b8c75]">Scenario planning</p>
-              <h1 className="mt-2 text-2xl font-bold text-slate-900 md:text-3xl">What-if Simulator</h1>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">Set planned units, ASP and ads. Previous-month costs drive CM1 and CM2.</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-green-500">Scenario planning</p>
+              <h1 className="mt-2 text-2xl font-bold text-charcoal-500 md:text-3xl">What-if Simulator</h1>
+              <p className="mt-2 max-w-3xl text-sm text-charcoal-500">Set units, ASP, Target TACoS and any additional expense.</p>
             </div>
-            <div className="rounded-xl border border-[#5EA68E]/25 bg-white/80 px-4 py-3 text-sm">
-              <span className="text-slate-500">Historical baseline</span>
-              <p className="mt-0.5 font-semibold text-slate-800">{history?.monthLabel ?? (previous ? `${previous.month} ${previous.year}` : "Previous month")} · {countryName.toUpperCase()}</p>
+            <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
+              <span className="text-charcoal-400">Historical baseline</span>
+              <p className="mt-0.5 font-semibold text-charcoal-500">{history?.monthLabel ?? (previous ? `${previous.month} ${previous.year}` : "Previous month")} · {countryName.toUpperCase()}</p>
             </div>
           </div>
         </div>
@@ -902,20 +855,21 @@ export default function WhatIfSimulatorClient() {
         {error && <div className="mx-5 mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:mx-7">{error} The simulator will use zero historical cost assumptions until previous-month data loads.</div>}
         {!error && !loading && history && !history.sourceAvailable && <div className="mx-5 mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:mx-7">No previous-month data was found, so historical cost assumptions are zero.</div>}
 
-        <div className="space-y-5 p-5 md:p-7">
+        <div className="space-y-5 p-4 md:p-6">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-            <div><h2 className="font-semibold text-slate-900">Scenario inputs</h2><p className="mt-1 text-xs text-slate-500">Use sliders or enter exact values. Historical comparisons appear in scenario insights after you change an input.</p></div>
+            <div><h2 className="font-semibold text-charcoal-500">Scenario inputs</h2><p className="mt-1 text-xs text-charcoal-400">Use sliders or enter exact values. Historical comparisons appear in scenario insights after you change an input.</p></div>
             {loading && <p className="text-sm text-slate-500">Loading previous-month values…</p>}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <RangeSlider
-              label="Planned units"
+              label="Units"
               value={overallInput.units}
               baseline={history?.units ?? 0}
               max={unitsSliderMax}
               step={1}
               format={formatNumber}
+              accent="border-[#FDD36F]"
               onChange={(value) => updateOverallInput("units", value)}
             />
             <RangeSlider
@@ -926,49 +880,10 @@ export default function WhatIfSimulatorClient() {
               step={0.01}
               format={(value) => formatCurrency(value, currency, 2)}
               currencyPrefix={currency}
+              accent="border-[#B75A5A]"
               onChange={(value) => updateOverallInput("asp", value)}
             />
-            <RangeSlider
-              label="Ads budget"
-              value={overallInput.ads}
-              baseline={history?.totalAds ?? 0}
-              max={adsSliderMax}
-              step={1}
-              format={(value) => formatCurrency(value, currency)}
-              currencyPrefix={currency}
-              onChange={(value) => updateOverallInput("ads", value)}
-            />
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <label htmlFor="target-roas-goal" className="text-sm font-medium text-slate-700">Target ROAS</label>
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
-                <input
-                  id="target-roas-goal"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={targetRoasGoal}
-                  onChange={(event) => {
-                    setTargetRoasGoal(event.target.value);
-                    setTargetRoasChanged(true);
-                    setAiError("");
-                  }}
-                  onBlur={() => {
-                    const value = Number(targetRoasGoal);
-                    if (targetRoasGoal.trim() !== "" && Number.isFinite(value) && value >= 0) {
-                      setTargetRoasGoal(value.toFixed(2));
-                    }
-                  }}
-                  aria-label="Target ROAS goal"
-                  className="w-full bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
-                  placeholder="e.g. 3.50"
-                />
-                <span className="text-sm text-slate-500">×</span>
-              </div>
-              <p className="mt-2 text-[11px] leading-4 text-slate-500">Ad sales goal ÷ ad spend. Current estimated break-even: {formatRoas(breakEvenRoas)}. This goal alone does not change projected CM2.</p>
-            </div>
-
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="rounded-xl border border-t-4 border-[#3A8EA4] bg-white p-4 shadow-sm">
               <label
                 htmlFor="target-tacos-goal"
                 className="text-sm font-medium text-slate-700"
@@ -1006,65 +921,101 @@ export default function WhatIfSimulatorClient() {
                 <span className="text-sm text-slate-500">%</span>
               </div>
 
-              <p className="mt-2 text-[11px] leading-4 text-slate-500">
-                Ads spend ÷ total net sales. Current projected TACoS:{" "}
-                {currentTacos !== null
-                  ? `${currentTacos.toFixed(2)}%`
-                  : "—"}
-                . Target alone does not change projected CM2.
-              </p>
+              <p className="mt-2 text-[11px] leading-4 text-slate-500">Ads budget ÷ projected sales. Sets the ads budget for this scenario.</p>
+            </div>
+
+            <div className="rounded-xl border border-t-4 border-[#B8C78C] bg-white p-4 shadow-sm">
+              <label htmlFor="additional-expense" className="text-sm font-medium text-slate-700">Additional expense</label>
+              <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
+                <span className="text-xs text-slate-500">{currency}</span>
+                <input
+                  id="additional-expense"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={additionalExpense}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    setAdditionalExpense(Number.isFinite(value) && value > 0 ? Math.round(value) : 0);
+                    setAdditionalExpenseChanged(true);
+                    setAiError("");
+                  }}
+                  aria-label="Additional expense"
+                  className="w-full bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
+                  placeholder="0"
+                />
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-slate-500">Deducted from projected CM2.</p>
             </div>
 
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Projected net sales" value={formatCurrency(result.sales, currency)} hint={`${formatNumber(result.units)} units × ASP`} accent="border-[#75BBDA]" />
-            <MetricCard label="Projected CM1" value={formatCurrency(result.cm1, currency)} accent="border-[#7B9A6D]" />
-            <MetricCard label="Projected CM2" value={formatCurrency(result.cm2, currency)} accent="border-[#B8C78C]" />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Projected sales" value={formatCurrency(result.sales, currency)} hint={`${formatNumber(result.units)} units × ASP`} accent="border-[#75BBDA]" />
+            <MetricCard label="Ads budget" value={formatCurrency(adsBudget, currency)} hint="Projected sales × Target TACoS" accent="border-[#C49466]" />
             <MetricCard
-              label="Blended ROAS"
-              value={formatRoas(blendedRoas)}
-              hint="Total net sales ÷ ads spend"
-              accent="border-[#C49466]"
+              label="Projected CM1"
+              value={
+                <span className="flex items-baseline flex-wrap gap-1.5">
+                  <span>{formatCurrency(result.cm1, currency)}</span>
+                  <span className="text-xs font-normal text-slate-500">
+                    ({cm1Margin.toFixed(1)}%)
+                  </span>
+                </span>
+              }
+              hint="Sales − previous Amazon fees − net taxes − net credits"
+              accent="border-[#7B9A6D]"
             />
-            <MetricCard label="CM2 margin" value={`${margin.toFixed(1)}%`} hint="CM2 ÷ projected net sales" accent="border-[#3A8EA4]" />
+            <MetricCard
+              label="Projected CM2"
+              value={
+                <span className="flex items-baseline flex-wrap gap-1.5">
+                  <span>{formatCurrency(result.cm2, currency)}</span>
+                  <span className="text-xs font-normal text-slate-500">
+                    ({margin.toFixed(1)}%)
+                  </span>
+                </span>
+              }
+              hint="CM1 − ads budget − additional expense"
+              accent="border-[#B8C78C]"
+            />
           </div>
 
           {scenarioInputsChanged && (
-            <section className="rounded-2xl border border-[#5EA68E]/25 bg-gradient-to-br from-[#f1f8f4] to-white p-5">
-              <h2 className="font-semibold text-slate-900">Scenario insights</h2>
-              <p className="mt-1 text-xs text-slate-500">How your changed inputs compare with past results and affect this projection.</p>
+            <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="font-semibold text-charcoal-500">Scenario insights</h2>
+              <p className="mt-1 text-xs text-charcoal-400">How your changed inputs compare with past results and affect this projection.</p>
               {scenarioInsightsLoading
                 ? <p className="mt-4 text-sm text-slate-500">Comparing this scenario with your past results…</p>
-                : <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                : <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-charcoal-500">
                   {scenarioInsightPoints.map((point, index) => <li key={`${index}-${point}`}>{point}</li>)}
                 </ul>}
             </section>
           )}
 
-          <section className="rounded-2xl border border-[#5EA68E]/25 bg-gradient-to-br from-[#f1f8f4] to-white p-5">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold text-slate-900">AI scenario analysis</h2>
-                  <span className="rounded-full bg-[#5EA68E]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#427e68]">AI</span>
+                  <h2 className="font-semibold text-charcoal-500">AI scenario analysis</h2>
+                  <span className="rounded-full bg-[#F8EDCE] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#37455F]">AI</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">Get an explanation of this projection compared with the previous-month baseline.</p>
+                <p className="mt-1 text-xs text-charcoal-400">Get an explanation of this projection compared with the previous-month baseline.</p>
               </div>
               <button
                 type="button"
                 onClick={generateAiAnalysis}
                 disabled={aiLoading || loading}
-                className="inline-flex min-w-[170px] items-center justify-center rounded-lg bg-[#427e68] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#356653] disabled:cursor-wait disabled:opacity-60"
+                className="inline-flex min-w-[170px] items-center justify-center rounded-lg bg-[#37455F] px-4 py-2.5 text-sm font-semibold text-[#F8EDCE] shadow-sm transition hover:bg-[#2F3B52] focus:outline-none focus:ring-2 focus:ring-[#5EA68E] focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
               >
                 {aiLoading ? "Analyzing scenario…" : aiInsightIsCurrent ? "Refresh AI analysis" : "Generate AI analysis"}
               </button>
             </div>
             {aiError && <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{aiError}</p>}
-            {aiLoading && <p className="mt-4 text-sm text-slate-600">AI is reviewing the current units, ASP, ads and projected CM2…</p>}
-            {aiInsightIsCurrent && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-slate-700">{aiInsight?.text}</p>}
-            {!aiLoading && aiInsight && !aiInsightIsCurrent && <p className="mt-4 text-sm text-slate-500">Inputs changed. Generate a fresh AI analysis for this scenario.</p>}
-            {!aiLoading && !aiInsight && !aiError && <p className="mt-4 text-sm text-slate-500">AI will explain the projected CM2 and margin movement and share up to two practical observations.</p>}
+            {aiLoading && <p className="mt-4 text-sm text-charcoal-500">AI is reviewing the current units, ASP, ad budget and projected CM2…</p>}
+            {aiInsightIsCurrent && <p className="mt-4 whitespace-pre-line text-sm leading-6 text-charcoal-500">{aiInsight?.text}</p>}
+            {!aiLoading && aiInsight && !aiInsightIsCurrent && <p className="mt-4 text-sm text-charcoal-400">Inputs changed. Generate a fresh AI analysis for this scenario.</p>}
+            {!aiLoading && !aiInsight && !aiError && <p className="mt-4 text-sm text-charcoal-400">AI will explain the projected CM2 and margin movement and share up to two practical observations.</p>}
             <p className="mt-3 text-[11px] text-slate-400">CM1 and CM2 figures above come from the simulator formulas; AI only explains the results.</p>
           </section>
 
