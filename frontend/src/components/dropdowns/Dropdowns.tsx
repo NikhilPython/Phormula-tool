@@ -7448,7 +7448,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const computeTopBottom5 = (
-    rows: TableRow[]
+    rows: TableRow[],
+    rowsForBottom: TableRow[] = rows
   ): {
     topData: TopBottomData;
     bottomData: TopBottomData;
@@ -7483,6 +7484,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         sku !== "total" &&
         name !== "others" &&
         sku !== "others"
+      );
+    });
+
+    const withoutTotalForBottom = (rowsForBottom || []).filter((row) => {
+      if (!row) return false;
+      const name = lower((row as any).product_name);
+      const sku = lower((row as any).sku);
+      const status = lower((row as any).product_status);
+
+      return (
+        name !== "total" &&
+        sku !== "total" &&
+        name !== "others" &&
+        sku !== "others" &&
+        status !== "discontinued" &&
+        status !== "discontinuous"
       );
     });
 
@@ -7532,7 +7549,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (a, b) => getProfitValue(b) - getProfitValue(a)
     );
 
-    const sortByProfitAsc = [...withoutTotal].sort(
+    const sortByProfitAsc = [...withoutTotalForBottom].sort(
       (a, b) => getProfitValue(a) - getProfitValue(b)
     );
 
@@ -7625,8 +7642,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     bottomData,
     hasCm2Data: topBottomHasCm2Data,
   } = useMemo(
-    () => computeTopBottom5(displaySkuRows),
-    [displaySkuRows, range]
+    () => computeTopBottom5(displaySkuRows, skuRowsWithStatus),
+    [displaySkuRows, skuRowsWithStatus, range]
   );
 
   useEffect(() => {

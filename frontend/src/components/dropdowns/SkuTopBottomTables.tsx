@@ -242,7 +242,7 @@ const SkuTopBottomTables: React.FC<Props> = ({
                       </span>
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
-                      {item.profit}
+                      {formatRoundedValue(item.profit)}
                     </td>
                     <td className="whitespace-nowrap border border-gray-300 px-2 sm:px-3 py-3 text-center text-xs 2xl:text-sm">
                       {item.profitMix}%

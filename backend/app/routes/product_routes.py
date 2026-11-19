@@ -3779,6 +3779,94 @@ def skutableprofit():
 
             return add_per_unit_fields(final_data)
 
+        def _add_product_status(rows):
+            if not rows:
+                return rows
+
+            sku_table_name = f"sku_{user_id}_data_table"
+            inspector = inspect(engine)
+            if not inspector.has_table(sku_table_name, schema="public"):
+                return rows
+
+            available_columns = {
+                column["name"]
+                for column in inspector.get_columns(sku_table_name, schema="public")
+            }
+            marketplace_fields = {
+                "uk": ("sku_uk", "product_status_uk"),
+                "us": ("sku_us", "product_status_us"),
+                "canada": ("sku_canada", "product_status_canada"),
+            }
+            country_key = str(country or "").strip().lower().split("_", 1)[0]
+            if country_key == "ca":
+                country_key = "canada"
+
+            if country_key == "global":
+                selected_pairs = list(marketplace_fields.values())
+            elif country_key in marketplace_fields:
+                selected_pairs = [marketplace_fields[country_key]]
+            else:
+                selected_pairs = []
+
+            selected_pairs = [
+                (sku_column, status_column)
+                for sku_column, status_column in selected_pairs
+                if sku_column in available_columns and status_column in available_columns
+            ]
+            if not selected_pairs:
+                return rows
+
+            sku_table = Table(sku_table_name, metadata, autoload_with=engine)
+            selected_columns = [
+                sku_table.c[column_name]
+                for column_name in ["product_name"]
+                if column_name in available_columns
+            ]
+            for sku_column, status_column in selected_pairs:
+                selected_columns.extend(
+                    [sku_table.c[sku_column], sku_table.c[status_column]]
+                )
+
+            with engine.connect() as conn:
+                sku_rows = conn.execute(
+                    select(*selected_columns)
+                ).mappings().all()
+
+            statuses_by_sku = {}
+            statuses_by_name = {}
+
+            def record_status(status_map, key, status):
+                key = str(key or "").strip().lower()
+                if not key:
+                    return
+                normalized_status = str(status or "").strip().lower()
+                if normalized_status in ("discontinued", "discontinuous"):
+                    status_map[key] = "Discontinued"
+                elif normalized_status == "active":
+                    status_map.setdefault(key, "Active")
+
+            for sku_row in sku_rows:
+                product_name = sku_row.get("product_name")
+                for sku_column, status_column in selected_pairs:
+                    status = sku_row.get(status_column)
+                    record_status(statuses_by_sku, sku_row.get(sku_column), status)
+                    record_status(statuses_by_name, product_name, status)
+
+            rows_with_status = []
+            for row in rows:
+                row_with_status = dict(row)
+                sku = row_with_status.get("sku")
+                product_name = row_with_status.get("product_name")
+                status = (
+                    statuses_by_sku.get(str(sku or "").strip().lower())
+                    or statuses_by_name.get(str(product_name or "").strip().lower())
+                )
+                if status:
+                    row_with_status["product_status"] = status
+                rows_with_status.append(row_with_status)
+
+            return rows_with_status
+
         try:
             current_data = _fetch_profit_data(table_name, ads_table_name)
             if not benchmark_only:
@@ -3786,6 +3874,7 @@ def skutableprofit():
                     persist_per_unit_fields(engine, table_name, current_data)
                 except Exception:
                     pass
+            current_data = _add_product_status(current_data)
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
