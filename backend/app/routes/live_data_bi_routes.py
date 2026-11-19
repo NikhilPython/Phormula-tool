@@ -190,6 +190,62 @@ def _has_period_units(row):
         return False
 
 
+def _filter_zero_unit_sku_rows(rows):
+    return [
+        row
+        for row in rows or []
+        if str(row.get("sku") or "").strip().upper() in {"TOTAL", "GRAND_TOTAL"}
+        or str(row.get("product_name") or "").strip().lower()
+        in {"total", "grand total"}
+        or _has_period_units(row)
+    ]
+
+
+def _combine_global_last30_totals(us_totals, uk_totals, uk_to_usd_rate):
+    ratio_fields = {
+        "reimbursement_vs_cm2_margins",
+        "reimbursement_vs_sales",
+        "total_cm2_margins",
+    }
+
+    def number(value):
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    combined = {}
+    for key in set(us_totals or {}) | set(uk_totals or {}):
+        if key in ratio_fields:
+            continue
+        combined[key] = (
+            number((us_totals or {}).get(key))
+            + number((uk_totals or {}).get(key)) * float(uk_to_usd_rate)
+        )
+
+    net_reimbursement = number(
+        combined.get(
+            "net_reimbursement",
+            combined.get("previous_net_reimbursement", combined.get("disbursement")),
+        )
+    )
+    combined["net_reimbursement"] = net_reimbursement
+    combined["current_net_reimbursement"] = net_reimbursement
+
+    net_sales = number(combined.get("net_sales"))
+    total_cm2_profit = number(combined.get("total_cm2_profit"))
+    combined["total_cm2_margins"] = (
+        total_cm2_profit / net_sales * 100 if net_sales else 0.0
+    )
+    combined["reimbursement_vs_cm2_margins"] = (
+        net_reimbursement / total_cm2_profit * 100 if total_cm2_profit else 0.0
+    )
+    combined["reimbursement_vs_sales"] = (
+        net_reimbursement / net_sales * 100 if net_sales else 0.0
+    )
+    return combined
+
+
 def _calculate_total_cm2_profit(cm2_profit, row):
     def number(value):
         try:
@@ -4303,12 +4359,13 @@ def live_mtd_vs_previous(period_mode=None):
             def safe_fetch_current_mtd_data_for_global(user_id, country, start_date, end_date):
                 try:
                     if period_mode == "last_30_days":
-                        items, daily_rows = fetch_last_30_days_current_data(
+                        items, daily_rows, dashboard_totals = fetch_last_30_days_current_data(
                             user_id,
                             country,
                             start_date,
                             end_date,
                             ranges["meta"]["today"],
+                            include_dashboard_totals=True,
                         )
                     else:
                         items, daily_rows = fetch_current_mtd_data(
@@ -4317,13 +4374,14 @@ def live_mtd_vs_previous(period_mode=None):
                             start_date,
                             end_date,
                         )
-                    return items or [], daily_rows or []
+                        dashboard_totals = {}
+                    return items or [], daily_rows or [], dashboard_totals or {}
                 except Exception as e:
                     print(
                         f"[WARN] Global chart current {country.upper()} data unavailable "
                         f"for {start_date} to {end_date}: {e}"
                     )
-                    return [], []
+                    return [], [], {}
 
 
             # -------------------------------------------------
@@ -4364,14 +4422,22 @@ def live_mtd_vs_previous(period_mode=None):
             # Current MTD daily series
             # Used by daily_series.current_mtd_global / current_mtd_uk / current_mtd_us
             # -------------------------------------------------
-            current_mtd_uk_sku_items, current_mtd_uk_raw = safe_fetch_current_mtd_data_for_global(
+            (
+                current_mtd_uk_sku_items,
+                current_mtd_uk_raw,
+                current_mtd_uk_totals,
+            ) = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "uk",
                 curr_start,
                 curr_end,
             )
 
-            current_mtd_us_sku_items, current_mtd_us_raw = safe_fetch_current_mtd_data_for_global(
+            (
+                current_mtd_us_sku_items,
+                current_mtd_us_raw,
+                current_mtd_us_totals,
+            ) = safe_fetch_current_mtd_data_for_global(
                 user_id,
                 "us",
                 curr_start,
@@ -4503,6 +4569,77 @@ def live_mtd_vs_previous(period_mode=None):
                 previous_us_ads, _ = fetch_adsdaily_sku_mtd_ads(
                     user_id, "us", prev_start, prev_end
                 )
+
+                def add_last30_brand_spend(country, items, ads_by_sku):
+                    month_start = date(curr_end.year, curr_end.month, 1)
+                    historic_end = min(curr_end, month_start - timedelta(days=1))
+                    historic_brand_by_sku = {}
+                    historical_brand_total = None
+                    if curr_start < month_start and curr_start <= historic_end:
+                        historic_ads, _ = fetch_adsdaily_sku_mtd_ads(
+                            user_id, country, curr_start, historic_end
+                        )
+                        historic_brand_by_sku = {
+                            str(sku).strip().upper(): float(
+                                metrics.get("brand_spend", 0) or 0
+                            )
+                            for sku, metrics in historic_ads.items()
+                        }
+                        historical_brand_total = fetch_sponsored_brands_spend(
+                            user_id=user_id,
+                            country=country,
+                            start_date=curr_start,
+                            end_date=historic_end,
+                        )
+
+                    current_month_rows, current_month_totals, _ = (
+                        fetch_current_ai_values_from_skuwisemonthly(
+                            user_id=user_id,
+                            country=country,
+                            curr_end=curr_end,
+                        )
+                    )
+                    current_month_brand_by_sku = {
+                        str(row.get("sku") or "").strip().upper(): float(
+                            row.get("brand_spend", 0) or 0
+                        )
+                        for row in current_month_rows
+                        if str(row.get("sku") or "").strip()
+                    }
+                    brand_by_sku = {
+                        sku: historic_brand_by_sku.get(sku, 0.0)
+                        + current_month_brand_by_sku.get(sku, 0.0)
+                        for sku in set(historic_brand_by_sku)
+                        | set(current_month_brand_by_sku)
+                    }
+                    historical_total = (
+                        historical_brand_total
+                        if historical_brand_total is not None
+                        else sum(historic_brand_by_sku.values())
+                    )
+                    brand_total = historical_total + float(
+                        current_month_totals.get("brand_spend", 0) or 0
+                    )
+
+                    for row in items:
+                        sku = str(row.get("sku") or "").strip()
+                        if not sku:
+                            continue
+                        brand_spend = brand_by_sku.get(sku.upper(), 0.0)
+                        row["brand_spend"] = brand_spend
+                        ads_metrics = dict(ads_by_sku.get(sku, {}))
+                        ads_metrics["brand_spend"] = brand_spend
+                        ads_by_sku[sku] = ads_metrics
+
+                    return brand_total
+
+                current_uk_brand_spend = add_last30_brand_spend(
+                    "uk", current_uk_sku_items, current_uk_ads
+                )
+                current_us_brand_spend = add_last30_brand_spend(
+                    "us", current_us_sku_items, current_us_ads
+                )
+
                 current_uk_sku_items = _enrich_skuwise_period_rows(
                     current_uk_sku_items, "uk", "GBP", current_uk_ads, user_id, curr_end
                 )
@@ -4531,6 +4668,57 @@ def live_mtd_vs_previous(period_mode=None):
                     current_us_df,
                     current_uk_df,
                 )
+
+                def finalize_country_last30_totals(totals, items, brand_spend):
+                    totals = dict(totals or {})
+                    totals["brand_spend"] = brand_spend
+                    totals["advertising_fees"] = sum(
+                        float(row.get("ads_spend", 0) or 0) for row in items
+                    )
+                    totals["advertising_total"] = (
+                        totals["advertising_fees"]
+                        + totals["brand_spend"]
+                        + float(totals.get("dealsvouchar_ads", 0) or 0)
+                    )
+                    totals["cm2_profit"] = sum(
+                        float(row.get("cm2_profit", 0) or 0) for row in items
+                    )
+                    totals["total_cm2_profit"] = _calculate_total_cm2_profit(
+                        totals["cm2_profit"], totals
+                    )
+                    net_sales = float(totals.get("net_sales", 0) or 0)
+                    totals["total_cm2_margins"] = (
+                        totals["total_cm2_profit"] / net_sales * 100
+                        if net_sales else 0.0
+                    )
+                    net_reimbursement = float(
+                        totals.get("net_reimbursement", 0) or 0
+                    )
+                    totals["reimbursement_vs_cm2_margins"] = (
+                        net_reimbursement / totals["total_cm2_profit"] * 100
+                        if totals["total_cm2_profit"] else 0.0
+                    )
+                    totals["reimbursement_vs_sales"] = (
+                        net_reimbursement / net_sales * 100 if net_sales else 0.0
+                    )
+                    return totals
+
+                current_uk_last30_totals = finalize_country_last30_totals(
+                    current_mtd_uk_totals,
+                    current_uk_sku_items,
+                    current_uk_brand_spend,
+                )
+                current_us_last30_totals = finalize_country_last30_totals(
+                    current_mtd_us_totals,
+                    current_us_sku_items,
+                    current_us_brand_spend,
+                )
+                current_global_last30_totals = _combine_global_last30_totals(
+                    current_us_last30_totals,
+                    current_uk_last30_totals,
+                    current_conversion_rate,
+                )
+
                 previous_conversion_rate = fetch_conversion_rate(
                     country="us",
                     year=prev_end.year,
@@ -4676,20 +4864,50 @@ def live_mtd_vs_previous(period_mode=None):
             }
 
             if period_mode == "last_30_days":
-                response_payload.update({
-                    "skuwise_items_global": _build_skuwise_period_payload(
-                        current_global_sku_items,
-                        "global",
-                        "USD",
-                        user_id=user_id,
-                        period_end=curr_end,
+                global_skuwise_items = _build_skuwise_period_payload(
+                    current_global_sku_items,
+                    "global",
+                    "USD",
+                    user_id=user_id,
+                    period_end=curr_end,
+                )
+                global_total_row = next(
+                    (
+                        row for row in global_skuwise_items
+                        if str(row.get("sku") or "").strip().upper() == "TOTAL"
                     ),
-                    "previous_skuwise_items_global": _build_skuwise_period_payload(
-                        prev_global_items,
-                        "global",
-                        "USD",
-                        user_id=user_id,
-                        period_end=prev_end,
+                    None,
+                )
+                if global_total_row:
+                    global_total_row.update(current_global_last30_totals)
+                    global_total_row["ads_spend"] = current_global_last30_totals.get(
+                        "advertising_fees", 0
+                    )
+                    global_total_row["total_ads"] = current_global_last30_totals.get(
+                        "advertising_total", 0
+                    )
+                    global_total_row["current_net_reimbursement"] = (
+                        current_global_last30_totals.get("net_reimbursement", 0)
+                    )
+                    global_total_row["tax"] = current_global_last30_totals.get(
+                        "net_taxes", 0
+                    )
+                    global_total_row["credits"] = current_global_last30_totals.get(
+                        "net_credits", 0
+                    )
+
+                response_payload.update({
+                    "skuwise_items_global": _filter_zero_unit_sku_rows(
+                        global_skuwise_items
+                    ),
+                    "previous_skuwise_items_global": _filter_zero_unit_sku_rows(
+                        _build_skuwise_period_payload(
+                            prev_global_items,
+                            "global",
+                            "USD",
+                            user_id=user_id,
+                            period_end=prev_end,
+                        )
                     ),
                     "skuwise_items_uk": _build_skuwise_period_payload(
                         current_uk_sku_items,
@@ -4719,6 +4937,7 @@ def live_mtd_vs_previous(period_mode=None):
                         user_id=user_id,
                         period_end=prev_end,
                     ),
+                    "last30_totals": current_global_last30_totals,
                 })
 
             try:
