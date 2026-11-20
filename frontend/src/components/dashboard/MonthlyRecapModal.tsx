@@ -2,8 +2,6 @@
 
 import React, { useEffect, useRef } from "react";
 import {
-    AlertCircle,
-    CheckCircle2,
     ExternalLink,
     Plus,
     X,
@@ -68,7 +66,6 @@ type Props = {
 
 /* ----------------------------- Helpers ----------------------------- */
 
-// Updated sequence as requested
 const METRIC_ORDER = ["units", "asp", "net sales", "marketplace fees", "tacos", "cm2 profit"];
 
 const metricRank = (label: string) => {
@@ -91,6 +88,81 @@ const getDeltaPct = (value: number, previous: number | null | undefined): number
     if (!Number.isFinite(prev) || prev === 0) return null;
     return ((value - prev) / Math.abs(prev)) * 100;
 };
+
+/* ----------------------------- Gauge ----------------------------- */
+
+const GAUGE_W = 170;
+const GAUGE_H = 88;
+const GAUGE_CX = GAUGE_W / 2;
+const GAUGE_CY = 84;
+const TARGET_R = 74;
+const ACTUAL_R = 64;
+
+const gaugePoint = (radius: number, pct: number) => {
+    const clamped = Math.min(Math.max(pct, 0), 99.99);
+    const angle = (180 - clamped * 1.8) * (Math.PI / 180);
+    return {
+        x: GAUGE_CX + radius * Math.cos(angle),
+        y: GAUGE_CY - radius * Math.sin(angle),
+    };
+};
+
+const gaugeArc = (radius: number, pct: number) => {
+    const end = gaugePoint(radius, pct);
+    return `M ${GAUGE_CX - radius} ${GAUGE_CY} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y}`;
+};
+
+function TargetGauge({
+    actual,
+    target,
+    pct,
+    formatMoney,
+}: {
+    actual: number;
+    target: number;
+    pct: number;
+    formatMoney: (val: number) => string;
+}) {
+    const max = Math.max(actual, target, 1);
+    const targetPct = (target / max) * 100;
+    const actualPct = (actual / max) * 100;
+    const targetEnd = gaugePoint(TARGET_R, targetPct);
+    const actualEnd = gaugePoint(ACTUAL_R, actualPct);
+
+    return (
+        <div className="flex flex-col items-center">
+            <svg
+                width={GAUGE_W}
+                height={GAUGE_H}
+                viewBox={`0 0 ${GAUGE_W} ${GAUGE_H}`}
+                role="img"
+                aria-label={`${pct.toFixed(1)}% of target achieved`}
+            >
+                <title>{`Net sales ${formatMoney(actual)} · Target ${formatMoney(target)}`}</title>
+                <path
+                    d={gaugeArc(TARGET_R, targetPct)}
+                    fill="none"
+                    stroke="#5EA68E"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                />
+                <path
+                    d={gaugeArc(ACTUAL_R, actualPct)}
+                    fill="none"
+                    stroke="#ED9F50"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                />
+                <circle cx={targetEnd.x} cy={targetEnd.y} r="4.5" fill="#5EA68E" stroke="white" strokeWidth="2" />
+                <circle cx={actualEnd.x} cy={actualEnd.y} r="4.5" fill="#ED9F50" stroke="white" strokeWidth="2" />
+            </svg>
+            <div className="-mt-7 text-center leading-none">
+                <div className="text-2xl font-semibold text-[#37455F]">{pct.toFixed(1)}%</div>
+                <div className="mt-1 text-xs font-medium text-[#50627A]">Target Achieved</div>
+            </div>
+        </div>
+    );
+}
 
 /* ----------------------------- Component ----------------------------- */
 
@@ -158,23 +230,19 @@ export default function MonthlyRecapModal({
     };
 
     const handleOpenPnl = () => {
-        // If the parent passed a custom onViewBreakdown function, use that instead
         if (onViewBreakdown) {
             onViewBreakdown();
             return;
         }
 
         const { month, year } = getPnlDateParams();
-
         const url = `/pnl-dashboard/MTD/${country.toLowerCase()}/${month}/${year}`;
-
-        // Open in a new tab
         window.open(url, "_blank", "noopener,noreferrer");
     };
 
     return createPortal(
         <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 py-6" // Increased z-index to be safe
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4 py-6"
             onClick={onClose}
         >
             <div
@@ -182,19 +250,19 @@ export default function MonthlyRecapModal({
                 aria-modal="true"
                 aria-labelledby="monthly-recap-title"
                 onClick={(e) => e.stopPropagation()}
-                className="relative max-h-full w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl sm:p-8"
+                className="relative max-h-full w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
             >
                 <button
                     type="button"
                     onClick={onClose}
                     aria-label="Close"
-                    className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 z-10"
+                    className="absolute right-3 top-3 z-10 rounded-full p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                 >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4" />
                 </button>
 
                 {/* Header */}
-                <div id="monthly-recap-title" className="pr-10">
+                <div id="monthly-recap-title" className="pr-8">
                     <PageBreadcrumb
                         pageTitle={
                             <>
@@ -205,58 +273,58 @@ export default function MonthlyRecapModal({
                         }
                         align="left"
                         variant="page"
-                        textSize="2xl"
+                        textSize="xl"
                         className="!text-[#37455F]"
                     />
                 </div>
-                <p className="mt-2 text-sm leading-5 text-slate-600">
+                <p className="mt-1.5 text-xs leading-4 text-slate-600">
                     A snapshot of your sales, profitability, and overall performance for the month.
                 </p>
 
-                {/* Objectives as chips */}
-                {objectives.length > 0 && (
-                    <div className="mt-3 flex flex-wrap justify-center gap-2">
-                        {objectives.map((o, i) => (
-                            <span
-                                key={i}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs text-[#37455F]"
-                            >
-                                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5EA68E]" />
-                                {o}
-                            </span>
-                        ))}
-                    </div>
-                )}
-
                 {/* Sales vs target */}
-                <section className="mt-5 rounded-xl border border-[#E6ECEF] px-5 py-3">
-                    {/* Centered Status Heading */}
-                    {hasTarget && (
-                        <div className="mb-2 flex w-full items-center justify-center gap-1.5">
-                            <PageBreadcrumb
-                                pageTitle={met ? "Target Achieved" : "Target Not Achieved"}
-                                align="center2"
-                                variant="page"
-                                textSize="xl"
-                                className={`font-bold ${met ? "!text-[#5EA68E]" : "!text-[#B75A5A]"}`}
-                            />
-                        </div>
-                    )}
+                <section className="mt-3 rounded-xl border border-[#E6ECEF] px-4 py-2.5">
+                    <h3 className="mb-1 text-lg text-center font-semibold text-[#37455F]">
+                        Target &amp; Objectives
+                    </h3>
 
-                    <div className="flex items-end justify-between gap-2">
-                        <div className="flex-1">
-                            <p className="text-xs text-[#50627A] mb-1">Net sales</p>
-                            <p className="text-2xl font-bold leading-tight text-[#37455F]">{formatMoney(actual)}</p>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                        {/* Net sales */}
+                        <div className="flex min-w-0 flex-col items-center justify-center text-center">
+                            <p className="mb-0.5 flex items-center justify-center gap-1 text-sm text-[#50627A]">
+                                {hasTarget && <span className="h-1.5 w-1.5 rounded-full bg-[#ED9F50]" />}
+                                Net sales
+                            </p>
+                            <p className="max-w-full truncate text-2xl font-bold leading-tight text-[#37455F]">
+                                {formatMoney(actual)}
+                            </p>
                         </div>
 
-                        <div className="flex shrink-0 items-center justify-center pb-1.5">
-                            <span className="text-lg font-bold uppercase tracking-wider text-slate-400">vs</span>
+                        {/* Gauge (replaces "vs") */}
+                        <div className="flex shrink-0 items-center justify-center">
+                            {hasTarget && pct !== null ? (
+                                <TargetGauge
+                                    actual={actual}
+                                    target={target}
+                                    pct={pct}
+                                    formatMoney={formatMoney}
+                                />
+                            ) : (
+                                <span className="text-base font-bold uppercase tracking-wider text-slate-400">
+                                    vs
+                                </span>
+                            )}
                         </div>
 
-                        <div className="flex-1 text-right">
-                            <p className="text-xs text-[#50627A] mb-1">Target</p>
+                        {/* Target */}
+                        <div className="flex min-w-0 flex-col items-center justify-center text-center">
+                            <p className="mb-0.5 flex items-center justify-center gap-1 text-sm text-[#50627A]">
+                                {hasTarget && <span className="h-1.5 w-1.5 rounded-full bg-[#5EA68E]" />}
+                                Target
+                            </p>
                             {hasTarget ? (
-                                <p className="text-2xl font-bold leading-tight text-[#37455F]">{formatMoney(target)}</p>
+                                <p className="max-w-full truncate text-2xl font-bold leading-tight text-[#37455F]">
+                                    {formatMoney(target)}
+                                </p>
                             ) : (
                                 <>
                                     <p className="text-2xl font-semibold leading-tight text-slate-400">Not set</p>
@@ -264,9 +332,9 @@ export default function MonthlyRecapModal({
                                         <button
                                             type="button"
                                             onClick={onSetTarget}
-                                            className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#5EA68E] hover:underline"
+                                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#5EA68E] hover:underline"
                                         >
-                                            <Plus className="h-3.5 w-3.5" />
+                                            <Plus className="h-3 w-3" />
                                             Set a target
                                         </button>
                                     )}
@@ -275,30 +343,23 @@ export default function MonthlyRecapModal({
                         </div>
                     </div>
 
-                    {pct !== null ? (
-                        <div className="mt-4">
-                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                                <div
-                                    className={`h-full rounded-full ${met ? "bg-[#5EA68E]" : "bg-[#ED9F50]"}`}
-                                    style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                                />
-                            </div>
-                            <div className="mt-2 flex items-center justify-between gap-3 text-xs">
-                                <span className="font-semibold text-[#37455F]">{pct.toFixed(1)}% achieved</span>
-                                <span className={met ? "font-semibold text-[#5EA68E]" : "font-semibold text-[#B75A5A]"}>
-                                    {met ? `Target beat by ${formatMoney(gap)}` : `${formatMoney(gap)} short of target`}
+                    {objectives.length > 0 && (
+                        <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                            {objectives.map((o, i) => (
+                                <span
+                                    key={i}
+                                    className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-[#37455F]"
+                                >
+                                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5EA68E]" />
+                                    {o}
                                 </span>
-                            </div>
+                            ))}
                         </div>
-                    ) : (
-                        <p className="mt-3 text-xs text-[#50627A]">
-                            No target was set for {monthLabel}, so there&rsquo;s nothing to compare against.
-                        </p>
                     )}
                 </section>
 
                 {/* Key metrics */}
-                <section className="mt-4" aria-labelledby="monthly-recap-metrics">
+                <section className="mt-3" aria-labelledby="monthly-recap-metrics">
                     <h3 id="monthly-recap-metrics" className="sr-only">
                         Key metrics for {monthLabel}
                     </h3>
@@ -339,8 +400,7 @@ export default function MonthlyRecapModal({
                 </section>
 
                 {/* SKU sales highlights */}
-                {/* SKU sales highlights */}
-                <section className="mt-4 space-y-2" aria-label="SKU sales highlights">
+                <section className="mt-3 space-y-2" aria-label="SKU sales highlights">
                     {skuHighlights.length > 0 ? (
                         <>
                             {/* Top Selling SKU - Full Width */}
@@ -350,28 +410,25 @@ export default function MonthlyRecapModal({
                                 return (
                                     <article
                                         key={highlight.title}
-                                        className="rounded-xl border border-t-4 border-[#7B9A6D] px-4 py-3"
+                                        className="rounded-xl border border-t-4 border-[#7B9A6D] px-3 py-2.5"
                                     >
-                                        <p className="mb-2 text-xs text-charcoal-500">
+                                        <p className="mb-1.5 text-[11px] text-charcoal-500">
                                             {highlight.title}
                                         </p>
 
-                                        {/* Replace the div with grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto] with this: */}
-                                        <div className="flex flex-row items-center justify-between w-full gap-7">
-
-                                            {/* Name & SKU */}
+                                        <div className="flex w-full flex-row items-center justify-between gap-5">
                                             {/* Name, SKU & Delta */}
                                             <div className="min-w-0 flex-1">
                                                 <div className="flex min-w-0 items-center gap-2">
                                                     <p
-                                                        className="truncate font-bold text-charcoal-500"
+                                                        className="truncate text-sm font-bold text-charcoal-500"
                                                         title={highlight.name}
                                                     >
                                                         {highlight.name}
                                                     </p>
 
                                                     <p
-                                                        className={`shrink-0 whitespace-nowrap text-xs font-semibold ${delta == null
+                                                        className={`shrink-0 whitespace-nowrap text-[11px] font-semibold ${delta == null
                                                             ? "text-slate-400"
                                                             : delta >= 0
                                                                 ? "text-emerald-600"
@@ -385,57 +442,43 @@ export default function MonthlyRecapModal({
                                                 </div>
 
                                                 {highlight.sku && (
-                                                    <p className="mt-0.5 truncate text-xs text-charcoal-500">
+                                                    <p className="mt-0.5 truncate text-[11px] text-charcoal-500">
                                                         {highlight.sku}
                                                     </p>
                                                 )}
                                             </div>
 
-
-
                                             {/* Units */}
                                             <div className="min-w-0">
-                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Units</p>
-                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">Units</p>
+                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
                                                     {Math.round(highlight.units || 0).toLocaleString()}
                                                 </p>
                                             </div>
 
                                             {/* ASP */}
                                             <div className="min-w-0">
-                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">ASP</p>
-                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">ASP</p>
+                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
                                                     {highlight.asp != null ? formatMoney(Number(highlight.asp.toFixed(2))) : "\u2014"}
                                                 </p>
                                             </div>
 
                                             {/* Net Sales */}
                                             <div className="min-w-0">
-                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">Net sales</p>
-                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">Net sales</p>
+                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
                                                     {formatMoney(highlight.netSales)}
                                                 </p>
                                             </div>
 
                                             {/* CM2 Profit */}
                                             <div className="min-w-0">
-                                                <p className="text-xs text-charcoal-500 whitespace-nowrap">CM2 Profit</p>
-                                                <p className="mt-0.5 truncate text-base font-bold text-charcoal-500">
+                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">CM2 Profit</p>
+                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
                                                     {highlight.cm2Profit != null ? formatMoney(highlight.cm2Profit) : "\u2014"}
                                                 </p>
                                             </div>
-
-                                            {/* Delta % */}
-                                            {/* <p className={`whitespace-nowrap text-xs font-semibold ${delta == null
-                                                ? "text-slate-400"
-                                                : delta >= 0
-                                                    ? "text-emerald-600"
-                                                    : "text-red-600"
-                                                }`}>
-                                                {delta == null
-                                                    ? "\u2014"
-                                                    : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
-                                            </p> */}
                                         </div>
                                     </article>
                                 );
@@ -444,72 +487,54 @@ export default function MonthlyRecapModal({
                             {/* Remaining 2 SKU Highlights - 2 Columns, 1 Row */}
                             {skuHighlights.length > 1 && (
                                 <div className="grid grid-cols-2 gap-2">
-                                    {skuHighlights.slice(1, 3).map((highlight) => {
-                                        const delta = highlight.netSalesDeltaPct;
+                                    {skuHighlights.slice(1, 3).map((highlight) => (
+                                        <article
+                                            key={highlight.title}
+                                            className={`min-w-0 rounded-xl border border-t-4 px-3 py-2.5 ${highlight.title === "Highest Net Sales Growth"
+                                                ? "border-[#5EA68E]"
+                                                : "border-[#B75A5A]"
+                                                }`}
+                                        >
+                                            <p className="mb-1.5 truncate text-[11px] text-charcoal-500">
+                                                {highlight.title}
+                                            </p>
 
-                                        return (
-                                            <article
-                                                key={highlight.title}
-                                                className={`min-w-0 rounded-xl border border-t-4 px-3 py-3 sm:px-4 ${highlight.title === "Highest Net Sales Growth"
-                                                    ? "border-[#5EA68E]"
-                                                    : "border-[#B75A5A]"
-                                                    }`}
-                                            >
-                                                <p className="mb-2 truncate text-xs text-charcoal-500">
-                                                    {highlight.title}
-                                                </p>
-
-                                                {/* Delta + Product Name + Net Sales */}
-                                                <div className="flex items-center justify-between gap-2">
-                                                    {/* Delta and Product */}
-                                                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                                        {/* <p className={`shrink-0 whitespace-nowrap text-xs font-semibold ${delta == null
-                                                                ? "text-slate-400"
-                                                                : delta >= 0
-                                                                    ? "text-emerald-600"
-                                                                    : "text-red-600"
-                                                            }`}>
-                                                            {delta == null
-                                                                ? "\u2014"
-                                                                : `${delta >= 0 ? "\u25B2" : "\u25BC"} ${Math.abs(delta).toFixed(2)}%`}
-                                                        </p> */}
-
-                                                        <div className="min-w-0">
-                                                            <p
-                                                                className="truncate text-sm font-bold text-charcoal-500"
-                                                                title={highlight.name}
-                                                            >
-                                                                {highlight.name}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                                    <div className="min-w-0">
+                                                        <p
+                                                            className="truncate text-xs font-bold text-charcoal-500"
+                                                            title={highlight.name}
+                                                        >
+                                                            {highlight.name}
+                                                        </p>
+                                                        {highlight.sku && (
+                                                            <p className="truncate text-[11px] text-charcoal-500">
+                                                                {highlight.sku}
                                                             </p>
-                                                            {highlight.sku && (
-                                                                <p className="truncate text-xs text-charcoal-500">
-                                                                    {highlight.sku}
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Amount of net sales growth or decline */}
-                                                    <div className="shrink-0 text-right">
-                                                        <p className={`text-xs text-charcoal-500 `}>
-                                                            {highlight.title === "Highest Net Sales Growth" ? "Increased" : "Decreased"}
-                                                        </p>
-                                                        <p className={`text-sm font-bold ${highlight.title === "Highest Net Sales Growth" ? "text-emerald-600" : "text-red-600"}`}>
-                                                            {highlight.netSalesChange == null
-                                                                ? "—"
-                                                                : formatMoney(Math.abs(highlight.netSalesChange))}
-                                                        </p>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            </article>
-                                        );
-                                    })}
+
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-[11px] text-charcoal-500">
+                                                        {highlight.title === "Highest Net Sales Growth" ? "Increased" : "Decreased"}
+                                                    </p>
+                                                    <p className={`text-xs font-bold ${highlight.title === "Highest Net Sales Growth" ? "text-emerald-600" : "text-red-600"}`}>
+                                                        {highlight.netSalesChange == null
+                                                            ? "—"
+                                                            : formatMoney(Math.abs(highlight.netSalesChange))}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </article>
+                                    ))}
                                 </div>
                             )}
                         </>
                     ) : (
-                        <div className="rounded-xl border border-t-4 border-[#7B9A6D] p-4">
-                            <p className="text-sm text-charcoal-500">
+                        <div className="rounded-xl border border-t-4 border-[#7B9A6D] p-3">
+                            <p className="text-xs text-charcoal-500">
                                 No SKU sales recorded for this month.
                             </p>
                         </div>
@@ -517,15 +542,15 @@ export default function MonthlyRecapModal({
                 </section>
 
                 {/* Footer */}
-                <div className="mt-6 flex items-center justify-between gap-3">
-                    {onViewBreakdown || country ? ( // Ensure it shows if either is provided
+                <div className="mt-5 flex items-center justify-between gap-3">
+                    {onViewBreakdown || country ? (
                         <button
                             type="button"
-                            onClick={handleOpenPnl} // <--- Changed to new handler
-                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#5EA68E] hover:underline"
+                            onClick={handleOpenPnl}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5EA68E] hover:underline"
                         >
                             Open P&amp;L Breakdown
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-3.5 w-3.5" />
                         </button>
                     ) : (
                         <span />
@@ -534,7 +559,7 @@ export default function MonthlyRecapModal({
                         ref={primaryBtnRef}
                         type="button"
                         onClick={onClose}
-                        className="rounded-md bg-[#2E3A59] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1f2943] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
+                        className="rounded-md bg-[#2E3A59] px-5 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2943] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
                     >
                         Got it
                     </button>
