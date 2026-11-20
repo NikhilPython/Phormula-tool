@@ -106,7 +106,7 @@ type BusinessJourneyResponse =
 
 const SUMMARY_TABS: Array<{ key: SummaryTab; label: string }> = [
   { key: "business_summary", label: "Business Summary" },
-  { key: "settings_configuration", label: "Settings & Configuration" },
+  { key: "settings_configuration", label: "Planning and Setup" },
   { key: "output", label: "Output" },
 ];
 
