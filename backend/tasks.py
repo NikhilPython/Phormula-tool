@@ -676,6 +676,7 @@ def refresh_dashboard_daily(country_filter=None):
 
                     mtd_payload = None
                     live_bi_payload = None
+                    last30_bi_payload = None
                     ads_payload = None
 
                     # 1) Amazon MTD transactions
@@ -765,6 +766,29 @@ def refresh_dashboard_daily(country_filter=None):
                             f"user_id={user_id}, country={country}"
                         )
 
+                    # 3b) Refresh and cache Last 30 days after Ads data updates.
+                    last30_params = {
+                        "countryName": country,
+                        "as_of": today.isoformat(),
+                    }
+                    res = requests.get(
+                        f"{base_url}/live_last_30_days?{urlencode(last30_params)}",
+                        headers=headers,
+                        timeout=900,
+                    )
+                    if not res.ok:
+                        print(
+                            f"[WARN] live_last_30_days failed "
+                            f"user_id={user_id}, country={country}, "
+                            f"status={res.status_code}, body={res.text[:500]}"
+                        )
+                    else:
+                        last30_bi_payload = _safe_json_response(res)
+                        print(
+                            f"[INFO] live_last_30_days refreshed "
+                            f"user_id={user_id}, country={country}"
+                        )
+
                     # 4) Save refreshed dashboard cache into public.live_data
                     if not mtd_payload or not live_bi_payload:
                         raise RuntimeError(
@@ -779,6 +803,7 @@ def refresh_dashboard_daily(country_filter=None):
                         country=country,
                         mtd_payload=mtd_payload,
                         live_bi_payload=live_bi_payload,
+                        last30_bi_payload=last30_bi_payload,
                         ads_payload=ads_payload,
                     )
 
@@ -843,6 +868,7 @@ def _post_live_dashboard_cache(
     country: str,
     mtd_payload: dict | None,
     live_bi_payload: dict | None,
+    last30_bi_payload: dict | None,
     ads_payload: dict | None,
 ):
     today = date.today()
@@ -851,13 +877,14 @@ def _post_live_dashboard_cache(
     saved_at_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
 
     cache_payload = {
-        "schemaVersion": 6,
+        "schemaVersion": 10,
         "complete": True,
         "data": mtd_payload,
         "liveBiPayload": live_bi_payload,
         "biPeriods": (live_bi_payload or {}).get("periods"),
         "biDailySeries": (live_bi_payload or {}).get("daily_series"),
         "biAlignedTotals": (live_bi_payload or {}).get("aligned_totals"),
+        "last30BiPayload": last30_bi_payload,
         "monthlySpPayload": ads_payload,
         "biStatus": "ready" if live_bi_payload else "idle",
         "liveBiReady": bool(live_bi_payload),

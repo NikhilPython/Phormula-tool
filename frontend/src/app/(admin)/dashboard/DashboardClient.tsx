@@ -195,7 +195,7 @@ const LIVE_LAST_30_DAYS_ENDPOINT = `${baseURL}/live_last_30_days`;
 const DASHBOARD_ACTION_ITEMS_ENDPOINT = `${baseURL}/dashboard/action-items`;
 const DASHBOARD_CARD_DELTAS_ENDPOINT = `${baseURL}/dashboard/card-deltas`;
 const LIVE_DASHBOARD_CACHE_ENDPOINT = `${baseURL}/amazon_api/live-dashboard/save`;
-const DASHBOARD_CACHE_SCHEMA_VERSION = 9;
+const DASHBOARD_CACHE_SCHEMA_VERSION = 10;
 const COUNTRY_TIMEZONE_ENDPOINT = `${baseURL}/country-timezone`;
 
 const MONTHLY_SP_ENDPOINT = `${baseURL}/api/ads/monthly_sp_sd_to_db`;
@@ -2896,6 +2896,22 @@ export default function DashboardPage() {
     const [last30Loading, setLast30Loading] = useState(false);
     const mtdPayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
     const last30PayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
+
+    const fetchAndCacheLast30Payload = useCallback(async () => {
+        const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+        const params = new URLSearchParams({
+            countryName: biCountryName.toLowerCase(),
+            as_of: dashboardAllowedEndISO,
+        });
+        const response = await fetch(`${LIVE_LAST_30_DAYS_ENDPOINT}?${params.toString()}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (!response.ok) throw new Error(`Last 30 days comparison failed: ${response.status}`);
+        const json: BiApiResponse & Record<string, any> = await response.json();
+        if (!json?.aligned_totals) throw new Error("Last 30 days response is missing aligned_totals");
+        last30PayloadCacheRef.current = { payload: json, totals: json.aligned_totals };
+        return json;
+    }, [biCountryName, dashboardAllowedEndISO]);
     const [liveBiReady, setLiveBiReady] = useState(false);
     const retryRef = useRef(0);
 
@@ -5546,6 +5562,15 @@ export default function DashboardPage() {
                     dataOnlyRefresh,
                 });
                 ensureDashboardLoadActive();
+                // Warm the Last 30 days comparison while the dashboard refresh
+                // is already in progress. It is included in the shared save
+                // snapshot so opening that tab does not need another request.
+                try {
+                    await fetchAndCacheLast30Payload();
+                } catch (last30Error) {
+                    console.warn("Could not warm Last 30 days dashboard data:", last30Error);
+                }
+                ensureDashboardLoadActive();
                 if (trackStep) await trackStep("live_mtd_bi", "completed");
             } else {
                 setStep(3, "Plotting Graph", 20, "Live BI not enabled, skipping");
@@ -5618,6 +5643,7 @@ export default function DashboardPage() {
         fetchAmazon,
         fetchInventoryInsights,
         fetchLiveBiPayload,
+        fetchAndCacheLast30Payload,
         fetchShopify,
         fetchShopifyPrev,
         fetchInventory,
@@ -5737,6 +5763,9 @@ export default function DashboardPage() {
         setLiveBiPayload(parsed?.liveBiPayload ?? null);
 
         setBiAlignedTotals(parsed?.biAlignedTotals ?? null);
+        last30PayloadCacheRef.current = parsed?.last30BiPayload?.aligned_totals
+            ? { payload: parsed.last30BiPayload, totals: parsed.last30BiPayload.aligned_totals }
+            : null;
 
         setInvRows(parsed?.invRows ?? []);
         setInventoryAlerts(parsed?.inventoryAlerts ?? {});
@@ -9085,6 +9114,7 @@ export default function DashboardPage() {
             biPeriods,
             liveBiPayload,
             biAlignedTotals,
+            last30BiPayload: last30PayloadCacheRef.current?.payload ?? null,
 
             invRows,
             inventoryAlerts,

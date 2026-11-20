@@ -127,6 +127,10 @@ def register_background_dashboard_refresh(celery_app, flask_app):
                 if not isinstance(bi, dict):
                     raise RuntimeError("Invalid initial BI data")
 
+                # The shared cache also carries the Last 30 days tab data so
+                # opening that tab does not trigger a separate browser request.
+                last30_bi = snapshot.get("last30BiPayload")
+
                 def make_snapshot(mtd_data, bi_data, phase):
                     current = copy.deepcopy(snapshot)
                     current["data"] = mtd_data
@@ -134,6 +138,8 @@ def register_background_dashboard_refresh(celery_app, flask_app):
                     current["biPeriods"] = bi_data.get("periods")
                     current["biDailySeries"] = bi_data.get("daily_series")
                     current["biAlignedTotals"] = bi_data.get("aligned_totals")
+                    if last30_bi:
+                        current["last30BiPayload"] = last30_bi
                     # Keep other existing cache fields. Ads-derived values may
                     # still be stale in the core-stage snapshot.
                     current["biStatus"] = "ready"
@@ -198,6 +204,10 @@ def register_background_dashboard_refresh(celery_app, flask_app):
                 bi = bi_response.json()
                 if not isinstance(bi,dict) or bi.get("error") or bi.get("success") is False:
                     raise RuntimeError("Post-Ads BI response invalid")
+                last30_bi = call("live_last_30_days", "GET", "/live_last_30_days", {
+                    "countryName": country, "as_of": today.isoformat()}, timeout=900)
+                if not isinstance(last30_bi, dict) or not last30_bi.get("aligned_totals"):
+                    raise RuntimeError("Post-Ads Last 30 days response invalid")
                 final_snapshot = make_snapshot(mtd, bi, "final")
                 # Preserve strictly increasing timestamp even on extremely fast
                 # API responses (the DB UPSERT rejects non-increasing saved_at).
