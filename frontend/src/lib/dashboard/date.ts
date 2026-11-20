@@ -1,5 +1,36 @@
 // lib/dashboard/date.ts
 
+export function getMonthCompletedPctTillYesterday(
+  timestamp?: number | string | Date | null,
+  timeZone?: string
+) {
+  if (!timestamp || !timeZone) return 0;
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 0;
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || "";
+
+  const year = Number(get("year"));
+  const month = Number(get("month"));
+  const day = Number(get("day"));
+
+  if (!year || !month || !day) return 0;
+
+  const completedDay = Math.max(day - 1, 0);
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  return daysInMonth > 0 ? (completedDay / daysInMonth) * 100 : 0;
+}
+
 export function getISTYearMonth() {
   const optsMonth: Intl.DateTimeFormatOptions = {
     timeZone: "Asia/Kolkata",

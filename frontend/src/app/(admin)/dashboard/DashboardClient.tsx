@@ -14713,6 +14713,11 @@ export default function DashboardPage() {
             nativeCurrency,
             mtdNetSalesHome: mtd,
             lastMonthNetSalesHome: last,
+            lastMonthToDateHome: toNumber(targets_lastMonthToDateHome),
+            currentTargetHome: toNumber(stickyTargetHome),
+            monthCompletedPct: toNumber(rangeCompletedPct),
+            completedAt: lastRefreshAt,
+            completedTimeZone: dashboardCompletedTimeZone,
             currentTargetNative: rawNativeTarget,
             initialGrowthIntent: midMonthObjective?.growth_intent ?? "balanced",
             initialProfitPriority: midMonthObjective?.profit_priority ?? "protect_growth",
@@ -14728,6 +14733,11 @@ export default function DashboardPage() {
         currentDisplayMonth,
         displayCurrency,
         midMonthObjective,
+        targets_lastMonthToDateHome,
+        stickyTargetHome,
+        rangeCompletedPct,
+        lastRefreshAt,
+        dashboardCompletedTimeZone,
     ]);
 
     useEffect(() => {
