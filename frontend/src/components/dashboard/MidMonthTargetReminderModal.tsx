@@ -4,12 +4,15 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
   Info,
-  UploadCloud,
-  FileSpreadsheet,
-  CheckCircle2,
-  XCircle,
+  Cloud,
+  Download,
+  Eye,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
+// import { Modal } from "@/components/ui/modal";
+import SkuMultiCountryUpload from "@/components/ui/modal/SkuMultiCountryUpload";
+// import { useModal } from "@/hooks/useModal";
 import Button from "@/components/ui/button/Button";
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
 import { getMonthCompletedPctTillYesterday } from "@/lib/dashboard/date";
@@ -44,6 +47,7 @@ interface Props {
   onClose: () => void;
   onSaved?: () => void;
   onViewPerformance?: () => void;
+  onViewSku?: () => void; // opens your existing "View your SKU" modal
 }
 
 const money = (amount: number, currency: string) =>
@@ -55,14 +59,6 @@ const money = (amount: number, currency: string) =>
   }).format(Number.isFinite(amount) ? amount : 0);
 
 const QUICK_FILL_UPLIFTS = [10, 20];
-
-const WAREHOUSE_MAX_SIZE_MB = 20;
-
-const humanFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-};
 
 type Option<T extends string> = { value: T; label: string; caption: string };
 
@@ -127,10 +123,7 @@ function SegmentedControl<T extends string>({
 }
 
 export default function MidMonthTargetReminderModal({
-  open,
-  data,
-  onClose,
-  onSaved,
+  open, data, onClose, onSaved, onViewSku,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const gaugeWrapRef = useRef<HTMLDivElement | null>(null);
@@ -150,13 +143,9 @@ export default function MidMonthTargetReminderModal({
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
 
-  // ---- Warehouse stock (step 3) state ----
-  const [warehouseFile, setWarehouseFile] = useState<File | null>(null);
-  const [warehouseUploading, setWarehouseUploading] = useState(false);
-  const [warehouseError, setWarehouseError] = useState<string | null>(null);
-  const [warehouseSuccess, setWarehouseSuccess] = useState<string | null>(null);
-  const [warehouseDragOver, setWarehouseDragOver] = useState(false);
-  const warehouseInputRef = useRef<HTMLInputElement | null>(null);
+  const skuInputRef = useRef<HTMLInputElement | null>(null);
+  const [skuFile, setSkuFile] = useState<File | null>(null);
+  const [skuUploadedName, setSkuUploadedName] = useState<string | null>(null);
 
   // Prevent state reset when parent re-fetches data via onSaved()
   const initializedRef = useRef(false);
@@ -182,22 +171,31 @@ export default function MidMonthTargetReminderModal({
       setSaveError(null);
       setSaving(false);
       setCurrentStep(1);
+      setSkuFile(null);
+      setSkuUploadedName(null);
       setGrowthIntent(data.initialGrowthIntent || "balanced");
       setProfitPriority(data.initialProfitPriority || "protect_growth");
       setInventoryClearance(data.initialInventoryClearance || false);
-
-      // Reset warehouse step state
-      setWarehouseFile(null);
-      setWarehouseUploading(false);
-      setWarehouseError(null);
-      setWarehouseSuccess(null);
-      setWarehouseDragOver(false);
-
       initializedRef.current = true;
     }
   }, [open, data]);
 
-  const isBusy = saving || warehouseUploading;
+  // Don't let Escape close the parent while the SKU upload modal is open
+  const isBusy = saving || !!skuFile;
+
+  const handleDownloadSkuTemplate = () => {
+    const link = document.createElement("a");
+    link.href = "/sku-information-template.xlsx";
+    link.download = "SKU Information.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFinishSetup = async () => {
+    const saved = await handleSave(true);
+    if (saved) onClose();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -454,128 +452,14 @@ export default function MidMonthTargetReminderModal({
   );
 
 
-  const validateWarehouseFile = (f: File): string | null => {
-    const lower = f.name.toLowerCase();
-    if (!/\.(xlsx|xls|csv)$/.test(lower)) {
-      return "Please upload an Excel (.xlsx, .xls) or CSV file.";
-    }
-    if (f.size > WAREHOUSE_MAX_SIZE_MB * 1024 * 1024) {
-      return `File is too large. Max size is ${WAREHOUSE_MAX_SIZE_MB} MB.`;
-    }
-    return null;
-  };
-
-  const handleWarehouseFile = (f: File | null) => {
-    setWarehouseError(null);
-    setWarehouseSuccess(null);
-    if (!f) return;
-    const err = validateWarehouseFile(f);
-    if (err) {
-      setWarehouseError(err);
-      return;
-    }
-    setWarehouseFile(f);
-  };
-
-  const handleWarehouseDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setWarehouseDragOver(false);
-    const f = e.dataTransfer.files?.[0];
-    if (f) handleWarehouseFile(f);
-  };
-
-  const handleWarehouseUpload = async () => {
-    if (!warehouseFile || !data) return;
-
-    const token =
-      typeof window !== "undefined"
-        ? localStorage.getItem("jwtToken")
-        : null;
-
-    if (!token) {
-      setWarehouseError("Authorization token is missing.");
-      return;
-    }
-
-    const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-
-    try {
-      setWarehouseUploading(true);
-      setWarehouseError(null);
-      setWarehouseSuccess(null);
-
-      const form = new FormData();
-      form.append("file", warehouseFile);
-      form.append("country", data.country);
-      form.append("month", data.monthName);
-      form.append("year", String(data.year));
-
-      const res = await fetch(`${baseURL}/warehouse/stock/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(
-          json?.message || json?.error || `Upload failed (${res.status})`
-        );
-      }
-
-      setWarehouseSuccess(
-        json?.message ||
-        (json?.rows_imported != null
-          ? `Uploaded ${json.rows_imported} rows.`
-          : "Warehouse stock updated successfully.")
-      );
-
-      // Brief pause so the success tick is visible, then close.
-      setTimeout(() => {
-        onSaved?.();
-        onClose();
-      }, 1000);
-    } catch (err: any) {
-      setWarehouseError(err?.message || "Upload failed. Try again.");
-    } finally {
-      setWarehouseUploading(false);
-    }
-  };
-
-
-  const handleFinishSetup = async () => {
-    // Save monthly target and business objectives first.
-    const saved = await handleSave(true);
-
-    if (!saved) return;
-
-    // Warehouse upload is optional.
-    if (warehouseFile) {
-      await handleWarehouseUpload();
-    } else {
-      // No warehouse file selected: finish successfully.
-      onClose();
-    }
-  };
-
-
-  const handleWarehouseSkip = () => {
-    onClose();
-  };
-
   if (!mounted || !open || !data) return null;
-
-  // const canSave = !saving && draftNumber > 0;
-  // const canUpload = !!warehouseFile && !warehouseUploading && !warehouseSuccess;
 
   const headingText =
     currentStep === 1
       ? `Set a target for ${data.monthName}`
       : currentStep === 2
         ? "Update Business Objectives"
-        : "Update Local Warehouse Stock";
+        : "Product & Inventory Controls";
 
   const subtitleText =
     currentStep === 1
@@ -584,14 +468,14 @@ export default function MidMonthTargetReminderModal({
         : `You haven't set a monthly net sales target yet. Set one now, or we'll use ${prevMonthName}'s net sales as your ${data.monthName} target.`
       : currentStep === 2
         ? `Define your business priorities for ${data.monthName}. You can change these preferences at any time.`
-        : `Upload your ${data.monthName} ${data.year} local warehouse stock sheet. This is optional — you can also upload it later from the Inventory section.`;
+        : `Upload your latest SKU sheet. This is optional — you can also do it later from Product & Inventory Controls.`;   // 👈 changed
 
   const infoText =
     currentStep === 1
       ? "You can update your target at any time from Targets & Objectives."
       : currentStep === 2
         ? "You can update your objectives at any time from Targets & Objectives."
-        : "You can update warehouse stock at any time from the Inventory section.";
+        : "You can update your SKU sheet at any time from Product & Inventory Controls.";   // 👈 changed
 
   return createPortal(
     <div
@@ -956,109 +840,84 @@ export default function MidMonthTargetReminderModal({
           {/* STEP 3: WAREHOUSE STOCK     */}
           {/* =========================== */}
           {currentStep === 3 && (
-            <div>
+            <div className="flex flex-col">
+
               <div
                 role="button"
                 tabIndex={0}
-                aria-label="Upload warehouse stock Excel"
-                onClick={() => {
-                  if (!warehouseUploading) warehouseInputRef.current?.click();
-                }}
+                onClick={() => skuInputRef.current?.click()}
                 onKeyDown={(e) => {
-                  if (
-                    (e.key === "Enter" || e.key === " ") &&
-                    !warehouseUploading
-                  ) {
-                    warehouseInputRef.current?.click();
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    skuInputRef.current?.click();
                   }
                 }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setWarehouseDragOver(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setWarehouseDragOver(false);
-                }}
-                onDrop={handleWarehouseDrop}
-                className={[
-                  "relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition",
-                  warehouseDragOver
-                    ? "border-green-500 bg-green-50"
-                    : "border-slate-300 bg-slate-50 hover:border-green-400 hover:bg-green-50/60",
-                  warehouseUploading ? "pointer-events-none opacity-60" : "",
-                ].join(" ")}
+                className="mt-4 flex min-h-[150px] w-full cursor-pointer flex-col rounded-xl border border-dashed border-[#B9D8C9] bg-[#FBFEFC] px-4 pb-3 pt-5 text-center transition hover:border-green-500 hover:bg-[#F4FBF7]"
               >
-                <UploadCloud className="mb-3 h-8 w-8 text-slate-400" />
-                <p className="text-sm font-medium text-slate-700">
-                  Drag &amp; drop your Excel file here
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  or{" "}
-                  <span className="font-semibold text-green-700">browse</span>{" "}
-                  — .xlsx, .xls, .csv (max {WAREHOUSE_MAX_SIZE_MB} MB)
-                </p>
-                <input
-                  ref={warehouseInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={(e) =>
-                    handleWarehouseFile(e.target.files?.[0] || null)
-                  }
-                />
+                <div className="flex flex-1 flex-col items-center justify-center">
+                  <Cloud className="h-7 w-7 text-green-500" />
+                  <span className="mt-2 text-[12px] font-bold text-[#37455F] 2xl:text-[14px]">
+                    Replace or update your SKU sheet
+                  </span>
+                  <span className="mt-1 text-[11px] text-[#78847E] 2xl:text-xs">
+                    Click to browse · .xlsx, .xls, .csv
+                  </span>
+                </div>
+
+                <div className="mt-3 flex justify-center border-t border-dashed border-[#B9D8C9]/60 pt-3">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDownloadSkuTemplate();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+                  >
+                    Download format here
+                    <Download className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
 
-              {warehouseFile && (
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5 shrink-0 text-green-600" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-slate-800">
-                        {warehouseFile.name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {humanFileSize(warehouseFile.size)}
-                      </p>
-                    </div>
-                  </div>
-                  {!warehouseUploading && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setWarehouseFile(null);
-                        setWarehouseError(null);
-                        setWarehouseSuccess(null);
-                      }}
-                      className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                      aria-label="Remove selected file"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
+              <input
+                ref={skuInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  setSkuUploadedName(null);
+                  const f = e.target.files?.[0] || null;
+                  e.target.value = "";
+                  if (f) setSkuFile(f);
+                }}
+              />
+
+              {skuUploadedName && (
+                <div
+                  role="status"
+                  className="mt-4 flex items-center justify-center gap-2 "
+                >
+                  {/* <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> */}
+                  <span className="text-green-500 text-xs md:text-sm text-center">
+                    SKU sheet uploaded successfully!
+                    {/* <span className="block text-xs text-green-600/80 truncate">
+                      {skuUploadedName}
+                    </span> */}
+                  </span>
                 </div>
               )}
 
-              {warehouseUploading && (
-                <div className="mt-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-700">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading your warehouse stock...
-                </div>
-              )}
-
-              {warehouseSuccess && (
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-700">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{warehouseSuccess}</span>
-                </div>
-              )}
-
-              {warehouseError && (
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">
-                  <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{warehouseError}</span>
+              {onViewSku && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={onViewSku}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+                  >
+                    View your SKU
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )}
             </div>
@@ -1148,11 +1007,8 @@ export default function MidMonthTargetReminderModal({
               <Button
                 size="md"
                 variant="outline"
-                onClick={() => {
-                  setWarehouseError(null);
-                  setCurrentStep(2);
-                }}
-                disabled={warehouseUploading || !!warehouseSuccess || saving}
+                onClick={() => setCurrentStep(2)}
+                disabled={saving}
                 className="px-4 py-2.5 text-sm font-semibold text-charcoal-500 transition hover:bg-slate-50 disabled:opacity-50"
               >
                 Back
@@ -1162,24 +1018,13 @@ export default function MidMonthTargetReminderModal({
                 type="button"
                 size="md"
                 onClick={handleFinishSetup}
-                disabled={saving || warehouseUploading || !!warehouseSuccess}
+                disabled={saving}
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1f2943] disabled:opacity-60"
               >
                 {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : warehouseUploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Uploading...
-                  </>
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
                 ) : (
-                  <>
-                    {/* <CheckCircle2 className="h-4 w-4" /> */}
-                    Save
-                  </>
+                  "Save"
                 )}
               </Button>
             </div>
@@ -1187,6 +1032,22 @@ export default function MidMonthTargetReminderModal({
 
         </div>
       </div>
+      {skuFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <SkuMultiCountryUpload
+            initialFile={skuFile}
+            onClose={() => setSkuFile(null)}
+            onComplete={() => {
+              setSkuUploadedName(skuFile?.name ?? "SKU sheet");
+              onSaved?.();
+              setSkuFile(null);
+            }}
+          />
+        </div>
+      )}
     </div>,
     document.body
   );

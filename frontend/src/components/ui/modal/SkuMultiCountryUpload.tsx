@@ -10,7 +10,11 @@ import Button from "../button/Button";
 import PageBreadcrumb from "@/components/common/PageBreadCrumb";
 
 type Row = Record<string, string | number | null | undefined>;
-type Props = { onClose: () => void; onComplete: () => void };
+type Props = {
+  onClose: () => void;
+  onComplete: () => void;
+  initialFile?: File | null;
+};
 
 // Updated to match your new Excel format
 const FIXED_COLUMNS = [
@@ -85,7 +89,7 @@ function normalizeHeader(key: string): string {
   return aliases[raw] || raw;
 }
 
-export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
+export default function SkuMultiCountryUpload({ onClose, onComplete, initialFile }: Props) {
   const [error, setError] = React.useState<string>("");
   const [file, setFile] = React.useState<File | null>(null);
   const [fileName, setFileName] = React.useState<string>("No File Chosen");
@@ -308,9 +312,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     [processParsedRows, resetPreview]
   );
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] || null;
-
+  const handleSelectedFile = (selected: File | null) => {
     setError("");
     resetPreview();
 
@@ -324,7 +326,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     const isValidType =
       selected.type === "application/vnd.ms-excel" ||
       selected.type ===
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       lowerName.endsWith(".csv") ||
       lowerName.endsWith(".xls") ||
       lowerName.endsWith(".xlsx");
@@ -339,12 +341,23 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
     setFile(selected);
     setFileName(selected.name);
 
-    if (lowerName.endsWith(".csv")) {
-      parseCSVFile(selected);
-    } else {
-      parseXLSXFile(selected);
-    }
+    if (lowerName.endsWith(".csv")) parseCSVFile(selected);
+    else parseXLSXFile(selected);
   };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleSelectedFile(e.target.files?.[0] || null);
+  };
+
+  // Auto-parse the file passed from the wizard
+  const initialFileHandled = React.useRef(false);
+  React.useEffect(() => {
+    if (initialFile && !initialFileHandled.current) {
+      initialFileHandled.current = true;
+      handleSelectedFile(initialFile);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile]);
 
   const onDownloadTemplate = () => {
     const link = document.createElement("a");
@@ -369,7 +382,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
 
       rows.forEach((row: any) => {
         const key = row.product_barcode || row.product_name;
-        
+
         if (!grouped.has(key)) {
           grouped.set(key, {
             "S. No.": row.s_no,
@@ -381,10 +394,10 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
             product_status: row.product_status,
           });
         }
-        
+
         const item = grouped.get(key);
         const country = String(row.country || "").toLowerCase();
-        
+
         if (country) {
           item[`sku_${country}`] = row.sku;
           item[`asin_${country}`] = row.asin;
@@ -400,7 +413,7 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
       const ws = XLSX.utils.json_to_sheet(wideData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-      
+
       // Create the file object to upload
       const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
       const newFile = new File([wbout], file.name, {
@@ -421,6 +434,23 @@ export default function SkuMultiCountryUpload({ onClose, onComplete }: Props) {
       setError(msg);
     }
   };
+
+  if (initialFile && !showConfirm) {
+    return (
+      <div className="w-full max-w-[420px] rounded-2xl border border-[#D9D9D9] bg-white p-6 text-center shadow-[6px_6px_7px_0px_#00000026]">
+        {error ? (
+          <>
+            <p className="text-sm font-semibold text-red-600">{error}</p>
+            <Button className="mt-4" size="sm" variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-slate-600">Reading your file…</p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

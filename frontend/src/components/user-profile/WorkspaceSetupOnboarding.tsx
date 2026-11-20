@@ -11,12 +11,11 @@ import {
   FiEye,
   FiLock,
   FiSearch,
-  FiPlus,
-  FiUser,
+  FiCheckCircle,
   FiX,
 } from "react-icons/fi";
 import { SiAmazon } from "react-icons/si";
-
+import { createPortal } from "react-dom";
 import Button from "@/components/ui/button/Button";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -252,7 +251,6 @@ export default function WorkspaceSetupOnboarding({
   className,
   view = "profile",
 }: WorkspaceSetupOnboardingProps) {
-  const skuModal = useModal();
   const skuViewModal = useModal();
   const connected = useConnectedPlatforms();
 
@@ -278,6 +276,9 @@ export default function WorkspaceSetupOnboarding({
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
 
+  const skuInputRef = useRef<HTMLInputElement | null>(null);
+  const [skuFile, setSkuFile] = useState<File | null>(null);
+  const [skuUploadedName, setSkuUploadedName] = useState<string | null>(null);
   const [isPersonalEditing, setIsPersonalEditing] = useState(false);
   const [personalErrors, setPersonalErrors] = useState<PersonalInfoFormErrors>({});
   const [personalTouched, setPersonalTouched] = useState({
@@ -373,6 +374,13 @@ export default function WorkspaceSetupOnboarding({
   useEffect(() => {
     void fetchUserData();
   }, [fetchUserData]);
+
+  useEffect(() => {
+    if (!skuUploadedName) return;
+
+    const timer = window.setTimeout(() => setSkuUploadedName(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [skuUploadedName]);
 
   useEffect(() => {
     const snapshot = JSON.stringify({
@@ -1543,14 +1551,14 @@ export default function WorkspaceSetupOnboarding({
                     tabIndex={canAccessProductControls ? 0 : -1}
                     aria-disabled={!canAccessProductControls}
                     onClick={() => {
-                      if (canAccessProductControls) skuModal.openModal();
+                      if (canAccessProductControls) skuInputRef.current?.click();
                     }}
                     onKeyDown={(e) => {
                       if (!canAccessProductControls) return;
                       if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        skuModal.openModal();
+                        skuInputRef.current?.click();
                       }
                     }}
                     className={cx(
@@ -1604,6 +1612,34 @@ export default function WorkspaceSetupOnboarding({
                       </button>
                     </div>
                   </div>
+
+                  <input
+                    ref={skuInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      setSkuUploadedName(null);
+                      const f = e.target.files?.[0] || null;
+                      e.target.value = ""; // allows re-selecting the same file
+                      if (f) setSkuFile(f);
+                    }}
+                  />
+
+                  {skuUploadedName && (
+                    <div
+                      role="status"
+                      className="mt-4 flex items-center justify-center gap-2 "
+                    >
+                      {/* <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> */}
+                      <span className="text-green-500 text-xs md:text-sm text-center">
+                        SKU sheet uploaded successfully!
+                        {/* <span className="block text-xs text-green-600/80 truncate">
+                      {skuUploadedName}
+                    </span> */}
+                      </span>
+                    </div>
+                  )}
 
                   {/* View your SKU: only shown once a sheet exists */}
                   {hasSkuSheet && (
@@ -1756,23 +1792,36 @@ export default function WorkspaceSetupOnboarding({
                     key={platform.id}
                     className="rounded-2xl border border-[#E1E7E3] bg-[#FCFDFC] p-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-white shadow-sm">
-                        {platform.id === "amazon-ads" ? (
-                          <img
-                            src="/images/AmazonAds.jpg"
-                            alt="Amazon Ads"
-                            className="h-7 w-7 object-contain"
-                          />
-                        ) : (
-                          <SiAmazon className="text-[#202A38]" size={24} />
-                        )}
-                      </div>
-                      {platform.countryCode && (
-                        <ReactCountryFlag svg countryCode={platform.countryCode} className="text-lg" />
-                      )}
-                    </div>
+                 <div className="flex items-start justify-between gap-3">
+  <div className="min-w-0 space-y-1">
+    <p className="text-xs font-bold text-[#37455F] 2xl:text-sm">
+      {hasSkuSheet
+        ? "Keep your catalog and stock current"
+        : guideStep === "sku"
+          ? "Upload your SKU sheet to continue"
+          : "SKU upload is locked"}
+    </p>
 
+    <p className="text-[11px] leading-4 text-[#78847E] 2xl:text-xs 2xl:leading-5">
+      {hasSkuSheet
+        ? "Upload an updated sheet to refresh your local warehouse stock and product catalog in one go."
+        : guideStep === "sku"
+          ? "Company information is complete. Upload your product sheet now to unlock marketplace integrations."
+          : "Complete Company Info first. SKU upload will unlock automatically after that."}
+    </p>
+  </div>
+
+  {hasSkuSheet && (
+    <button
+      type="button"
+      onClick={handleViewSkuSheet}
+      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] font-semibold text-[#5EA68E] transition hover:text-[#4a907a] 2xl:text-[13px]"
+    >
+      View your SKU
+      <FiEye size={14} />
+    </button>
+  )}
+</div> G
                     <p className="mt-3 text-xs 2xl:text-sm font-bold text-charcoal-500">{platform.label}</p>
                     <span
                       className={cx(
@@ -1810,30 +1859,30 @@ export default function WorkspaceSetupOnboarding({
         </div>
       </div >
 
-      <Modal
-        isOpen={skuModal.isOpen}
-        onClose={skuModal.closeModal}
-        className="m-4 max-w-[520px] border border-[#D9D9D9] shadow-[6px_6px_7px_0px_#00000026]"
-      >
-        <div className="relative w-full rounded-2xl bg-white p-4 dark:bg-gray-900 lg:p-8">
-          <SkuMultiCountryUpload
-            onClose={skuModal.closeModal}
-            onComplete={() => {
-              setUploadSuccess(true);
-              setData((previous: any) => ({ ...previous, sku_sheet_exists: true }));
-              void fetchUserData();
-              skuModal.closeModal();
+      {skuFile &&
+        createPortal(
+          <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40 px-4">
+            <SkuMultiCountryUpload
+              initialFile={skuFile}
+              onClose={() => setSkuFile(null)}
+              onComplete={() => {
+                setSkuUploadedName(skuFile?.name ?? "SKU sheet");
+                setUploadSuccess(true);
+                setData((previous: any) => ({ ...previous, sku_sheet_exists: true }));
+                void fetchUserData();
+                setSkuFile(null);
 
-              window.setTimeout(() => {
-                integrationSectionRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "center",
-                });
-              }, 300);
-            }}
-          />
-        </div>
-      </Modal>
+                window.setTimeout(() => {
+                  integrationSectionRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+                }, 300);
+              }}
+            />
+          </div>,
+          document.body
+        )}
 
       <Modal
         isOpen={skuViewModal.isOpen}
