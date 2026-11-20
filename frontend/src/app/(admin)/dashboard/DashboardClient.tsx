@@ -7783,6 +7783,16 @@ export default function DashboardPage() {
     }, [data, liveBiPayload, monthlySkuwiseRows, platform, comparisonPeriod]);
 
     const totalRowCm2Profit = useMemo(() => {
+        // The Last 30 days KPI is account-level BI data. Keep the P&L summary
+        // row on that same source instead of the SKU grand total, which can
+        // differ when CM2 adjustments are not allocated to individual SKUs.
+        if (comparisonPeriod === "last30" && biAlignedTotals?.total_current_profit_cm2 != null) {
+            return convertToDisplayCurrency(
+                toNumber(biAlignedTotals.total_current_profit_cm2),
+                biSourceCurrency
+            );
+        }
+
         return toNumber(
             grandTotalRowRaw?.total_cm2_profit ??
             grandTotalRowDisplay?.total_cm2_profit ??
@@ -7797,6 +7807,10 @@ export default function DashboardPage() {
         plSummaryTotals.cm2_profit,
         grandTotalRowRaw?.cm2_profit,
         grandTotalRowDisplay?.cm2_profit,
+        comparisonPeriod,
+        biAlignedTotals?.total_current_profit_cm2,
+        convertToDisplayCurrency,
+        biSourceCurrency,
     ]);
 
     const totalRowCm2Margins = useMemo(() => {

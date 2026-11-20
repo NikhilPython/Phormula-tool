@@ -946,31 +946,46 @@ const COUNTRY_META: Record<string, { name: string; flag?: string }> = {
 function ObjectivesPager({ view }: { view: ObjectivesViewProps }) {
   const { countries, editingCountry } = view;
   const [index, setIndex] = useState(0);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
+  const total = countries.length;
   const isLocked = editingCountry !== null;
-  const hasMultiple = countries.length > 1;
+  const hasMultiple = total > 1;
 
+  // Keep index valid if the country list changes
   useEffect(() => {
-    if (index > countries.length - 1) {
-      setIndex(Math.max(countries.length - 1, 0));
+    if (index > total - 1) {
+      setIndex(Math.max(total - 1, 0));
     }
-  }, [countries.length, index]);
+  }, [total, index]);
 
   const goTo = (i: number) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ left: el.clientWidth * i, behavior: "smooth" });
-    setIndex(i);
+    if (isLocked || total === 0) return;
+    setIndex(((i % total) + total) % total); // wraps around
   };
 
-  const handleScroll = () => {
-    const el = scrollRef.current;
-    if (!el || !el.clientWidth) return;
-    const next = Math.round(el.scrollLeft / el.clientWidth);
-    if (next !== index && next >= 0 && next < countries.length) {
-      setIndex(next);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isLocked || !hasMultiple) return;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      goTo(index - 1);
     }
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      goTo(index + 1);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartX.current === null || isLocked || !hasMultiple) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(delta) < 50) return;
+    goTo(delta < 0 ? index + 1 : index - 1);
   };
 
   const activeCountry = countries[index] ?? countries[0];
@@ -983,69 +998,108 @@ function ObjectivesPager({ view }: { view: ObjectivesViewProps }) {
       className="h-full"
       contentClassName="flex flex-col"
     >
+      {/* Viewport */}
       <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className={`flex w-full snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isLocked ? "overflow-x-hidden" : "overflow-x-auto"
-          }`}
+        tabIndex={0}
+        role="group"
+        aria-roledescription="carousel"
+        aria-label="Country objectives"
+        onKeyDown={handleKeyDown}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="w-full overflow-hidden outline-none"
       >
-        {countries.map((c) => {
-          const currency = view.getCurrency(c);
-          const meta = COUNTRY_META[c.toLowerCase()] ?? { name: c.toUpperCase() };
+        {/* Sliding track */}
+        <div
+          className="flex w-full transition-transform duration-300 ease-in-out"
+          style={{ transform: `translateX(-${index * 100}%)` }}
+        >
+          {countries.map((c, i) => {
+            const currency = view.getCurrency(c);
+            const meta = COUNTRY_META[c.toLowerCase()] ?? { name: c.toUpperCase() };
 
-          return (
-            <div key={c} className="w-full min-w-0 shrink-0 snap-center">
-              {/* Country name on the left, flag on the right end */}
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <span className="text-base font-bold text-green-500 2xl:text-xl">
-                  {meta.name}
-                </span>
+            return (
+              <div
+                key={c}
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${i + 1} of ${total}`}
+                aria-hidden={i !== index}
+                className="w-full min-w-0 shrink-0 px-0.5"
+              >
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <span className="text-base font-bold text-green-500 2xl:text-xl">
+                    {meta.name}
+                  </span>
 
-                {meta.flag && (
-                  <ReactCountryFlag
-                    svg
-                    countryCode={meta.flag}
-                    aria-label={meta.name}
-                    style={{ width: "2.1em", height: "1.5em", borderRadius: 3 }}
-                    className="shrink-0 shadow-sm"
-                  />
-                )}
+                  {meta.flag && (
+                    <ReactCountryFlag
+                      svg
+                      countryCode={meta.flag}
+                      aria-label={meta.name}
+                      style={{ width: "2.1em", height: "1.5em", borderRadius: 3 }}
+                      className="shrink-0 shadow-sm"
+                    />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
+                  {OBJECTIVE_FIELDS.map(({ key, label }) => (
+                    <InfoItem
+                      key={key}
+                      label={key === "target" ? `Target (${currency})` : label}
+                      value={
+                        <ObjectiveFieldValue view={view} country={c} field={key} />
+                      }
+                    />
+                  ))}
+                </div>
               </div>
-
-              <div className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
-                {OBJECTIVE_FIELDS.map(({ key, label }) => (
-                  <InfoItem
-                    key={key}
-                    label={key === "target" ? `Target (${currency})` : label}
-                    value={
-                      <ObjectiveFieldValue
-                        view={view}
-                        country={c}
-                        field={key}
-                      />
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
+      {/* Controls: prev / dots / next */}
       {hasMultiple && (
-        <div className="mt-auto flex items-center justify-center gap-2 pt-6">
-          {countries.map((c, i) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => goTo(i)}
-              disabled={isLocked}
-              aria-label={`Show ${c.toUpperCase()} objectives`}
-              title={isLocked ? "Save or cancel to switch country" : c.toUpperCase()}
-              className={`h-2 rounded-full transition-all duration-300 disabled:cursor-not-allowed ${i === index ? "w-5 bg-[#5FA896]" : "w-2 bg-gray-300 hover:bg-gray-400"
-                }`}
-            />
-          ))}
+        <div className="mt-auto flex items-center justify-center gap-4 pt-6">
+          <button
+            type="button"
+            onClick={() => goTo(index - 1)}
+            disabled={isLocked}
+            aria-label="Previous country"
+            title={isLocked ? "Save or cancel to switch country" : "Previous"}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-[#5FA896] hover:text-[#5FA896] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            <FiChevronLeft size={16} />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {countries.map((c, i) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => goTo(i)}
+                disabled={isLocked}
+                aria-label={`Show ${c.toUpperCase()} objectives`}
+                aria-current={i === index}
+                title={isLocked ? "Save or cancel to switch country" : c.toUpperCase()}
+                className={`h-2 rounded-full transition-all duration-300 disabled:cursor-not-allowed ${i === index ? "w-5 bg-[#5FA896]" : "w-2 bg-gray-300 hover:bg-gray-400"
+                  }`}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => goTo(index + 1)}
+            disabled={isLocked}
+            aria-label="Next country"
+            title={isLocked ? "Save or cancel to switch country" : "Next"}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition hover:border-[#5FA896] hover:text-[#5FA896] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
+          >
+            <FiChevronRight size={16} />
+          </button>
         </div>
       )}
     </InfoCard>
