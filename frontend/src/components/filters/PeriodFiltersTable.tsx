@@ -5,7 +5,7 @@
 import React from "react";
 import { FaAngleDown } from "react-icons/fa";
 
-export type Range = "monthly" | "quarterly" | "yearly";
+export type Range = "monthly" | "quarterly" | "yearly" | "last12months";
 export type RangeValue = Range | "";
 export type AvailablePeriods = Record<string, string[]>;
 
@@ -264,6 +264,7 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
     if (r === "monthly") return !hasSelectableMonthlyPeriod();
     if (r === "quarterly") return !hasSelectableQuarterlyPeriod();
     if (r === "yearly") return !hasSelectableYearlyPeriod();
+    if (r === "last12months") return false;
 
     return false;
   };
@@ -277,7 +278,7 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
 
     // Yearly does not need month/quarter seeding.
     // Keep the current selected year.
-    if (nextRange === "yearly") return;
+    if (nextRange === "yearly" || nextRange === "last12months") return;
 
     const latest = getLatestAvailablePeriod() ?? getLatestPeriod();
     if (!latest?.month || !latest?.year) return;
@@ -458,6 +459,11 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
               Yearly
             </option>
           )}
+          {allowedRanges.includes("last12months") && (
+            <option value="last12months" disabled={isRangeDisabled("last12months")}>
+              Last 12 Months
+            </option>
+          )}
         </select>
         <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
           <FaAngleDown />
@@ -500,24 +506,26 @@ const PeriodFiltersTable: React.FC<Props> = (props) => {
       )}
 
       {/* Year */}
-      <div className={wrapCls}>
-        <select
-          value={selectedYear ? String(selectedYear) : ""}
-          onChange={(e) => onYearChange(e.target.value)}
-          className={selectCls}
-        >
-          <option value="">Year</option>
-          {yearList.map((y) => (
-            <option key={y} value={y} disabled={isYearDisabled(y)}>
-              {y}
-            </option>
-          ))}
-        </select>
+      {safeRange !== "last12months" && (
+        <div className={wrapCls}>
+          <select
+            value={selectedYear ? String(selectedYear) : ""}
+            onChange={(e) => onYearChange(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">Year</option>
+            {yearList.map((y) => (
+              <option key={y} value={y} disabled={isYearDisabled(y)}>
+                {y}
+              </option>
+            ))}
+          </select>
 
-        <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
-          <FaAngleDown />
-        </span>
-      </div>
+          <span className="pointer-events-none absolute inset-y-0 right-3 sm:right-5 flex items-center text-[9px] sm:text-[10px]">
+            <FaAngleDown />
+          </span>
+        </div>
+      )}
     </div>
   );
 };

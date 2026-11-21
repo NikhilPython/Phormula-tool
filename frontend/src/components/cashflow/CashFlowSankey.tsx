@@ -60,7 +60,7 @@ type Props = {
   data: SummaryShape;
   previous_summary?: SummaryShape;
   previousLabel?: string;
-  periodType?: "monthly" | "quarterly" | "yearly";
+  periodType?: "monthly" | "quarterly" | "yearly" | "last12months";
   currency: string;
   isPreviewMode?: boolean;
   cardMetrics?: CashflowCardMetrics;

@@ -72,6 +72,7 @@ export type PromotionsPlacement = {
 
 type SKUtableProps = {
   range: RangeType;
+  isRolling12Months?: boolean;
   month?: string;
   quarter?: string;
   year: string | number;
@@ -392,6 +393,63 @@ const differenceKnownNumbers = (
   return Number(minuend ?? 0) - Number(subtrahend ?? 0);
 };
 
+const resolveStorageFees = (row: any): number => {
+  if (!row) return 0;
+  const direct = toNumber(
+    row.storage_fee ??
+    row.storage_fees ??
+    row.storage_fees_total ??
+    row.platform_fee_inventory_storage
+  );
+  if (direct !== 0) return Math.abs(direct);
+  const splitSum =
+    toNumber(row.short_term_storage_fee ?? row.short_term_storage) +
+    toNumber(row.long_term_storage_fee ?? row.long_term_storage);
+  return Math.abs(splitSum);
+};
+
+const resolveOtherFees = (row: any): number => {
+  if (!row) return 0;
+  const platform = Math.abs(toNumber(row.platform_management_fees ?? row.platformfeenew));
+  const otherAdj = Math.abs(toNumber(row.other_adjustment ?? row.other));
+  // Other adjustments are credits against platform management fees.
+  return platform - otherAdj;
+};
+
+const resolveInventoryCharges = (row: any): number => {
+  if (!row) return 0;
+  const direct = row.inventory_charges_and_reimbursement ?? row.inventory_charges_reimbursement;
+  if (direct !== undefined && direct !== null && direct !== "" && Number(direct) !== 0) {
+    // This backend field is already net: charges less lost-inventory reimbursements.
+    return toNumber(direct);
+  }
+  const fbaDisposal = toNumber(row.inventory_charges ?? row.inventory_charge ?? row.fba_disposal);
+  const lostTotal = toNumber(row.reimbursement_lost_inventory_amount ?? row.lost_total);
+  return Math.abs(fbaDisposal) - Math.abs(lostTotal);
+};
+
+const resolveShippingCharges = (row: any): number => {
+  if (!row) return 0;
+  return Math.abs(
+    toNumber(
+      row.shipping_charges ??
+      row.shipment_charges ??
+      row.shipping_charges_total ??
+      row.shipment_fees
+    )
+  );
+};
+
+const resolveOtherChargesTotal = (row: any): number => {
+  // Keep net reimbursements and adjustments as offsets to the charge total.
+  return (
+    resolveShippingCharges(row) +
+    resolveStorageFees(row) +
+    resolveInventoryCharges(row) +
+    resolveOtherFees(row)
+  );
+};
+
 const formatRoundedPlain = (value: unknown) => {
   return Math.round(Math.abs(toNumber(value ?? 0))).toLocaleString();
 };
@@ -504,16 +562,17 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Month-wise fee/reimbursement values use the exact backend field names.
       // Prefer source fields over normalized aliases because aliases may already be 0.
-      shipping_charges_total: toNumber(row.shipping_charges ?? row.shipment_charges ?? row.shipping_charges_total),
-      storage_fees_total: toNumber(row.storage_fee ?? row.storage_fees ?? row.storage_fees_total),
-      inventory_charges_and_reimbursement: toNumber(row.inventory_charges_and_reimbursement),
-      other_fees_total: toNumber(row.platform_management_fees ?? row.platformfeenew) - toNumber(row.other_adjustment),
+      shipping_charges_total: resolveShippingCharges(row),
+      storage_fees_total: resolveStorageFees(row),
+      inventory_charges_and_reimbursement: resolveInventoryCharges(row),
+      other_fees_total: resolveOtherFees(row),
+      other_charges_total: resolveOtherChargesTotal(row),
       net_reimbursement: toNumber(row.rembursement_fee ?? row.net_reimbursement ?? row.net_reimbursement_total),
       placement_fee: toNumber(row.placement_fee),
       customs_fee: toNumber(row.customs_fee),
       inventory_charges: toNumber(row.inventory_charges),
       platform_management_fees: toNumber(row.platform_management_fees ?? row.platformfeenew),
-      other_adjustment: toNumber(row.other_adjustment),
+      other_adjustment: toNumber(row.other_adjustment ?? row.other),
 
       // Costs / Fees
       cost_of_unit_sold: toNumber(row.cost_of_unit_sold),
@@ -534,9 +593,10 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Other / Misc
       misc_transaction: toNumber(row.misc_transaction),
-      other_transaction_fees: toNumber(row.other_transaction_fees ?? row.other_transactions),
-
-      other_transactions: toNumber(row.other_transactions ?? row.other_transaction_fees),
+      other_transaction_fees:
+        toNumber(row.other_transaction_fees) || toNumber(row.other_transactions),
+      other_transactions:
+        toNumber(row.other_transactions) || toNumber(row.other_transaction_fees),
 
       // CM1
       profit: toNumber(row.profit),
@@ -697,7 +757,8 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
       totalRow.dealvouchars_ads ??
       totalRow.dealsvoucher_ads
     ),
-    other_transactions: toNumber(totalRow.other_transactions ?? totalRow.other_transaction_fees),
+    other_transactions:
+      toNumber(totalRow.other_transactions) || toNumber(totalRow.other_transaction_fees),
     platform_fee: platformFees,
 
     inventory_storage_fees: inventoryStorageFees,
@@ -728,6 +789,7 @@ function computeTotalsFromTotalRow(rows: TableRow[]): Totals {
 
 const SKUtable: React.FC<SKUtableProps> = ({
   range,
+  isRolling12Months = false,
   month = "",
   quarter = "",
   year,
@@ -849,6 +911,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
       // Keep the existing selected-year filtering.
       if (
+        !isRolling12Months &&
         rowYear !== undefined &&
         rowYear !== null &&
         rowYear !== ""
@@ -928,26 +991,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
         cm2_profit_total: cm2Value,
 
         // Monthly fee/reimbursement columns use the exact backend fields.
-        // Backend sends Storage Fees in storage_fee; use that exact field.
-        shipping_charges_total: toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total),
+        shipping_charges_total: resolveShippingCharges(sourceRow),
         placement_fee: toNumber(sourceRow.placement_fee),
         shipment_fees: toNumber(sourceRow.shipment_fees ?? sourceRow.shipment_charges),
         customs_fee: toNumber(sourceRow.customs_fee),
-        storage_fees_total: toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total),
+        storage_fees_total: resolveStorageFees(sourceRow),
         short_term_storage_fee: toNumber(sourceRow.short_term_storage_fee),
         long_term_storage_fee: toNumber(sourceRow.long_term_storage_fee),
-        inventory_charges_and_reimbursement: toNumber(sourceRow.inventory_charges_and_reimbursement),
+        inventory_charges_and_reimbursement: resolveInventoryCharges(sourceRow),
         inventory_charges: toNumber(sourceRow.inventory_charges),
         reimbursement_lost_inventory_amount: toNumber(sourceRow.reimbursement_lost_inventory_amount ?? sourceRow.lost_total),
         // Other Fees = Platform Management Fees - Other (backend key: other).
         platform_management_fees: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew),
-        other_adjustment: toNumber(sourceRow.other_adjustment),
-        other_fees_total: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment),
-        other_charges_total:
-          toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total) +
-          toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total) +
-          toNumber(sourceRow.inventory_charges_and_reimbursement) +
-          (toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment)),
+        other_adjustment: toNumber(sourceRow.other_adjustment ?? sourceRow.other),
+        other_fees_total: resolveOtherFees(sourceRow),
+        other_charges_total: resolveOtherChargesTotal(sourceRow),
         // Backend's actual Net Reimbursement field is misspelled as rembursement_fee.
         net_reimbursement: toNumber(sourceRow.rembursement_fee ?? sourceRow.net_reimbursement ?? sourceRow.net_reimbursement_total),
         debt_payment: toNumber(sourceRow.debt_payment),
@@ -956,7 +1014,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         rembursment_vs_cm2_margins: toNumber(sourceRow.rembursment_vs_cm2_margins),
       } as TableRow;
     });
-  }, [rows, monthWiseRows, isMonthWiseView, year]);
+  }, [rows, monthWiseRows, isMonthWiseView, year, isRolling12Months]);
 
 
   const hasCm2Data = useMemo(() => {
@@ -1070,7 +1128,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
   const getBackendOtherTransactionsValue = useCallback(
     (row: Partial<TableRow>) => {
-      return toNumber((row as any).other_transaction_fees ?? (row as any).other_transactions);
+      return (
+        toNumber((row as any).other_transaction_fees) ||
+        toNumber((row as any).other_transactions)
+      );
     },
     []
   );
@@ -1270,17 +1331,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
         // Fee totals in the Month-wise Total row must come directly from
         // the YearlySKU API Total row, never from summing visible months.
         if (yearlyTotalRow) {
-          monthlyTotal.shipping_charges_total = toNumber(yearlyTotalRow.shipping_charges);
-          monthlyTotal.storage_fees_total = toNumber(yearlyTotalRow.storage_fee);
-          monthlyTotal.other_fees_total =
-            toNumber(yearlyTotalRow.platform_management_fees) -
-            toNumber(yearlyTotalRow.other_adjustment);
-          monthlyTotal.other_charges_total =
-            toNumber(yearlyTotalRow.shipping_charges) +
-            toNumber(yearlyTotalRow.storage_fee) +
-            toNumber(yearlyTotalRow.inventory_charges_and_reimbursement) +
-            (toNumber(yearlyTotalRow.platform_management_fees) - toNumber(yearlyTotalRow.other_adjustment));
-          monthlyTotal.net_reimbursement = toNumber(yearlyTotalRow.rembursement_fee);
+          monthlyTotal.shipping_charges_total = resolveShippingCharges(yearlyTotalRow);
+          monthlyTotal.storage_fees_total = resolveStorageFees(yearlyTotalRow);
+          monthlyTotal.inventory_charges_and_reimbursement = resolveInventoryCharges(yearlyTotalRow);
+          monthlyTotal.other_fees_total = resolveOtherFees(yearlyTotalRow);
+          monthlyTotal.other_charges_total = resolveOtherChargesTotal(yearlyTotalRow);
+          monthlyTotal.net_reimbursement = toNumber(yearlyTotalRow.rembursement_fee ?? yearlyTotalRow.net_reimbursement);
 
           // Month-wise Ads Spend expanded columns use YearlySKU API totals.
           monthlyTotal.brand_spend = toNumber(yearlyTotalRow.visible_ads);
@@ -3025,6 +3081,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     const rawMonthRows = Array.isArray(monthWiseRows) ? monthWiseRows : [];
     const selectedYear = String(year);
     const filteredMonthRows = rawMonthRows.filter((sourceRow: any) => {
+      if (isRolling12Months) return true;
       const rowYear =
         sourceRow?.year ??
         sourceRow?.calendar_year ??
@@ -3065,15 +3122,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
         dealsvouchar_ads: toNumber(
           sourceRow.dealsvouchar_ads ?? sourceRow.dealvouchars_ads ?? sourceRow.dealsvoucher_ads
         ),
-        shipping_charges_total: toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total),
-        storage_fees_total: toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total),
-        inventory_charges_and_reimbursement: toNumber(sourceRow.inventory_charges_and_reimbursement),
-        other_fees_total: toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment),
-        other_charges_total:
-          toNumber(sourceRow.shipping_charges ?? sourceRow.shipment_charges ?? sourceRow.shipping_charges_total) +
-          toNumber(sourceRow.storage_fee ?? sourceRow.storage_fees ?? sourceRow.storage_fees_total) +
-          toNumber(sourceRow.inventory_charges_and_reimbursement) +
-          (toNumber(sourceRow.platform_management_fees ?? sourceRow.platformfeenew) - toNumber(sourceRow.other_adjustment)),
+        shipping_charges_total: resolveShippingCharges(sourceRow),
+        storage_fees_total: resolveStorageFees(sourceRow),
+        inventory_charges_and_reimbursement: resolveInventoryCharges(sourceRow),
+        other_fees_total: resolveOtherFees(sourceRow),
+        other_charges_total: resolveOtherChargesTotal(sourceRow),
         net_reimbursement: toNumber(sourceRow.rembursement_fee ?? sourceRow.net_reimbursement ?? sourceRow.net_reimbursement_total),
         debt_payment: toNumber(sourceRow.debt_payment),
         disbursement: toNumber(sourceRow.disbursement),
@@ -3118,15 +3171,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
       unit_wise_cm2_profitability: getCm2PerUnit(backendTotalBase || {}),
       asp: resolveAspForRow(backendTotalBase || ({} as TableRow), true),
       // Total-row breakdowns use the YearlySKU API, matching the Month-wise UI.
-      shipping_charges_total: toNumber(yearlyMonthTotal.shipping_charges),
-      storage_fees_total: toNumber(yearlyMonthTotal.storage_fee),
-      inventory_charges_and_reimbursement: toNumber(yearlyMonthTotal.inventory_charges_and_reimbursement),
-      other_fees_total: toNumber(yearlyMonthTotal.platform_management_fees) - toNumber(yearlyMonthTotal.other_adjustment),
-      other_charges_total:
-        toNumber(yearlyMonthTotal.shipping_charges) +
-        toNumber(yearlyMonthTotal.storage_fee) +
-        toNumber(yearlyMonthTotal.inventory_charges_and_reimbursement) +
-        (toNumber(yearlyMonthTotal.platform_management_fees) - toNumber(yearlyMonthTotal.other_adjustment)),
+      shipping_charges_total: resolveShippingCharges(yearlyMonthTotal),
+      storage_fees_total: resolveStorageFees(yearlyMonthTotal),
+      inventory_charges_and_reimbursement: resolveInventoryCharges(yearlyMonthTotal),
+      other_fees_total: resolveOtherFees(yearlyMonthTotal),
+      other_charges_total: resolveOtherChargesTotal(yearlyMonthTotal),
       net_reimbursement: toNumber(yearlyMonthTotal.rembursement_fee),
       brand_spend: toNumber(yearlyMonthTotal.visible_ads),
       visible_ads: toNumber(yearlyMonthTotal.visible_ads),
@@ -3309,6 +3358,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     groups,
     SINGLE_COLS,
     monthWiseRows,
+    isRolling12Months,
     yearlyTotalRow,
     monthWiseKpiValues,
     rawTotalRow,

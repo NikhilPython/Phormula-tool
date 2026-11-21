@@ -53,7 +53,7 @@ type UploadRow = {
 };
 
 type GraphPageProps = {
-  range: "monthly" | "quarterly" | "yearly";
+  range: "monthly" | "quarterly" | "yearly" | "last12months";
   selectedMonth?: string;
   selectedQuarter?: "Q1" | "Q2" | "Q3" | "Q4";
   selectedYear: number | string;
@@ -270,6 +270,17 @@ const GraphPage: React.FC<GraphPageProps> = ({
   }, [range, selectedYearNum, currentCalendarYear, currentCalendarMonthIdx]);
 
   const monthlyLabels = useMemo(() => {
+    if (range === "last12months") {
+      return Array.from(
+        new Set(uploads.map((upload) => `${upload.month} ${upload.year}`.toLowerCase()))
+      ).sort((left, right) => {
+        const [leftMonth, leftYear] = left.split(" ");
+        const [rightMonth, rightYear] = right.split(" ");
+        const yearDifference = Number(leftYear) - Number(rightYear);
+        if (yearDifference !== 0) return yearDifference;
+        return (MONTH_NAME_TO_IDX[leftMonth] ?? 0) - (MONTH_NAME_TO_IDX[rightMonth] ?? 0);
+      });
+    }
     if (range === "monthly" && selectedMonth && selectedYear) {
       return [`${selectedMonth} ${selectedYear}`.toLowerCase()];
     }
@@ -306,6 +317,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
     return [] as string[];
   }, [
     range,
+    uploads,
     selectedMonth,
     selectedQuarter,
     selectedYear,
@@ -495,6 +507,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const { min: minY, max: maxY, stepSize: yAxisStepSize } = getYAxisScale(allDataPoints);
 
   const periodInfo = useMemo(() => {
+    if (range === "last12months") return "Last 12 Months";
     if (range === "monthly" && selectedMonth) {
       return `${convertToAbbreviatedMonth(selectedMonth)}'${String(selectedYear).slice(-2)}`;
     }

@@ -96,7 +96,7 @@ const Bar = dynamic(() => import("react-chartjs-2").then((m) => m.Bar), {
   ssr: false,
 });
 
-type PeriodType = "monthly" | "quarterly" | "yearly";
+type PeriodType = "monthly" | "quarterly" | "yearly" | "last12months";
 
 type SummaryShape = {
   quantity_total: number;
@@ -155,6 +155,7 @@ type APIResponse = {
   summary?: CashFlowSummary;
   monthlyBreakdown?: Record<string, CashFlowSummary>;
   card_metrics?: CashflowCardMetrics;
+  current_period?: { from?: string; to?: string };
 };
 
 type QuarterlyMonthlyData = Record<string, CashFlowSummary>;
@@ -504,6 +505,28 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     return json;
   };
 
+  const fetchRolling12MonthData = async (): Promise<APIResponse> => {
+    if (!token) {
+      throw new Error("Authorization token not found. Please login.");
+    }
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months/cashflow`
+    );
+    url.searchParams.set("countryName", countryName.toLowerCase());
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `HTTP ${response.status}`);
+    }
+    return payload as APIResponse;
+  };
+
   const prevMonthLabel =
     periodType === "monthly" && month && year
       ? `${monthsList[(monthsList.indexOf(month) + 11) % 12]} ${month === "January" ? Number(year) - 1 : year
@@ -519,7 +542,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const prevYearLabel =
     periodType === "yearly" && year ? String(Number(year) - 1) : "";
   const previousLabel =
-    periodType === "monthly"
+    periodType === "last12months"
+      ? "Previous 12 Months"
+      : periodType === "monthly"
       ? prevMonthLabel
       : periodType === "quarterly"
         ? prevQuarterLabel
@@ -600,6 +625,13 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     }
 
     try {
+      if (periodType === "last12months") {
+        const rollingResponse = await fetchRolling12MonthData();
+        setData(rollingResponse);
+        setAllYearlyData(rollingResponse.monthlyBreakdown ?? {});
+        return;
+      }
+
       if (periodType === "quarterly") {
         // 1️⃣ Quarterly API → Sankey + summary
         const quarterPeriodType =
@@ -676,6 +708,8 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       if (year) {
         void fetchCashFlowData();
       }
+    } else if (periodType === "last12months") {
+      void fetchCashFlowData();
     }
   }, [periodType, month, year, selectedQuarter, isPreviewMode]);
 
@@ -734,7 +768,8 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
   const canShowResults =
     (periodType === "monthly" && !!month && !!year) ||
     (periodType === "quarterly" && !!selectedQuarter && !!year) ||
-    (periodType === "yearly" && !!year);
+    (periodType === "yearly" && !!year) ||
+    periodType === "last12months";
 
   const effectiveData =
     isPreviewMode
@@ -777,17 +812,31 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       sourceMonths = monthsList.filter((monthName) => {
         return allYearlyData[monthName];
       });
+    } else if (periodType === "last12months") {
+      sourceMonths = Object.keys(data?.monthlyBreakdown ?? {}).sort();
     }
 
-    const labels = sourceMonths.map((m) =>
-      isMobile ? shortMonthMap[m] || m : m
-    );
+    const labels = sourceMonths.map((period) => {
+      if (periodType !== "last12months") {
+        return isMobile ? shortMonthMap[period] || period : period;
+      }
+      const [periodYear, periodMonth] = period.split("-");
+      const monthName = monthsList[Number(periodMonth) - 1] || "";
+      const abbreviated = shortMonthMap[monthName] || capitalize(monthName).slice(0, 3);
+      return isMobile
+        ? `${abbreviated}'${periodYear.slice(-2)}`
+        : `${capitalize(monthName)} ${periodYear}`;
+    });
 
     columnsToDisplay2.forEach((key) => {
       if (!selectedGraphs[key]) return;
 
       const dataSource =
-        periodType === "quarterly" ? quarterlyMonthlyData : allYearlyData;
+        periodType === "quarterly"
+          ? quarterlyMonthlyData
+          : periodType === "last12months"
+            ? data?.monthlyBreakdown ?? {}
+            : allYearlyData;
 
       const ds = sourceMonths.map((monthName) => {
         const md = dataSource[monthName];

@@ -29,7 +29,7 @@ type PerformanceTrendPayload = {
 };
 
 type PerformanceTrendChartProps = {
-  range?: "monthly" | "quarterly" | "yearly" | "";
+  range?: "monthly" | "quarterly" | "yearly" | "last12months" | "";
   month?: string;
   quarter?: string;
   year?: string;
@@ -428,7 +428,7 @@ const LiveLineChart: React.FC<{
 
   seriesColorMap: Record<string, string>;
 
-  range?: "monthly" | "quarterly" | "yearly" | "";
+  range?: "monthly" | "quarterly" | "yearly" | "last12months" | "";
   year?: string;
   isExpanded?: boolean;
 }> = ({
@@ -915,7 +915,7 @@ const LiveLineChart: React.FC<{
   };
 
 const buildFallbackTrend = (
-  range?: "monthly" | "quarterly" | "yearly" | ""
+  range?: "monthly" | "quarterly" | "yearly" | "last12months" | ""
 ): { xAxis: string[]; series: GenericSeries[] } => {
   if (range === "monthly") {
     return {

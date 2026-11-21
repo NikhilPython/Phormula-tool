@@ -10,7 +10,7 @@ import IntegrationDashboard from "@/features/integration/IntegrationDashboard";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import { Modal } from "@/components/ui/modal";
 import FileUploadForm from "@/app/(admin)/(ui-elements)/modals/FileUploadForm";
-import PeriodFiltersTable from "../filters/PeriodFiltersTable";
+import PeriodFiltersTable, { type Range as PeriodFilterRange } from "../filters/PeriodFiltersTable";
 import { IoMdArrowBack, IoMdLock } from "react-icons/io";
 import Loader from "@/components/loader/Loader";
 import { useGetUserDataQuery } from "@/lib/api/profileApi";
@@ -118,6 +118,7 @@ type UploadRow = {
   month: string;
   year: string | number;
   total_sales: number;
+  total_quantity?: number;
   total_amazon_fee: number;
   total_cous: number;
   advertising_total: number;
@@ -155,13 +156,14 @@ type UploadHistoryResponse = {
 
 type PerformanceTrendSeries = {
   label: string;          // "Dec'25"
-  net_sales: number[];    // per-sku OR per-day array (as your API gives)
-  units: number[];
+  net_sales: number[] | Record<string, number>;
+  units: number[] | Record<string, number>;
+  asp?: number[] | Record<string, number>;
 };
 
 type PerformanceTrendPayload = {
-  x: number[];            // [1..31] etc.
-  xType: string;          // "day"
+  x: Array<number | string>; // day numbers or month labels
+  xType: string;
   series: PerformanceTrendSeries[];
 };
 
@@ -6664,6 +6666,143 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return url.toString();
   };
 
+  const fetchRolling12Months = async (countryValue: string, authToken: string | null) => {
+    if (!authToken) throw new Error("Authorization token not found. Please login.");
+
+    const url = new URL(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months`
+    );
+    url.searchParams.set("countryName", countryValue.toLowerCase());
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Authorization: `Bearer ${authToken}` },
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `Rolling 12-month request failed: ${response.status}`);
+    }
+    return payload;
+  };
+
+  const mapRollingMonthlyTotalsToUploadRows = (
+    payload: any,
+    countryValue: string,
+    periodKey: "current_period" | "previous_period" = "current_period"
+  ): UploadRow[] => {
+    const monthlyBreakdown = payload?.[periodKey]?.monthly_breakdown ?? {};
+    return Object.entries(monthlyBreakdown)
+      .sort(([periodA], [periodB]) => periodA.localeCompare(periodB))
+      .flatMap(([period, rawTotals]) => {
+        const [yearValue, monthValue] = period.split("-");
+        const month = allMonths[Number(monthValue) - 1];
+        if (!month || !yearValue) return [];
+        const totals = rawTotals as Record<string, unknown>;
+        const netSales = toNum(totals.net_sales);
+        const monthlyAdsCost = Math.abs(
+          toNum(totals.total_ads) ||
+          toNum(totals.ads_spend) ||
+          toNum(totals.advertising_total_final) ||
+          toNum(totals.advertising_fees) ||
+          toNum(totals.advertising_total)
+        );
+        const otherTransactions =
+          toNum(totals.other_transaction_fees) ||
+          toNum(totals.other_transactions);
+        const cm2Profit = toNum(totals.total_cm2_profit ?? totals.cm2_profit);
+        const cm1Profit = toNum(totals.profit);
+        return [{
+          country: countryValue,
+          month: month.toLowerCase(),
+          year: yearValue,
+          total_sales: netSales,
+          total_amazon_fee: toNum(totals.amazon_fee),
+          total_cous: toNum(totals.cost_of_unit_sold),
+          advertising_total: toNum(totals.advertising_total),
+          advertising_total_final: toNum(totals.advertising_total_final ?? totals.advertising_total),
+          otherwplatform: toNum(totals.otherwplatform ?? totals.platform_fee),
+          taxncredit: toNum(totals.taxncredit ?? totals.tex_and_credits),
+          profit: cm1Profit,
+          total_profit: cm1Profit,
+          other_transaction_fees: otherTransactions,
+          other_transactions: otherTransactions,
+          tacos_total_advertising_cost_of_sale: netSales
+            ? (monthlyAdsCost / Math.abs(netSales)) * 100
+            : 0,
+          cm2_profit: cm2Profit,
+          cm2_profit_total: cm2Profit,
+          total_cm2_profit: cm2Profit,
+          total_quantity: toNum(totals.total_quantity ?? totals.quantity_total),
+        } as UploadRow];
+      });
+  };
+
+  const buildRollingTotalSkuRow = (
+    rows: any[],
+    backendTotal: Record<string, unknown> = {}
+  ) => {
+    const total: Record<string, any> = {};
+    const isDerived = (key: string) =>
+      /percentage|_per|_mix|margin/i.test(key) ||
+      ["asp", "acos", "ads_roas", "unit_wise_profitability"].includes(key);
+
+    rows.forEach((row) => {
+      Object.entries(row ?? {}).forEach(([key, value]) => {
+        if (
+          key === "id" ||
+          key === "user_id" ||
+          key === "sku" ||
+          key === "product_name" ||
+          isDerived(key) ||
+          typeof value !== "number" ||
+          !Number.isFinite(value)
+        ) {
+          return;
+        }
+        total[key] = (total[key] || 0) + value;
+      });
+    });
+
+    Object.entries(backendTotal).forEach(([key, value]) => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        total[key] = value;
+      }
+    });
+
+    const units = toNum(total.total_quantity);
+    const netSales = toNum(total.net_sales);
+    const cm2Profit = toNum(
+      total.total_cm2_profit ?? total.cm2_profit_total ?? total.cm2_profit
+    );
+    const cm1Profit = toNum(total.profit);
+    const adsSpend = toNum(
+      total.ads_spend ?? total.total_ads ?? total.advertising_total
+    );
+    const promotionalRebates = toNum(total.promotional_rebates);
+
+    total.product_name = "Total";
+    total.sku = "Total";
+    total.asp = units ? netSales / units : 0;
+    total.unit_wise_profitability = units ? cm1Profit / units : 0;
+    total.cm2_profit = cm2Profit;
+    total.cm2_profit_total = cm2Profit;
+    total.total_cm2_profit = cm2Profit;
+    total.cm2_margins = netSales ? (cm2Profit / netSales) * 100 : 0;
+    total.cm2_profit_percentage = total.cm2_margins;
+    total.total_cm2_margins = total.cm2_margins;
+    total.cm2_profit_per = netSales ? (cm2Profit / netSales) * 100 : 0;
+    total.promotional_rebates_percentage = netSales
+      ? (Math.abs(promotionalRebates) / Math.abs(netSales)) * 100
+      : 0;
+    total.tacos_total_advertising_cost_of_sale = netSales
+      ? (Math.abs(adsSpend) / Math.abs(netSales)) * 100
+      : 0;
+    total.sales_mix = 100;
+    total.profit_mix = 100;
+    return total;
+  };
+
   const isDemoMode =
     String(month).toUpperCase() === "NA" ||
     String(year).toUpperCase() === "NA";
@@ -6742,6 +6881,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const [range, setRange] = useState<RangeType>(() => getInitialRange());
+  const [isRolling12Months, setIsRolling12Months] = useState(false);
   const [selectedAgeingTrendBucket, setSelectedAgeingTrendBucket] =
     useState<string>("365+ days");
 
@@ -7027,6 +7167,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const returnToOverview = useCallback(() => {
     setShowDashboardDetails(false);
     setActiveTab("businessSummary");
+    setIsRolling12Months(false);
 
     if (typeof window !== "undefined") {
       window.history.replaceState(
@@ -7756,6 +7897,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const handleRangeChange = (v: "monthly" | "quarterly" | "yearly") => {
+    setIsRolling12Months(false);
     // ✅ Important: if user is already on this range, don't reset filters.
     // This fixes yearly 2026 -> yearly 2025 getting forced back to 2026.
     if (v === range) return;
@@ -7807,6 +7949,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     setBargraphUploads([]);
   };
 
+  const handlePeriodFilterChange = (value: PeriodFilterRange) => {
+    if (value === "last12months") {
+      setIsRolling12Months(true);
+      setRange("yearly");
+      setSelectedMonth("");
+      setSelectedQuarter("");
+      setSelectedYear((current) => current || String(new Date().getFullYear()));
+      setUploadsData(null);
+      setBargraphUploads([]);
+      setGraphPageUploads([]);
+      setPerformanceTrend(null);
+      return;
+    }
+
+    setIsRolling12Months(false);
+    handleRangeChange(value);
+  };
+
   const getSkuTotalRow = (rows: any[] = []) =>
     Array.isArray(rows)
       ? rows.find((r) => {
@@ -7852,6 +8012,61 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       }
       setMonthWiseSkuLoading(true);
       const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+
+      if (isRolling12Months && activeTab === "skuBreakdown") {
+        try {
+          const payload = await fetchRolling12Months(initialCountryName, token);
+          const monthlyBreakdown = payload?.current_period?.monthly_breakdown ?? {};
+          const rollingRows = Object.entries(monthlyBreakdown)
+            .sort(([periodA], [periodB]) => periodA.localeCompare(periodB))
+            .flatMap(([period, rawTotals], rollingIndex) => {
+              const [yearValue, monthValue] = period.split("-");
+              const monthIndex = Number(monthValue) - 1;
+              const monthName = monthNames[monthIndex];
+              if (!yearValue || !monthName) return [];
+              const totals = rawTotals as Record<string, unknown>;
+              const netSales = toNum(totals.net_sales);
+              const monthlyAdsCost = Math.abs(
+                toNum(totals.total_ads) ||
+                toNum(totals.ads_spend) ||
+                toNum(totals.advertising_total_final) ||
+                toNum(totals.advertising_fees) ||
+                toNum(totals.advertising_total)
+              );
+              const otherTransactions =
+                toNum(totals.other_transaction_fees) ||
+                toNum(totals.other_transactions);
+              return [{
+                ...totals,
+                product_name: monthName,
+                month_name: monthName,
+                month_label: monthName,
+                month: monthName.toLowerCase(),
+                sku: monthName.toLowerCase(),
+                year: yearValue,
+                calendar_year: yearValue,
+                year_month: period,
+                _month_index: monthIndex,
+                _rolling_index: rollingIndex,
+                other_transaction_fees: otherTransactions,
+                other_transactions: otherTransactions,
+                tacos_total_advertising_cost_of_sale: netSales
+                  ? (monthlyAdsCost / Math.abs(netSales)) * 100
+                  : 0,
+              }];
+            });
+
+          if (!cancelled) {
+            setMonthWiseSkuRows(rollingRows as TableRow[]);
+          }
+        } catch {
+          if (!cancelled) setMonthWiseSkuRows([]);
+        } finally {
+          if (!cancelled) setMonthWiseSkuLoading(false);
+        }
+        return;
+      }
+
       const allMonthsForYear = monthNames.map((name) => name.toLowerCase());
       const now = new Date();
       // Always use the year currently selected in the Yearly filter.
@@ -7893,7 +8108,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
     void loadMonthWiseTotals();
     return () => { cancelled = true; };
-  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, range]);
+  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, range, activeTab, isRolling12Months]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
@@ -8031,8 +8246,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     yearVal: string,
     country: string
   ): UploadHistoryResponse => {
-    const currentTotal = getSkuTotalRow(data?.current_data);
-    const previousTotal = getSkuTotalRow(data?.previous_data);
+    const currentTotal = data?.current_total ?? getSkuTotalRow(data?.current_data);
+    const previousTotal = data?.previous_total ?? getSkuTotalRow(data?.previous_data);
     // SKUtable hides Ads Spend/CM2 for quarterly and yearly periods, so use
     // the same visibility rule when mapping their summary totals.
     const currentHasCm2 = rangeType === "monthly" &&
@@ -8060,7 +8275,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     monthVal: string,
     quarterVal: string,
     yearVal: string,
-    country: string
+    country: string,
+    rolling12Months = false
   ) => {
     if (isDemoMode) {
       setLoading(false);
@@ -8093,9 +8309,21 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           ? localStorage.getItem("jwtToken")
           : null;
 
-      const url = new URL(
-        buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country, promotionsPlacement)
-      );
+      const url = rolling12Months
+        ? new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months`)
+        : new URL(
+            buildParentSkuUrl(
+              rangeType,
+              monthVal,
+              quarterVal,
+              yearVal,
+              country,
+              promotionsPlacement
+            )
+          );
+      if (rolling12Months) {
+        url.searchParams.set("countryName", country.toLowerCase());
+      }
 
       const res = await fetch(url.toString(), {
         method: "GET",
@@ -8130,7 +8358,35 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       if (requestId !== uploadHistoryRequestIdRef.current) return;
 
-      let finalRaw = raw;
+      let finalRaw = rolling12Months
+        ? {
+            current_data: raw?.current_period?.skus ?? [],
+            previous_data: raw?.previous_period?.skus ?? [],
+            current_total: raw?.current_period?.total,
+            previous_total: raw?.previous_period?.total,
+            card_metrics: raw?.card_metrics,
+          }
+        : raw;
+
+      if (rolling12Months) {
+        finalRaw = {
+          ...finalRaw,
+          current_data: [
+            ...finalRaw.current_data,
+            buildRollingTotalSkuRow(
+              finalRaw.current_data,
+              finalRaw.current_total ?? {}
+            ),
+          ],
+          previous_data: [
+            ...finalRaw.previous_data,
+            buildRollingTotalSkuRow(
+              finalRaw.previous_data,
+              finalRaw.previous_total ?? {}
+            ),
+          ],
+        };
+      }
 
       if (
         rangeType === "monthly" &&
@@ -8215,14 +8471,56 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setSkuRowsError(null);
 
       setBargraphUploads(
-        buildUploadRowFromSkuRows(rowsWithNetSalesDelta, {
-          rangeType,
-          monthVal,
-          quarterVal,
-          yearVal,
-          countryVal: country,
-        })
+        rolling12Months
+          ? mapRollingMonthlyTotalsToUploadRows(raw, country)
+          : buildUploadRowFromSkuRows(rowsWithNetSalesDelta, {
+              rangeType,
+              monthVal,
+              quarterVal,
+              yearVal,
+              countryVal: country,
+            })
       );
+
+      if (rolling12Months) {
+        const rollingRows = mapRollingMonthlyTotalsToUploadRows(raw, country);
+        const previousRollingRows = mapRollingMonthlyTotalsToUploadRows(
+          raw,
+          country,
+          "previous_period"
+        );
+        const rollingLabels = rollingRows.map((row) => {
+          const monthIndex = allMonths.findIndex((monthName) => monthName.toLowerCase() === row.month.toLowerCase());
+          return `${monthNames[monthIndex]?.slice(0, 3) ?? ""}'${String(row.year).slice(-2)}`;
+        });
+        const buildRollingTrendSeries = (
+          label: string,
+          rows: UploadRow[]
+        ): PerformanceTrendSeries => ({
+          label,
+          net_sales: Object.fromEntries(
+            rollingLabels.map((monthLabel, index) => [monthLabel, toNum(rows[index]?.total_sales)] as const)
+          ),
+          units: Object.fromEntries(
+            rollingLabels.map((monthLabel, index) => [monthLabel, toNum(rows[index]?.total_quantity)] as const)
+          ),
+          asp: Object.fromEntries(
+            rollingLabels.map((monthLabel, index) => {
+              const monthRow = rows[index];
+              const units = toNum(monthRow?.total_quantity);
+              return [monthLabel, units ? toNum(monthRow?.total_sales) / units : 0] as const;
+            })
+          ),
+        });
+        setPerformanceTrend({
+          x: rollingLabels,
+          xType: "month",
+          series: [
+            buildRollingTrendSeries("Last 12 Months", rollingRows),
+            buildRollingTrendSeries("Previous 12 Months", previousRollingRows),
+          ],
+        });
+      }
 
       if (data?.summary) {
         if (rangeType === "monthly" && yearVal && monthVal) {
@@ -9701,7 +9999,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       safeRange === "monthly" ? selectedMonth : "",
       safeRange === "quarterly" ? selectedQuarter || "" : "",
       selectedYear,
-      countryName
+      countryName,
+      isRolling12Months && (activeTab === "graphs" || activeTab === "skuBreakdown")
     );
   }, [
     activeTab,
@@ -9713,10 +10012,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchCurrencyKey,
     isDemoMode,
     promotionsPlacement,
+    isRolling12Months,
   ]);
 
   useEffect(() => {
     if (isDemoMode) return;
+
+    if (isRolling12Months) {
+      setAiPanel(null);
+      return;
+    }
 
     const safeRange: RangeType =
       activeTab === "skuwiseProfit" && range === "monthly"
@@ -9749,10 +10054,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedYear,
     countryName,
     isDemoMode,
+    isRolling12Months,
   ]);
 
   useEffect(() => {
     if (isDemoMode) return;
+
+    if (isRolling12Months) return;
 
     const safeRange: RangeType =
       activeTab === "skuwiseProfit" && range === "monthly"
@@ -9785,6 +10093,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     homeCurrency,
     performanceTrendMetric,
     isDemoMode,
+    isRolling12Months,
   ]);
 
   useEffect(() => {
@@ -9940,6 +10249,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         }
 
         if (safeRange === "yearly") {
+          if (isRolling12Months) {
+            const payload = await fetchRolling12Months(countryName, token);
+            setGraphPageUploads(
+              mapRollingMonthlyTotalsToUploadRows(payload, countryName)
+            );
+            setGraphPageLoading(false);
+            return;
+          }
+
           const rowsNested = await Promise.all(
             allMonths.map((m) =>
               fetchMonthlySkuRowsForGraph(
@@ -9972,6 +10290,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     countryName,
     homeCurrency,
     isDemoMode,
+    isRolling12Months,
   ]);
 
   useEffect(() => {
@@ -11453,6 +11772,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     shouldScrollTabTopRef.current = true;
     setShowDashboardDetails(true);
     setActiveTab(tab);
+    if (!["graphs", "skuBreakdown", "cashFlow"].includes(tab)) {
+      setIsRolling12Months(false);
+    }
     syncTabToHash(tab);
   };
 
@@ -11547,12 +11869,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             onYearChange={handleYearChange}
           /> */}
           <PeriodFiltersTable
-            range={activeTab === "skuwiseProfit" && range === "monthly" ? "yearly" : range}
+            range={
+              isRolling12Months &&
+              (activeTab === "graphs" || activeTab === "skuBreakdown" || activeTab === "cashFlow")
+                ? "last12months"
+                : activeTab === "skuwiseProfit" && range === "monthly"
+                  ? "yearly"
+                  : range
+            }
             selectedMonth={activeTab === "skuwiseProfit" ? "" : selectedMonth}
             selectedQuarter={selectedQuarter}
             selectedYear={selectedYear}
             yearOptions={yearOptions}
-            onRangeChange={handleRangeChange}
+            onRangeChange={handlePeriodFilterChange}
             onMonthChange={handleMonthChange}
             onQuarterChange={handleQuarterChange}
             onYearChange={handleYearChange}
@@ -11560,7 +11889,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             allowedRanges={
               activeTab === "skuwiseProfit"
                 ? ["quarterly", "yearly"]
-                : ["monthly", "quarterly", "yearly"]
+                : activeTab === "graphs" || activeTab === "skuBreakdown" || activeTab === "cashFlow"
+                  ? ["monthly", "quarterly", "yearly", "last12months"]
+                  : ["monthly", "quarterly", "yearly"]
             }
           />
         </div>
@@ -11607,6 +11938,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                       shouldScrollTabTopRef.current = true;
                       setActiveTab(t);
+
+                      if (
+                        !["graphs", "skuBreakdown", "cashFlow"].includes(t) &&
+                        isRolling12Months
+                      ) {
+                        setIsRolling12Months(false);
+                      }
 
                       if (t === "skuwiseProfit" && range === "monthly") {
                         setRange("yearly");
@@ -11812,6 +12150,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       currentCardMetrics?.promotions_pct ?? getPromotionsPercent(summary);
 
                     const getBackendComparisonLabel = () => {
+                      if (isRolling12Months) return "Previous 12 Months";
                       const yNum = Number(selectedYear);
                       if (range === "monthly") {
                         return selectedMonth && yNum
@@ -12064,7 +12403,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             >
                               <div className={getTrendWrapperHeight()}>
                                 <PerformanceTrendChart
-                                  range={range}
+                                  range={isRolling12Months ? "last12months" : range}
                                   month={selectedMonth}
                                   year={selectedYear}
                                   countryName={initialCountryName}
@@ -12264,7 +12603,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                               <div className="flex-1 min-h-0 overflow-hidden mt-4">
                                 <GraphPage
-                                  range={range}
+                                  range={isRolling12Months ? "last12months" : range}
                                   selectedQuarter={selectedQuarter}
                                   selectedYear={selectedYear}
                                   countryName={initialCountryName}
@@ -12339,7 +12678,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             >
                               <div className={getTrendWrapperHeight()}>
                                 <PerformanceTrendChart
-                                  range={range}
+                                  range={isRolling12Months ? "last12months" : range}
                                   year={selectedYear}
                                   countryName={initialCountryName}
                                   homeCurrency={globalHomeCurrency}
@@ -12401,7 +12740,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                               <div className="flex-1 min-h-0 overflow-hidden mt-4">
                                 <GraphPage
-                                  range={range}
+                                  range={isRolling12Months ? "last12months" : range}
                                   selectedYear={selectedYear}
                                   countryName={initialCountryName}
                                   homeCurrency={globalHomeCurrency}
@@ -12519,6 +12858,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
                   <SKUtable
                     range={range || "yearly"}
+                    isRolling12Months={isRolling12Months}
                     month={range === "monthly" ? selectedMonth : ""}
                     quarter={range === "quarterly" ? selectedQuarter : ""}
                     year={selectedYear}
@@ -12684,7 +13024,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   <CashFlowPage
                     embedded
                     countryNameProp={isDemoMode ? "global" : initialCountryName}
-                    rangeProp={range as "monthly" | "quarterly" | "yearly"}
+                    rangeProp={isRolling12Months ? "last12months" : range}
                     selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
                     selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
                     selectedYearProp={isDemoMode ? "NA" : selectedYear}

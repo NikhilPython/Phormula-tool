@@ -40,6 +40,7 @@ type HistoricalData = {
   netTaxes: number;
   netCredits: number;
   costAmounts: CostInputs;
+  otherCharges: number;
   sourceAvailable: boolean;
 };
 
@@ -170,7 +171,7 @@ function costAmountsFromRow(row: Record<string, unknown>, isUkFormula: boolean, 
   const fbaFees = readField(row, ["fba_fees", "fba_fee"]);
   const sellingFees = readField(row, ["selling_fees", "referral_fees", "selling_fee"]);
   const otherTransactions = readField(row, ["other_transaction_fees", "other_transactions"]);
-  const shortStorage = readField(row, ["short_term_storage_fee", "short_term_storage"]);
+  const shortStorage = readField(row, ["short_term_storage_fee", "short_term_storage", "storage_fee", "storage_fees", "storage_fees_total"]);
   const longStorage = readField(row, ["long_term_storage_fee", "long_term_storage"]);
   const inventoryDirect = readField(row, [
     "inventory_charges_andd_reimbursement",
@@ -191,7 +192,7 @@ function costAmountsFromRow(row: Record<string, unknown>, isUkFormula: boolean, 
   const platformNew = readField(row, ["platformfeenew"]);
   const platformManagement = readField(row, ["platform_management_fees", "platform_management_fee"]);
   const otherAdjustment = readField(row, ["other_adjustment"]);
-  const shipping = readField(row, ["shipping_charges", "shipment_fees", "shipment_charges"]);
+  const shipping = readField(row, ["shipping_charges", "shipment_fees", "shipment_charges", "shipping_charges_total"]);
   const amazonValue = directAmazon.found
     ? directAmazon.value
     : fbaFees.value + sellingFees.value;
@@ -293,8 +294,35 @@ function normalizeHistory(payload: any, monthLabel: string, country: string): Hi
     const totalFound = totalRecord.found[key];
     costAmounts[key] = totalFound && totalValue !== 0 ? totalValue : productTotal || (totalFound ? totalValue : 0);
   });
+
+  const rawShipping = readField(totalRow, ["shipping_charges", "shipment_charges", "shipping_charges_total", "shipment_fees"]);
+  const rawStorage = readField(totalRow, ["storage_fee", "storage_fees", "storage_fees_total", "platform_fee_inventory_storage"]);
+  const shortStorage = readField(totalRow, ["short_term_storage_fee", "short_term_storage"]);
+  const longStorage = readField(totalRow, ["long_term_storage_fee", "long_term_storage"]);
+  const rawInventory = readField(totalRow, ["inventory_charges_and_reimbursement", "inventory_charges_reimbursement"]);
+  const rawDisposal = readField(totalRow, ["inventory_charges", "inventory_charge", "fba_disposal"]);
+  const lostInventory = readField(totalRow, ["reimbursement_lost_inventory_amount", "lost_total"]);
+  const platformFees = readField(totalRow, ["platform_management_fees", "platformfeenew"]);
+  const otherAdj = readField(totalRow, ["other_adjustment", "other"]);
+  const storageValue = rawStorage.found && rawStorage.value !== 0
+    ? absolute(rawStorage.value)
+    : absolute(shortStorage.value) + absolute(longStorage.value) || costAmounts.shortTermStorage + costAmounts.longTermStorage;
+  const inventoryValue = rawInventory.found && rawInventory.value !== 0
+    ? rawInventory.value
+    : absolute(rawDisposal.value || costAmounts.inventoryCharges) - absolute(lostInventory.value);
+  const otherFeesValue = isUkFormula
+    ? absolute(platformFees.value)
+    : isUsFormula
+      ? absolute(platformFees.value) - absolute(otherAdj.value)
+      : absolute(platformFees.value);
+  const otherCharges =
+    absolute(rawShipping.value || costAmounts.shipping) +
+    storageValue +
+    inventoryValue +
+    (platformFees.found || otherAdj.found ? otherFeesValue : costAmounts.otherFees);
+
   const hasData = rows.length > 0 || sales > 0 || totalAds > 0 || netTaxes !== 0 || netCredits !== 0 || Object.values(costAmounts).some((value) => value !== 0);
-  return { rows, monthLabel, units, sales, totalAds, netTaxes, netCredits, costAmounts, sourceAvailable: hasData };
+  return { rows, monthLabel, units, sales, totalAds, netTaxes, netCredits, costAmounts, otherCharges, sourceAvailable: hasData };
 }
 
 function MetricCard({
@@ -327,7 +355,9 @@ function RangeSlider({
   step,
   format,
   currencyPrefix,
+  suffix,
   accent = "border-[#FDD36F]",
+  hint,
   onChange,
 }: {
   label: string;
@@ -337,13 +367,22 @@ function RangeSlider({
   step: number;
   format: (value: number) => string;
   currencyPrefix?: string;
+  suffix?: string;
   accent?: string;
+  hint?: string;
   onChange: (value: number) => void;
 }) {
   const [draftValue, setDraftValue] = useState(String(value));
+  const [isFocused, setIsFocused] = useState(false);
   const sliderMax = Math.max(max, value, step);
   const normalizeSliderValue = (number: number) => step >= 1 ? Math.round(number) : Number(number.toFixed(2));
-  useEffect(() => setDraftValue(String(value)), [value]);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setDraftValue(String(value));
+    }
+  }, [value, isFocused]);
+
   const commitDraftValue = () => {
     const parsed = Number(draftValue);
     if (draftValue.trim() !== "" && Number.isFinite(parsed) && parsed >= 0) {
@@ -362,53 +401,64 @@ function RangeSlider({
   const percentage = sliderMax > 0 ? (Math.min(value, sliderMax) / sliderMax) * 100 : 0;
 
   return (
-    <div className={`block rounded-xl border border-t-4 bg-white p-4 shadow-sm ${accent}`}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-charcoal-500">{label}</span>
-      </div>
-      <div className="relative mt-4 flex h-5 items-center">
-        <input
-          type="range"
-          min={0}
-          max={sliderMax}
-          step={step}
-          value={Math.min(value, sliderMax)}
-          onChange={(event) => onChange(Number(event.target.value))}
-          aria-label={`${label} slider`}
-          style={{ "--slider-progress": `${percentage}%` } as React.CSSProperties}
-          className="thin-range-slider"
-        />
-      </div>
-      <span className="mt-1 flex justify-between gap-2 text-[11px] text-slate-400">
-        <span>0</span>
-        <span>Previous month: {format(baseline)}</span>
-        <span>{format(sliderMax)}</span>
-      </span>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-xs text-charcoal-400">Scenario value</span>
-        <label className="flex w-36 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
-          {currencyPrefix && <span className="text-xs text-slate-500">{currencyPrefix}</span>}
+    <div className={`flex flex-col justify-between rounded-xl border border-t-4 bg-white p-4 shadow-sm ${accent}`}>
+      <div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-charcoal-500">{label}</span>
+        </div>
+
+        <div className="mt-2.5">
+          <label className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
+            {currencyPrefix && <span className="text-xs font-semibold text-slate-500">{currencyPrefix}</span>}
+            <input
+              type="number"
+              min={0}
+              step={step}
+              value={draftValue}
+              onFocus={() => setIsFocused(true)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setDraftValue(nextValue);
+                if (nextValue.trim() === "" || /[.\-]$/.test(nextValue)) return;
+                const parsed = Number(nextValue);
+                if (Number.isFinite(parsed) && parsed >= 0) onChange(normalizeSliderValue(parsed));
+              }}
+              onBlur={() => {
+                setIsFocused(false);
+                commitDraftValue();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              aria-label={`${label} value`}
+              className="w-full min-w-0 bg-transparent text-left text-sm font-semibold text-slate-900 outline-none"
+            />
+            {suffix && <span className="text-sm font-semibold text-slate-500">{suffix}</span>}
+          </label>
+        </div>
+
+        <div className="relative mt-4 flex h-5 items-center">
           <input
-            type="number"
+            type="range"
             min={0}
+            max={sliderMax}
             step={step}
-            value={draftValue}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              setDraftValue(nextValue);
-              if (nextValue.trim() === "" || /[.\-]$/.test(nextValue)) return;
-              const parsed = Number(nextValue);
-              if (Number.isFinite(parsed) && parsed >= 0) onChange(normalizeSliderValue(parsed));
-            }}
-            onBlur={commitDraftValue}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-            aria-label={`${label} exact value`}
-            className="w-full min-w-0 bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
+            value={Math.min(value, sliderMax)}
+            onChange={(event) => onChange(Number(event.target.value))}
+            aria-label={`${label} slider`}
+            style={{ "--slider-progress": `${percentage}%` } as React.CSSProperties}
+            className="thin-range-slider"
           />
-        </label>
+        </div>
+
+        <span className="mt-1 flex justify-between gap-2 text-[11px] text-slate-400">
+          <span>0</span>
+          <span>Previous month: {format(baseline)}</span>
+          <span>{format(sliderMax)}</span>
+        </span>
       </div>
+
+      {hint && <p className="mt-2.5 text-[11px] leading-4 text-slate-500">{hint}</p>}
     </div>
   );
 }
@@ -506,6 +556,7 @@ export default function WhatIfSimulatorClient() {
 
         const normalized = await fetchPeriod(periods[0]);
         setHistory(normalized);
+        setAdditionalExpense(Math.round(Math.max(0, normalized.otherCharges)));
         setHistoricalMonths([normalized]);
         setOverallInput({
           units: Math.round(normalized.units),
@@ -639,11 +690,15 @@ export default function WhatIfSimulatorClient() {
   const baselineAsp = history && history.units > 0 ? history.sales / history.units : overallInput.asp;
   const unitsSliderMax = Math.max(100, Math.ceil(Math.max(history?.units || overallInput.units || 1, highestUnitsMonth?.units || 0) * 3));
   const aspSliderMax = Math.max(1, baselineAsp * 3, (highestAspMonth?.asp || 0) * 3);
+  const baselineTargetTacos = history && history.sales > 0 ? (absolute(history.totalAds) / history.sales) * 100 : 0;
   const overallSales = overallInput.units * overallInput.asp;
   const parsedTargetTacosGoal = targetTacosGoal.trim() === "" ? null : numberValue(targetTacosGoal);
   const targetTacosGoalValue = parsedTargetTacosGoal !== null && parsedTargetTacosGoal >= 0
     ? parsedTargetTacosGoal
     : null;
+  const tacosSliderMax = Math.max(100, Math.ceil(Math.max(targetTacosGoalValue ?? 0, baselineTargetTacos)));
+  const baselineAdditionalExpense = history?.otherCharges ?? 0;
+  const additionalExpenseSliderMax = Math.max(1000, Math.ceil(Math.max(additionalExpense, baselineAdditionalExpense || 0) * 3 || 5000));
   const adsBudget = targetTacosGoalValue !== null ? overallSales * targetTacosGoalValue / 100 : 0;
   const baselineAds = history?.totalAds ?? 0;
   const unitDirection = inputDirections.units ?? "up";
@@ -883,71 +938,36 @@ export default function WhatIfSimulatorClient() {
               accent="border-[#B75A5A]"
               onChange={(value) => updateOverallInput("asp", value)}
             />
-            <div className="rounded-xl border border-t-4 border-[#3A8EA4] bg-white p-4 shadow-sm">
-              <label
-                htmlFor="target-tacos-goal"
-                className="text-sm font-medium text-slate-700"
-              >
-                Target TACoS
-              </label>
-
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
-                <input
-                  id="target-tacos-goal"
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={targetTacosGoal}
-                  onChange={(event) => {
-                    setTargetTacosGoal(event.target.value);
-                    setTargetTacosChanged(true);
-                    setAiError("");
-                  }}
-                  onBlur={() => {
-                    const value = Number(targetTacosGoal);
-
-                    if (
-                      targetTacosGoal.trim() !== "" &&
-                      Number.isFinite(value) &&
-                      value >= 0
-                    ) {
-                      setTargetTacosGoal(value.toFixed(2));
-                    }
-                  }}
-                  aria-label="Target TACoS goal"
-                  className="w-full bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
-                  placeholder="e.g. 25.00"
-                />
-                <span className="text-sm text-slate-500">%</span>
-              </div>
-
-              <p className="mt-2 text-[11px] leading-4 text-slate-500">Ads budget ÷ projected sales. Sets the ads budget for this scenario.</p>
-            </div>
-
-            <div className="rounded-xl border border-t-4 border-[#B8C78C] bg-white p-4 shadow-sm">
-              <label htmlFor="additional-expense" className="text-sm font-medium text-slate-700">Additional expense</label>
-              <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 focus-within:border-[#5EA68E] focus-within:ring-2 focus-within:ring-[#5EA68E]/15">
-                <span className="text-xs text-slate-500">{currency}</span>
-                <input
-                  id="additional-expense"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={additionalExpense}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    setAdditionalExpense(Number.isFinite(value) && value > 0 ? Math.round(value) : 0);
-                    setAdditionalExpenseChanged(true);
-                    setAiError("");
-                  }}
-                  aria-label="Additional expense"
-                  className="w-full bg-transparent text-right text-sm font-semibold text-slate-900 outline-none"
-                  placeholder="0"
-                />
-              </div>
-              <p className="mt-2 text-[11px] leading-4 text-slate-500">Deducted from projected CM2.</p>
-            </div>
-
+            <RangeSlider
+              label="Target TACoS"
+              value={targetTacosGoalValue ?? 0}
+              baseline={baselineTargetTacos}
+              max={tacosSliderMax}
+              step={0.01}
+              format={(value) => `${value.toFixed(2)}%`}
+              suffix="%"
+              accent="border-[#3A8EA4]"
+              onChange={(value) => {
+                setTargetTacosGoal(value > 0 ? value.toFixed(2) : "0");
+                setTargetTacosChanged(true);
+                setAiError("");
+              }}
+            />
+            <RangeSlider
+              label="Additional expense"
+              value={additionalExpense}
+              baseline={baselineAdditionalExpense}
+              max={additionalExpenseSliderMax}
+              step={1}
+              format={(value) => formatCurrency(value, currency)}
+              currencyPrefix={currency}
+              accent="border-[#B8C78C]"
+              onChange={(value) => {
+                setAdditionalExpense(Math.round(value));
+                setAdditionalExpenseChanged(true);
+                setAiError("");
+              }}
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -963,7 +983,7 @@ export default function WhatIfSimulatorClient() {
                   </span>
                 </span>
               }
-              hint="Sales − previous Amazon fees − net taxes − net credits"
+              hint="Sales − prev. Amazon fees − net taxes − net credits"
               accent="border-[#7B9A6D]"
             />
             <MetricCard

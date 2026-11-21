@@ -15,7 +15,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAIError
 from decimal import Decimal
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, resolve_latest_available_month, get_or_create_global_summary
-from app.utils.dashboard_card_metrics import build_pnl_card_metrics
+from app.utils.dashboard_card_metrics import (
+    add_cashflow_summary_fields,
+    build_cashflow_card_metrics,
+    build_pnl_card_metrics,
+)
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.models.user_models import UserObjective
 
@@ -1185,6 +1189,13 @@ def _aggregate_sku_month_tables(table_names, key_column):
         "total_quantity",
         "gross_sales",
         "net_sales",
+        "profit",
+        "cost_of_unit_sold",
+        "platform_fee",
+        "tex_and_credits",
+        "rembursement_fee",
+        "selling_fees",
+        "fba_fees",
         "amazon_fee",
         "amazon_fees",
         "shipping_charges",
@@ -1192,9 +1203,16 @@ def _aggregate_sku_month_tables(table_names, key_column):
         "inventory_charges_and_reimbursement",
         "fba_disposal",
         "lost_total",
+        "current_net_reimbursement",
+        "net_reimbursement",
+        "net_reimbursement_total",
+        "disbursement",
+        "debt_payment",
         "platform_management_fees",
         "platform_managment_fees",
         "other_adjustment",
+        "other_transaction_fees",
+        "other_transactions",
         "advertising_total_final",
         "total_ads",
         "advertising_fees",
@@ -1318,9 +1336,27 @@ def _aggregate_sku_month_tables(table_names, key_column):
         _set_rolling_ratio(row, "cm2_margins", "cm2_profit", "net_sales", 100)
         _set_rolling_ratio(row, "total_cm2_margins", "total_cm2_profit", "net_sales", 100)
         _set_rolling_ratio(row, "promotional_rebates_percentage", "promotional_rebates", "net_sales", 100)
-        _set_rolling_ratio(row, "reimbursement_vs_sales", "current_net_reimbursement", "net_sales", 100)
-        _set_rolling_ratio(row, "rembursment_vs_cm2_margins", "current_net_reimbursement", "total_cm2_profit", 100)
-        _set_rolling_ratio(row, "reimbursement_vs_cm2_margins", "current_net_reimbursement", "total_cm2_profit", 100)
+        reimbursement = _rolling_number(
+            row.get("rembursement_fee"),
+            row.get("current_net_reimbursement"),
+            row.get("net_reimbursement"),
+            row.get("net_reimbursement_total"),
+        )
+
+        net_sales = _rolling_number(row.get("net_sales"))
+        cm2_profit = _rolling_number(
+            row.get("total_cm2_profit"),
+            row.get("cm2_profit_total"),
+            row.get("cm2_profit"),
+        )
+        row["reimbursement_vs_sales"] = (
+            abs(reimbursement) / abs(net_sales) * 100 if net_sales else 0.0
+        )
+        reimbursement_vs_cm2 = (
+            abs(reimbursement) / abs(cm2_profit) * 100 if cm2_profit else 0.0
+        )
+        row["rembursment_vs_cm2_margins"] = reimbursement_vs_cm2
+        row["reimbursement_vs_cm2_margins"] = reimbursement_vs_cm2
         _set_rolling_ratio(row, "ads_conversion_rate", "ads_sale_units", "ads_clicks", 100)
         _set_rolling_ratio(row, "ads_roas", "ads_sale_amount", "ads_spend")
         _set_rolling_ratio(row, "acos", "ads_spend", "ads_sale_amount", 100)
@@ -1368,6 +1404,7 @@ def _is_rolling_derived_column(column):
         or column.endswith("_mix")
         or "margin" in column
         or column.endswith("_margins")
+        or column == "reimbursement_vs_sales"
         or column in {"asp", "unit_wise_profitability", "acos", "ads_roas"}
     )
 
@@ -1384,6 +1421,19 @@ def _set_rolling_ratio(row, output_column, numerator_column, denominator_column,
         )
 
 
+def _rolling_number(*values):
+    for value in values:
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number != 0:
+            return number
+    return 0.0
+
+
 def _build_rolling_card_total(rows):
     if isinstance(rows, dict):
         total = dict(rows)
@@ -1392,6 +1442,13 @@ def _build_rolling_card_total(rows):
             "total_quantity",
             "gross_sales",
             "net_sales",
+            "profit",
+            "cost_of_unit_sold",
+            "platform_fee",
+            "tex_and_credits",
+            "rembursement_fee",
+            "selling_fees",
+            "fba_fees",
             "amazon_fee",
             "amazon_fees",
             "shipping_charges",
@@ -1399,9 +1456,16 @@ def _build_rolling_card_total(rows):
             "inventory_charges_and_reimbursement",
             "fba_disposal",
             "lost_total",
+            "current_net_reimbursement",
+            "net_reimbursement",
+            "net_reimbursement_total",
+            "disbursement",
+            "debt_payment",
             "platform_management_fees",
             "platform_managment_fees",
             "other_adjustment",
+            "other_transaction_fees",
+            "other_transactions",
             "advertising_total_final",
             "total_ads",
             "advertising_fees",
@@ -1417,6 +1481,14 @@ def _build_rolling_card_total(rows):
             for field in total_fields
             if any(field in row for row in rows)
         }
+
+    other_transactions = float(
+        total.get("other_transaction_fees")
+        or total.get("other_transactions")
+        or 0
+    )
+    total["other_transaction_fees"] = other_transactions
+    total["other_transactions"] = other_transactions
 
     units = float(total.get("total_quantity") or 0)
     net_sales = float(total.get("net_sales") or 0)
@@ -1452,6 +1524,30 @@ def _build_rolling_card_total(rows):
     total["promotional_rebates_percentage"] = (
         promotions / abs(net_sales) * 100 if net_sales else 0.0
     )
+    reimbursement = _rolling_number(
+        total.get("rembursement_fee"),
+        total.get("current_net_reimbursement"),
+        total.get("net_reimbursement"),
+        total.get("net_reimbursement_total"),
+    )
+    if reimbursement == 0:
+        disbursement = _rolling_number(total.get("disbursement"))
+        debt_payment = _rolling_number(total.get("debt_payment"))
+        if disbursement or debt_payment:
+            reimbursement = abs(disbursement - debt_payment)
+    cm2_profit = _rolling_number(
+        total.get("total_cm2_profit"),
+        total.get("cm2_profit_total"),
+        total.get("cm2_profit"),
+    )
+    total["reimbursement_vs_sales"] = (
+        abs(reimbursement) / abs(net_sales) * 100 if net_sales else 0.0
+    )
+    reimbursement_vs_cm2 = (
+        abs(reimbursement) / abs(cm2_profit) * 100 if cm2_profit else 0.0
+    )
+    total["rembursment_vs_cm2_margins"] = reimbursement_vs_cm2
+    total["reimbursement_vs_cm2_margins"] = reimbursement_vs_cm2
     return total
 
 
@@ -1529,7 +1625,24 @@ def get_rolling_12_month_sku_data():
 
         key_column = "product_name" if country == "global" else "sku"
 
-        def period_response(periods):
+        def period_response(periods, include_monthly_breakdown=False):
+            def build_period_total(card_totals, sku_rows):
+                total = _build_rolling_card_total(card_totals or sku_rows)
+                sku_total = _build_rolling_card_total(sku_rows)
+                for field in (
+                    "other_transaction_fees",
+                    "other_transactions",
+                    "rembursement_fee",
+                    "current_net_reimbursement",
+                    "net_reimbursement",
+                    "net_reimbursement_total",
+                    "disbursement",
+                    "debt_payment",
+                ):
+                    if not total.get(field) and sku_total.get(field):
+                        total[field] = sku_total[field]
+                return _build_rolling_card_total(total)
+
             selected_tables = [
                 (period, available_tables[period])
                 for period in periods
@@ -1539,6 +1652,22 @@ def get_rolling_12_month_sku_data():
                 selected_tables,
                 key_column,
             )
+            monthly_breakdown = {}
+            if include_monthly_breakdown:
+                selected_table_by_period = dict(selected_tables)
+                for period in periods:
+                    table_name = selected_table_by_period.get(period)
+                    if not table_name:
+                        monthly_breakdown[period] = {}
+                        continue
+                    monthly_rows, monthly_card_totals = _aggregate_sku_month_tables(
+                        [(period, table_name)],
+                        key_column,
+                    )
+                    monthly_breakdown[period] = build_period_total(
+                        monthly_card_totals,
+                        monthly_rows,
+                    )
             response = {
                 "from": periods[0],
                 "to": periods[-1],
@@ -1549,11 +1678,19 @@ def get_rolling_12_month_sku_data():
                 ],
                 "sku_count": len(rows),
                 "skus": rows,
+                "total": build_period_total(card_totals, rows),
+                "monthly_breakdown": monthly_breakdown,
             }
             return response, card_totals
 
-        current_response, current_card_total = period_response(current_periods)
-        previous_response, previous_card_total = period_response(previous_periods)
+        current_response, current_card_total = period_response(
+            current_periods,
+            include_monthly_breakdown=True,
+        )
+        previous_response, previous_card_total = period_response(
+            previous_periods,
+            include_monthly_breakdown=True,
+        )
 
         return jsonify({
             "message": "Rolling 12-month SKU data",
@@ -1580,6 +1717,236 @@ def get_rolling_12_month_sku_data():
         return jsonify({'error': 'Invalid token'}), 401
     except Exception as e:
         current_app.logger.exception("Failed to aggregate rolling 12-month SKU data")
+        return jsonify({'error': 'Server error', 'details': str(e)}), 500
+
+
+@business_intelligence_bp.route('/MonthsforBI/rolling-12-months/cashflow', methods=['GET'])
+def get_rolling_12_month_cashflow_data():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    token = auth_header.split(' ')[1]
+
+    try:
+        payload, user_id, member_id = get_effective_user_id_from_token(token)
+        country = (request.args.get('countryName') or '').strip().lower()
+        if country not in {'uk', 'us', 'global'}:
+            return jsonify({'error': 'countryName must be one of: uk, us, global'}), 400
+
+        end_month_arg = request.args.get('endMonth')
+        end_year_arg = request.args.get('endYear')
+        if bool(end_month_arg) != bool(end_year_arg):
+            return jsonify({'error': 'endMonth and endYear must be provided together'}), 400
+
+        table_pattern = f"skuwisemonthly_{user_id}_{country}_%"
+        tables_query = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name LIKE :pattern
+        """)
+        with user_engine.connect() as conn:
+            table_names = [
+                row[0]
+                for row in conn.execute(tables_query, {"pattern": table_pattern})
+            ]
+
+        available_tables = {}
+        for table_name in table_names:
+            period = parse_period_from_table_name(table_name, user_id, country)
+            if not period:
+                continue
+            has_table_suffix = table_name.endswith("_table")
+            preferred_suffix = country == "global"
+            if (
+                period not in available_tables
+                or has_table_suffix == preferred_suffix
+            ):
+                available_tables[period] = table_name
+
+        if end_month_arg:
+            try:
+                end_month = int(end_month_arg)
+                end_year = int(end_year_arg)
+            except ValueError:
+                return jsonify({'error': 'endMonth and endYear must be integers'}), 400
+            if not 1 <= end_month <= 12 or not 1 <= end_year <= 9999:
+                return jsonify({'error': 'Invalid endMonth or endYear'}), 400
+        else:
+            today = date.today()
+            latest_completed_year, latest_completed_month = _shift_month(
+                today.year,
+                today.month,
+                -1,
+            )
+            completed_period = f"{latest_completed_year:04d}-{latest_completed_month:02d}"
+            available_completed_periods = [
+                period for period in available_tables if period <= completed_period
+            ]
+            if not available_completed_periods:
+                return jsonify({
+                    'error': 'No completed monthly cash flow data is available',
+                    'countryName': country,
+                }), 404
+            end_year, end_month = map(int, max(available_completed_periods).split("-"))
+
+        current_periods = _rolling_month_periods(end_year, end_month, 12)
+        previous_year, previous_month = _shift_month(end_year, end_month, -12)
+        previous_periods = _rolling_month_periods(previous_year, previous_month, 12)
+
+        def empty_summary():
+            return {
+                "quantity_total": 0.0,
+                "gross_sales": 0.0,
+                "net_sales": 0.0,
+                "amazon_fee": 0.0,
+                "advertising_total": 0.0,
+                "taxncredit": 0.0,
+                "otherwplatform": 0.0,
+                "rembursement_fee": 0.0,
+                "promotional_rebates": 0.0,
+                "selling_fees": 0.0,
+                "fba_fees": 0.0,
+                "cost_of_unit_sold": 0.0,
+                "cm2_profit": 0.0,
+                "total_cm2_profit": 0.0,
+                "cashflow": 0.0,
+            }
+
+        def numeric(value):
+            try:
+                return float(value or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        def summarize_table(table_name):
+            with user_engine.connect() as conn:
+                result = conn.execute(text(f'SELECT * FROM public."{table_name}"'))
+                rows = [dict(row) for row in result.mappings()]
+            if not rows:
+                return None
+
+            def is_total(row):
+                return any(
+                    str(row.get(field) or '').strip().lower()
+                    in {'total', 'totals', 'grand total', 'grand_total'}
+                    for field in ('product_name', 'sku')
+                )
+
+            total_row = next((row for row in rows if is_total(row)), None)
+            source_rows = [total_row] if total_row else rows
+
+            def total_for(*columns):
+                column = next(
+                    (candidate for candidate in columns
+                     if any(candidate in row for row in source_rows)),
+                    None,
+                )
+                if not column:
+                    return 0.0
+                return sum(numeric(row.get(column)) for row in source_rows)
+
+            totals = {
+                "quantity_total": total_for("total_quantity", "quantity_total"),
+                "gross_sales": total_for("gross_sales"),
+                "net_sales": total_for("net_sales"),
+                "amazon_fee": -abs(total_for("amazon_fee", "amazon_fees")),
+                "advertising_total": total_for(
+                    "advertising_total",
+                    "advertising_total_final",
+                    "total_ads",
+                    "advertising_fees",
+                ),
+                "taxncredit": total_for("tex_and_credits", "taxncredit"),
+                "otherwplatform": total_for("platform_fee", "otherwplatform"),
+                "rembursement_fee": total_for(
+                    "rembursement_fee",
+                    "current_net_reimbursement",
+                    "net_reimbursement",
+                ),
+                "promotional_rebates": total_for("promotional_rebates"),
+                "selling_fees": total_for("selling_fees"),
+                "fba_fees": total_for("fba_fees"),
+                "cost_of_unit_sold": total_for("cost_of_unit_sold", "cogs"),
+                "cm2_profit": total_for("cm2_profit", "profit"),
+                "total_cm2_profit": total_for(
+                    "total_cm2_profit",
+                    "cm2_profit_total",
+                    "cm2_profit",
+                    "profit",
+                ),
+            }
+            totals["cashflow"] = (
+                totals["cost_of_unit_sold"] + totals["total_cm2_profit"]
+            )
+            return totals
+
+        def summarize_period(periods):
+            summary = empty_summary()
+            monthly_breakdown = {}
+            months_with_tables = []
+            for period in periods:
+                table_name = available_tables.get(period)
+                if not table_name:
+                    monthly_breakdown[period] = empty_summary()
+                    continue
+                monthly_summary = summarize_table(table_name)
+                if monthly_summary is None:
+                    continue
+                months_with_tables.append(period)
+                monthly_breakdown[period] = {
+                    key: round(value, 2)
+                    for key, value in monthly_summary.items()
+                }
+                for key, value in monthly_summary.items():
+                    summary[key] += value
+
+            for key, value in summary.items():
+                summary[key] = round(value, 2)
+            add_cashflow_summary_fields(summary)
+            return {
+                "from": periods[0],
+                "to": periods[-1],
+                "months_requested": len(periods),
+                "months_with_tables": months_with_tables,
+                "missing_months": [
+                    period for period in periods if period not in months_with_tables
+                ],
+                "monthly_breakdown": monthly_breakdown,
+                "summary": summary,
+            }, summary
+
+        current_period, current_summary = summarize_period(current_periods)
+        previous_period, previous_summary = summarize_period(previous_periods)
+        if not current_period["months_with_tables"]:
+            return jsonify({
+                'error': 'No cash flow data found for the rolling 12-month period',
+                'countryName': country,
+                'current_period': current_period,
+            }), 404
+
+        return jsonify({
+            "message": "Rolling 12-month cash flow data",
+            "period_type": "last12months",
+            "countryName": country,
+            "current_period": current_period,
+            "previous_period": previous_period,
+            "summary": current_summary,
+            "previous_summary": previous_summary,
+            "monthlyBreakdown": current_period["monthly_breakdown"],
+            "card_metrics": build_cashflow_card_metrics(
+                current_summary,
+                previous_summary,
+            ),
+        }), 200
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+    except Exception as e:
+        current_app.logger.exception("Failed to aggregate rolling 12-month cash flow data")
         return jsonify({'error': 'Server error', 'details': str(e)}), 500
 
 

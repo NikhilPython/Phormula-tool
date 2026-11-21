@@ -2108,6 +2108,16 @@ def _normalize_sku_row(row: dict) -> dict:
 
     r["product_name"] = (r.get("product_name") or "").strip()
     r["sku"] = (r.get("sku") or "").strip()
+
+    if not r.get("storage_fee"):
+        st = _to_number(r.get("short_term_storage_fee"))
+        lt = _to_number(r.get("long_term_storage_fee"))
+        inv_storage = _to_number(r.get("platform_fee_inventory_storage"))
+        r["storage_fee"] = inv_storage if inv_storage != 0 else (st + lt)
+
+    if not r.get("other_adjustment") and r.get("other"):
+        r["other_adjustment"] = _to_number(r.get("other"))
+
     return r
 
 
