@@ -89,6 +89,15 @@ type Props<RowT> = {
   ) => boolean;
 
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
+  draggableGroupIds?: string[];
+  draggableColKeys?: string[];
+  dropTargetGroupIds?: string[];
+  dropTargetColKeys?: string[];
+  onColumnDrop?: (
+    sourceKey: string,
+    targetKey: string,
+    side: "before" | "after"
+  ) => void;
 };
 
 export type SummaryRow<RowT> = {
@@ -178,6 +187,11 @@ export default function GroupedCollapsibleTable<RowT>({
   stickyLeftWidthMode = "fallback",
   showStickyLeftOuterBorder = false,
   getGroupToggleCollapsedState,
+  draggableGroupIds = [],
+  draggableColKeys = [],
+  dropTargetGroupIds = [],
+  dropTargetColKeys = [],
+  onColumnDrop,
 
 }: Props<RowT>) {
   /* ---------------- State ---------------- */
@@ -198,6 +212,7 @@ export default function GroupedCollapsibleTable<RowT>({
   const [internalCollapsed, setInternalCollapsed] = useState<Record<string, boolean>>(
     buildDefaultCollapsed
   );
+  const [draggingColumnKey, setDraggingColumnKey] = useState<string | null>(null);
 
   const collapsed = collapsedState ?? internalCollapsed;
 
@@ -224,6 +239,43 @@ export default function GroupedCollapsibleTable<RowT>({
       [id]: !(prev[id] ?? true),
     }));
   };
+
+  const canDragColumn = (key: string) =>
+    draggableGroupIds.includes(key) || draggableColKeys.includes(key);
+  const canDropOnColumn = (key: string) =>
+    dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key);
+  const dragColumnProps = (sourceKey: string, targetKey: string) => ({
+    draggable: canDragColumn(sourceKey),
+    onDragStart: (event: React.DragEvent<HTMLTableCellElement>) => {
+      if (!canDragColumn(sourceKey)) return;
+      setDraggingColumnKey(sourceKey);
+      event.dataTransfer.setData("text/plain", sourceKey);
+      event.dataTransfer.effectAllowed = "move";
+    },
+    onDragOver: (event: React.DragEvent<HTMLTableCellElement>) => {
+      if (!canDropOnColumn(targetKey)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    onDrop: (event: React.DragEvent<HTMLTableCellElement>) => {
+      const draggedKey = event.dataTransfer.getData("text/plain");
+      if (!canDropOnColumn(targetKey) || !canDragColumn(draggedKey)) return;
+      event.preventDefault();
+      if (draggedKey !== targetKey) {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const side =
+          event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
+        onColumnDrop?.(draggedKey, targetKey, side);
+      }
+      setDraggingColumnKey(null);
+    },
+    onDragEnd: () => setDraggingColumnKey(null),
+    title: canDragColumn(sourceKey)
+      ? "Drag to reposition"
+      : canDropOnColumn(targetKey)
+        ? "Drop here to reposition"
+        : undefined,
+  });
 
   const [summaryCollapsed, setSummaryCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
@@ -1151,7 +1203,8 @@ export default function GroupedCollapsibleTable<RowT>({
                 colSpan={cols.length}
                 rowSpan={groupRowSpan}
                 style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-                className={`${thBase} text-center ${g.headerClassName || ""}`}
+                className={`${thBase} text-center ${canDragColumn(g.id) ? "cursor-grab" : canDropOnColumn(g.id) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(g.id) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${g.headerClassName || ""}`}
+                {...dragColumnProps(g.id, g.id)}
               >
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
                   {/* Title row */}
@@ -1227,8 +1280,9 @@ export default function GroupedCollapsibleTable<RowT>({
               key={c.key}
               rowSpan={anyGroupExpanded ? 2 : 1}
               style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${c.sortable ? "cursor-pointer select-none" : ""
+              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.sortable ? "cursor-pointer select-none" : ""
                 }`}
+              {...dragColumnProps(c.key, c.key)}
             >
               {renderHeaderContent(c, {
                 isExpandable,
@@ -1250,7 +1304,8 @@ export default function GroupedCollapsibleTable<RowT>({
             <th
               key={c.key}
               style={colIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.thClassName || ""}`}
+              {...dragColumnProps(c.key, c.key)}
             >
               {renderHeaderContent(c)}
             </th>

@@ -2276,8 +2276,127 @@ def _sync_total_advertising_components(rows):
     return rows
 
 
+_PROMOTIONS_PLACEMENTS = {
+    "in_net_sales",
+    "after_net_sales",
+    "before_cm1",
+    "after_cm1",
+}
+
+
+def _read_promotions_placement(allow_after_cm1=True):
+    placement = (request.args.get("promotionsPlacement") or "in_net_sales").strip().lower()
+    if placement not in _PROMOTIONS_PLACEMENTS:
+        return None
+    if not allow_after_cm1 and placement == "after_cm1":
+        return "before_cm1"
+    return placement
+
+
+def _has_cm2_data(rows):
+    for row in rows:
+        name = str(row.get("product_name") or "").strip().lower()
+        sku = str(row.get("sku") or "").strip().lower()
+        if name in {"total", "others"} or sku in {"total", "others"}:
+            continue
+
+        ads_spend = safe_float(
+            row.get("ads_spend")
+            if row.get("ads_spend") is not None
+            else row.get("advertising_total")
+        )
+        acos = safe_float(row.get("acos"))
+        net_sales = safe_float(row.get("net_sales"))
+        if not acos and net_sales:
+            acos = ads_spend / net_sales * 100
+
+        cm1_profit = safe_float(row.get("profit"))
+        cm2_profit = safe_float(
+            row.get("cm2_profit")
+            if row.get("cm2_profit") is not None
+            else row.get("cm2_profit_total")
+        )
+        if ads_spend != 0 or acos != 0 or abs(cm2_profit - cm1_profit) > 0.01:
+            return True
+
+    return False
+
+
+def _apply_promotions_placement(rows, placement):
+    if placement == "in_net_sales":
+        return rows
+
+    for row in rows:
+        promotion = safe_float(row.get("promotional_rebates"))
+        adjustment = abs(promotion)
+        net_sales = safe_float(row.get("net_sales")) + adjustment
+        profit = safe_float(row.get("profit"))
+        if placement == "after_cm1":
+            profit += adjustment
+
+        quantity = safe_float(row.get("total_quantity"))
+        cm2_profit = safe_float(row.get("cm2_profit"))
+        cm2_total_profit = safe_float(
+            row.get("total_cm2_profit")
+            if row.get("total_cm2_profit") is not None
+            else row.get("cm2_profit_total")
+            if row.get("cm2_profit_total") is not None
+            else row.get("cm2_profit")
+        )
+
+        row["net_sales"] = round(net_sales, 2)
+        row["profit"] = round(profit, 2)
+        row["asp"] = round(net_sales / quantity, 2) if quantity else 0
+        row["profit_percentage"] = round(profit / net_sales * 100, 2) if net_sales else 0
+        row["unit_wise_profitability"] = round(profit / quantity, 2) if quantity else 0
+        row["promotional_rebates_percentage"] = (
+            round(adjustment / net_sales * 100, 2) if net_sales else 0
+        )
+
+        if "Net_Sales" in row:
+            row["Net_Sales"] = row["net_sales"]
+        if "Profit" in row:
+            row["Profit"] = row["profit"]
+        if "total_profit" in row:
+            row["total_profit"] = row["profit"]
+
+        if "acos" in row:
+            ads_value = row.get("ads_spend")
+            if ads_value is None:
+                ads_value = row.get("advertising_total")
+            ads_spend = safe_float(ads_value)
+            row["acos"] = round(ads_spend / net_sales * 100, 2) if net_sales else 0
+        if "cm2_margins" in row:
+            row["cm2_margins"] = (
+                round(cm2_total_profit / net_sales * 100, 2) if net_sales else 0
+            )
+        if "cm2_profit_percentage" in row:
+            row["cm2_profit_percentage"] = (
+                round(cm2_total_profit / net_sales * 100, 2) if net_sales else 0
+            )
+        if "cm2_profit_per" in row:
+            row["cm2_profit_per"] = (
+                round(cm2_profit / net_sales * 100, 2) if net_sales else 0
+            )
+        if "cm2_profit_per_unit" in row:
+            row["cm2_profit_per_unit"] = (
+                round(cm2_profit / quantity, 2) if quantity else 0
+            )
+        if "reimbursement_vs_sales" in row:
+            reimbursement = abs(safe_float(row.get("rembursement_fee")))
+            row["reimbursement_vs_sales"] = (
+                round(reimbursement / net_sales * 100, 2) if net_sales else 0
+            )
+
+    return rows
+
+
 @product_bp.route('/YearlySKU', methods=['GET'])
 def YearlySKU():
+    promotions_placement = _read_promotions_placement(allow_after_cm1=False)
+    if promotions_placement is None:
+        return jsonify({"error": "Invalid promotionsPlacement"}), 400
+
     country = (request.args.get('country') or '').lower()
     country_param = request.args.get('country', '').lower()
     currency_param = (request.args.get('homeCurrency') or '').lower()
@@ -2360,6 +2479,7 @@ def YearlySKU():
                 persist_per_unit_fields(engine, table_name, current_data)
             except Exception:
                 pass
+        current_data = _apply_promotions_placement(current_data, promotions_placement)
 
         previous_year = get_previous_year(year)
         previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
@@ -2385,6 +2505,7 @@ def YearlySKU():
             previous_year_month_limit = 0
 
         previous_data = add_per_unit_fields(previous_data)
+        previous_data = _apply_promotions_placement(previous_data, promotions_placement)
 
         return jsonify({
             "current_table_name": table_name,
@@ -2498,6 +2619,10 @@ def resolve_country(country, currency):
 
 @product_bp.route('/quarterlyskutable', methods=['GET'])
 def quarterlyskutable():
+    promotions_placement = _read_promotions_placement(allow_after_cm1=False)
+    if promotions_placement is None:
+        return jsonify({"error": "Invalid promotionsPlacement"}), 400
+
     quarter = request.args.get('quarter')
     country_param = request.args.get('country', '')
     currency_param = (request.args.get('homeCurrency') or '').lower()
@@ -2592,6 +2717,9 @@ def quarterlyskutable():
 
             except Exception:
                 previous_data = []
+
+        current_data = _apply_promotions_placement(current_data, promotions_placement)
+        previous_data = _apply_promotions_placement(previous_data, promotions_placement)
 
         return jsonify({
             "current_table_name": table_name,
@@ -3500,6 +3628,10 @@ def _get_dealsvouchar_ads(row):
 
 @product_bp.route('/skutableprofit', methods=['GET'])
 def skutableprofit():
+    promotions_placement = _read_promotions_placement()
+    if promotions_placement is None:
+        return jsonify({"error": "Invalid promotionsPlacement"}), 400
+
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
         return jsonify({'error': 'Authorization token is missing or invalid'}), 401
@@ -3920,6 +4052,10 @@ def skutableprofit():
                 except Exception:
                     pass
             current_data = _add_product_status(current_data)
+            current_placement = promotions_placement
+            if current_placement == "after_cm1" and not _has_cm2_data(current_data):
+                current_placement = "before_cm1"
+            current_data = _apply_promotions_placement(current_data, current_placement)
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
@@ -3956,6 +4092,7 @@ def skutableprofit():
                     pass
             except Exception:
                 previous_data = []
+            previous_data = _apply_promotions_placement(previous_data, current_placement)
 
         return jsonify({
             "current_table_name": table_name,

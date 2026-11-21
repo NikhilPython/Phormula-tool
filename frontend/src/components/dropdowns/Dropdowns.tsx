@@ -22,7 +22,7 @@ import SummaryMetricCard from "./SummaryMetricCard";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
 import SkuTopBottomTables from "./SkuTopBottomTables";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
-import type { TableRow } from "./SKUtable";
+import type { PromotionsPlacement, TableRow } from "./SKUtable";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
@@ -6605,9 +6605,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     monthVal: string,
     quarterVal: string,
     yearVal: string,
-    countryVal: string
+    countryVal: string,
+    placement: PromotionsPlacement
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
+    const resolvedStage =
+      rangeType !== "monthly" && placement.stage === "after_cm1"
+        ? "before_cm1"
+        : placement.stage;
 
     if (rangeType === "monthly") {
       const url = new URL(
@@ -6617,6 +6622,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("country", countryVal);
       url.searchParams.set("month", monthVal.toLowerCase());
       url.searchParams.set("year", String(yearVal));
+      url.searchParams.set("promotionsPlacement", resolvedStage);
 
       if (isGlobal && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
@@ -6636,6 +6642,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("country", countryVal);
       url.searchParams.set("year", String(yearVal));
       url.searchParams.set("userid", String(userid));
+      url.searchParams.set("promotionsPlacement", resolvedStage);
 
       if (isGlobal && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
@@ -6648,6 +6655,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     url.searchParams.set("country", countryVal);
     url.searchParams.set("year", String(yearVal));
+    url.searchParams.set("promotionsPlacement", resolvedStage);
 
     if (isGlobal && homeCurrency) {
       url.searchParams.set("homeCurrency", homeCurrency);
@@ -6887,6 +6895,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [skuRows, setSkuRows] = useState<TableRow[]>(
     isDemoMode ? DEMO_SKU_ROWS : []
   );
+  const [promotionsPlacement, setPromotionsPlacement] =
+    useState<PromotionsPlacement>({
+      anchor: "net_sales",
+      side: "before",
+      stage: "in_net_sales",
+    });
 
   const [skuStatusMap, setSkuStatusMap] = useState<
     Record<string, "Active" | "Discontinued">
@@ -7806,7 +7820,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const buildMonthlySkuUrl = (
     monthVal: string,
     yearVal: string,
-    countryVal: string
+    countryVal: string,
+    placement: PromotionsPlacement
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
 
@@ -7817,6 +7832,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("country", countryVal);
     url.searchParams.set("month", monthVal.toLowerCase());
     url.searchParams.set("year", String(yearVal));
+    url.searchParams.set("promotionsPlacement", placement.stage);
 
     if (isGlobal && homeCurrency) {
       url.searchParams.set("homeCurrency", homeCurrency);
@@ -7846,7 +7862,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         : allMonthsForYear;
       const results = await Promise.all(months.map(async (monthName) => {
         try {
-          const url = buildMonthlySkuUrl(monthName, String(selectedYear), initialCountryName);
+          const monthWisePlacement =
+            range !== "monthly" && promotionsPlacement.stage === "after_cm1"
+              ? { ...promotionsPlacement, stage: "before_cm1" as const }
+              : promotionsPlacement;
+          const url = buildMonthlySkuUrl(
+            monthName,
+            String(selectedYear),
+            initialCountryName,
+            monthWisePlacement
+          );
           const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
           if (!response.ok) return null;
           const payload = await response.json();
@@ -7868,7 +7893,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
     void loadMonthWiseTotals();
     return () => { cancelled = true; };
-  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency]);
+  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, range]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
@@ -8069,7 +8094,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           : null;
 
       const url = new URL(
-        buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country)
+        buildParentSkuUrl(rangeType, monthVal, quarterVal, yearVal, country, promotionsPlacement)
       );
 
       const res = await fetch(url.toString(), {
@@ -8114,7 +8139,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       ) {
         const { prevMonth, prevYear } = getPreviousMonthYear(monthVal, yearVal);
 
-        const prevUrl = buildMonthlySkuUrl(prevMonth, prevYear, country);
+        const prevUrl = buildMonthlySkuUrl(
+          prevMonth,
+          prevYear,
+          country,
+          rangeType !== "monthly" && promotionsPlacement.stage === "after_cm1"
+            ? { ...promotionsPlacement, stage: "before_cm1" }
+            : promotionsPlacement
+        );
 
         const prevRes = await fetch(prevUrl.toString(), {
           method: "GET",
@@ -9680,6 +9712,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     countryName,
     fetchCurrencyKey,
     isDemoMode,
+    promotionsPlacement,
   ]);
 
   useEffect(() => {
@@ -10667,7 +10700,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     countryVal: string,
     token: string | null
   ): Promise<UploadRow[]> => {
-    const url = buildMonthlySkuUrl(monthVal, yearVal, countryVal);
+    const url = buildMonthlySkuUrl(
+      monthVal,
+      yearVal,
+      countryVal,
+      {
+        anchor: "net_sales",
+        side: "before",
+        stage: "in_net_sales",
+      }
+    );
 
     const res = await fetch(url.toString(), {
       method: "GET",
@@ -12484,6 +12526,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
+                    promotionsPlacement={promotionsPlacement}
+                    onPromotionsPlacementChange={
+                      isDemoMode ? undefined : setPromotionsPlacement
+                    }
                     yearlyTotalRow={
   (skuRowsWithStatus || []).find((row: any) => {
     const name = String(row?.product_name ?? "").trim().toLowerCase();

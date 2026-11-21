@@ -11016,12 +11016,9 @@ export default function DashboardPage() {
             const shipmentCharges =
                 n((plSummaryTotals as any)?.shipment_charges);
 
-            const cm2ProfitLoss =
-                n(grandTotalRowRaw?.total_cm2_profit) ||
-                n(grandTotalRowDisplay?.total_cm2_profit) ||
-                n((plSummaryTotals as any)?.cm2_profit) ||
-                n(grandTotalRowRaw?.cm2_profit) ||
-                n(grandTotalRowDisplay?.cm2_profit);
+            // Keep the Excel summary aligned with the dashboard's CM2 summary
+            // row, including the account-level Last 30 days value.
+            const cm2ProfitLoss = totalRowCm2Profit;
 
             const shortTermStorageFee =
                 n(totalRow?.short_term_storage_fee) ||
@@ -11264,6 +11261,7 @@ export default function DashboardPage() {
         reimbursementVsCm2PctForSummary,
         reimbursementVsSalesPctForSummary,
         costOfAds,
+        totalRowCm2Profit,
         grandTotalRowDisplay,
         grandTotalRowRaw,
         userData,
