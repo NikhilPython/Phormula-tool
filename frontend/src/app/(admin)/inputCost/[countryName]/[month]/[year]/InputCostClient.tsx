@@ -7687,7 +7687,11 @@ export default function InputCostPage({ params }: Params) {
                 selectedQuarter={selectedQuarter}
                 selectedYear={selectedYear}
                 yearOptions={yearOptions}
-                onRangeChange={handleRangeChange}
+                onRangeChange={(nextRange) => {
+                  if (nextRange !== "last12months") {
+                    handleRangeChange(nextRange);
+                  }
+                }}
                 onMonthChange={handleMonthChange}
                 onQuarterChange={handleQuarterChange}
                 onYearChange={handleYearChange}

@@ -67,7 +67,11 @@ const FiltersAndSearchRow: React.FC<FiltersAndSearchRowProps> = ({
           selectedYear={selectedYear}
           yearOptions={years}
           allowedRanges={safeAllowedRanges}
-          onRangeChange={(r) => onRangeChange(r)}
+          onRangeChange={(nextRange) => {
+            if (nextRange !== "last12months") {
+              onRangeChange(nextRange);
+            }
+          }}
           onMonthChange={onMonthChange}
           onQuarterChange={onQuarterChange}
           onYearChange={onYearChange}
