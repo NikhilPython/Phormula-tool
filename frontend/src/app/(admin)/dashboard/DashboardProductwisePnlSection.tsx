@@ -265,6 +265,7 @@ export default function DashboardProductwisePnlSection({
     const [isRearrangingColumns, setIsRearrangingColumns] = React.useState(false);
     const [isApplyingColumnPlacements, setIsApplyingColumnPlacements] = React.useState(false);
     const [columnPlacementError, setColumnPlacementError] = React.useState("");
+    const salesCollapsedBeforeRearranging = React.useRef<boolean | null>(null);
     const [draftPromotionsPlacement, setDraftPromotionsPlacement] =
         React.useState<DashboardColumnPlacement>(promotionsPlacement);
     const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
@@ -515,6 +516,7 @@ export default function DashboardProductwisePnlSection({
                 draftAmazonFeesPlacement
             );
             setIsRearrangingColumns(false);
+            restoreSalesGroupCollapse();
         } catch (error) {
             setColumnPlacementError(
                 error instanceof Error ? error.message : "Failed to update the P&L column layout."
@@ -524,11 +526,40 @@ export default function DashboardProductwisePnlSection({
         }
     };
 
+    const handleStartColumnRearrangement = () => {
+        setDraftPromotionsPlacement(promotionsPlacement);
+        setDraftAmazonFeesPlacement(amazonFeesPlacement);
+        setColumnPlacementError("");
+        if (
+            isUsPnlSkuLayout &&
+            promotionsPlacement.stage === "in_net_sales"
+        ) {
+            salesCollapsedBeforeRearranging.current =
+                productwiseCollapsed?.sales ?? true;
+            setProductwiseCollapsed((current: Record<string, boolean>) => ({
+                ...current,
+                sales: false,
+            }));
+        }
+        setIsRearrangingColumns(true);
+    };
+
+    const restoreSalesGroupCollapse = () => {
+        const previousCollapseState = salesCollapsedBeforeRearranging.current;
+        if (previousCollapseState === null) return;
+        setProductwiseCollapsed((current: Record<string, boolean>) => ({
+            ...current,
+            sales: previousCollapseState,
+        }));
+        salesCollapsedBeforeRearranging.current = null;
+    };
+
     const handleCancelColumnPlacements = () => {
         setDraftPromotionsPlacement(promotionsPlacement);
         setDraftAmazonFeesPlacement(amazonFeesPlacement);
         setColumnPlacementError("");
         setIsRearrangingColumns(false);
+        restoreSalesGroupCollapse();
     };
 
     const normalizeKeyForStatus = (s: string) =>
@@ -2226,12 +2257,7 @@ export default function DashboardProductwisePnlSection({
                     ) : (
                         <button
                             type="button"
-                            onClick={() => {
-                                setDraftPromotionsPlacement(promotionsPlacement);
-                                setDraftAmazonFeesPlacement(amazonFeesPlacement);
-                                setColumnPlacementError("");
-                                setIsRearrangingColumns(true);
-                            }}
+                            onClick={handleStartColumnRearrangement}
                             disabled={columnPlacementLoading || shouldShowDummyUi}
                             title="Rearrange columns"
                             aria-label="Rearrange columns"

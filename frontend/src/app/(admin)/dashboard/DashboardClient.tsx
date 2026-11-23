@@ -11085,7 +11085,63 @@ export default function DashboardPage() {
     const handleDownloadPlProductwiseMtd = useCallback(() => {
         try {
 
-            const rowsToExport = (monthlySkuwiseRowsDisplay || []).filter((r: any) => {
+            const isTotalExportRow = (row: any) =>
+                !!row?.isTotal ||
+                String(row?.sku || "").trim().toUpperCase() === "GRAND_TOTAL" ||
+                String(row?.sku || "").trim().toUpperCase() === "TOTAL" ||
+                ["grand total", "total"].includes(
+                    String(row?.product_name || "").trim().toLowerCase()
+                );
+
+            const sourceRows = (monthlySkuwiseRowsDisplay || []).filter((row: any) =>
+                !isTotalExportRow(row)
+            );
+            const getExportSortValue = (row: any) => {
+                switch (plSortConfig.key) {
+                    case "marketplace_total":
+                        return Math.abs(
+                            toNumber(row.amazon_fees) ||
+                                toNumber(row.marketplace_fees) ||
+                                toNumber(row.fba_fees) + toNumber(row.selling_fees)
+                        );
+                    case "product_name":
+                        return getSkuwiseDisplayProductName(row).toLowerCase();
+                    case "sku":
+                        return String(row.sku || "").toLowerCase();
+                    case "other_transactions":
+                        return getProductwiseOtherTransactionsTotal(row);
+                    default:
+                        return toNumber((row as any)[plSortConfig.key]);
+                }
+            };
+            const sortedExportRows = [...sourceRows].sort((a, b) => {
+                const aDisc = isDiscontinuedSkuRow(a);
+                const bDisc = isDiscontinuedSkuRow(b);
+                if (aDisc !== bDisc) return aDisc ? 1 : -1;
+
+                const aValue = getExportSortValue(a);
+                const bValue = getExportSortValue(b);
+                const direction = plSortConfig.direction === "desc" ? -1 : 1;
+                return typeof aValue === "number" && typeof bValue === "number"
+                    ? (aValue - bValue) * direction
+                    : String(aValue).localeCompare(String(bValue)) * direction;
+            });
+            const allRowsToExport = [
+                ...sortedExportRows.map((row: any, index: number) => ({
+                    ...row,
+                    sno: index + 1,
+                    isOthers: false,
+                    isTotal: false,
+                })),
+                ...monthlySkuwiseRowsDisplay.filter(isTotalExportRow).map((row: any) => ({
+                    ...row,
+                    product_name: "Total",
+                    isTotal: true,
+                    isOthers: false,
+                })),
+            ];
+
+            const rowsToExport = allRowsToExport.filter((r: any) => {
                 const sku = String(r?.sku || "").trim().toUpperCase();
                 const pn = String(r?.product_name || "").trim().toLowerCase();
 
@@ -11484,6 +11540,7 @@ export default function DashboardPage() {
         }
     }, [
         monthlySkuwiseRowsDisplay,
+        plSortConfig,
         formattedMonthYear,
         countryName,
         platform,
