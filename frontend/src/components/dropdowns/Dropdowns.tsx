@@ -6681,6 +6681,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months`
     );
     url.searchParams.set("countryName", countryValue.toLowerCase());
+    url.searchParams.set("promotionsPlacement", promotionsPlacement.stage);
+    url.searchParams.set("amazonFeesPlacement", amazonFeesPlacement.stage);
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -8044,10 +8046,22 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               const monthName = monthNames[monthIndex];
               if (!yearValue || !monthName) return [];
               const totals = rawTotals as Record<string, unknown>;
+              const netSales = toNum(totals.net_sales);
+              const monthlyAdsCost = Math.abs(
+                toNum(totals.total_ads) ||
+                toNum(totals.ads_spend) ||
+                toNum(totals.advertising_total_final) ||
+                toNum(totals.advertising_fees) ||
+                toNum(totals.advertising_total)
+              );
+              const otherTransactions =
+                toNum(totals.other_transaction_fees) ||
+                toNum(totals.other_transactions);
 
               return [{
                 ...totals,
                 product_name: monthName,
+                sku: monthName.toLowerCase(),
                 month_name: monthName,
                 month_label: monthName,
                 month: monthName.toLowerCase(),
@@ -8056,7 +8070,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 year_month: period,
                 _month_index: monthIndex,
                 _rolling_index: rollingIndex,
-
+                other_transaction_fees: otherTransactions,
+                other_transactions: otherTransactions,
+                tacos_total_advertising_cost_of_sale: netSales
+                  ? (monthlyAdsCost / Math.abs(netSales)) * 100
+                  : 0,
               }];
             });
 
@@ -8334,8 +8352,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       if (rolling12Months) {
         url.searchParams.set("countryName", country.toLowerCase());
         url.searchParams.set(
+          "promotionsPlacement",
+          promotionsPlacement.stage
+        );
+        url.searchParams.set(
           "amazonFeesPlacement",
-          rangeType === "monthly" && amazonFeesPlacement.stage === "after_cm1"
+          amazonFeesPlacement.stage === "after_cm1"
             ? "after_cm1"
             : "before_cm1"
         );

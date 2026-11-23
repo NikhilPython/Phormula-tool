@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 // import { jwtDecode } from "jwt-decode";
 import SkuMultiCountryUpload from "../ui/modal/SkuMultiCountryUpload";
@@ -64,8 +64,8 @@ const TERM_DEFINITIONS: Record<string, string> = {
 type RangeType = "monthly" | "quarterly" | "yearly";
 
 export type PromotionsPlacement = {
-  anchor: "net_sales";
-  side: "before";
+  anchor: string;
+  side: "before" | "after";
   stage: "in_net_sales" | "after_net_sales" | "before_cm1" | "after_cm1";
 };
 export type AmazonFeesPlacement = {
@@ -73,6 +73,10 @@ export type AmazonFeesPlacement = {
   side: "before" | "after";
   stage: "before_cm1" | "after_cm1";
 };
+
+type SKUColumnLayoutItem =
+  | { type: "group"; id: string }
+  | { type: "single"; key: string };
 
 type SKUtableProps = {
   range: RangeType;
@@ -91,8 +95,6 @@ type SKUtableProps = {
     acos?: number;
     cm2Profit?: number;
   };
-  promotionsPlacement?: PromotionsPlacement;
-  onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
   loading?: boolean;
   error?: string | null;
   noDataFound?: boolean;
@@ -866,6 +868,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
   disableInternalFade = false,
   onProductDetailClick,
   onMonthClick,
+  promotionsPlacement = {
+    anchor: "net_sales",
+    side: "before",
+    stage: "in_net_sales",
+  },
+  onPromotionsPlacementChange,
   amazonFeesPlacement = {
     anchor: "cost_of_unit_sold",
     side: "after",
@@ -890,12 +898,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
     useState<AmazonFeesPlacement>(amazonFeesPlacement);
   const [tableView, setTableView] = useState<"product" | "month">("product");
+  const canMovePastCm1 = range === "monthly" || isRolling12Months;
   const isMonthWiseView =
     range !== "monthly" && tableView === "month";
   const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean> | undefined>(
     undefined
   );
+  const salesCollapsedBeforeRearranging = useRef<boolean | null>(null);
   useEffect(() => {
     if (isRearrangingColumns) return;
     setDraftPromotionsPlacement((current) =>
@@ -1105,6 +1115,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     // global period selector remains Yearly. Preserve existing behavior for
     // the normal product-wise yearly/quarterly view.
     if (
+      !isRolling12Months &&
       !isMonthWiseView &&
       (currentRange === "yearly" || currentRange === "quarterly")
     ) {
@@ -1127,7 +1138,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     // The month-wise layout must retain Ads and CM2 columns for every month;
     // monthly rows already carry their own backend totals.
-    if (isMonthWiseView) return true;
+    if (isMonthWiseView && !isRolling12Months) return true;
 
     // Show Ads Spend, ACoS%, CM2 Profit only when at least one SKU has real CM2 impact
     return productRows.some((row: any) => {
@@ -1148,21 +1159,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
         cm2DiffersFromCm1
       );
     });
-  }, [tableData, countryName, range, isMonthWiseView]);
+  }, [tableData, countryName, range, isMonthWiseView, isRolling12Months]);
   const requestedPromotionsPlacement = isRearrangingColumns
     ? draftPromotionsPlacement
     : promotionsPlacement;
   const effectivePromotionsPlacement = useMemo<PromotionsPlacement>(
     () =>
       requestedPromotionsPlacement.stage === "after_cm1" &&
-      (range !== "monthly" || !hasCm2Data)
+      (!canMovePastCm1 || !hasCm2Data)
         ? {
             anchor: "profit_breakdown",
             side: "before",
             stage: "before_cm1",
           }
         : requestedPromotionsPlacement,
-    [requestedPromotionsPlacement, range, hasCm2Data]
+    [requestedPromotionsPlacement, canMovePastCm1, hasCm2Data]
   );
 
   const getCm2PerUnit = (row: Partial<TableRow>) => {
@@ -1646,14 +1657,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
             width: "8%",
             info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
           },
-          {
-            key: "promotional_rebates",
-            label: "Promotions",
-            align: "center" as const,
-            width: "8%",
-            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-          },
-          ...(isMonthWiseView
+          ...(effectivePromotionsPlacement.stage === "in_net_sales"
+            ? [{
+                key: "promotional_rebates",
+                label: "Promotions",
+                align: "center" as const,
+                width: "8%",
+                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+              }]
+            : []),
+          ...(isMonthWiseView &&
+          effectivePromotionsPlacement.stage === "in_net_sales"
             ? [{
                 key: "promotional_rebates_percentage",
                 label: <>Promotions<br />%</>,
@@ -1692,7 +1706,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
             width: "8%",
             info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
           },
-          ...(isMonthWiseView
+          ...(isMonthWiseView &&
+          effectivePromotionsPlacement.stage === "in_net_sales"
             ? [{
                 key: "promotional_rebates_percentage",
                 label: <>Promotions<br />%</>,
@@ -1711,7 +1726,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ],
     },
 
-    ...(!isUsCountry
+    ...(!isUsCountry &&
+    effectivePromotionsPlacement.stage === "in_net_sales"
       ? [
         {
           id: "promotional_rebates",
@@ -2036,8 +2052,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         } as ColGroup<TableRow>,
       ]
       : []),
-    ];
-  }, [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView, effectivePromotionsPlacement]);
+  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView, effectivePromotionsPlacement]);
 
   const baseTableLayout = useMemo<SKUColumnLayoutItem[]>(
     () => [
@@ -2045,7 +2060,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { type: "single", key: "asp" },
       { type: "group", id: "sales" },
       ...(effectivePromotionsPlacement.stage === "in_net_sales"
-        ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+        ? isUsCountry
+          ? !isMonthWiseView
+            ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+            : []
+          : [{ type: "group" as const, id: "promotional_rebates" }]
         : []),
       { type: "single", key: "cost_of_unit_sold" },
       { type: "group", id: "amazon_breakdown" },
@@ -2061,6 +2080,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   { type: "group" as const, id: "cm2_profit_breakdown" },
                   { type: "group" as const, id: "month_net_reimbursement" },
                 ]
+              : []),
+            ...(isMonthWiseView && !isUsCountry
+              ? [{ type: "group" as const, id: "cm2_profit_breakdown" }]
               : []),
             ...(!isMonthWiseView
               ? [{ type: "group" as const, id: "cm2_profit_breakdown" }]
@@ -2081,7 +2103,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     : amazonFeesPlacement;
   const activeAmazonFeesPlacement =
     requestedAmazonFeesPlacement.stage === "after_cm1" &&
-    (range !== "monthly" || !hasCm2Data)
+    (!canMovePastCm1 || !hasCm2Data)
       ? {
           anchor: "profit_breakdown",
           side: "before" as const,
@@ -2110,7 +2132,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
         : anchorIndex + (effectivePromotionsPlacement.side === "after" ? 1 : 0);
 
     insertionIndex = Math.max(insertionIndex, salesIndex + 1);
-    if (effectivePromotionsPlacement.stage === "before_cm1") {
+    if (
+      effectivePromotionsPlacement.stage === "after_net_sales" ||
+      effectivePromotionsPlacement.stage === "before_cm1"
+    ) {
       insertionIndex = Math.min(insertionIndex, profitIndex);
     } else {
       insertionIndex = Math.max(insertionIndex, profitIndex + 1);
@@ -2141,7 +2166,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         (item) => item.type === "group" && item.id === "sales"
       );
       const endBoundaryId =
-        range === "monthly" && hasCm2Data
+        canMovePastCm1 && hasCm2Data
           ? "cm2_profit_breakdown"
           : "profit_breakdown";
       const endBoundaryIndex = layout.findIndex(
@@ -2170,10 +2195,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     baseTableLayout,
     effectivePromotionsPlacement,
     activeAmazonFeesPlacement,
-    range,
+    canMovePastCm1,
     hasCm2Data,
   ]);
-  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -2225,13 +2249,28 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const handleStartColumnRearrangement = () => {
     setDraftPromotionsPlacement(promotionsPlacement);
     setDraftAmazonFeesPlacement(amazonFeesPlacement);
+    if (isUsCountry && promotionsPlacement.stage === "in_net_sales") {
+      salesCollapsedBeforeRearranging.current = collapsedGroups?.sales ?? true;
+      setCollapsedGroups((current) => ({ ...current, sales: false }));
+    }
     setIsRearrangingColumns(true);
+  };
+
+  const restoreSalesGroupCollapse = () => {
+    const previousCollapseState = salesCollapsedBeforeRearranging.current;
+    if (previousCollapseState === null) return;
+    setCollapsedGroups((current) => ({
+      ...current,
+      sales: previousCollapseState,
+    }));
+    salesCollapsedBeforeRearranging.current = null;
   };
 
   const handleCancelColumnRearrangement = () => {
     setDraftPromotionsPlacement(promotionsPlacement);
     setDraftAmazonFeesPlacement(amazonFeesPlacement);
     setIsRearrangingColumns(false);
+    restoreSalesGroupCollapse();
   };
 
   const handleConfirmColumnRearrangement = () => {
@@ -2252,6 +2291,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       onAmazonFeesPlacementChange(draftAmazonFeesPlacement);
     }
     setIsRearrangingColumns(false);
+    restoreSalesGroupCollapse();
   };
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
@@ -3125,7 +3165,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const yearShort = typeof year === "string" ? year.toString().slice(-2) : String(year).slice(-2);
 
   const periodLabel =
-    range === "monthly"
+    isRolling12Months
+      ? "SKU-wise Profitability-Last 12 Months"
+      : range === "monthly"
       ? `SKU-wise Profitability-${convertToAbbreviatedMonth(month)}'${yearShort}`
       : range === "quarterly"
         ? `SKU-wise Profitability-${quarter}'${yearShort}`
@@ -3585,7 +3627,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     buildSkuWorksheetFromModel(monthWs, monthModel);
 
     const formattedMonthYear =
-      range === "monthly"
+      isRolling12Months
+        ? "Last12Months"
+        : range === "monthly"
         ? `${convertToAbbreviatedMonth(month)}'${yearShort}`
         : range === "quarterly"
           ? `${quarter}'${yearShort}`
@@ -3642,15 +3686,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     }).length;
   }, [tableData]);
-
-  /* --------- Render guards --------- */
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Loader fullscreen transparent />
-      </div>
-    );
-  }
 
   if (error) {
     return <div className="text-red-600">Error: {error}</div>;
@@ -4162,7 +4197,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
               </>
             ) : (
               <>
-                {onPromotionsPlacementChange && (
+                {(onPromotionsPlacementChange ||
+                  onAmazonFeesPlacementChange) && (
                   <button
                     type="button"
                     onClick={handleStartColumnRearrangement}
@@ -4207,11 +4243,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           <div
             className={[
-              "w-full rounded-xl border border-gray-300",
+              "relative w-full rounded-xl border border-gray-300",
               shouldScrollTable
                 ? "overflow-hidden"
                 : "overflow-x-auto overflow-y-hidden",
             ].join(" ")}
+            aria-busy={loading}
           >
             <div className="w-full">
               <GroupedCollapsibleTable<TableRow>
@@ -4272,40 +4309,42 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   return name === "total" || sku === "total";
                 }}
-                layout={[
-                  { type: "group" as const, id: "units_breakdown" },
-                  { type: "single" as const, key: "asp" },
-
-                  { type: "group" as const, id: "sales" },
-                  ...(isUsCountry
-                    ? (!isMonthWiseView
-                        ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
-                        : [])
-                    : [{ type: "group" as const, id: "promotional_rebates" }]),
-
-                  { type: "single" as const, key: "cost_of_unit_sold" },
-
-                  { type: "group" as const, id: "amazon_breakdown" },
-                  { type: "group" as const, id: "other_transactions_breakdown" },
-                  { type: "group" as const, id: "profit_breakdown" },
-
-                  ...(hasCm2Data
+                layout={tableLayout}
+                draggableGroupIds={
+                  isRearrangingColumns &&
+                  (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
                     ? [
-                      { type: "group" as const, id: "ads_spend_breakdown" },
-                      { type: "single" as const, key: "acos" },
-                      ...(isMonthWiseView && isUsCountry
-                        ? [
-                          { type: "group" as const, id: "month_other_charges" },
-                          { type: "group" as const, id: "cm2_profit_breakdown" },
-                          { type: "group" as const, id: "month_net_reimbursement" },
-                        ]
-                        : []),
-                      ...(!isMonthWiseView ? [{ type: "group" as const, id: "cm2_profit_breakdown" }] : []),
-                    ]
-                    : []),
-                ]}
+                        "amazon_breakdown",
+                        "promotional_rebates",
+                        "promotions_breakdown",
+                      ]
+                    : []
+                }
+                draggableColKeys={
+                  isRearrangingColumns &&
+                  (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
+                    ? ["promotional_rebates"]
+                    : []
+                }
+                dropTargetGroupIds={
+                  isRearrangingColumns &&
+                  (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
+                    ? [
+                        "sales",
+                        "promotional_rebates",
+                        "promotions_breakdown",
+                        "amazon_breakdown",
+                        "other_transactions_breakdown",
+                        "profit_breakdown",
+                        ...(hasCm2Data && canMovePastCm1
+                          ? ["ads_spend_breakdown", "cm2_profit_breakdown"]
+                          : []),
+                      ]
+                    : []
+                }
                 dropTargetColKeys={
-                  isRearrangingColumns && onPromotionsPlacementChange
+                  isRearrangingColumns &&
+                  (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
                     ? [
                         "product_sales",
                         "refund_sales",
@@ -4324,7 +4363,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         "profit",
                         "unit_wise_profitability",
                         "profit_percentage",
-                        ...(hasCm2Data && range === "monthly"
+                        ...(hasCm2Data && canMovePastCm1
                           ? [
                               "product_spend",
                               "display_spend",
@@ -4342,7 +4381,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 onColumnDrop={(sourceKey, targetKey, side) => {
                   if (
                     !isRearrangingColumns ||
-                    !onPromotionsPlacementChange
+                    (!onPromotionsPlacementChange &&
+                      !onAmazonFeesPlacementChange)
                   ) return;
                   if (sourceKey === "amazon_breakdown") {
                     if (
@@ -4419,14 +4459,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       targetKey === "acos" ||
                       adsColumns.includes(targetKey)
                     ) {
-                      if (range !== "monthly" || !hasCm2Data) return;
+                      if (!canMovePastCm1 || !hasCm2Data) return;
                       anchor =
                         targetKey === "acos" ? "acos" : "ads_spend_breakdown";
                     } else if (
                       targetKey === "cm2_profit_breakdown" ||
                       cm2Columns.includes(targetKey)
                     ) {
-                      if (range !== "monthly" || !hasCm2Data) return;
+                      if (!canMovePastCm1 || !hasCm2Data) return;
                       anchor = "cm2_profit_breakdown";
                     }
 
@@ -4435,7 +4475,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                         anchor,
                         side: placementSide,
                         stage:
-                          range === "monthly" &&
+                          canMovePastCm1 &&
                           hasCm2Data &&
                           (anchor === "profit_breakdown"
                             ? placementSide === "after"
@@ -4521,7 +4561,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (targetKey === "profit_breakdown" || cm1Columns.includes(targetKey)) {
                     const placementSide =
                       side === "after" &&
-                      (range !== "monthly" || !hasCm2Data)
+                      (!canMovePastCm1 || !hasCm2Data)
                         ? "before"
                         : side;
                     setDraftPromotionsPlacement({
@@ -4535,7 +4575,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "cm2_profit_breakdown" ||
                     cm2Columns.includes(targetKey)
                   ) {
-                    if (range !== "monthly" || !hasCm2Data) return;
+                    if (!canMovePastCm1 || !hasCm2Data) return;
                     setDraftPromotionsPlacement({
                       anchor: "cm2_profit_breakdown",
                       side: "before",
@@ -4548,7 +4588,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "acos" ||
                     adsColumns.includes(targetKey)
                   ) {
-                    if (range !== "monthly" || !hasCm2Data) return;
+                    if (!canMovePastCm1 || !hasCm2Data) return;
                     const anchor =
                       targetKey === "acos" ? "acos" : "ads_spend_breakdown";
                     setDraftPromotionsPlacement({
@@ -4791,8 +4831,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   No Data Available for selected period
                 </div>
               )}
-
             </div>
+            {loading && (
+              <div
+                className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-white/70"
+                role="status"
+                aria-live="polite"
+                aria-label="Updating SKU table"
+              >
+                <Loader transparent />
+              </div>
+            )}
           </div>
         </div>
       </div>
