@@ -2,6 +2,68 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@property --sku-boundary-shake-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --sku-boundary-shake-y {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@keyframes sku-draggable-boundary-shake {
+  0%, 100% { --sku-boundary-shake-x: -2px; --sku-boundary-shake-y: 0px; }
+  25% { --sku-boundary-shake-x: 0px; --sku-boundary-shake-y: -2px; }
+  50% { --sku-boundary-shake-x: 2px; --sku-boundary-shake-y: 0px; }
+  75% { --sku-boundary-shake-x: 0px; --sku-boundary-shake-y: 2px; }
+}
+
+.sku-column-boundary-shake {
+  animation: sku-draggable-boundary-shake 320ms linear infinite;
+}
+
+.sku-draggable-boundary-cell {
+  position: relative;
+}
+
+.sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
+.sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 0;
+  border-left: 2px solid #000;
+  content: "";
+  pointer-events: none;
+  transform: translate(var(--sku-boundary-shake-x), var(--sku-boundary-shake-y));
+}
+
+.sku-draggable-boundary-cell[data-drag-boundary~="left"]::before {
+  left: 0;
+}
+
+.sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
+  right: 0;
+}
+
+.sku-draggable-boundary-cell[data-drag-boundary~="top"] {
+  box-shadow: inset 0 calc(2px + var(--sku-boundary-shake-y)) 0 0 #000;
+}
+
+.sku-draggable-boundary-cell[data-drag-boundary~="bottom"] {
+  box-shadow: inset 0 calc(-2px - var(--sku-boundary-shake-y)) 0 0 #000;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sku-column-boundary-shake {
+    animation: none;
+  }
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {

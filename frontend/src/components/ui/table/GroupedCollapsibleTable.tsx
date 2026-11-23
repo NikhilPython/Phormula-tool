@@ -244,6 +244,51 @@ export default function GroupedCollapsibleTable<RowT>({
     draggableGroupIds.includes(key) || draggableColKeys.includes(key);
   const canDropOnColumn = (key: string) =>
     dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key);
+  const getDragBoundaryEdges = (
+    colKey: string,
+    isTableBottom = false,
+    isHeader = false
+  ) => {
+    const group = groups.find((candidate) =>
+      [...candidate.collapsedCols, ...candidate.expandedCols].some(
+        (column) => column.key === colKey
+      )
+    );
+    const isDraggableGroup = Boolean(group && draggableGroupIds.includes(group.id));
+    const isDraggableLeaf =
+      draggableColKeys.includes(colKey) ||
+      (colKey === "promotional_rebates_percentage" &&
+        draggableColKeys.includes("promotional_rebates"));
+    if (!isDraggableGroup && !isDraggableLeaf) return undefined;
+    const groupKeys = isDraggableGroup && group
+      ? new Set([...group.collapsedCols, ...group.expandedCols].map((column) => column.key))
+      : new Set([colKey]);
+    const groupIndexes = visibleLeafCols
+      .map((column, index) => (groupKeys.has(column.key) ? index : -1))
+      .filter((index) => index >= 0);
+    const columnIndex = visibleLeafCols.findIndex((column) => column.key === colKey);
+    if (!groupIndexes.length || columnIndex < 0) return undefined;
+    const edges = [
+      columnIndex === groupIndexes[0] ? "left" : "",
+      columnIndex === groupIndexes[groupIndexes.length - 1] ? "right" : "",
+      isHeader &&
+      ["promotional_rebates", "promotional_rebates_percentage"].includes(colKey)
+        ? "top"
+        : "",
+      isTableBottom ? "bottom" : "",
+    ].filter(Boolean);
+    return edges.join(" ") || undefined;
+  };
+  const dragBoundaryCellProps = (
+    colKey: string,
+    isTableBottom = false,
+    isHeader = false
+  ) => {
+    const edges = getDragBoundaryEdges(colKey, isTableBottom, isHeader);
+    return edges
+      ? { "data-drag-boundary": edges }
+      : {};
+  };
   const dragColumnProps = (sourceKey: string, targetKey: string) => ({
     draggable: canDragColumn(sourceKey),
     onDragStart: (event: React.DragEvent<HTMLTableCellElement>) => {
@@ -1200,10 +1245,11 @@ export default function GroupedCollapsibleTable<RowT>({
             return (
               <th
                 key={g.id}
+                data-drag-boundary={canDragColumn(g.id) ? "left right top" : undefined}
                 colSpan={cols.length}
                 rowSpan={groupRowSpan}
                 style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-                className={`${thBase} text-center ${canDragColumn(g.id) ? "cursor-grab" : canDropOnColumn(g.id) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(g.id) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${g.headerClassName || ""}`}
+                className={`${thBase} text-center ${canDragColumn(g.id) ? "cursor-grab sku-draggable-boundary-cell" : canDropOnColumn(g.id) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(g.id) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${g.headerClassName || ""}`}
                 {...dragColumnProps(g.id, g.id)}
               >
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
@@ -1278,9 +1324,10 @@ export default function GroupedCollapsibleTable<RowT>({
           return (
             <th
               key={c.key}
+              {...dragBoundaryCellProps(c.key, false, true)}
               rowSpan={anyGroupExpanded ? 2 : 1}
               style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${c.thClassName || ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.sortable ? "cursor-pointer select-none" : ""
+              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${c.thClassName || ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.sortable ? "cursor-pointer select-none" : ""
                 }`}
               {...dragColumnProps(c.key, c.key)}
             >
@@ -1303,8 +1350,9 @@ export default function GroupedCollapsibleTable<RowT>({
           {row2Cells.map((c, colIndex) => (
             <th
               key={c.key}
+              {...dragBoundaryCellProps(c.key, false, true)}
               style={colIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.thClassName || ""}`}
               {...dragColumnProps(c.key, c.key)}
             >
               {renderHeaderContent(c)}
@@ -1324,9 +1372,10 @@ export default function GroupedCollapsibleTable<RowT>({
           return (
             <td
               key={c.key}
+              {...dragBoundaryCellProps(c.key)}
               data-sticky-col-index={colIndex < stickyLeftCount ? colIndex : undefined}
               style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
-              className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
+              className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getDragBoundaryEdges(c.key) ? "sku-draggable-boundary-cell" : ""} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
               {renderStickyLeftHorizontalDivider(colIndex, "sign")}
@@ -1353,6 +1402,7 @@ export default function GroupedCollapsibleTable<RowT>({
           {visibleLeafCols.map((c, colIndex) => (
             <td
               key={c.key}
+              {...dragBoundaryCellProps(c.key, Boolean(isTotalRow?.(row)))}
               data-sticky-col-index={colIndex < stickyLeftCount ? colIndex : undefined}
               style={getStickyLeftStyle(colIndex, "body") ?? getStickyBoundaryNeighborStyle(colIndex)}
               className={[
@@ -1362,6 +1412,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 colIndex < stickyLeftCount ? stickyBodyBackgroundClassName : "",
                 c.key === "sku" ? "text-left" : alignClass(c.align),
                 "overflow-hidden truncate",
+                getDragBoundaryEdges(c.key) ? "sku-draggable-boundary-cell" : "",
                 c.tdClassName || "",
               ].join(" ")}
             >
@@ -1524,7 +1575,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   if (!bodyMaxHeight) {
     return (
-      <div className="w-full">
+      <div className={`w-full ${draggableGroupIds.length ? "sku-column-boundary-shake" : ""}`}>
         <div
           ref={headerScrollContainerRef}
           className="relative z-10 w-full overflow-hidden bg-white"
@@ -1563,7 +1614,7 @@ export default function GroupedCollapsibleTable<RowT>({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className="w-full overflow-auto"
+      className={`w-full overflow-auto ${draggableGroupIds.length ? "sku-column-boundary-shake" : ""}`}
       style={{ maxHeight: `${bodyMaxHeight}px` }}
     >
       <table ref={tableRef} className={tableClassName} style={tableStyle}>
