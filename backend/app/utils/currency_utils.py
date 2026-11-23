@@ -26,19 +26,40 @@ def fetch_sku_prices_as_of(engine, table_name, sku_column, target_year, target_m
     if target_month_num < 1 or target_month_num > 12:
         raise ValueError("target_month_num must be between 1 and 12")
 
-    price_query = text(f"""
-        WITH source_prices AS (
-            SELECT
-                BTRIM({sku_column}::text) AS sku,
-                price,
-                currency,
-                product_name,
+    with engine.connect() as connection:
+        columns = {
+            str(row[0]).lower()
+            for row in connection.execute(
+                text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = :table_name
+                """),
+                {"table_name": table_name},
+            )
+        }
+        required_columns = {sku_column, "price"}
+        missing_columns = required_columns - columns
+        if missing_columns:
+            raise ValueError(
+                f"SKU price table public.{table_name} is missing required columns: "
+                f"{', '.join(sorted(missing_columns))}"
+            )
+
+        # Some SKU mapping tables only store a current price and do not have
+        # month/year columns. In that case use the latest row as the base price.
+        has_period_columns = {"year", "month"}.issubset(columns)
+        if has_period_columns:
+            year_expression = """
                 CASE
-                    WHEN BTRIM(COALESCE(year::text, '')) ~ '^[0-9]{{1,4}}$'
-                    THEN BTRIM(year::text)::integer
+                    WHEN BTRIM(COALESCE(\"year\"::text, '')) ~ '^[0-9]{1,4}$'
+                    THEN BTRIM(\"year\"::text)::integer
                     ELSE NULL
-                END AS year_int,
-                CASE LOWER(BTRIM(COALESCE(month::text, '')))
+                END AS year_int
+            """
+            month_expression = """
+                CASE LOWER(BTRIM(COALESCE(\"month\"::text, '')))
                     WHEN 'january' THEN 1
                     WHEN 'february' THEN 2
                     WHEN 'march' THEN 3
@@ -52,46 +73,63 @@ def fetch_sku_prices_as_of(engine, table_name, sku_column, target_year, target_m
                     WHEN 'november' THEN 11
                     WHEN 'december' THEN 12
                     ELSE NULL
-                END AS month_num,
-                id
-            FROM public."{table_name}"
-            WHERE {sku_column} IS NOT NULL
-              AND BTRIM({sku_column}::text) <> ''
-              AND price IS NOT NULL
-        ), eligible_prices AS (
-            SELECT *
-            FROM source_prices
-            WHERE (year_int IS NULL AND month_num IS NULL)
-               OR (
-                    year_int IS NOT NULL
-                    AND month_num IS NOT NULL
-                    AND (
-                        year_int < :target_year
-                        OR (year_int = :target_year AND month_num <= :target_month_num)
-                    )
-               )
-        ), ranked_prices AS (
-            SELECT
-                sku,
-                price,
-                currency,
-                product_name,
-                ROW_NUMBER() OVER (
-                    PARTITION BY UPPER(sku)
-                    ORDER BY
-                        CASE WHEN year_int IS NULL AND month_num IS NULL THEN 1 ELSE 0 END,
-                        year_int DESC NULLS LAST,
-                        month_num DESC NULLS LAST,
-                        id DESC NULLS LAST
-                ) AS row_num
-            FROM eligible_prices
-        )
-        SELECT sku, price, currency, product_name
-        FROM ranked_prices
-        WHERE row_num = 1
-    """)
+                END AS month_num
+            """
+        else:
+            year_expression = "NULL::integer AS year_int"
+            month_expression = "NULL::integer AS month_num"
 
-    with engine.connect() as connection:
+        currency_expression = '"currency"' if "currency" in columns else "NULL::text"
+        product_name_expression = '"product_name"' if "product_name" in columns else "NULL::text"
+        id_expression = '"id"' if "id" in columns else "sku"
+
+        price_query = text(f"""
+            WITH source_prices AS (
+                SELECT
+                    BTRIM("{sku_column}"::text) AS sku,
+                    "price" AS price,
+                    {currency_expression} AS currency,
+                    {product_name_expression} AS product_name,
+                    {year_expression},
+                    {month_expression},
+                    {id_expression} AS price_order
+                FROM public."{table_name}"
+                WHERE "{sku_column}" IS NOT NULL
+                  AND BTRIM("{sku_column}"::text) <> ''
+                  AND "price" IS NOT NULL
+            ), eligible_prices AS (
+                SELECT *
+                FROM source_prices
+                WHERE (year_int IS NULL AND month_num IS NULL)
+                   OR (
+                        year_int IS NOT NULL
+                        AND month_num IS NOT NULL
+                        AND (
+                            year_int < :target_year
+                            OR (year_int = :target_year AND month_num <= :target_month_num)
+                        )
+                   )
+            ), ranked_prices AS (
+                SELECT
+                    sku,
+                    price,
+                    currency,
+                    product_name,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY UPPER(sku)
+                        ORDER BY
+                            CASE WHEN year_int IS NULL AND month_num IS NULL THEN 1 ELSE 0 END,
+                            year_int DESC NULLS LAST,
+                            month_num DESC NULLS LAST,
+                            price_order DESC NULLS LAST
+                    ) AS row_num
+                FROM eligible_prices
+            )
+            SELECT sku, price, currency, product_name
+            FROM ranked_prices
+            WHERE row_num = 1
+        """)
+
         return pd.read_sql(
             price_query,
             connection,

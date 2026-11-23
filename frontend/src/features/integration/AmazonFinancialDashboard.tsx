@@ -2207,6 +2207,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
       let agedSurchargeFailed = false;
+      let inventoryLedgerFailed = false;
 
       // Reset progress
       setCurrentStep(1);
@@ -2352,20 +2353,26 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
 
       setStep(6, "Inventory", 70, "Syncing inventory ledger summary...");
 
-      await runEtaUnit("inventoryLedger", () =>
-        fetchInventoryLedgerSummary({
-          marketplace_id: marketplaceIdUsed,
-          month: `${y}-${two(mNum)}`,
-          store_in_db: true,
-          keep_first_last: false,
-        })
-      );
+      try {
+        const ledgerResult: any = await runEtaUnit("inventoryLedger", () =>
+          fetchInventoryLedgerSummary({
+            marketplace_id: marketplaceIdUsed,
+            month: `${y}-${two(mNum)}`,
+            store_in_db: true,
+            keep_first_last: false,
+          })
+        );
+        inventoryLedgerFailed = ledgerResult?.stale === true;
+      } catch (ledgerError) {
+        console.warn(`Inventory ledger sync skipped for ${y}-${two(mNum)}:`, ledgerError);
+        inventoryLedgerFailed = true;
+      }
 
       setStep(
         6,
         "Inventory",
         100,
-        agedSurchargeFailed
+        agedSurchargeFailed || inventoryLedgerFailed
           ? "Continuing remaining inventory sync..."
           : "Inventory data synced successfully"
       );
@@ -2420,10 +2427,13 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const monthSlug = fullMonthNames[mNum - 1].toLowerCase();
       updateLatestFetchedPeriod(monthSlug, String(y));
 
+      const inventoryWarning = agedSurchargeFailed || inventoryLedgerFailed
+        ? " Some optional inventory data was unavailable because Amazon canceled a report or rate-limited a request; the finance and dashboard sync completed."
+        : "";
       setMessage(
         selectedPeriod && selectedPeriod >= 6
-          ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast generated successfully.`
-          : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.`
+          ? `Fetched ${countryUsed}: ${y}-${two(mNum)}. Inventory forecast generated successfully.${inventoryWarning}`
+          : `Fetched ${countryUsed}: ${y}-${two(mNum)}. Dashboard graphs are ready.${inventoryWarning}`
       );
       localStorage.setItem("selectedPlatform", dashboardPlatformForCountry(countryUsed));
       window.dispatchEvent(new Event("storage"));
@@ -2455,6 +2465,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       const alreadyHitApiKeys = new Set<string>();
       const dashboardCountry = toDashboardCountryKey(countryUsed);
       let agedSurchargeFailed = false;
+      let inventoryLedgerFailed = false;
 
       // Reset progress
       setCurrentStep(1);
@@ -2794,26 +2805,32 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
           "Syncing inventory ledger summary..."
         );
 
-        await runEtaUnit(
-          "inventoryLedger",
-          () =>
-            fetchInventoryLedgerSummary({
-              marketplace_id:
-                marketplaceIdUsed,
-              start_date:
-                ledgerRange.start_date,
-              end_date:
-                ledgerRange.end_date,
-              store_in_db: true,
-              keep_first_last: false,
-            })
-        );
+        try {
+          const ledgerResult: any = await runEtaUnit(
+            "inventoryLedger",
+            () =>
+              fetchInventoryLedgerSummary({
+                marketplace_id:
+                  marketplaceIdUsed,
+                start_date:
+                  ledgerRange.start_date,
+                end_date:
+                  ledgerRange.end_date,
+                store_in_db: true,
+                keep_first_last: false,
+              })
+          );
+          inventoryLedgerFailed = ledgerResult?.stale === true;
+        } catch (ledgerError) {
+          console.warn("Inventory ledger sync skipped after an Amazon error:", ledgerError);
+          inventoryLedgerFailed = true;
+        }
 
         setStep(
           6,
           "Inventory",
           100,
-          agedSurchargeFailed
+          agedSurchargeFailed || inventoryLedgerFailed
             ? "Continuing remaining inventory sync..."
             : "Inventory data synced successfully"
         );
@@ -2926,6 +2943,9 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       // =========================================================
       // Completion Message
       // =========================================================
+      const inventoryWarning = agedSurchargeFailed || inventoryLedgerFailed
+        ? " Some optional inventory data was unavailable because Amazon canceled a report or rate-limited a request; the finance and dashboard sync completed."
+        : "";
       setMessage(
         selectedPeriod &&
           selectedPeriod >= 6
@@ -2933,11 +2953,11 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
             ? "lifetime (allowed window)"
             : `${selectedPeriod} months`
           }, ok ${ok}, failed ${fail}. Inventory forecast and purchase order generated successfully for ${last.y
-          }-${two(last.mNum)}.`
+          }-${two(last.mNum)}.${inventoryWarning}`
           : `Fetch complete for ${countryUsed}: ${isLifetime
             ? "lifetime (allowed window)"
             : `${selectedPeriod} months`
-          }, ok ${ok}, failed ${fail}. Dashboard graphs are ready.`
+          }, ok ${ok}, failed ${fail}. Dashboard graphs are ready.${inventoryWarning}`
       );
       localStorage.setItem(
         "selectedPlatform",
