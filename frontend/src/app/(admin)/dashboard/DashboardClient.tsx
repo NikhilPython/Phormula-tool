@@ -6841,34 +6841,69 @@ export default function DashboardPage() {
         }) ?? null;
     }, [comparisonPeriod, liveBiPayload, platform]);
 
+    const last30PreviousSkuTotal = useMemo(() => {
+        if (comparisonPeriod !== "last30") return null;
+        const rows = platform === "global"
+            ? liveBiPayload?.previous_skuwise_items_global
+            : liveBiPayload?.previous_skuwise_items;
+        if (!Array.isArray(rows)) return null;
+        return rows.find((row: any) => {
+            const sku = String(row?.sku || "").trim().toUpperCase();
+            const name = String(row?.product_name || "").trim().toLowerCase();
+            return sku === "TOTAL" || sku === "GRAND_TOTAL" || name === "total" || name === "grand total";
+        }) ?? null;
+    }, [comparisonPeriod, liveBiPayload, platform]);
+
     const biCardKpis = useMemo(() => {
+        const useLast30SkuTotals = comparisonPeriod === "last30" && last30CurrentSkuTotal;
+        const last30Quantity = toNumber(
+            last30CurrentSkuTotal?.total_quantity ??
+            last30CurrentSkuTotal?.quantity ??
+            last30CurrentSkuTotal?.net_quantity
+        );
         const curr = {
             units: toNumber(
-                comparisonPeriod === "last30"
-                    ? last30CurrentSkuTotal?.total_quantity ?? last30CurrentSkuTotal?.quantity ?? biAlignedTotals?.total_current_quantity
+                useLast30SkuTotals
+                    ? last30CurrentSkuTotal?.total_quantity ?? last30CurrentSkuTotal?.quantity ?? last30CurrentSkuTotal?.net_quantity
                     : biAlignedTotals?.total_current_quantity
             ),
-            netSales: toNumber(biAlignedTotals?.total_current_net_sales),
-            netSalesPerUnit: toNumber(biAlignedTotals?.total_current_net_sales_per_unit),
-            grossSales: toNumber(biAlignedTotals?.total_current_gross_sales),
-            grossSalesPerUnit: toNumber(biAlignedTotals?.total_current_gross_sales_per_unit),
-            profit: toNumber(biAlignedTotals?.total_current_profit),
-            cm2Profit: toNumber(biAlignedTotals?.total_current_profit_cm2),
-            asp: toNumber(biAlignedTotals?.total_current_asp),
-            profitPct: toNumber(biAlignedTotals?.total_current_profit_percentage),
+            netSales: toNumber(useLast30SkuTotals ? last30CurrentSkuTotal?.net_sales : biAlignedTotals?.total_current_net_sales),
+            netSalesPerUnit: toNumber(useLast30SkuTotals
+                ? last30CurrentSkuTotal?.net_sales_per_unit ?? (last30Quantity ? toNumber(last30CurrentSkuTotal?.net_sales) / last30Quantity : 0)
+                : biAlignedTotals?.total_current_net_sales_per_unit),
+            grossSales: toNumber(useLast30SkuTotals ? last30CurrentSkuTotal?.gross_sales : biAlignedTotals?.total_current_gross_sales),
+            grossSalesPerUnit: toNumber(useLast30SkuTotals
+                ? last30CurrentSkuTotal?.gross_sales_per_unit ?? (last30Quantity ? toNumber(last30CurrentSkuTotal?.gross_sales) / last30Quantity : 0)
+                : biAlignedTotals?.total_current_gross_sales_per_unit),
+            profit: toNumber(useLast30SkuTotals ? last30CurrentSkuTotal?.profit : biAlignedTotals?.total_current_profit),
+            cm2Profit: toNumber(
+                comparisonPeriod === "last30"
+                    ? liveBiPayload?.last30_totals?.total_cm2_profit ?? last30CurrentSkuTotal?.total_cm2_profit ?? last30CurrentSkuTotal?.cm2_profit ?? biAlignedTotals?.total_current_profit_cm2
+                    : biAlignedTotals?.total_current_profit_cm2
+            ),
+            asp: toNumber(useLast30SkuTotals ? last30CurrentSkuTotal?.asp : biAlignedTotals?.total_current_asp),
+            profitPct: toNumber(
+                comparisonPeriod === "last30"
+                    ? liveBiPayload?.last30_totals?.total_cm2_margins ?? last30CurrentSkuTotal?.total_cm2_margins ?? biAlignedTotals?.total_current_profit_percentage
+                    : biAlignedTotals?.total_current_profit_percentage
+            ),
         };
 
         const prev = {
-            units: toNumber(biAlignedTotals?.total_previous_quantity),
-            netSales: toNumber(biAlignedTotals?.total_previous_net_sales),
-            netSalesPerUnit: toNumber(biAlignedTotals?.total_previous_net_sales_per_unit),
-            grossSales: toNumber(biAlignedTotals?.total_previous_gross_sales),
-            grossSalesPerUnit: toNumber(biAlignedTotals?.total_previous_gross_sales_per_unit),
-            profit: toNumber(biAlignedTotals?.total_previous_profit),
-            cm2Profit: toNumber(biAlignedTotals?.total_previous_profit_cm2),
-            asp: toNumber(biAlignedTotals?.total_previous_asp),
-            profitPct: toNumber(biAlignedTotals?.total_previous_profit_percentage),
+            units: toNumber(biAlignedTotals?.total_previous_quantity ?? last30PreviousSkuTotal?.total_quantity ?? last30PreviousSkuTotal?.quantity),
+            netSales: toNumber(biAlignedTotals?.total_previous_net_sales ?? last30PreviousSkuTotal?.net_sales),
+            netSalesPerUnit: toNumber(biAlignedTotals?.total_previous_net_sales_per_unit ?? last30PreviousSkuTotal?.net_sales_per_unit),
+            grossSales: toNumber(biAlignedTotals?.total_previous_gross_sales ?? last30PreviousSkuTotal?.gross_sales),
+            grossSalesPerUnit: toNumber(biAlignedTotals?.total_previous_gross_sales_per_unit ?? last30PreviousSkuTotal?.gross_sales_per_unit),
+            profit: toNumber(biAlignedTotals?.total_previous_profit ?? last30PreviousSkuTotal?.profit),
+            cm2Profit: toNumber(biAlignedTotals?.total_previous_profit_cm2 ?? last30PreviousSkuTotal?.total_cm2_profit ?? last30PreviousSkuTotal?.cm2_profit),
+            asp: toNumber(biAlignedTotals?.total_previous_asp ?? last30PreviousSkuTotal?.asp),
+            profitPct: toNumber(biAlignedTotals?.total_previous_profit_percentage ?? last30PreviousSkuTotal?.total_cm2_margins),
         };
+        const changePct = (current: number, previous: number) =>
+            Number.isFinite(current) && Number.isFinite(previous) && previous !== 0
+                ? ((current - previous) / Math.abs(previous)) * 100
+                : 0;
 
         return {
             curr,
@@ -6877,14 +6912,16 @@ export default function DashboardPage() {
                 units: comparisonPeriod === "last30" && prev.units !== 0
                     ? ((curr.units - prev.units) / Math.abs(prev.units)) * 100
                     : toNumber(biAlignedTotals?.units_change_percentage),
-                netSales: toNumber(biAlignedTotals?.net_sales_change_percentage),
-                grossSales: toNumber(biAlignedTotals?.gross_sales_change_percentage),
-                asp: toNumber(biAlignedTotals?.asp_change_percentage),
-                profit: toNumber(biAlignedTotals?.cm2_profit_change_percentage),
+                netSales: useLast30SkuTotals ? changePct(curr.netSales, prev.netSales) : toNumber(biAlignedTotals?.net_sales_change_percentage),
+                grossSales: useLast30SkuTotals ? changePct(curr.grossSales, prev.grossSales) : toNumber(biAlignedTotals?.gross_sales_change_percentage),
+                asp: useLast30SkuTotals ? changePct(curr.asp, prev.asp) : toNumber(biAlignedTotals?.asp_change_percentage),
+                profit: comparisonPeriod === "last30"
+                    ? changePct(curr.cm2Profit, prev.cm2Profit)
+                    : toNumber(biAlignedTotals?.cm2_profit_change_percentage),
                 profitPct: toNumber(biAlignedTotals?.cm2_margin_change_percentage),
             },
         };
-    }, [biAlignedTotals, comparisonPeriod, last30CurrentSkuTotal]);
+    }, [biAlignedTotals, comparisonPeriod, last30CurrentSkuTotal, last30PreviousSkuTotal, liveBiPayload]);
 
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const hasSelectedPeriodBiData = rangeActive || comparisonPeriod === "last30";
@@ -8565,6 +8602,7 @@ export default function DashboardPage() {
 
         const currentNetSales = comparisonPeriod === "last30"
             ? toNumber(
+                liveBiPayload?.last30_totals?.net_sales ??
                 biAlignedTotalsHome?.total_current_net_sales ??
                 stickyTableTotals.netSales ??
                 plSummaryTotals.net_sales
@@ -8622,6 +8660,7 @@ export default function DashboardPage() {
     }, [
         data,
         comparisonPeriod,
+        liveBiPayload?.last30_totals?.net_sales,
         biAlignedTotalsHome?.total_current_net_sales,
         biAlignedTotalsHome?.total_previous_net_sales,
         stickyTableTotals.netSales,
@@ -9603,7 +9642,15 @@ export default function DashboardPage() {
     // so the P&L summary must not recalculate TACoS independently.
     const tacosFromDisplayedCardsForSummary = useMemo(() => {
         if (comparisonPeriod === "last30") {
-            return toNumber(biAlignedTotals?.total_current_tacos);
+            const rowTacos = last30CurrentSkuTotal?.tacos_total_advertising_cost_of_sale;
+            if (rowTacos != null) return toNumber(rowTacos);
+            const totalsTacos = liveBiPayload?.last30_totals?.tacos_total_advertising_cost_of_sale;
+            if (totalsTacos != null) return toNumber(totalsTacos);
+            if (biAlignedTotals?.total_current_tacos != null) return toNumber(biAlignedTotals.total_current_tacos);
+            const netSales = toNumber(liveBiPayload?.last30_totals?.net_sales);
+            return netSales
+                ? (toNumber(liveBiPayload?.last30_totals?.advertising_total) / netSales) * 100
+                : 0;
         }
 
         // Primary source:
@@ -9624,6 +9671,10 @@ export default function DashboardPage() {
         );
     }, [
         comparisonPeriod,
+        last30CurrentSkuTotal,
+        liveBiPayload?.last30_totals?.tacos_total_advertising_cost_of_sale,
+        liveBiPayload?.last30_totals?.advertising_total,
+        liveBiPayload?.last30_totals?.net_sales,
         biAlignedTotals?.total_current_tacos,
         dashboardActionSourceMetrics?.tacos,
         plSummaryTotals.acos,
@@ -9653,6 +9704,13 @@ export default function DashboardPage() {
     ]);
 
     const reimbursementVsCm2PctForSummary = useMemo(() => {
+        if (comparisonPeriod === "last30") {
+            const last30Value = liveBiPayload?.last30_totals?.reimbursement_vs_cm2_margins;
+            if (last30Value != null) return toNumber(last30Value);
+            const cm2 = toNumber(liveBiPayload?.last30_totals?.total_cm2_profit ?? plSummaryTotals.cm2_profit);
+            return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
+        }
+
         if (platform === "global") {
             return toNumber(
                 plSummaryTotals.rembursment_vs_cm2_margins ??
@@ -9664,14 +9722,25 @@ export default function DashboardPage() {
         const cm2 = toNumber(cm2Profit);
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
     }, [
+        comparisonPeriod,
         platform,
+        liveBiPayload?.last30_totals?.reimbursement_vs_cm2_margins,
+        liveBiPayload?.last30_totals?.total_cm2_profit,
         plSummaryTotals.rembursment_vs_cm2_margins,
+        plSummaryTotals.cm2_profit,
         data,
         reimbursementForSummary,
         cm2Profit,
     ]);
 
     const reimbursementVsSalesPctForSummary = useMemo(() => {
+        if (comparisonPeriod === "last30") {
+            const last30Value = liveBiPayload?.last30_totals?.reimbursement_vs_sales;
+            if (last30Value != null) return toNumber(last30Value);
+            const netSales = toNumber(liveBiPayload?.last30_totals?.net_sales ?? plSummaryTotals.net_sales);
+            return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
+        }
+
         if (platform === "global") {
             return toNumber(
                 plSummaryTotals.reimbursement_vs_sales ??
@@ -9683,7 +9752,10 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [
+        comparisonPeriod,
         platform,
+        liveBiPayload?.last30_totals?.reimbursement_vs_sales,
+        liveBiPayload?.last30_totals?.net_sales,
         plSummaryTotals.reimbursement_vs_sales,
         plSummaryTotals.net_sales,
         data,
@@ -9920,6 +9992,13 @@ export default function DashboardPage() {
 
     const isStickyGlobal = platform === "global";
     const [backendCardDeltas, setBackendCardDeltas] = useState<Record<string, number | null>>({});
+    const last30DeltaPct = (current: unknown, previous: unknown) => {
+        const currentValue = toNumber(current);
+        const previousValue = toNumber(previous);
+        return previousValue !== 0
+            ? ((currentValue - previousValue) / Math.abs(previousValue)) * 100
+            : 0;
+    };
 
     const roundedMoneyFormatter = (value: number) => {
         const rounded = Math.round(Number(value) || 0);
@@ -9954,30 +10033,44 @@ export default function DashboardPage() {
 
     const mtdGrossSalesCurrentPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.grossSales.currentPerUnit
+        : comparisonPeriod === "last30" && last30CurrentSkuTotal
+            ? toNumber(last30CurrentSkuTotal.gross_sales_per_unit ??
+                (toNumber(last30CurrentSkuTotal.gross_sales) / (last30CurrentSkuTotal.total_quantity || last30CurrentSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_gross_sales_per_unit)
             : toNumber(backendDashboardMetric("gross_sales").current_per_unit);
 
     const mtdGrossSalesPreviousPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.grossSales.previousPerUnit
+        : comparisonPeriod === "last30" && last30PreviousSkuTotal
+            ? toNumber(last30PreviousSkuTotal.gross_sales_per_unit ??
+                (toNumber(last30PreviousSkuTotal.gross_sales) / (last30PreviousSkuTotal.total_quantity || last30PreviousSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_previous_gross_sales_per_unit)
             : toNumber(backendDashboardMetric("gross_sales").previous_per_unit);
 
     const mtdNetSalesCurrentPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.netSales.currentPerUnit
+        : comparisonPeriod === "last30" && last30CurrentSkuTotal
+            ? toNumber(last30CurrentSkuTotal.net_sales_per_unit ??
+                (toNumber(last30CurrentSkuTotal.net_sales) / (last30CurrentSkuTotal.total_quantity || last30CurrentSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_net_sales_per_unit)
             : toNumber(backendDashboardMetric("net_sales").current_per_unit);
 
     const mtdNetSalesPreviousPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.netSales.previousPerUnit
+        : comparisonPeriod === "last30" && last30PreviousSkuTotal
+            ? toNumber(last30PreviousSkuTotal.net_sales_per_unit ??
+                (toNumber(last30PreviousSkuTotal.net_sales) / (last30PreviousSkuTotal.total_quantity || last30PreviousSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_previous_net_sales_per_unit)
             : toNumber(backendDashboardMetric("net_sales").previous_per_unit);
 
     const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.current
+        : comparisonPeriod === "last30" && last30CurrentSkuTotal
+            ? toNumber(last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend)
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_advertising)
             : adsSpendTotal;
@@ -9990,12 +10083,20 @@ export default function DashboardPage() {
 
     const mtdCostOfAdsCurrentPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.currentPerUnit
+        : comparisonPeriod === "last30" && last30CurrentSkuTotal
+            ? toNumber(last30CurrentSkuTotal.cost_of_ads_per_unit ??
+                ((last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend ?? 0) /
+                    (last30CurrentSkuTotal.total_quantity || last30CurrentSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_cost_of_ads_per_unit)
             : toNumber(backendDashboardMetric("cost_of_ads").current_per_unit);
 
     const mtdCostOfAdsPreviousPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.previousPerUnit
+        : comparisonPeriod === "last30" && last30PreviousSkuTotal
+            ? toNumber(last30PreviousSkuTotal.cost_of_ads_per_unit ??
+                ((last30PreviousSkuTotal.total_ads ?? last30PreviousSkuTotal.advertising_total ?? last30PreviousSkuTotal.ads_spend ?? 0) /
+                    (last30PreviousSkuTotal.total_quantity || last30PreviousSkuTotal.quantity || 1)))
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_previous_cost_of_ads_per_unit)
             : toNumber(backendDashboardMetric("cost_of_ads").previous_per_unit);
@@ -10003,13 +10104,18 @@ export default function DashboardPage() {
     const mtdCostOfAdsDelta = shouldShowDummyUi
         ? dummyStatData.costOfAds.deltaPct
         : comparisonPeriod === "last30"
-            ? toNumber(biAlignedTotals?.advertising_change_percentage)
+            ? last30CurrentSkuTotal
+                ? last30DeltaPct(
+                    last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend,
+                    biAlignedTotals?.total_previous_advertising
+                )
+                : toNumber(biAlignedTotals?.advertising_change_percentage)
             : backendCardDeltas.mtd_cost_of_ads ?? null;
 
     const mtdTacosCurrent = shouldShowDummyUi
         ? dummyStatData.tacos.current
         : comparisonPeriod === "last30"
-            ? toNumber(biAlignedTotals?.total_current_tacos)
+            ? toNumber(last30CurrentSkuTotal?.tacos_total_advertising_cost_of_sale ?? biAlignedTotals?.total_current_tacos)
             : dashboardActionSourceMetrics?.tacos != null
             ? toNumber(dashboardActionSourceMetrics.tacos)
             : hasSelectedPeriodBiData
@@ -10022,6 +10128,8 @@ export default function DashboardPage() {
 
     const mtdTacosPrevious = shouldShowDummyUi
         ? dummyStatData.tacos.previous
+        : comparisonPeriod === "last30" && last30PreviousSkuTotal
+            ? toNumber(last30PreviousSkuTotal.tacos_total_advertising_cost_of_sale)
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_previous_tacos)
             : toNumber(backendDashboardMetric("tacos").previous);
@@ -10179,7 +10287,12 @@ export default function DashboardPage() {
     const mtdTacosDelta = shouldShowDummyUi
         ? dummyStatData.tacos.deltaPct
         : comparisonPeriod === "last30"
-            ? toNumber(biAlignedTotals?.tacos_change_percentage)
+            ? last30CurrentSkuTotal
+                ? last30DeltaPct(
+                    last30CurrentSkuTotal.tacos_total_advertising_cost_of_sale,
+                    biAlignedTotals?.total_previous_tacos
+                )
+                : toNumber(biAlignedTotals?.tacos_change_percentage)
         : dashboardActionSourceMetrics?.tacos != null
             ? backendCardDeltas.mtd_tacos ?? null
             : null;
@@ -12868,7 +12981,10 @@ export default function DashboardPage() {
     const mtdCm2ProfitDelta = shouldShowDummyUi
         ? dummyStatData.cm2Profit.deltaPct
         : comparisonPeriod === "last30"
-            ? toNumber(biAlignedTotals?.cm2_profit_change_percentage)
+            ? last30DeltaPct(
+                liveBiPayload?.last30_totals?.total_cm2_profit ?? last30CurrentSkuTotal?.total_cm2_profit ?? biAlignedTotals?.total_current_profit_cm2,
+                biAlignedTotals?.total_previous_profit_cm2
+            )
         : backendCardDeltas.mtd_cm2_profit ?? null;
 
     const mtdCm2ProfitPctCurrent = shouldShowDummyUi
@@ -12893,6 +13009,8 @@ export default function DashboardPage() {
 
     const mtdPromotionsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.promotions.current
+        : comparisonPeriod === "last30" && last30CurrentSkuTotal
+            ? Math.abs(toNumber(last30CurrentSkuTotal.promotional_rebates))
         : hasSelectedPeriodBiData
             ? Math.abs(toNumber(biAlignedTotals?.total_current_promotional_rebates))
             : rawMtdPromotionsCurrent;
@@ -12909,7 +13027,9 @@ export default function DashboardPage() {
     const mtdPromotionsDelta = shouldShowDummyUi
         ? dummyStatData.promotions.deltaPct
         : hasSelectedPeriodBiData
-            ? toNumber(biAlignedTotals?.promotions_change_percentage)
+            ? comparisonPeriod === "last30" && last30CurrentSkuTotal
+                ? last30DeltaPct(last30CurrentSkuTotal.promotional_rebates, biAlignedTotals?.total_previous_promotional_rebates)
+                : toNumber(biAlignedTotals?.promotions_change_percentage)
             : toNumber(backendDashboardMetric("promotions").change_percentage);
 
     const mtdPromotionsPctCurrent = shouldShowDummyUi
