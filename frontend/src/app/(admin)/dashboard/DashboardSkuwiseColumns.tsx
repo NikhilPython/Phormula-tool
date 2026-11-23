@@ -35,10 +35,14 @@ export function buildSkuwiseTableColumns(
     options: {
         isUsSkuLayout?: boolean;
         hideSku?: boolean;
+        promotionsPlacement?: "in_net_sales" | "before_cm1" | "after_cm1";
     } = {}
 ) {
     const isUsSkuLayout = Boolean(options.isUsSkuLayout);
     const hideSku = Boolean(options.hideSku);
+    const promotionsInSales =
+        !isUsSkuLayout ||
+        (options.promotionsPlacement ?? "in_net_sales") === "in_net_sales";
 
     const SKUWISE_LEFT_COLS: LeafCol<MonthlySkuwiseTableRow>[] = [
         {
@@ -132,7 +136,7 @@ export function buildSkuwiseTableColumns(
             ],
         },
         {
-            id: "net_sales",
+            id: "sales",
             label: isUsSkuLayout ? "Sales" : "Net Sales",
             info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
 
@@ -162,13 +166,17 @@ export function buildSkuwiseTableColumns(
                         width: "7%",
                         info: <InfoTip text="Sales refunded during this period." />,
                     },
-                    {
-                        key: "promotional_rebates",
-                        label: "Promotions",
-                        align: "center" as const,
-                        width: "7%",
-                        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-                    },
+                    ...(promotionsInSales
+                        ? [
+                            {
+                                key: "promotional_rebates",
+                                label: "Promotions",
+                                align: "center" as const,
+                                width: "7%",
+                                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+                            },
+                        ]
+                        : []),
                     {
                         key: "net_sales",
                         label: "Net Sales",

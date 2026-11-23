@@ -141,6 +141,12 @@ import MidMonthTargetReminderModal, {
     type MidMonthTargetReminderData,
 } from "@/components/dashboard/MidMonthTargetReminderModal";
 
+type DashboardPnlPlacement = {
+    anchor: string;
+    side: "before" | "after";
+    stage: "in_net_sales" | "before_cm1" | "after_cm1";
+};
+
 /** Reject saved Global cards whose comparisons came from product-only totals. */
 function hasConsistentGlobalComparisons(data: any, previousData: any): boolean {
     const close = (actual: unknown, expected: unknown) => {
@@ -2901,6 +2907,22 @@ export default function DashboardPage() {
     const [liveBiPayload, setLiveBiPayload] = useState<any>(null);
     const [biAlignedTotals, setBiAlignedTotals] = useState<BiAlignedTotals | null>(null);
     const [comparisonPeriod, setComparisonPeriod] = useState<"mtd" | "last30">("mtd");
+    const [dashboardPromotionsPlacement, setDashboardPromotionsPlacement] =
+        useState<DashboardPnlPlacement>({
+            anchor: "sales",
+            side: "before",
+            stage: "in_net_sales",
+        });
+    const [dashboardAmazonFeesPlacement, setDashboardAmazonFeesPlacement] =
+        useState<DashboardPnlPlacement>({
+            anchor: "cogs",
+            side: "after",
+            stage: "before_cm1",
+        });
+    const dashboardPnlPlacementsRef = useRef({
+        promotions: dashboardPromotionsPlacement,
+        amazonFees: dashboardAmazonFeesPlacement,
+    });
     const [last30Loading, setLast30Loading] = useState(false);
     const mtdPayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
     const last30PayloadCacheRef = useRef<{ payload: any; totals: BiAlignedTotals | null } | null>(null);
@@ -2910,9 +2932,12 @@ export default function DashboardPage() {
         const params = new URLSearchParams({
             countryName: biCountryName.toLowerCase(),
             as_of: dashboardAllowedEndISO,
+            promotions_placement: dashboardPnlPlacementsRef.current.promotions.stage,
+            amazon_fees_placement: dashboardPnlPlacementsRef.current.amazonFees.stage,
         });
         const response = await fetch(`${LIVE_LAST_30_DAYS_ENDPOINT}?${params.toString()}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            cache: "no-store",
         });
         if (!response.ok) throw new Error(`Last 30 days comparison failed: ${response.status}`);
         const json: BiApiResponse & Record<string, any> = await response.json();
@@ -4633,7 +4658,7 @@ export default function DashboardPage() {
     ]);
 
     /* ===================== AMAZON FETCH ===================== */
-    const fetchAmazon = useCallback(async (strict = false) => {
+    const fetchAmazon = useCallback(async (strict = false, placementOnly = false) => {
         if (isMonthYearNA) {
             setLoading(false);
             setUnauthorized(false);
@@ -4688,14 +4713,23 @@ export default function DashboardPage() {
                 apiCountry === "global"
                     ? new URLSearchParams({
                         country: "global",
-                        store_in_db: "true",
+                        store_in_db: placementOnly ? "false" : "true",
                     })
                     : new URLSearchParams({
                         country: apiCountry,
                         marketplace_id: marketplaceId,
-                        store_in_db: "true",
+                        store_in_db: placementOnly ? "false" : "true",
                         format: "json",
                     });
+            params.set(
+                "promotions_placement",
+                dashboardPnlPlacementsRef.current.promotions.stage
+            );
+            params.set(
+                "amazon_fees_placement",
+                dashboardPnlPlacementsRef.current.amazonFees.stage
+            );
+            params.set("placement_only", placementOnly ? "true" : "false");
 
             if (apiCountry === "global") {
                 params.set("as_of", getGlobalPreviousSkuwiseAsOfISO());
@@ -4713,6 +4747,7 @@ export default function DashboardPage() {
                     Authorization: `Bearer ${token}`,
                 },
                 credentials: "omit",
+                cache: "no-store",
             });
 
             if (res.status === 401) {
@@ -4725,15 +4760,54 @@ export default function DashboardPage() {
                 throw new Error(json?.error || `Request failed: ${res.status}`);
             }
 
-            setData(json); // ✅ data now matches your new response shape
+            if (!placementOnly) setData(json);
+            return json;
         } catch (e: any) {
             setError(e?.message || "Failed to load data");
             if (strict) throw e;
-            setData(null);
+            if (!placementOnly) setData(null);
         } finally {
             setLoading(false);
         }
     }, [platform, amazonConnections, isMonthYearNA, selectedStartDay, selectedEndDay, dashboardAllowedDay]);
+
+    const applyDashboardPnlColumnPlacements = useCallback(
+        async (
+            promotions: DashboardPnlPlacement,
+            amazonFees: DashboardPnlPlacement
+        ) => {
+            const previous = dashboardPnlPlacementsRef.current;
+            const next = { promotions, amazonFees };
+            dashboardPnlPlacementsRef.current = next;
+            setDashboardPromotionsPlacement(promotions);
+            setDashboardAmazonFeesPlacement(amazonFees);
+
+            try {
+                setLast30Loading(true);
+                const [mtdPayload, last30Payload] = await Promise.all([
+                    fetchAmazon(true, true),
+                    fetchAndCacheLast30Payload(),
+                ]);
+                if (!last30Payload.aligned_totals) {
+                    throw new Error("Last 30 days response is missing aligned_totals");
+                }
+                setData(mtdPayload);
+                setLiveBiPayload(last30Payload);
+                setBiAlignedTotals(last30Payload.aligned_totals);
+                setBiDailySeries(last30Payload.daily_series || null);
+                setBiPeriods(last30Payload.periods || null);
+            } catch (error) {
+                dashboardPnlPlacementsRef.current = previous;
+                setDashboardPromotionsPlacement(previous.promotions);
+                setDashboardAmazonFeesPlacement(previous.amazonFees);
+                last30PayloadCacheRef.current = null;
+                throw error;
+            } finally {
+                setLast30Loading(false);
+            }
+        },
+        [fetchAmazon, fetchAndCacheLast30Payload]
+    );
 
     /* ===================== SHOPIFY STORE INFO ===================== */
     useEffect(() => {
@@ -8735,22 +8809,31 @@ export default function DashboardPage() {
             buildSkuwiseTableColumns(formatDisplayAmount, {
                 isUsSkuLayout: isUsPnlSkuLayout,
                 hideSku: platform === "global",
+                promotionsPlacement: dashboardPromotionsPlacement.stage,
             }),
-        [formatDisplayAmount, isUsPnlSkuLayout, platform]
+        [
+            formatDisplayAmount,
+            isUsPnlSkuLayout,
+            platform,
+            dashboardPromotionsPlacement.stage,
+        ]
     );
 
     const PRODUCTWISE_GROUP_IDS = useMemo(
         () => [
             "quantity",
-            "net_sales",
-            ...(isUsPnlSkuLayout ? [] : ["promotions"]),
+            "sales",
+            ...(isUsPnlSkuLayout &&
+            dashboardPromotionsPlacement.stage === "in_net_sales"
+                ? []
+                : ["promotions"]),
             "marketplace_fees",
             "other_transactions",
             "profit",
             "ads_spend",
             "cm2_profit",
         ],
-        [isUsPnlSkuLayout]
+        [isUsPnlSkuLayout, dashboardPromotionsPlacement.stage]
     );
 
     const productwiseHasExpandedGroups = useMemo(() => {
@@ -15515,6 +15598,10 @@ export default function DashboardPage() {
                                     countryName={countryName}
                                     isUsPnlSkuLayout={isUsPnlSkuLayout}
                                     isUkPnlSkuLayout={isUkPnlSkuLayout}
+                                    promotionsPlacement={dashboardPromotionsPlacement}
+                                    amazonFeesPlacement={dashboardAmazonFeesPlacement}
+                                    onApplyColumnPlacements={applyDashboardPnlColumnPlacements}
+                                    columnPlacementLoading={loading || last30Loading}
                                     getProductwiseOtherTransactionsTotal={getProductwiseOtherTransactionsTotal}
                                     totalRowCm2Profit={totalRowCm2Profit}
                                     totalRowCm2Margins={totalRowCm2Margins}

@@ -21,6 +21,11 @@ attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_cu
 from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
+from app.utils.pnl_column_placements import (
+    VALID_AMAZON_FEES_PLACEMENTS,
+    VALID_PROMOTIONS_PLACEMENTS,
+    apply_pnl_column_placements_to_payload,
+)
 from app.utils.uk_time_series_utils import build_rolling_sku_series,build_remaining_skus_time_series
 from app.utils.uk_prompts_utils import get_excel_recommendation_from_live_context
 import hashlib
@@ -2910,6 +2915,16 @@ def live_mtd_vs_previous(period_mode=None):
         country = (request.args.get("countryName", "uk") or "uk").strip().lower()
         if country == "glabol":
             country = "global"
+        promotions_placement = request.args.get(
+            "promotions_placement", "in_net_sales"
+        )
+        amazon_fees_placement = request.args.get(
+            "amazon_fees_placement", "before_cm1"
+        )
+        if promotions_placement not in VALID_PROMOTIONS_PLACEMENTS:
+            return jsonify({"success": False, "error": "Invalid promotions placement"}), 400
+        if amazon_fees_placement not in VALID_AMAZON_FEES_PLACEMENTS:
+            return jsonify({"success": False, "error": "Invalid Amazon Fees placement"}), 400
         as_of = request.args.get("as_of")
 
         # ---------------------------
@@ -4939,6 +4954,15 @@ def live_mtd_vs_previous(period_mode=None):
                     ),
                     "last30_totals": current_global_last30_totals,
                 })
+
+                apply_pnl_column_placements_to_payload(
+                    response_payload,
+                    {
+                        "skuwise_items_global": ("last30_totals",),
+                    },
+                    promotions_placement,
+                    amazon_fees_placement,
+                )
 
             try:
                 response_payload = round_numeric_values(response_payload, ndigits=2)
@@ -7415,6 +7439,13 @@ def live_mtd_vs_previous(period_mode=None):
                 period_end=prev_end,
             )
             response_payload["last30_totals"] = last30_period_totals
+
+            apply_pnl_column_placements_to_payload(
+                response_payload,
+                {"skuwise_items": ("last30_totals",)},
+                promotions_placement,
+                amazon_fees_placement,
+            )
 
         # # ---------------------------
         # # SEND EMAIL

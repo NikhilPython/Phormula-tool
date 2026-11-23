@@ -14,6 +14,11 @@ from app import db
 from app.models.user_models import amazon_user, Product, CountryProfile, User
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.dashboard_card_metrics import calculate_amazon_fees_total
+from app.utils.pnl_column_placements import (
+    VALID_AMAZON_FEES_PLACEMENTS,
+    VALID_PROMOTIONS_PLACEMENTS,
+    apply_pnl_column_placements_to_payload,
+)
 from app.utils.formulas_utils import uk_advertising, uk_platform_fee, filter_seller_product_rows
 from app.utils.amazon_utils import (_fetch_fba_skus_all,
 _upsert_products_to_db_with_open_date , 
@@ -1756,7 +1761,7 @@ def _country_to_sku_col(country: str) -> str:
 
 
 
-def get_current_global_data_for_live_bi(user_id: int):
+def get_current_global_data_for_live_bi(user_id: int, persist: bool = True):
     import math
     import pandas as pd
     import numpy as np
@@ -2673,16 +2678,16 @@ def get_current_global_data_for_live_bi(user_id: int):
     global_numeric_columns = global_df.select_dtypes(include=["number"]).columns
     global_df[global_numeric_columns] = global_df[global_numeric_columns].round(2)
 
-    # Keep DB write for global table.
-    global_df.to_sql(
-        global_table,
-        PHORMULA_ENGINE,
-        schema="public",
-        if_exists="replace",
-        index=False,
-        method="multi",
-        chunksize=1000,
-    )
+    if persist:
+        global_df.to_sql(
+            global_table,
+            PHORMULA_ENGINE,
+            schema="public",
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=1000,
+        )
 
     derived_totals_global = {
         "lost_total": round(float(total_row.get("lost_total", 0.0) or 0.0), 2),
@@ -2870,11 +2875,40 @@ def finances_mtd_transactions():
     transaction_type_filter = request.args.get("transaction_type")
     response_format = (request.args.get("format") or "json").lower()
     store_in_db = (request.args.get("store_in_db", "true").lower() != "false")
+    placement_only = request.args.get("placement_only", "false").lower() == "true"
+    if placement_only:
+        store_in_db = False
     
     ui_country = (request.args.get("country") or "").strip().lower() or "uk"
+    promotions_placement = request.args.get(
+        "promotions_placement", "in_net_sales"
+    )
+    amazon_fees_placement = request.args.get(
+        "amazon_fees_placement", "before_cm1"
+    )
+    if promotions_placement not in VALID_PROMOTIONS_PLACEMENTS:
+        return jsonify({"success": False, "error": "Invalid promotions placement"}), 400
+    if amazon_fees_placement not in VALID_AMAZON_FEES_PLACEMENTS:
+        return jsonify({"success": False, "error": "Invalid Amazon Fees placement"}), 400
 
     if ui_country == "global":
-        payload_out = get_current_global_data_for_live_bi(user_id)
+        payload_out = get_current_global_data_for_live_bi(
+            user_id,
+            persist=not placement_only,
+        )
+        apply_pnl_column_placements_to_payload(
+            payload_out,
+            {
+                "skuwise_items_global": (
+                    "derived_totals_global",
+                    "dashboard_totals_global",
+                ),
+                "skuwise_items_uk": ("derived_totals_uk", "dashboard_totals_uk"),
+                "skuwise_items_us": ("derived_totals_us", "dashboard_totals_us"),
+            },
+            promotions_placement,
+            amazon_fees_placement,
+        )
         previous_global = {}
         try:
             # Import at request time to avoid a module-level circular import.
@@ -4689,21 +4723,24 @@ def finances_mtd_transactions():
         df_sku[sku_numeric_columns] = df_sku[sku_numeric_columns].round(2)
         skuwise_items = df_sku.to_dict(orient="records")
 
-        # store SKU-wise table
-        try:
-            df_sku.to_sql(
-                skuwise_table_name,
-                PHORMULA_ENGINE,
-                schema="public",
-                if_exists="replace",
-                index=False,
-                method="multi",
-                chunksize=1000,
-            )
-            sku_summary_saved = True
+        if placement_only:
             sku_summary_rows = int(len(df_sku))
-        except Exception as e:
-            sku_summary_saved = False
+        else:
+            # store SKU-wise table
+            try:
+                df_sku.to_sql(
+                    skuwise_table_name,
+                    PHORMULA_ENGINE,
+                    schema="public",
+                    if_exists="replace",
+                    index=False,
+                    method="multi",
+                    chunksize=1000,
+                )
+                sku_summary_saved = True
+                sku_summary_rows = int(len(df_sku))
+            except Exception:
+                sku_summary_saved = False
 
     # ---------------- Excel response ----------------
     # ------------------------------------------------------------
@@ -4829,26 +4866,29 @@ def finances_mtd_transactions():
 
         empty_df = pd.DataFrame([total_row], columns=empty_columns)
 
-        try:
-            empty_df.to_sql(
-                skuwise_table_name,
-                PHORMULA_ENGINE,
-                schema="public",
-                if_exists="replace",
-                index=False,
-                method="multi",
-                chunksize=1000,
-            )
-
-            sku_summary_saved = True
+        skuwise_items = empty_df.to_dict(orient="records")
+        if placement_only:
             sku_summary_rows = int(len(empty_df))
-            skuwise_items = empty_df.to_dict(orient="records")
+        else:
+            try:
+                empty_df.to_sql(
+                    skuwise_table_name,
+                    PHORMULA_ENGINE,
+                    schema="public",
+                    if_exists="replace",
+                    index=False,
+                    method="multi",
+                    chunksize=1000,
+                )
 
-        except Exception as e:
-            sku_summary_saved = False
-            sku_summary_rows = 0
-            skuwise_items = []
-            print("EMPTY SKUWISE TABLE CREATE ERROR:", str(e))
+                sku_summary_saved = True
+                sku_summary_rows = int(len(empty_df))
+
+            except Exception as e:
+                sku_summary_saved = False
+                sku_summary_rows = 0
+                skuwise_items = []
+                print("EMPTY SKUWISE TABLE CREATE ERROR:", str(e))
 
     if ui_country in {"uk", "us"}:
         aligned = _align_dashboard_quantities({
@@ -4905,6 +4945,13 @@ def finances_mtd_transactions():
         )
 
     # ---------------- JSON response ----------------
+    apply_pnl_column_placements_to_payload(
+        {"skuwise_items": skuwise_items, "totals": totals, "derived_totals": derived_totals},
+        {"skuwise_items": ("totals", "derived_totals")},
+        promotions_placement,
+        amazon_fees_placement,
+    )
+
     payload_out = {
         "success": True,
         "posted_after": posted_after,

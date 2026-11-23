@@ -27,6 +27,16 @@ import {
 
 type DashboardProductwisePnlSectionProps = Record<string, any>;
 
+type DashboardColumnPlacement = {
+    anchor: string;
+    side: "before" | "after";
+    stage: "in_net_sales" | "before_cm1" | "after_cm1";
+};
+
+type DashboardTableLayoutItem =
+    | { type: "group"; id: string }
+    | { type: "single"; key: string };
+
 
 
 const PNL_ACTION_FILTER_IDS = new Set([
@@ -237,9 +247,12 @@ export default function DashboardProductwisePnlSection({
     reimbursementForSummary,
 
     reimbursementVsCm2PctForSummary,
-
     reimbursementVsSalesPctForSummary,
     skuStatusMap = {},
+    promotionsPlacement,
+    amazonFeesPlacement,
+    onApplyColumnPlacements,
+    columnPlacementLoading,
 
 }: DashboardProductwisePnlSectionProps) {
 
@@ -248,6 +261,246 @@ export default function DashboardProductwisePnlSection({
     const pathname = usePathname();
 
     const router = useRouter();
+    const [isRearrangingColumns, setIsRearrangingColumns] = React.useState(false);
+    const [isApplyingColumnPlacements, setIsApplyingColumnPlacements] = React.useState(false);
+    const [columnPlacementError, setColumnPlacementError] = React.useState("");
+    const [draftPromotionsPlacement, setDraftPromotionsPlacement] =
+        React.useState<DashboardColumnPlacement>(promotionsPlacement);
+    const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
+        React.useState<DashboardColumnPlacement>(amazonFeesPlacement);
+    const activePromotionsPlacement = isRearrangingColumns
+        ? draftPromotionsPlacement
+        : promotionsPlacement;
+    const activeAmazonFeesPlacement = isRearrangingColumns
+        ? draftAmazonFeesPlacement
+        : amazonFeesPlacement;
+
+    React.useEffect(() => {
+        if (isRearrangingColumns) return;
+        setDraftPromotionsPlacement(promotionsPlacement);
+        setDraftAmazonFeesPlacement(amazonFeesPlacement);
+    }, [isRearrangingColumns, promotionsPlacement, amazonFeesPlacement]);
+
+    const productwiseLayout = React.useMemo<DashboardTableLayoutItem[]>(() => {
+        const layout: DashboardTableLayoutItem[] = [
+            { type: "group", id: "quantity" },
+            { type: "single", key: "asp" },
+            { type: "group", id: "sales" },
+            ...(isUsPnlSkuLayout
+                ? activePromotionsPlacement.stage === "in_net_sales"
+                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                    : []
+                : [{ type: "group" as const, id: "promotions" }]),
+            { type: "single", key: "cogs" },
+            { type: "group", id: "marketplace_fees" },
+            { type: "group", id: "other_transactions" },
+            { type: "group", id: "profit" },
+            { type: "group", id: "ads_spend" },
+            { type: "single", key: "acos" },
+            { type: "group", id: "cm2_profit" },
+        ];
+
+        const findIndex = (key: string) =>
+            layout.findIndex(
+                (item) =>
+                    (item.type === "group" && item.id === key) ||
+                    (item.type === "single" && item.key === key)
+            );
+        const promotionsIsSeparate =
+            !isUsPnlSkuLayout || activePromotionsPlacement.stage !== "in_net_sales";
+
+        if (promotionsIsSeparate) {
+            const existingIndex = findIndex("promotions");
+            if (existingIndex >= 0) layout.splice(existingIndex, 1);
+            const salesIndex = findIndex("sales");
+            const profitIndex = findIndex("profit");
+            const cm2Index = findIndex("cm2_profit");
+            const anchorIndex = findIndex(activePromotionsPlacement.anchor);
+            let insertionIndex =
+                anchorIndex < 0
+                    ? salesIndex + 1
+                    : anchorIndex + (activePromotionsPlacement.side === "after" ? 1 : 0);
+
+            insertionIndex = Math.max(insertionIndex, salesIndex + 1);
+            if (activePromotionsPlacement.stage === "after_cm1") {
+                insertionIndex = Math.max(insertionIndex, profitIndex + 1);
+                insertionIndex = Math.min(insertionIndex, cm2Index);
+            } else {
+                insertionIndex = Math.min(insertionIndex, profitIndex);
+            }
+            layout.splice(insertionIndex, 0, { type: "group", id: "promotions" });
+        }
+
+        const feesIndex = findIndex("marketplace_fees");
+        if (feesIndex >= 0) layout.splice(feesIndex, 1);
+        const salesIndex = findIndex("sales");
+        const profitIndex = findIndex("profit");
+        const cm2Index = findIndex("cm2_profit");
+        const feesAnchorIndex = findIndex(activeAmazonFeesPlacement.anchor);
+        let feesInsertionIndex =
+            feesAnchorIndex < 0
+                ? salesIndex + 1
+                : feesAnchorIndex + (activeAmazonFeesPlacement.side === "after" ? 1 : 0);
+
+        feesInsertionIndex = Math.max(feesInsertionIndex, salesIndex + 1);
+        if (activeAmazonFeesPlacement.stage === "after_cm1") {
+            feesInsertionIndex = Math.max(feesInsertionIndex, profitIndex + 1);
+            feesInsertionIndex = Math.min(feesInsertionIndex, cm2Index);
+        } else {
+            feesInsertionIndex = Math.min(feesInsertionIndex, profitIndex);
+        }
+        layout.splice(feesInsertionIndex, 0, { type: "group", id: "marketplace_fees" });
+        return layout;
+    }, [
+        activeAmazonFeesPlacement,
+        activePromotionsPlacement,
+        isUsPnlSkuLayout,
+    ]);
+
+    const handleColumnDrop = React.useCallback(
+        (sourceKey: string, targetKey: string, side: "before" | "after") => {
+            if (sourceKey === "marketplace_fees") {
+                if (
+                    targetKey === "marketplace_fees" ||
+                    ["selling_fees", "fba_fees", "marketplace_total"].includes(targetKey)
+                ) return;
+                if (
+                    targetKey === "sales" ||
+                    targetKey === "net_sales" ||
+                    targetKey === "quantity" ||
+                    targetKey === "asp"
+                ) {
+                    setDraftAmazonFeesPlacement({
+                        anchor: "sales",
+                        side: "after",
+                        stage: "before_cm1",
+                    });
+                    return;
+                }
+                const targetAnchor = ({
+                    gross_sales: "sales",
+                    refund_sales: "sales",
+                    tax: "other_transactions",
+                    credits: "other_transactions",
+                    misc_transaction: "other_transactions",
+                    cm1_profit_per_unit: "profit",
+                    cm1_profit_per: "profit",
+                    product_spend: "ads_spend",
+                    display_spend: "ads_spend",
+                    cm2_profit_per_unit: "cm2_profit",
+                    cm2_profit_per: "cm2_profit",
+                } as Record<string, string>)[targetKey] || targetKey;
+                let stage: DashboardColumnPlacement["stage"] = "before_cm1";
+                if (targetAnchor === "profit" && side === "after") {
+                    stage = "after_cm1";
+                } else if (
+                    targetAnchor === "promotions" &&
+                    activePromotionsPlacement.stage === "after_cm1"
+                ) {
+                    stage = "after_cm1";
+                } else if (["ads_spend", "acos", "cm2_profit"].includes(targetAnchor)) {
+                    stage = "after_cm1";
+                }
+                setDraftAmazonFeesPlacement({ anchor: targetAnchor, side, stage });
+                return;
+            }
+
+            const isPromotionsSource = [
+                "promotions",
+                "promotional_rebates",
+                "promotional_rebates_percentage",
+            ].includes(sourceKey);
+            if (!isPromotionsSource || targetKey === "promotions") return;
+            if (targetKey === "sales") {
+                setDraftPromotionsPlacement({
+                    anchor: "sales",
+                    side: "after",
+                    stage: "before_cm1",
+                });
+                return;
+            }
+            if (
+                targetKey === "promotional_rebates" ||
+                targetKey === "promotional_rebates_percentage"
+            ) {
+                setDraftPromotionsPlacement({
+                    anchor: "sales",
+                    side: "before",
+                    stage: "in_net_sales",
+                });
+                return;
+            }
+            if (targetKey === "net_sales") {
+                setDraftPromotionsPlacement(
+                    side === "before"
+                        ? {
+                            anchor: "sales",
+                            side: "before",
+                            stage: "in_net_sales",
+                        }
+                        : {
+                            anchor: "sales",
+                            side: "after",
+                            stage: "before_cm1",
+                        }
+                );
+                return;
+            }
+            const targetAnchor = ({
+                gross_sales: "sales",
+                refund_sales: "sales",
+                tax: "other_transactions",
+                credits: "other_transactions",
+                misc_transaction: "other_transactions",
+                cm1_profit_per_unit: "profit",
+                cm1_profit_per: "profit",
+                product_spend: "ads_spend",
+                display_spend: "ads_spend",
+                cm2_profit_per_unit: "cm2_profit",
+                cm2_profit_per: "cm2_profit",
+            } as Record<string, string>)[targetKey] || targetKey;
+            let stage: DashboardColumnPlacement["stage"] = "before_cm1";
+            if (
+                (targetAnchor === "profit" && side === "after") ||
+                (targetAnchor === "marketplace_fees" &&
+                    activeAmazonFeesPlacement.stage === "after_cm1") ||
+                ["ads_spend", "acos", "cm2_profit"].includes(targetAnchor)
+            ) {
+                stage = "after_cm1";
+            }
+            setDraftPromotionsPlacement({ anchor: targetAnchor, side, stage });
+        },
+        [
+            activeAmazonFeesPlacement.stage,
+            activePromotionsPlacement.stage,
+        ]
+    );
+
+    const handleConfirmColumnPlacements = async () => {
+        if (typeof onApplyColumnPlacements !== "function") return;
+        setIsApplyingColumnPlacements(true);
+        setColumnPlacementError("");
+        try {
+            await onApplyColumnPlacements(
+                draftPromotionsPlacement,
+                draftAmazonFeesPlacement
+            );
+            setIsRearrangingColumns(false);
+        } catch (error) {
+            setColumnPlacementError(
+                error instanceof Error ? error.message : "Failed to update the P&L column layout."
+            );
+        } finally {
+            setIsApplyingColumnPlacements(false);
+        }
+    };
+
+    const handleCancelColumnPlacements = () => {
+        setDraftPromotionsPlacement(promotionsPlacement);
+        setDraftAmazonFeesPlacement(amazonFeesPlacement);
+        setColumnPlacementError("");
+        setIsRearrangingColumns(false);
+    };
 
     const normalizeKeyForStatus = (s: string) =>
         String(s || "").toLowerCase().trim().replace(/\s+/g, " ").replace(/[^\w\s-]/g, "");
@@ -1918,6 +2171,47 @@ export default function DashboardProductwisePnlSection({
 
                 <div className="flex items-center gap-2">
 
+                    {isRearrangingColumns ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handleConfirmColumnPlacements}
+                                disabled={isApplyingColumnPlacements || columnPlacementLoading}
+                                title="Apply column arrangement"
+                                aria-label="Apply column arrangement"
+                                className="inline-flex h-9 items-center rounded-md border border-emerald-300 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {isApplyingColumnPlacements ? "Updating…" : "Apply"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCancelColumnPlacements}
+                                disabled={isApplyingColumnPlacements}
+                                title="Cancel column arrangement"
+                                aria-label="Cancel column arrangement"
+                                className="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-600 disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setDraftPromotionsPlacement(promotionsPlacement);
+                                setDraftAmazonFeesPlacement(amazonFeesPlacement);
+                                setColumnPlacementError("");
+                                setIsRearrangingColumns(true);
+                            }}
+                            disabled={columnPlacementLoading || shouldShowDummyUi}
+                            title="Rearrange Promotions and Amazon Fees"
+                            aria-label="Rearrange Promotions and Amazon Fees"
+                            className="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Rearrange columns
+                        </button>
+                    )}
+
                     {/* Expand / collapse rows and columns */}
 
                     <button
@@ -1978,7 +2272,11 @@ export default function DashboardProductwisePnlSection({
 
             </div>
 
-
+            {columnPlacementError && (
+                <div role="alert" className="mb-2 text-sm text-red-600">
+                    {columnPlacementError}
+                </div>
+            )}
 
             {isActionSkuFilterActive && (
 
@@ -2307,35 +2605,70 @@ export default function DashboardProductwisePnlSection({
 
 
 
-                            layout={[
-
-                                { type: "group", id: "quantity" },
-
-                                { type: "single", key: "asp" },
-
-                                { type: "group", id: "net_sales" },
-
-                                ...(isUsPnlSkuLayout
-
-                                    ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
-
-                                    : [{ type: "group" as const, id: "promotions" }]),
-
-                                { type: "single", key: "cogs" },
-
-                                { type: "group", id: "marketplace_fees" },
-
-                                { type: "group", id: "other_transactions" },
-
-                                { type: "group", id: "profit" },
-
-                                { type: "group", id: "ads_spend" },
-
-                                { type: "single", key: "acos" },
-
-                                { type: "group", id: "cm2_profit" },
-
-                            ]}
+                            layout={productwiseLayout}
+                            draggableGroupIds={
+                                isRearrangingColumns
+                                    ? [
+                                        "marketplace_fees",
+                                        ...(!isUsPnlSkuLayout ||
+                                        activePromotionsPlacement.stage !== "in_net_sales"
+                                            ? ["promotions"]
+                                            : []),
+                                    ]
+                                    : []
+                            }
+                            draggableColKeys={
+                                isRearrangingColumns &&
+                                isUsPnlSkuLayout &&
+                                activePromotionsPlacement.stage === "in_net_sales"
+                                    ? ["promotional_rebates", "promotional_rebates_percentage"]
+                                    : []
+                            }
+                            dropTargetGroupIds={
+                                isRearrangingColumns
+                                    ? [
+                                        "quantity",
+                                        "sales",
+                                        ...(!isUsPnlSkuLayout ||
+                                        activePromotionsPlacement.stage !== "in_net_sales"
+                                            ? ["promotions"]
+                                            : []),
+                                        "marketplace_fees",
+                                        "other_transactions",
+                                        "profit",
+                                        "ads_spend",
+                                        "cm2_profit",
+                                    ]
+                                    : []
+                            }
+                            dropTargetColKeys={
+                                isRearrangingColumns
+                                    ? [
+                                        "asp",
+                                        "gross_sales",
+                                        "refund_sales",
+                                        "net_sales",
+                                        "promotional_rebates",
+                                        "promotional_rebates_percentage",
+                                        "cogs",
+                                        "tax",
+                                        "credits",
+                                        "misc_transaction",
+                                        "other_transactions",
+                                        "profit",
+                                        "cm1_profit_per_unit",
+                                        "cm1_profit_per",
+                                        "product_spend",
+                                        "display_spend",
+                                        "ads_spend",
+                                        "acos",
+                                        "cm2_profit",
+                                        "cm2_profit_per_unit",
+                                        "cm2_profit_per",
+                                    ]
+                                    : []
+                            }
+                            onColumnDrop={handleColumnDrop}
 
                             getSortValue={(row: any, colKey: string) => {
                                 const direction = plSortConfig.direction;
