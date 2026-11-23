@@ -771,11 +771,15 @@ def process_skuwise_data(user_id, country, month, year):
                 # fallback - you can choose sku_uk or sku_us, or just return empty
                 sku_col = "sku_uk"
 
+            available_columns = set(get_table_columns(conn, tbl))
+            if "asin" not in available_columns or sku_col not in available_columns:
+                return {}
+
             q = text(f"""
-                SELECT asin, {sku_col} AS sku
+                SELECT "asin", "{sku_col}" AS sku
                 FROM public.{tbl}
-                WHERE asin IS NOT NULL
-                AND {sku_col} IS NOT NULL
+                WHERE "asin" IS NOT NULL
+                  AND "{sku_col}" IS NOT NULL
             """)
             rows = conn.execute(q).fetchall()
             return {str(a).strip(): str(s).strip() for a, s in rows}
@@ -796,10 +800,18 @@ def process_skuwise_data(user_id, country, month, year):
             tbl = f"sku_{user_id}_data_table"
             sku_col = "sku_uk" if country.lower() == "uk" else "sku_us"
 
+            available_columns = set(get_table_columns(conn, tbl))
+            if sku_col not in available_columns:
+                return {}, {}
+
+            asin_expression = '"asin"' if "asin" in available_columns else "NULL::text"
+            barcode_expression = '"product_barcode"' if "product_barcode" in available_columns else "NULL::text"
             q = text(f"""
-                SELECT asin, {sku_col} AS sku, product_barcode
+                SELECT {asin_expression} AS asin,
+                       "{sku_col}" AS sku,
+                       {barcode_expression} AS product_barcode
                 FROM public.{tbl}
-                WHERE {sku_col} IS NOT NULL
+                WHERE "{sku_col}" IS NOT NULL
             """)
             rows = conn.execute(q).fetchall()
 
