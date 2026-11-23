@@ -50,6 +50,11 @@
   right: 0;
 }
 
+.dashboard-pnl-table .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
+.dashboard-pnl-table .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
+  z-index: 1;
+}
+
 .sku-draggable-boundary-cell[data-drag-boundary~="top"] {
   box-shadow: inset 0 calc(2px + var(--sku-boundary-shake-y)) 0 0 #000;
 }

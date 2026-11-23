@@ -19,7 +19,7 @@ import {
   RiExpandDiagonalFill,
   RiCollapseDiagonalFill,
 } from "react-icons/ri";
-import { Check, Columns3, X } from "lucide-react";
+import { Check, ArrowLeftRight, X } from "lucide-react";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -4185,7 +4185,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     aria-label="Rearrange columns"
                     className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <Columns3 size={18} />
+                    <ArrowLeftRight size={18} />
                   </button>
                 )}
                 <button

@@ -22,7 +22,7 @@ import {
     RiExpandDiagonalFill,
 
 } from "react-icons/ri";
-import { Check, Columns3, X } from "lucide-react";
+import { Check, ArrowLeftRight, X } from "lucide-react";
 
 
 
@@ -2209,7 +2209,7 @@ export default function DashboardProductwisePnlSection({
                             aria-label="Rearrange columns"
                             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                         >
-                            <Columns3 size={18} />
+                            <ArrowLeftRight size={18} />
                         </button>
                     )}
 
@@ -2486,7 +2486,7 @@ export default function DashboardProductwisePnlSection({
                             rows={actionTableRows}
                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
                             tableClassName={[
-                                "border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
+                                "dashboard-pnl-table border-collapse bg-white text-[#414042] text-[12px] lg:text-[12px] min-[1700px]:text-[14px]",
                                 productwiseHasExpandedGroups ? "table-fixed" : "w-full table-fixed",
                             ].join(" ")}
 
