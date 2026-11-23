@@ -4300,8 +4300,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 }
                 draggableColKeys={
                   isRearrangingColumns &&
+                  isUsCountry &&
+                  effectivePromotionsPlacement.stage === "in_net_sales" &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
                     ? ["promotional_rebates"]
+                    : []
+                }
+                draggableColumnGroups={
+                  isRearrangingColumns &&
+                  (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
+                    ? [{
+                        id:
+                          isUsCountry ||
+                          effectivePromotionsPlacement.stage !== "in_net_sales"
+                            ? "promotions_breakdown"
+                            : "promotional_rebates",
+                        colKeys: [
+                          "promotional_rebates",
+                          "promotional_rebates_percentage",
+                        ],
+                      }]
                     : []
                 }
                 dropTargetGroupIds={

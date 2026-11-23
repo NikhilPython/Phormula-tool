@@ -91,6 +91,7 @@ type Props<RowT> = {
   onSortChange?: (sort: { key: string; direction: "asc" | "desc" }) => void;
   draggableGroupIds?: string[];
   draggableColKeys?: string[];
+  draggableColumnGroups?: { id: string; colKeys: string[] }[];
   dropTargetGroupIds?: string[];
   dropTargetColKeys?: string[];
   onColumnDrop?: (
@@ -189,6 +190,7 @@ export default function GroupedCollapsibleTable<RowT>({
   getGroupToggleCollapsedState,
   draggableGroupIds = [],
   draggableColKeys = [],
+  draggableColumnGroups = [],
   dropTargetGroupIds = [],
   dropTargetColKeys = [],
   onColumnDrop,
@@ -240,10 +242,20 @@ export default function GroupedCollapsibleTable<RowT>({
     }));
   };
 
+  const getDragSourceKey = (key: string) =>
+    draggableColumnGroups.find((group) => group.colKeys.includes(key))?.id ?? key;
   const canDragColumn = (key: string) =>
-    draggableGroupIds.includes(key) || draggableColKeys.includes(key);
+    draggableGroupIds.includes(key) ||
+    draggableColKeys.includes(key) ||
+    draggableColumnGroups.some(
+      (group) => group.id === key || group.colKeys.includes(key)
+    );
   const canDropOnColumn = (key: string) =>
     dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key);
+  const hasDraggableColumns =
+    draggableGroupIds.length > 0 ||
+    draggableColKeys.length > 0 ||
+    draggableColumnGroups.length > 0;
   const getDragBoundaryEdges = (
     colKey: string,
     isTableBottom = false,
@@ -257,6 +269,7 @@ export default function GroupedCollapsibleTable<RowT>({
     const isDraggableGroup = Boolean(group && draggableGroupIds.includes(group.id));
     const isDraggableLeaf =
       draggableColKeys.includes(colKey) ||
+      draggableColumnGroups.some((group) => group.colKeys.includes(colKey)) ||
       (colKey === "promotional_rebates_percentage" &&
         draggableColKeys.includes("promotional_rebates"));
     if (!isDraggableGroup && !isDraggableLeaf) return undefined;
@@ -293,8 +306,9 @@ export default function GroupedCollapsibleTable<RowT>({
     draggable: canDragColumn(sourceKey),
     onDragStart: (event: React.DragEvent<HTMLTableCellElement>) => {
       if (!canDragColumn(sourceKey)) return;
-      setDraggingColumnKey(sourceKey);
-      event.dataTransfer.setData("text/plain", sourceKey);
+      const dragSourceKey = getDragSourceKey(sourceKey);
+      setDraggingColumnKey(dragSourceKey);
+      event.dataTransfer.setData("text/plain", dragSourceKey);
       event.dataTransfer.effectAllowed = "move";
     },
     onDragOver: (event: React.DragEvent<HTMLTableCellElement>) => {
@@ -306,7 +320,7 @@ export default function GroupedCollapsibleTable<RowT>({
       const draggedKey = event.dataTransfer.getData("text/plain");
       if (!canDropOnColumn(targetKey) || !canDragColumn(draggedKey)) return;
       event.preventDefault();
-      if (draggedKey !== targetKey) {
+      if (draggedKey !== getDragSourceKey(targetKey)) {
         const bounds = event.currentTarget.getBoundingClientRect();
         const side =
           event.clientX < bounds.left + bounds.width / 2 ? "before" : "after";
@@ -1575,7 +1589,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   if (!bodyMaxHeight) {
     return (
-      <div className={`w-full ${draggableGroupIds.length ? "sku-column-boundary-shake" : ""}`}>
+      <div className={`w-full ${hasDraggableColumns ? "sku-column-boundary-shake" : ""}`}>
         <div
           ref={headerScrollContainerRef}
           className="relative z-10 w-full overflow-hidden bg-white"
@@ -1614,7 +1628,7 @@ export default function GroupedCollapsibleTable<RowT>({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className={`w-full overflow-auto ${draggableGroupIds.length ? "sku-column-boundary-shake" : ""}`}
+      className={`w-full overflow-auto ${hasDraggableColumns ? "sku-column-boundary-shake" : ""}`}
       style={{ maxHeight: `${bodyMaxHeight}px` }}
     >
       <table ref={tableRef} className={tableClassName} style={tableStyle}>

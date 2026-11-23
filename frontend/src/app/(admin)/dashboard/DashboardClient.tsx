@@ -8809,13 +8809,12 @@ export default function DashboardPage() {
             buildSkuwiseTableColumns(formatDisplayAmount, {
                 isUsSkuLayout: isUsPnlSkuLayout,
                 hideSku: platform === "global",
-                promotionsPlacement: dashboardPromotionsPlacement.stage,
+                promotionsPlacement: "in_net_sales",
             }),
         [
             formatDisplayAmount,
             isUsPnlSkuLayout,
             platform,
-            dashboardPromotionsPlacement.stage,
         ]
     );
 

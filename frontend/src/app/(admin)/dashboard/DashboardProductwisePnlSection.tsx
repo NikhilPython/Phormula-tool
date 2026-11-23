@@ -282,6 +282,29 @@ export default function DashboardProductwisePnlSection({
         setDraftAmazonFeesPlacement(amazonFeesPlacement);
     }, [isRearrangingColumns, promotionsPlacement, amazonFeesPlacement]);
 
+    const activeProductwiseGroups = React.useMemo(() => {
+        if (
+            !isUsPnlSkuLayout ||
+            activePromotionsPlacement.stage === "in_net_sales"
+        ) {
+            return SKUWISE_GROUPS;
+        }
+
+        return SKUWISE_GROUPS.map((group: any) =>
+            group.id === "sales"
+                ? {
+                    ...group,
+                    collapsedCols: group.collapsedCols.filter(
+                        (column: any) => column.key !== "promotional_rebates"
+                    ),
+                    expandedCols: group.expandedCols.filter(
+                        (column: any) => column.key !== "promotional_rebates"
+                    ),
+                }
+                : group
+        );
+    }, [SKUWISE_GROUPS, isUsPnlSkuLayout, activePromotionsPlacement.stage]);
+
     const productwiseLayout = React.useMemo<DashboardTableLayoutItem[]>(() => {
         const layout: DashboardTableLayoutItem[] = [
             { type: "group", id: "quantity" },
@@ -411,7 +434,12 @@ export default function DashboardProductwisePnlSection({
                 "promotional_rebates",
                 "promotional_rebates_percentage",
             ].includes(sourceKey);
-            if (!isPromotionsSource || targetKey === "promotions") return;
+            if (
+                !isPromotionsSource ||
+                ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(
+                    targetKey
+                )
+            ) return;
             if (targetKey === "sales") {
                 setDraftPromotionsPlacement({
                     anchor: "sales",
@@ -2506,7 +2534,7 @@ export default function DashboardProductwisePnlSection({
 
                             leftCols={SKUWISE_LEFT_COLS}
 
-                            groups={SKUWISE_GROUPS}
+                            groups={activeProductwiseGroups}
 
                             singleCols={SKUWISE_SINGLE_COLS}
 
@@ -2599,6 +2627,19 @@ export default function DashboardProductwisePnlSection({
                                     isUsPnlSkuLayout &&
                                     activePromotionsPlacement.stage === "in_net_sales"
                                     ? ["promotional_rebates", "promotional_rebates_percentage"]
+                                    : []
+                            }
+                            draggableColumnGroups={
+                                isRearrangingColumns &&
+                                    isUsPnlSkuLayout &&
+                                    activePromotionsPlacement.stage === "in_net_sales"
+                                    ? [{
+                                        id: "promotions",
+                                        colKeys: [
+                                            "promotional_rebates",
+                                            "promotional_rebates_percentage",
+                                        ],
+                                    }]
                                     : []
                             }
                             dropTargetGroupIds={
