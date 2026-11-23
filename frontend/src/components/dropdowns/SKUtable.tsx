@@ -61,13 +61,11 @@ const TERM_DEFINITIONS: Record<string, string> = {
 /* ---------- Types ---------- */
 
 type RangeType = "monthly" | "quarterly" | "yearly";
-type SKUColumnLayoutItem =
-  | { type: "group"; id: string }
-  | { type: "single"; key: string };
+
 export type PromotionsPlacement = {
-  anchor: string;
-  side: "before" | "after";
-  stage: "in_net_sales" | "before_cm1" | "after_cm1";
+  anchor: "net_sales";
+  side: "before";
+  stage: "in_net_sales" | "after_net_sales" | "before_cm1" | "after_cm1";
 };
 
 type SKUtableProps = {
@@ -87,6 +85,8 @@ type SKUtableProps = {
     acos?: number;
     cm2Profit?: number;
   };
+  promotionsPlacement?: PromotionsPlacement;
+  onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
   loading?: boolean;
   error?: string | null;
   noDataFound?: boolean;
@@ -103,8 +103,6 @@ type SKUtableProps = {
 
   onProductDetailClick?: (productName: string, sku?: string) => void;
   onMonthClick?: (month: string) => void;
-  promotionsPlacement?: PromotionsPlacement;
-  onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
 };
 
 type TopBottomRow = {
@@ -344,6 +342,14 @@ const toNumber = (v: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const firstNonZeroNumber = (...values: unknown[]) => {
+  for (const value of values) {
+    const number = toNumber(value);
+    if (number !== 0) return number;
+  }
+  return 0;
+};
+
 const getOptionalNumber = (source: unknown, keys: string[]) => {
   const record =
     source && typeof source === "object" ? (source as Record<string, unknown>) : null;
@@ -533,26 +539,58 @@ function normalizeRows(data: any[]): TableRow[] {
       String(rawProductName ?? "").trim().toLowerCase() === "total" ||
       String(rawSku ?? "").trim().toLowerCase() === "total";
 
+    const unitsSold = firstNonZeroNumber(row.quantity, row.units_sold, row.unit_sold);
+    const returnUnits = firstNonZeroNumber(
+      row.return_quantity,
+      row.return_units,
+      row.units_returned
+    );
+    const netUnits = firstNonZeroNumber(
+      row.total_quantity,
+      row.net_units_sold,
+      row.quantity_total,
+      unitsSold - returnUnits
+    );
+    const grossSales = firstNonZeroNumber(row.gross_sales, row.product_sales);
+    const refundSales = firstNonZeroNumber(
+      row.refund_sales,
+      row.sales_refund,
+      row.refund_amount
+    );
+    const netSales = firstNonZeroNumber(row.net_sales, row.Net_Sales);
+    const profit = firstNonZeroNumber(row.profit, row.Profit, row.cm1_profit);
+    const profitPerUnit = firstNonZeroNumber(
+      row.unit_wise_profitability,
+      row.cm1_profit_per_unit,
+      netUnits ? profit / netUnits : 0
+    );
+    const profitPercentage = firstNonZeroNumber(
+      row.profit_percentage,
+      row.cm1_profit_percentage,
+      row.cm1_profit_per,
+      netSales ? (profit / Math.abs(netSales)) * 100 : 0
+    );
+
     return {
       ...row,
 
       product_name: isTotalRow ? "Total" : productName,
       sku: row.sku ?? "-",
 
-      quantity: toNumber(row.quantity),
-      return_quantity: toNumber(row.return_quantity),
-      total_quantity: toNumber(row.total_quantity),
+      quantity: unitsSold,
+      return_quantity: returnUnits,
+      total_quantity: netUnits,
 
       // Units (UI derived)
-      units_sold: toNumber(row.quantity),
-      return_units: toNumber(row.return_quantity),
-      net_units_sold: toNumber(row.total_quantity),
+      units_sold: unitsSold,
+      return_units: returnUnits,
+      net_units_sold: netUnits,
 
       // Sales
       asp: toNumber(row.asp ?? row.ASP),
-      product_sales: toNumber(row.gross_sales ?? row.product_sales),
-      refund_sales: toNumber(row.refund_sales),
-      net_sales: toNumber(row.net_sales),
+      product_sales: grossSales,
+      refund_sales: refundSales,
+      net_sales: netSales,
       lost_total: toNumber(row.lost_total),
 
       reimbursement_vs_sales: toNumber(row.reimbursement_vs_sales),
@@ -584,8 +622,8 @@ function normalizeRows(data: any[]): TableRow[] {
 
       // Taxes / Credits
       tex_and_credits: toNumber(row.tex_and_credits),
-      net_taxes: toNumber(row.net_taxes),
-      net_credits: toNumber(row.net_credits),
+      net_taxes: firstNonZeroNumber(row.net_taxes, row.net_tax, row.taxes_net),
+      net_credits: firstNonZeroNumber(row.net_credits, row.net_credit, row.credits_net),
 
       // Promotions
       promotional_rebates: toNumber(row.promotional_rebates),
@@ -599,9 +637,9 @@ function normalizeRows(data: any[]): TableRow[] {
         toNumber(row.other_transactions) || toNumber(row.other_transaction_fees),
 
       // CM1
-      profit: toNumber(row.profit),
-      profit_percentage: toNumber(row.profit_percentage),
-      unit_wise_profitability: toNumber(row.unit_wise_profitability),
+      profit,
+      profit_percentage: profitPercentage,
+      unit_wise_profitability: profitPerUnit,
 
       // CM2 / Ads
       product_spend: toNumber(
@@ -622,7 +660,13 @@ function normalizeRows(data: any[]): TableRow[] {
         row.Sponsored_Brand
       ),
 
-      ads_spend: toNumber(row.ads_spend),
+      ads_spend: firstNonZeroNumber(
+        row.ads_spend,
+        row.total_ads,
+        row.advertising_total_final,
+        row.advertising_fees,
+        row.advertising_total
+      ),
 
       advertising_total: toNumber(row.advertising_total),
       advertising_total_final: toNumber(
@@ -812,12 +856,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   disableInternalFade = false,
   onProductDetailClick,
   onMonthClick,
-  promotionsPlacement = {
-    anchor: "net_sales",
-    side: "before",
-    stage: "in_net_sales",
-  },
-  onPromotionsPlacementChange,
   // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -982,8 +1020,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       return {
         ...normalizedRow,
 
-        // Month-wise Ads Spend uses total_ads.
-        ads_spend: toNumber(sourceRow.total_ads),
+        // Prefer monthly total_ads, but fall back when that field is empty/zero.
+        ads_spend: firstNonZeroNumber(
+          sourceRow.total_ads,
+          sourceRow.ads_spend,
+          sourceRow.advertising_total_final,
+          sourceRow.advertising_fees,
+          sourceRow.advertising_total
+        ),
 
         // Existing CM2 logic preserved.
         cm2_profit: cm2Value,
@@ -1069,18 +1113,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     });
   }, [tableData, countryName, range, isMonthWiseView]);
-  const effectivePromotionsPlacement = useMemo<PromotionsPlacement>(
-    () =>
-      promotionsPlacement.stage === "after_cm1" &&
-      (range !== "monthly" || !hasCm2Data)
-        ? {
-            anchor: "profit_breakdown",
-            side: "before",
-            stage: "before_cm1",
-          }
-        : promotionsPlacement,
-    [promotionsPlacement, range, hasCm2Data]
-  );
 
   const getCm2PerUnit = (row: Partial<TableRow>) => {
     const cm2 = toNumber((row as any).cm2_profit);
@@ -1348,9 +1380,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
         }
 
         if (monthWiseKpiValues?.adsSpend !== undefined) {
-          monthlyTotal.ads_spend = toNumber(monthWiseKpiValues.adsSpend);
-          monthlyTotal.total_ads = toNumber(monthWiseKpiValues.adsSpend);
-          monthlyTotal.advertising_total = toNumber(monthWiseKpiValues.adsSpend);
+          const adsSpend = firstNonZeroNumber(
+            monthWiseKpiValues.adsSpend,
+            monthlyTotal.ads_spend,
+            monthlyTotal.total_ads,
+            monthlyTotal.advertising_total_final,
+            monthlyTotal.advertising_fees,
+            monthlyTotal.advertising_total
+          );
+          monthlyTotal.ads_spend = adsSpend;
+          monthlyTotal.total_ads = adsSpend;
+          monthlyTotal.advertising_total = adsSpend;
         }
         if (monthWiseKpiValues?.acos !== undefined) {
           monthlyTotal.acos = toNumber(monthWiseKpiValues.acos);
@@ -1477,63 +1517,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     [isMonthWiseView]
   );
 
-  const groups = useMemo<ColGroup<TableRow>[]>(() => {
-    const salesExpandedCols: LeafCol<TableRow>[] = [
-      {
-        key: "product_sales",
-        label: "Gross Sales",
-        align: "center",
-        width: "8%",
-        info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
-      },
-      {
-        key: "refund_sales",
-        label: "Sales - Refund",
-        align: "center",
-        width: "8%",
-        info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
-      },
-      ...(!isUsCountry
-        ? [{
-            key: "tex_and_credits",
-            label: "Taxes and Credits",
-            align: "center" as const,
-            width: "8%",
-            info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
-          }]
-        : []),
-      {
-        key: "net_sales",
-        label: isUsCountry ? "Net Sales" : "Total",
-        align: "center",
-        sortable: true,
-        width: "8%",
-      },
-    ];
-
-    if (effectivePromotionsPlacement.stage === "in_net_sales") {
-      const promoColumn: LeafCol<TableRow> = {
-        key: "promotional_rebates",
-        label: "Promotions",
-        align: "center",
-        width: "8%",
-        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-      };
-      const anchorIndex = salesExpandedCols.findIndex(
-        (column) => column.key === effectivePromotionsPlacement.anchor
-      );
-      const grossSalesIndex = salesExpandedCols.findIndex(
-        (column) => column.key === "product_sales"
-      );
-      const requestedIndex =
-        anchorIndex < 0
-          ? salesExpandedCols.length - 1
-          : anchorIndex + (effectivePromotionsPlacement.side === "after" ? 1 : 0);
-      const insertionIndex = Math.max(requestedIndex, grossSalesIndex + 1);
-      salesExpandedCols.splice(insertionIndex, 0, promoColumn);
-    }
-
-    return [
+  const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
       label: isUsCountry ? "Units" : "Net Units Sold",
@@ -1547,7 +1531,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
       ],
       expandedCols: [
-        ...(!isGlobalPage
+        ...(!isGlobalPage && !isMonthWiseView
           ? [
             {
               key: "sku",
@@ -1595,8 +1579,121 @@ const SKUtable: React.FC<SKUtableProps> = ({
           info: <InfoTip text={TERM_DEFINITIONS.net_sales} />,
         },
       ],
-      expandedCols: salesExpandedCols,
+      expandedCols: isUsCountry
+        ? [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "promotional_rebates",
+            label: "Promotions",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          },
+          ...(isMonthWiseView
+            ? [{
+                key: "promotional_rebates_percentage",
+                label: <>Promotions<br />%</>,
+                align: "center" as const,
+                width: "9%",
+                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+              }]
+            : []),
+          {
+            key: "net_sales",
+            label: "Net Sales",
+            align: "center" as const,
+            sortable: true,
+            width: "8%",
+          },
+        ]
+        : [
+          {
+            key: "product_sales",
+            label: "Gross Sales",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.product_sales} />,
+          },
+          {
+            key: "refund_sales",
+            label: "Sales - Refund",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.refund_sales} />,
+          },
+          {
+            key: "tex_and_credits",
+            label: "Taxes and Credits",
+            align: "center" as const,
+            width: "8%",
+            info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
+          },
+          ...(isMonthWiseView
+            ? [{
+                key: "promotional_rebates_percentage",
+                label: <>Promotions<br />%</>,
+                align: "center" as const,
+                width: "9%",
+                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
+              }]
+            : []),
+          {
+            key: "net_sales",
+            label: "Total",
+            align: "center" as const,
+            sortable: true,
+            width: "8%",
+          },
+        ],
     },
+
+    ...(!isUsCountry
+      ? [
+        {
+          id: "promotional_rebates",
+          label: "Promotions",
+          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          collapsedCols: [
+            {
+              key: "promotional_rebates",
+              label: "",
+              align: "center" as const,
+              width: "10%",
+              info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+            },
+          ],
+          expandedCols: [
+            {
+              key: "promotional_rebates",
+              label: "Promotions",
+              align: "center" as const,
+              width: "9%",
+            },
+            ...(!isMonthWiseView
+              ? [{
+                  key: "promotional_rebates_percentage",
+                  label: <>Promotions<br />%</>,
+                  align: "center" as const,
+                  width: "9%",
+                }]
+              : []),
+          ],
+        } as ColGroup<TableRow>,
+      ]
+      : []),
 
     {
       id: "amazon_breakdown",
@@ -1875,81 +1972,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         } as ColGroup<TableRow>,
       ]
       : []),
-    ];
-  }, [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView, effectivePromotionsPlacement]);
-
-  const baseTableLayout = useMemo<SKUColumnLayoutItem[]>(
-    () => [
-      { type: "group", id: "units_breakdown" },
-      { type: "single", key: "asp" },
-      { type: "group", id: "sales" },
-      { type: "single", key: "promotional_rebates_percentage" },
-      { type: "single", key: "cost_of_unit_sold" },
-      { type: "group", id: "amazon_breakdown" },
-      { type: "group", id: "other_transactions_breakdown" },
-      { type: "group", id: "profit_breakdown" },
-      ...(hasCm2Data
-        ? [
-            { type: "group" as const, id: "ads_spend_breakdown" },
-            { type: "single" as const, key: "acos" },
-            ...(isMonthWiseView && isUsCountry
-              ? [
-                  { type: "group" as const, id: "month_other_charges" },
-                  { type: "group" as const, id: "cm2_profit_breakdown" },
-                  { type: "group" as const, id: "month_net_reimbursement" },
-                ]
-              : []),
-            ...(!isMonthWiseView
-              ? [{ type: "group" as const, id: "cm2_profit_breakdown" }]
-              : []),
-          ]
-        : []),
-    ],
-    [hasCm2Data, isMonthWiseView, isUsCountry]
-  );
-
-  const tableLayout = useMemo<SKUColumnLayoutItem[]>(() => {
-    if (effectivePromotionsPlacement.stage === "in_net_sales") {
-      return baseTableLayout;
-    }
-
-    const layout = [...baseTableLayout];
-    const anchorIndex = layout.findIndex(
-      (item) =>
-        (item.type === "group" && item.id === effectivePromotionsPlacement.anchor) ||
-        (item.type === "single" && item.key === effectivePromotionsPlacement.anchor)
-    );
-    const profitIndex = layout.findIndex(
-      (item) => item.type === "group" && item.id === "profit_breakdown"
-    );
-    const salesIndex = layout.findIndex(
-      (item) => item.type === "group" && item.id === "sales"
-    );
-    const cm2Index = layout.findIndex(
-      (item) => item.type === "group" && item.id === "cm2_profit_breakdown"
-    );
-    let insertionIndex =
-      anchorIndex < 0
-        ? profitIndex
-        : anchorIndex + (effectivePromotionsPlacement.side === "after" ? 1 : 0);
-
-    insertionIndex = Math.max(insertionIndex, salesIndex + 1);
-    if (effectivePromotionsPlacement.stage === "before_cm1") {
-      insertionIndex = Math.min(insertionIndex, profitIndex);
-    } else {
-      insertionIndex = Math.max(insertionIndex, profitIndex + 1);
-      insertionIndex = Math.min(
-        insertionIndex,
-        cm2Index < 0 ? layout.length : cm2Index
-      );
-    }
-
-    layout.splice(insertionIndex, 0, {
-      type: "single",
-      key: "promotional_rebates",
-    });
-    return layout;
-  }, [baseTableLayout, effectivePromotionsPlacement]);
+  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -2007,25 +2030,27 @@ const SKUtable: React.FC<SKUtableProps> = ({
         align: "center",
         width: "7%",
       },
+      ...(isUsCountry
+        ? [
+          {
+            key: "promotional_rebates_percentage",
+            label: (
+              <>
+                Promotions
+                <br />
+                %
+              </>
+            ),
+            align: "center" as const,
+            width: "9%",
+          },
+        ]
+        : []),
       {
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
         width: "7%",
-      },
-      {
-        key: "promotional_rebates_percentage",
-        label: <>Promotions<br />%</>,
-        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
-        align: "center",
-        width: "9%",
-      },
-      {
-        key: "promotional_rebates",
-        label: "Promotions",
-        info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
-        align: "center",
-        width: "9%",
       },
       ...(hasCm2Data
         ? [
@@ -2044,7 +2069,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         ]
         : []),
     ],
-    [hasCm2Data]
+    [hasCm2Data, isUsCountry, isMonthWiseView]
   );
 
   const buildExcelColumnsFromUI = useCallback((): LeafCol<TableRow>[] => {
@@ -2073,7 +2098,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         { key: "sno", label: "Sno.", align: "center" as const },
         { key: "product_name", label: "Product Name", align: "left" as const },
 
-        ...(!isGlobalPage
+        ...(!isGlobalPage && !isMonthWiseView
           ? [
             {
               key: "sku",
@@ -2118,7 +2143,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
         { key: "product_name", label: "Product Name", align: "left" as const },
 
-        ...(!isGlobalPage
+        ...(!isGlobalPage && !isMonthWiseView
           ? [
             {
               key: "sku",
@@ -2159,59 +2184,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ];
 
     // optional: remove duplicates if any
-    const promotions = ordered.filter(
-      (column) => column.key === "promotional_rebates"
-    );
-    const remaining = ordered.filter(
-      (column) => column.key !== "promotional_rebates"
-    );
-    const placementAnchor =
-      effectivePromotionsPlacement.anchor === "sales"
-        ? "net_sales"
-        : effectivePromotionsPlacement.anchor === "amazon_breakdown"
-          ? effectivePromotionsPlacement.side === "before"
-            ? "selling_fees"
-            : "amazon_fee"
-          : effectivePromotionsPlacement.anchor === "other_transactions_breakdown"
-            ? "other_transactions"
-            : effectivePromotionsPlacement.anchor === "profit_breakdown"
-              ? effectivePromotionsPlacement.side === "before"
-                ? (isUsCountry ? "profit" : "unit_wise_profitability")
-                : "profit_percentage"
-              : effectivePromotionsPlacement.anchor === "ads_spend_breakdown"
-                ? effectivePromotionsPlacement.side === "before"
-                  ? "product_spend"
-                  : "ads_spend"
-                : effectivePromotionsPlacement.anchor === "cm2_profit_breakdown"
-                  ? "cm2_profit"
-                  : effectivePromotionsPlacement.anchor;
-    const anchorIndex = remaining.findIndex(
-      (column) => column.key === placementAnchor
-    );
-    const insertionIndex =
-      anchorIndex < 0
-        ? remaining.findIndex((column) => column.key === "profit")
-        : anchorIndex +
-          (effectivePromotionsPlacement.side === "after" ||
-          effectivePromotionsPlacement.anchor === "sales"
-            ? 1
-            : 0);
-    const safeInsertionIndex =
-      insertionIndex < 0 ? remaining.length : insertionIndex;
-    const orderedWithPromotions = [
-      ...remaining.slice(0, safeInsertionIndex),
-      ...promotions,
-      ...remaining.slice(safeInsertionIndex),
-    ];
-
     const seen = new Set<string>();
-    return orderedWithPromotions.filter((c) => {
+    return ordered.filter((c) => {
       if (!c.key) return false;
       if (seen.has(c.key)) return false;
       seen.add(c.key);
       return true;
     });
-  }, [hasCm2Data, isUsCountry, isGlobalPage, effectivePromotionsPlacement]);
+  }, [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView]);
 
 
   const INT_KEYS = useMemo(() => new Set(["quantity", "units_sold", "return_units", "net_units_sold"]), []);
@@ -3112,7 +3092,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
             ? sourceRow.product_name
             : row.product_name ?? "-"),
         // Keep the Excel Month-wise values aligned with the Month-wise UI.
-        ads_spend: toNumber(sourceRow.total_ads ?? sourceRow.ads_spend ?? sourceRow.advertising_total),
+        ads_spend: firstNonZeroNumber(
+          sourceRow.total_ads,
+          sourceRow.ads_spend,
+          sourceRow.advertising_total_final,
+          sourceRow.advertising_fees,
+          sourceRow.advertising_total
+        ),
         product_spend: toNumber(sourceRow.product_spend ?? sourceRow.sponsored_product),
         display_spend: toNumber(sourceRow.display_spend ?? sourceRow.sponsored_display),
         brand_spend: toNumber(sourceRow.brand_spend) !== 0
@@ -3160,9 +3146,33 @@ const SKUtable: React.FC<SKUtableProps> = ({
       ...(backendTotalBase || ({} as TableRow)),
       product_name: "Total",
       sku: "Total",
-      ads_spend: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
-      total_ads: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
-      advertising_total: toNumber(monthWiseKpiValues?.adsSpend ?? costOfAdvertisementValue),
+      ads_spend: firstNonZeroNumber(
+        monthWiseKpiValues?.adsSpend,
+        costOfAdvertisementValue,
+        yearlyMonthTotal.total_ads,
+        yearlyMonthTotal.ads_spend,
+        yearlyMonthTotal.advertising_total_final,
+        yearlyMonthTotal.advertising_fees,
+        yearlyMonthTotal.advertising_total
+      ),
+      total_ads: firstNonZeroNumber(
+        monthWiseKpiValues?.adsSpend,
+        costOfAdvertisementValue,
+        yearlyMonthTotal.total_ads,
+        yearlyMonthTotal.ads_spend,
+        yearlyMonthTotal.advertising_total_final,
+        yearlyMonthTotal.advertising_fees,
+        yearlyMonthTotal.advertising_total
+      ),
+      advertising_total: firstNonZeroNumber(
+        monthWiseKpiValues?.adsSpend,
+        costOfAdvertisementValue,
+        yearlyMonthTotal.total_ads,
+        yearlyMonthTotal.ads_spend,
+        yearlyMonthTotal.advertising_total_final,
+        yearlyMonthTotal.advertising_fees,
+        yearlyMonthTotal.advertising_total
+      ),
       acos: toNumber(monthWiseKpiValues?.acos ?? frontendTacos),
       cm2_profit: toNumber(monthWiseKpiValues?.cm2Profit ?? totals.total_cm2_profit),
       cm2_profit_total: toNumber(monthWiseKpiValues?.cm2Profit ?? totals.total_cm2_profit),
@@ -3401,7 +3411,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [tableData]);
 
   /* --------- Render guards --------- */
-  if (loading && displayRows.length === 0) {
+  if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <Loader fullscreen transparent />
@@ -3862,11 +3872,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
           <div className="flex flex-wrap items-baseline gap-0 sm:gap-2 justify-left sm:justify-start">
             <PageBreadcrumb pageTitle={getTitle()} variant="page" textSize="2xl" />
             <span className="text-[#5EA68E] text-base sm:text-lg lg:text-lg 2xl:text-xl font-bold">({currencySymbol})</span>
-            {/* {onPromotionsPlacementChange && (
-              <span className="text-xs font-normal text-slate-500">
-                Drag Promotions anywhere after Gross Sales and before CM2 Profit. Quarterly/yearly periods stop before CM1.
-              </span>
-            )} */}
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
@@ -3931,7 +3936,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           <div
             className={[
-              "relative w-full rounded-xl border border-gray-300",
+              "w-full rounded-xl border border-gray-300",
               shouldScrollTable
                 ? "overflow-hidden"
                 : "overflow-x-auto overflow-y-hidden",
@@ -3996,200 +4001,38 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
                   return name === "total" || sku === "total";
                 }}
-                layout={tableLayout}
-                draggableColKeys={onPromotionsPlacementChange ? ["promotional_rebates"] : []}
-                dropTargetGroupIds={[
-                  ...(onPromotionsPlacementChange
+                layout={[
+                  { type: "group" as const, id: "units_breakdown" },
+                  { type: "single" as const, key: "asp" },
+
+                  { type: "group" as const, id: "sales" },
+                  ...(isUsCountry
+                    ? (!isMonthWiseView
+                        ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+                        : [])
+                    : [{ type: "group" as const, id: "promotional_rebates" }]),
+
+                  { type: "single" as const, key: "cost_of_unit_sold" },
+
+                  { type: "group" as const, id: "amazon_breakdown" },
+                  { type: "group" as const, id: "other_transactions_breakdown" },
+                  { type: "group" as const, id: "profit_breakdown" },
+
+                  ...(hasCm2Data
                     ? [
-                        "sales",
-                        "amazon_breakdown",
-                        "other_transactions_breakdown",
-                        "profit_breakdown",
-                        ...(hasCm2Data && range === "monthly"
-                          ? [
-                              "ads_spend_breakdown",
-                              ...(!isMonthWiseView
-                                ? ["cm2_profit_breakdown"]
-                                : []),
-                            ]
-                          : []),
-                      ]
+                      { type: "group" as const, id: "ads_spend_breakdown" },
+                      { type: "single" as const, key: "acos" },
+                      ...(isMonthWiseView && isUsCountry
+                        ? [
+                          { type: "group" as const, id: "month_other_charges" },
+                          { type: "group" as const, id: "cm2_profit_breakdown" },
+                          { type: "group" as const, id: "month_net_reimbursement" },
+                        ]
+                        : []),
+                      ...(!isMonthWiseView ? [{ type: "group" as const, id: "cm2_profit_breakdown" }] : []),
+                    ]
                     : []),
                 ]}
-                dropTargetColKeys={
-                  onPromotionsPlacementChange
-                    ? [
-                        "product_sales",
-                        "refund_sales",
-                        "tex_and_credits",
-                        "net_sales",
-                        "promotional_rebates_percentage",
-                        "cost_of_unit_sold",
-                        "selling_fees",
-                        "fba_fees",
-                        "amazon_fee",
-                        "net_taxes",
-                        "net_credits",
-                        "misc_transaction",
-                        "other_transactions",
-                        "profit",
-                        "unit_wise_profitability",
-                        "profit_percentage",
-                        ...(hasCm2Data && range === "monthly"
-                          ? [
-                              "product_spend",
-                              "display_spend",
-                              "brand_spend",
-                              "ads_spend",
-                              "acos",
-                              "cm2_profit",
-                              "unit_wise_cm2_profitability",
-                              "cm2_margins",
-                            ]
-                          : []),
-                      ]
-                    : []
-                }
-                onColumnDrop={(sourceKey, targetKey, side) => {
-                  if (sourceKey !== "promotional_rebates") return;
-                  const salesColumns = [
-                    "product_sales",
-                    "refund_sales",
-                    "tex_and_credits",
-                  ];
-                  const marketplaceColumns = [
-                    "selling_fees",
-                    "fba_fees",
-                    "amazon_fee",
-                  ];
-                  const transactionColumns = [
-                    "net_taxes",
-                    "net_credits",
-                    "misc_transaction",
-                    "other_transactions",
-                  ];
-                  const cm1Columns = [
-                    "profit",
-                    "unit_wise_profitability",
-                    "profit_percentage",
-                  ];
-                  const cm2Columns = [
-                    "cm2_profit",
-                    "unit_wise_cm2_profitability",
-                    "cm2_margins",
-                  ];
-                  const adsColumns = [
-                    "product_spend",
-                    "display_spend",
-                    "brand_spend",
-                    "ads_spend",
-                  ];
-
-                  if (targetKey === "sales") {
-                    onPromotionsPlacementChange?.({
-                      anchor: "sales",
-                      side: "after",
-                      stage: "before_cm1",
-                    });
-                    return;
-                  }
-                  if (salesColumns.includes(targetKey)) {
-                    onPromotionsPlacementChange?.({
-                      anchor: targetKey,
-                      side: targetKey === "product_sales" ? "after" : side,
-                      stage: "in_net_sales",
-                    });
-                    return;
-                  }
-                  if (targetKey === "net_sales") {
-                    onPromotionsPlacementChange?.(
-                      side === "before"
-                        ? {
-                            anchor: "net_sales",
-                            side: "before",
-                            stage: "in_net_sales",
-                          }
-                        : {
-                            anchor: "sales",
-                            side: "after",
-                            stage: "before_cm1",
-                          }
-                    );
-                    return;
-                  }
-                  if (targetKey === "profit_breakdown" || cm1Columns.includes(targetKey)) {
-                    const placementSide =
-                      side === "after" &&
-                      (range !== "monthly" || !hasCm2Data)
-                        ? "before"
-                        : side;
-                    onPromotionsPlacementChange?.({
-                      anchor: "profit_breakdown",
-                      side: placementSide,
-                      stage: placementSide === "after" ? "after_cm1" : "before_cm1",
-                    });
-                    return;
-                  }
-                  if (
-                    targetKey === "cm2_profit_breakdown" ||
-                    cm2Columns.includes(targetKey)
-                  ) {
-                    if (range !== "monthly" || !hasCm2Data) return;
-                    onPromotionsPlacementChange?.({
-                      anchor: "cm2_profit_breakdown",
-                      side: "before",
-                      stage: "after_cm1",
-                    });
-                    return;
-                  }
-                  if (
-                    targetKey === "ads_spend_breakdown" ||
-                    targetKey === "acos" ||
-                    adsColumns.includes(targetKey)
-                  ) {
-                    if (range !== "monthly" || !hasCm2Data) return;
-                    const anchor =
-                      targetKey === "acos" ? "acos" : "ads_spend_breakdown";
-                    onPromotionsPlacementChange?.({
-                      anchor,
-                      side,
-                      stage: "after_cm1",
-                    });
-                    return;
-                  }
-                  if (
-                    targetKey === "amazon_breakdown" ||
-                    marketplaceColumns.includes(targetKey)
-                  ) {
-                    onPromotionsPlacementChange?.({
-                      anchor: "amazon_breakdown",
-                      side,
-                      stage: "before_cm1",
-                    });
-                    return;
-                  }
-                  if (
-                    targetKey === "other_transactions_breakdown" ||
-                    transactionColumns.includes(targetKey)
-                  ) {
-                    onPromotionsPlacementChange?.({
-                      anchor: "other_transactions_breakdown",
-                      side,
-                      stage: "before_cm1",
-                    });
-                    return;
-                  }
-                  if (
-                    targetKey === "cost_of_unit_sold" ||
-                    targetKey === "promotional_rebates_percentage"
-                  ) {
-                    onPromotionsPlacementChange?.({
-                      anchor: targetKey,
-                      side,
-                      stage: "before_cm1",
-                    });
-                  }
-                }}
                 initialCollapsed={{
                   units_breakdown: true,
                   sales: true,
@@ -4390,16 +4233,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   No Data Available for selected period
                 </div>
               )}
+
             </div>
-            {loading && displayRows.length > 0 && (
-              <div
-                className="absolute inset-0 z-30 rounded-xl bg-white/65"
-                aria-label="Refreshing table data"
-                aria-busy="true"
-              >
-                <Loader fullscreen contained transparent label="Refreshing table data" />
-              </div>
-            )}
           </div>
         </div>
       </div>

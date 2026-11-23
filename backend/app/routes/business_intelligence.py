@@ -1187,6 +1187,14 @@ def _aggregate_sku_month_tables(table_names, key_column):
     all_columns = set()
     card_total_fields = {
         "total_quantity",
+        "quantity", "units_sold", "unit_sold",
+        "return_quantity", "return_units", "units_returned",
+        "refund_sales", "sales_refund", "refund_amount",
+        "net_taxes", "net_tax", "taxes_net",
+        "net_credits", "net_credit", "credits_net",
+        "taxncredit", "tax_and_credits", "misc_transaction",
+        "product_spend", "display_spend", "brand_spend", "visible_ads",
+        "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads",
         "gross_sales",
         "net_sales",
         "profit",
@@ -1440,6 +1448,14 @@ def _build_rolling_card_total(rows):
     else:
         total_fields = (
             "total_quantity",
+            "quantity", "units_sold", "unit_sold",
+            "return_quantity", "return_units", "units_returned",
+            "refund_sales", "sales_refund", "refund_amount",
+            "net_taxes", "net_tax", "taxes_net",
+            "net_credits", "net_credit", "credits_net",
+            "taxncredit", "tax_and_credits", "misc_transaction",
+            "product_spend", "display_spend", "brand_spend", "visible_ads",
+            "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads",
             "gross_sales",
             "net_sales",
             "profit",
@@ -1482,6 +1498,23 @@ def _build_rolling_card_total(rows):
             if any(field in row for row in rows)
         }
 
+    quantity = _rolling_number(total.get("quantity"), total.get("units_sold"), total.get("unit_sold"))
+    total["quantity"] = quantity
+    total["units_sold"] = quantity
+    return_units = _rolling_number(total.get("return_quantity"), total.get("return_units"), total.get("units_returned"))
+    total["return_quantity"] = return_units
+    total["return_units"] = return_units
+    total["refund_sales"] = _rolling_number(total.get("refund_sales"), total.get("sales_refund"), total.get("refund_amount"))
+    total["net_taxes"] = _rolling_number(total.get("net_taxes"), total.get("net_tax"), total.get("taxes_net"))
+    total["net_credits"] = _rolling_number(total.get("net_credits"), total.get("net_credit"), total.get("credits_net"))
+    total["product_spend"] = _rolling_number(total.get("product_spend"), total.get("sponsored_product"), total.get("Sponsored_Product"))
+    total["display_spend"] = _rolling_number(total.get("display_spend"), total.get("sponsored_display"), total.get("Sponsored_Display"))
+    brand_spend = _rolling_number(total.get("brand_spend"), total.get("visible_ads"), total.get("sponsored_brand"))
+    total["brand_spend"] = brand_spend
+    total["visible_ads"] = _rolling_number(total.get("visible_ads"), brand_spend)
+    deals_spend = _rolling_number(total.get("dealsvouchar_ads"), total.get("dealsvoucher_ads"), total.get("dealvouchars_ads"))
+    total["dealsvouchar_ads"] = deals_spend
+    total["dealsvoucher_ads"] = deals_spend
     other_transactions = float(
         total.get("other_transaction_fees")
         or total.get("other_transactions")
@@ -1513,10 +1546,36 @@ def _build_rolling_card_total(rows):
         or total.get("cm2_profit")
         or 0
     )
+    cm1_profit = _rolling_number(
+        total.get("profit"),
+        total.get("total_profit"),
+        total.get("cm1_profit"),
+    )
+    cm1_profit_percentage = (
+        cm1_profit / abs(net_sales) * 100 if net_sales else 0.0
+    )
+    total["profit_percentage"] = cm1_profit_percentage
+    total["cm1_profit_percentage"] = cm1_profit_percentage
+    total["cm1_profit_per"] = cm1_profit_percentage
     total["asp"] = net_sales / units if units else 0.0
     total["gross_sales_per_unit"] = gross_sales / units if units else 0.0
     total["net_sales_per_unit"] = net_sales / units if units else 0.0
     total["cost_of_ads_per_unit"] = ads_cost / units if units else 0.0
+    monthly_ads_cost = next(
+        (
+            abs(float(total.get(field) or 0))
+            for field in (
+                "total_ads", "ads_spend", "advertising_total_final",
+                "advertising_fees", "advertising_total",
+            )
+            if total.get(field)
+        ),
+        0.0,
+    )
+    ads_ratio = monthly_ads_cost / abs(net_sales) * 100 if net_sales else 0.0
+    total["acos"] = ads_ratio
+    total["ads_acos"] = ads_ratio
+    total["tacos_total_advertising_cost_of_sale"] = ads_ratio
     total["total_cm2_margins"] = (
         cm2_profit / net_sales * 100 if net_sales else 0.0
     )
@@ -1630,6 +1689,14 @@ def get_rolling_12_month_sku_data():
                 total = _build_rolling_card_total(card_totals or sku_rows)
                 sku_total = _build_rolling_card_total(sku_rows)
                 for field in (
+                    "quantity", "units_sold", "unit_sold",
+                    "return_quantity", "return_units", "units_returned",
+                    "refund_sales", "sales_refund", "refund_amount",
+                    "net_taxes", "net_tax", "taxes_net",
+                    "net_credits", "net_credit", "credits_net",
+                    "taxncredit", "tax_and_credits", "misc_transaction",
+                    "product_spend", "display_spend", "brand_spend", "visible_ads",
+                    "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads",
                     "other_transaction_fees",
                     "other_transactions",
                     "rembursement_fee",

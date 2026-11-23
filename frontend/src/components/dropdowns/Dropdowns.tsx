@@ -8025,34 +8025,19 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               const monthName = monthNames[monthIndex];
               if (!yearValue || !monthName) return [];
               const totals = rawTotals as Record<string, unknown>;
-              const netSales = toNum(totals.net_sales);
-              const monthlyAdsCost = Math.abs(
-                toNum(totals.total_ads) ||
-                toNum(totals.ads_spend) ||
-                toNum(totals.advertising_total_final) ||
-                toNum(totals.advertising_fees) ||
-                toNum(totals.advertising_total)
-              );
-              const otherTransactions =
-                toNum(totals.other_transaction_fees) ||
-                toNum(totals.other_transactions);
+
               return [{
                 ...totals,
                 product_name: monthName,
                 month_name: monthName,
                 month_label: monthName,
                 month: monthName.toLowerCase(),
-                sku: monthName.toLowerCase(),
                 year: yearValue,
                 calendar_year: yearValue,
                 year_month: period,
                 _month_index: monthIndex,
                 _rolling_index: rollingIndex,
-                other_transaction_fees: otherTransactions,
-                other_transactions: otherTransactions,
-                tacos_total_advertising_cost_of_sale: netSales
-                  ? (monthlyAdsCost / Math.abs(netSales)) * 100
-                  : 0,
+
               }];
             });
 
