@@ -3687,15 +3687,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }).length;
   }, [tableData]);
 
-  /* --------- Render guards --------- */
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <Loader fullscreen transparent />
-      </div>
-    );
-  }
-
   if (error) {
     return <div className="text-red-600">Error: {error}</div>;
   }
@@ -4252,11 +4243,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           <div
             className={[
-              "w-full rounded-xl border border-gray-300",
+              "relative w-full rounded-xl border border-gray-300",
               shouldScrollTable
                 ? "overflow-hidden"
                 : "overflow-x-auto overflow-y-hidden",
             ].join(" ")}
+            aria-busy={loading}
           >
             <div className="w-full">
               <GroupedCollapsibleTable<TableRow>
@@ -4839,8 +4831,17 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   No Data Available for selected period
                 </div>
               )}
-
             </div>
+            {loading && (
+              <div
+                className="absolute inset-0 z-20 flex items-center justify-center rounded-xl bg-white/70"
+                role="status"
+                aria-live="polite"
+                aria-label="Updating SKU table"
+              >
+                <Loader transparent />
+              </div>
+            )}
           </div>
         </div>
       </div>
