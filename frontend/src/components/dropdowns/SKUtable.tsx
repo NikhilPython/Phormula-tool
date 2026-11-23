@@ -4159,7 +4159,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   onClick={handleConfirmColumnRearrangement}
                   title="Apply column arrangement"
                   aria-label="Apply column arrangement"
-                  className="inline-flex rounded-md border border-emerald-300 bg-emerald-50 p-1.5 text-emerald-700 transition hover:bg-emerald-100"
+                  className="inline-flex rounded-md border border-green-500 bg-green-500 p-1.5 text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                 >
                   <Check size={18} />
                 </button>
@@ -4168,7 +4168,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   onClick={handleCancelColumnRearrangement}
                   title="Cancel column arrangement"
                   aria-label="Cancel column arrangement"
-                  className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-gray-600 transition hover:bg-gray-100"
+                  className="inline-flex rounded-md border border-[#B75A5A] bg-[#B75A5A] p-1.5 text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                 >
                   <X size={18} />
                 </button>

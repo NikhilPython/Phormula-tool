@@ -22,6 +22,7 @@ import {
     RiExpandDiagonalFill,
 
 } from "react-icons/ri";
+import { Check, Columns3, X } from "lucide-react";
 
 
 
@@ -2179,9 +2180,9 @@ export default function DashboardProductwisePnlSection({
                                 disabled={isApplyingColumnPlacements || columnPlacementLoading}
                                 title="Apply column arrangement"
                                 aria-label="Apply column arrangement"
-                                className="inline-flex h-9 items-center rounded-md border border-emerald-300 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-green-500 bg-green-500 text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                             >
-                                {isApplyingColumnPlacements ? "Updating…" : "Apply"}
+                                <Check size={18} />
                             </button>
                             <button
                                 type="button"
@@ -2189,9 +2190,9 @@ export default function DashboardProductwisePnlSection({
                                 disabled={isApplyingColumnPlacements}
                                 title="Cancel column arrangement"
                                 aria-label="Cancel column arrangement"
-                                className="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-gray-600 disabled:opacity-50"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#B75A5A] bg-[#B75A5A] text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                             >
-                                Cancel
+                                <X size={18} />
                             </button>
                         </>
                     ) : (
@@ -2204,69 +2205,45 @@ export default function DashboardProductwisePnlSection({
                                 setIsRearrangingColumns(true);
                             }}
                             disabled={columnPlacementLoading || shouldShowDummyUi}
-                            title="Rearrange Promotions and Amazon Fees"
-                            aria-label="Rearrange Promotions and Amazon Fees"
-                            className="inline-flex h-9 items-center rounded-md border border-gray-300 bg-white px-3 text-sm font-medium text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Rearrange columns"
+                            aria-label="Rearrange columns"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
                         >
-                            Rearrange columns
+                            <Columns3 size={18} />
                         </button>
                     )}
 
-                    {/* Expand / collapse rows and columns */}
+                    {!isRearrangingColumns && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handleToggleTableExpansion}
+                                title={
+                                    isTableFullyExpanded
+                                        ? "Collapse rows and columns"
+                                        : "Expand rows and columns"
+                                }
+                                aria-label={
+                                    isTableFullyExpanded
+                                        ? "Collapse rows and columns"
+                                        : "Expand rows and columns"
+                                }
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                            >
+                                {isTableFullyExpanded ? (
+                                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                                ) : (
+                                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                                )}
+                            </button>
 
-                    <button
-
-                        type="button"
-
-                        onClick={handleToggleTableExpansion}
-
-                        title={
-
-                            isTableFullyExpanded
-
-                                ? "Collapse rows and columns"
-
-                                : "Expand rows and columns"
-
-                        }
-
-                        aria-label={
-
-                            isTableFullyExpanded
-
-                                ? "Collapse rows and columns"
-
-                                : "Expand rows and columns"
-
-                        }
-
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-300 bg-white text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-
-                    >
-
-                        {isTableFullyExpanded ? (
-
-                            <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-
-                        ) : (
-
-                            <RiExpandDiagonalFill size={18} className="font-extrabold" />
-
-                        )}
-
-                    </button>
-
-
-
-                    <DownloadIconButton
-
-                        onClick={handleDownloadPlProductwiseMtd}
-
-                        aria-label="Download P&L Productwise Breakdown MTD"
-
-                        className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-
-                    />
+                            <DownloadIconButton
+                                onClick={handleDownloadPlProductwiseMtd}
+                                aria-label="Download P&L Productwise Breakdown MTD"
+                                className="transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                            />
+                        </>
+                    )}
 
                 </div>
 
@@ -2611,7 +2588,7 @@ export default function DashboardProductwisePnlSection({
                                     ? [
                                         "marketplace_fees",
                                         ...(!isUsPnlSkuLayout ||
-                                        activePromotionsPlacement.stage !== "in_net_sales"
+                                            activePromotionsPlacement.stage !== "in_net_sales"
                                             ? ["promotions"]
                                             : []),
                                     ]
@@ -2619,8 +2596,8 @@ export default function DashboardProductwisePnlSection({
                             }
                             draggableColKeys={
                                 isRearrangingColumns &&
-                                isUsPnlSkuLayout &&
-                                activePromotionsPlacement.stage === "in_net_sales"
+                                    isUsPnlSkuLayout &&
+                                    activePromotionsPlacement.stage === "in_net_sales"
                                     ? ["promotional_rebates", "promotional_rebates_percentage"]
                                     : []
                             }
@@ -2630,7 +2607,7 @@ export default function DashboardProductwisePnlSection({
                                         "quantity",
                                         "sales",
                                         ...(!isUsPnlSkuLayout ||
-                                        activePromotionsPlacement.stage !== "in_net_sales"
+                                            activePromotionsPlacement.stage !== "in_net_sales"
                                             ? ["promotions"]
                                             : []),
                                         "marketplace_fees",
