@@ -898,7 +898,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
     useState<AmazonFeesPlacement>(amazonFeesPlacement);
   const [tableView, setTableView] = useState<"product" | "month">("product");
-  const canMovePastCm1 = range === "monthly" || isRolling12Months;
   const isMonthWiseView =
     range !== "monthly" && tableView === "month";
   const [allColumnsExpanded, setAllColumnsExpanded] = useState(false);
@@ -1115,9 +1114,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
     // global period selector remains Yearly. Preserve existing behavior for
     // the normal product-wise yearly/quarterly view.
     if (
-      !isRolling12Months &&
       !isMonthWiseView &&
-      (currentRange === "yearly" || currentRange === "quarterly")
+      (isRolling12Months ||
+        currentRange === "yearly" ||
+        currentRange === "quarterly")
     ) {
       return false;
     }
@@ -1136,9 +1136,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
     if (!productRows.length) return false;
 
-    // The month-wise layout must retain Ads and CM2 columns for every month;
-    // monthly rows already carry their own backend totals.
-    if (isMonthWiseView && !isRolling12Months) return true;
+    // The month-wise layout retains Ads and CM2 columns, including rolling periods.
+    if (isMonthWiseView) return true;
 
     // Show Ads Spend, ACoS%, CM2 Profit only when at least one SKU has real CM2 impact
     return productRows.some((row: any) => {
@@ -1160,6 +1159,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     });
   }, [tableData, countryName, range, isMonthWiseView, isRolling12Months]);
+  const canMovePastCm1 =
+    range === "monthly" ||
+    (isMonthWiseView && hasCm2Data);
   const requestedPromotionsPlacement = isRearrangingColumns
     ? draftPromotionsPlacement
     : promotionsPlacement;
@@ -1666,16 +1668,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
               }]
             : []),
-          ...(isMonthWiseView &&
-          effectivePromotionsPlacement.stage === "in_net_sales"
-            ? [{
-                key: "promotional_rebates_percentage",
-                label: <>Promotions<br />%</>,
-                align: "center" as const,
-                width: "9%",
-                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
-              }]
-            : []),
           {
             key: "net_sales",
             label: "Net Sales",
@@ -1706,16 +1698,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
             width: "8%",
             info: <InfoTip text={TERM_DEFINITIONS.tex_and_credits} />,
           },
-          ...(isMonthWiseView &&
-          effectivePromotionsPlacement.stage === "in_net_sales"
-            ? [{
-                key: "promotional_rebates_percentage",
-                label: <>Promotions<br />%</>,
-                align: "center" as const,
-                width: "9%",
-                info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} />,
-              }]
-            : []),
           {
             key: "net_sales",
             label: "Total",
@@ -1749,14 +1731,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
               align: "center" as const,
               width: "9%",
             },
-            ...(!isMonthWiseView
-              ? [{
-                  key: "promotional_rebates_percentage",
-                  label: <>Promotions<br />%</>,
-                  align: "center" as const,
-                  width: "9%",
-                }]
-              : []),
+            {
+              key: "promotional_rebates_percentage",
+              label: <>Promotions<br />%</>,
+              align: "center" as const,
+              width: "9%",
+            },
           ],
         } as ColGroup<TableRow>,
       ]
@@ -2061,9 +2041,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { type: "group", id: "sales" },
       ...(effectivePromotionsPlacement.stage === "in_net_sales"
         ? isUsCountry
-          ? !isMonthWiseView
-            ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
-            : []
+          ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
           : [{ type: "group" as const, id: "promotional_rebates" }]
         : []),
       { type: "single", key: "cost_of_unit_sold" },

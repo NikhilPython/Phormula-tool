@@ -2368,6 +2368,14 @@ def _apply_promotions_placement(rows, placement):
             row["Profit"] = row["profit"]
         if "total_profit" in row:
             row["total_profit"] = row["profit"]
+        if "cm1_profit" in row:
+            row["cm1_profit"] = row["profit"]
+        if "cm1_profit_per_unit" in row:
+            row["cm1_profit_per_unit"] = row["unit_wise_profitability"]
+        if "cm1_profit_per" in row:
+            row["cm1_profit_per"] = row["profit_percentage"]
+        if "cm1_profit_percentage" in row:
+            row["cm1_profit_percentage"] = row["profit_percentage"]
 
         if "acos" in row:
             ads_value = row.get("ads_spend")
@@ -2426,6 +2434,8 @@ def _apply_amazon_fees_placement(rows, placement):
             row["cm1_profit"] = row["profit"]
         if "cm1_profit_per_unit" in row:
             row["cm1_profit_per_unit"] = row["unit_wise_profitability"]
+        if "cm1_profit_per" in row:
+            row["cm1_profit_per"] = row["profit_percentage"]
         if "cm1_profit_percentage" in row:
             row["cm1_profit_percentage"] = row["profit_percentage"]
 
@@ -3693,6 +3703,9 @@ def skutableprofit():
     amazon_fees_placement = _read_amazon_fees_placement()
     if amazon_fees_placement is None:
         return jsonify({"error": "Invalid amazonFeesPlacement"}), 400
+    allow_after_cm1 = (
+        request.args.get("allowAfterCm1", "").strip().lower() == "true"
+    )
 
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -4116,13 +4129,18 @@ def skutableprofit():
             current_data = _add_product_status(current_data)
             has_current_cm2_data = _has_cm2_data(current_data)
             current_placement = promotions_placement
-            if current_placement == "after_cm1" and not has_current_cm2_data:
+            if (
+                current_placement == "after_cm1"
+                and not has_current_cm2_data
+                and not allow_after_cm1
+            ):
                 current_placement = "before_cm1"
             current_data = _apply_promotions_placement(current_data, current_placement)
             current_amazon_fees_placement = amazon_fees_placement
             if (
                 current_amazon_fees_placement == "after_cm1"
                 and not has_current_cm2_data
+                and not allow_after_cm1
             ):
                 current_amazon_fees_placement = "before_cm1"
             current_data = _apply_amazon_fees_placement(
@@ -4166,13 +4184,18 @@ def skutableprofit():
                 previous_data = []
             has_previous_cm2_data = _has_cm2_data(previous_data)
             previous_placement = promotions_placement
-            if previous_placement == "after_cm1" and not has_previous_cm2_data:
+            if (
+                previous_placement == "after_cm1"
+                and not has_previous_cm2_data
+                and not allow_after_cm1
+            ):
                 previous_placement = "before_cm1"
             previous_data = _apply_promotions_placement(previous_data, previous_placement)
             previous_amazon_fees_placement = amazon_fees_placement
             if (
                 previous_amazon_fees_placement == "after_cm1"
                 and not has_previous_cm2_data
+                and not allow_after_cm1
             ):
                 previous_amazon_fees_placement = "before_cm1"
             previous_data = _apply_amazon_fees_placement(

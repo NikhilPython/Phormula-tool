@@ -1789,6 +1789,9 @@ def get_rolling_12_month_sku_data():
             "after_cm1",
         }:
             return jsonify({'error': 'Invalid promotionsPlacement'}), 400
+        allow_after_cm1 = (
+            request.args.get("allowAfterCm1", "").strip().lower() == "true"
+        )
 
         end_month_arg = request.args.get('endMonth')
         end_year_arg = request.args.get('endYear')
@@ -1890,10 +1893,13 @@ def get_rolling_12_month_sku_data():
             if (
                 effective_promotions_placement == "after_cm1"
                 and not has_cm2_data
+                and not allow_after_cm1
             ):
                 effective_promotions_placement = "before_cm1"
             effective_amazon_placement = (
-                amazon_fees_placement if has_cm2_data else "before_cm1"
+                amazon_fees_placement
+                if has_cm2_data or allow_after_cm1
+                else "before_cm1"
             )
             adjusted_card_totals = dict(card_totals)
             _apply_rolling_promotions_placement(
@@ -1927,11 +1933,12 @@ def get_rolling_12_month_sku_data():
                     if (
                         effective_month_promotions == "after_cm1"
                         and not has_month_cm2_data
+                        and not allow_after_cm1
                     ):
                         effective_month_promotions = "before_cm1"
                     effective_month_placement = (
                         amazon_fees_placement
-                        if has_month_cm2_data
+                        if has_month_cm2_data or allow_after_cm1
                         else "before_cm1"
                     )
                     adjusted_month_card_totals = dict(monthly_card_totals)

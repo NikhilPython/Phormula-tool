@@ -6631,6 +6631,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("year", String(yearVal));
       url.searchParams.set("promotionsPlacement", resolvedStage);
       url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
+      if (placement.stage === "after_cm1" || amazonPlacement.stage === "after_cm1") {
+        url.searchParams.set("allowAfterCm1", "true");
+      }
 
       if (isGlobal && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
@@ -6674,7 +6677,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return url.toString();
   };
 
-  const fetchRolling12Months = async (countryValue: string, authToken: string | null) => {
+  const fetchRolling12Months = async (
+    countryValue: string,
+    authToken: string | null,
+    allowAfterCm1 = false
+  ) => {
     if (!authToken) throw new Error("Authorization token not found. Please login.");
 
     const url = new URL(
@@ -6683,6 +6690,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("countryName", countryValue.toLowerCase());
     url.searchParams.set("promotionsPlacement", promotionsPlacement.stage);
     url.searchParams.set("amazonFeesPlacement", amazonFeesPlacement.stage);
+    if (allowAfterCm1) {
+      url.searchParams.set("allowAfterCm1", "true");
+    }
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -7998,7 +8008,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     yearVal: string,
     countryVal: string,
     placement: PromotionsPlacement,
-    amazonPlacement: AmazonFeesPlacement
+    amazonPlacement: AmazonFeesPlacement,
+    allowAfterCm1 = false
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
 
@@ -8014,6 +8025,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       "amazonFeesPlacement",
       amazonPlacement.stage === "after_cm1" ? "after_cm1" : "before_cm1"
     );
+    if (allowAfterCm1) {
+      url.searchParams.set("allowAfterCm1", "true");
+    }
 
     if (isGlobal && homeCurrency) {
       url.searchParams.set("homeCurrency", homeCurrency);
@@ -8036,7 +8050,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       if (isRolling12Months && activeTab === "skuBreakdown") {
         try {
-          const payload = await fetchRolling12Months(initialCountryName, token);
+          const payload = await fetchRolling12Months(
+            initialCountryName,
+            token,
+            true
+          );
           const monthlyBreakdown = payload?.current_period?.monthly_breakdown ?? {};
           const rollingRows = Object.entries(monthlyBreakdown)
             .sort(([periodA], [periodB]) => periodA.localeCompare(periodB))
@@ -8099,20 +8117,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         : allMonthsForYear;
       const results = await Promise.all(months.map(async (monthName) => {
         try {
-          const monthWisePlacement =
-            range !== "monthly" && promotionsPlacement.stage === "after_cm1"
-              ? { ...promotionsPlacement, stage: "before_cm1" as const }
-              : promotionsPlacement;
-          const monthWiseAmazonPlacement =
-            range !== "monthly" && amazonFeesPlacement.stage === "after_cm1"
-              ? { ...amazonFeesPlacement, stage: "before_cm1" as const }
-              : amazonFeesPlacement;
           const url = buildMonthlySkuUrl(
             monthName,
             String(selectedYear),
             initialCountryName,
-            monthWisePlacement,
-            monthWiseAmazonPlacement
+            promotionsPlacement,
+            amazonFeesPlacement,
+            true
           );
           const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
           if (!response.ok) return null;
@@ -8361,6 +8372,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             ? "after_cm1"
             : "before_cm1"
         );
+        url.searchParams.set("allowAfterCm1", "true");
       }
 
       const res = await fetch(url.toString(), {
@@ -8442,7 +8454,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             : promotionsPlacement,
           rangeType === "monthly" && amazonFeesPlacement.stage === "after_cm1"
             ? amazonFeesPlacement
-            : { ...amazonFeesPlacement, stage: "before_cm1" }
+            : { ...amazonFeesPlacement, stage: "before_cm1" },
+          promotionsPlacement.stage === "after_cm1" ||
+            amazonFeesPlacement.stage === "after_cm1"
         );
 
         const prevRes = await fetch(prevUrl.toString(), {
