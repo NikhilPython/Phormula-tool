@@ -5148,7 +5148,7 @@ _DASHBOARD_REFRESH_STEPS = frozenset({
     "mtd_transactions", "inventory_aged", "inventory_awd",
     "current_inventory", "inventory_current", "inventory_age_summary",
     "sp_report", "sb_report", "sd_report", "monthly_ads_db",
-    "daily_ads_db", "live_mtd_bi", "action_items", "card_deltas",
+    "daily_ads_db", "live_mtd_bi", "live_last_30_days", "action_items", "card_deltas",
     "target_summary", "currency_rates", "previous_month_table",
 })
 
@@ -5355,7 +5355,7 @@ def launch_background_dashboard_refresh():
         from uuid import uuid4
         rid = str(uuid4())
         steps = ["mtd_transactions", "inventory_current", "sp_report", "sb_report", "sd_report",
-                 "monthly_ads_db", "daily_ads_db", "live_mtd_bi"]
+                 "monthly_ads_db", "daily_ads_db", "live_mtd_bi", "live_last_30_days"]
         with PHORMULA_ENGINE.begin() as conn:
             conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": params["cache_key"]})
             conn.execute(text("""
@@ -5515,7 +5515,7 @@ def save_live_dashboard_data():
                         # publish an unverified frontend payload.
                         allowed = (all(tracked_steps.get(x) == "completed" for x in needed)
                                    and all(tracked_steps.get(x) == "pending" for x in
-                                       ("sp_report", "sb_report", "sd_report", "monthly_ads_db", "daily_ads_db"))
+                                       ("sp_report", "sb_report", "sd_report", "monthly_ads_db", "daily_ads_db", "live_last_30_days"))
                                    and snapshot.get("refreshRunId") == refresh_id
                                    and snapshot.get("refreshPhase") == "core")
                     else:

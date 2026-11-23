@@ -6828,9 +6828,26 @@ export default function DashboardPage() {
     }, [biDailySeriesHome, isCurrentPointAllowed, dashboardAllowedDay]);
 
 
+    const last30CurrentSkuTotal = useMemo(() => {
+        if (comparisonPeriod !== "last30") return null;
+        const rows = platform === "global"
+            ? liveBiPayload?.skuwise_items_global
+            : liveBiPayload?.skuwise_items;
+        if (!Array.isArray(rows)) return null;
+        return rows.find((row: any) => {
+            const sku = String(row?.sku || "").trim().toUpperCase();
+            const name = String(row?.product_name || "").trim().toLowerCase();
+            return sku === "TOTAL" || sku === "GRAND_TOTAL" || name === "total" || name === "grand total";
+        }) ?? null;
+    }, [comparisonPeriod, liveBiPayload, platform]);
+
     const biCardKpis = useMemo(() => {
         const curr = {
-            units: toNumber(biAlignedTotals?.total_current_quantity),
+            units: toNumber(
+                comparisonPeriod === "last30"
+                    ? last30CurrentSkuTotal?.total_quantity ?? last30CurrentSkuTotal?.quantity ?? biAlignedTotals?.total_current_quantity
+                    : biAlignedTotals?.total_current_quantity
+            ),
             netSales: toNumber(biAlignedTotals?.total_current_net_sales),
             netSalesPerUnit: toNumber(biAlignedTotals?.total_current_net_sales_per_unit),
             grossSales: toNumber(biAlignedTotals?.total_current_gross_sales),
@@ -6857,7 +6874,9 @@ export default function DashboardPage() {
             curr,
             prev,
             deltas: {
-                units: toNumber(biAlignedTotals?.units_change_percentage),
+                units: comparisonPeriod === "last30" && prev.units !== 0
+                    ? ((curr.units - prev.units) / Math.abs(prev.units)) * 100
+                    : toNumber(biAlignedTotals?.units_change_percentage),
                 netSales: toNumber(biAlignedTotals?.net_sales_change_percentage),
                 grossSales: toNumber(biAlignedTotals?.gross_sales_change_percentage),
                 asp: toNumber(biAlignedTotals?.asp_change_percentage),
@@ -6865,7 +6884,7 @@ export default function DashboardPage() {
                 profitPct: toNumber(biAlignedTotals?.cm2_margin_change_percentage),
             },
         };
-    }, [biAlignedTotals]);
+    }, [biAlignedTotals, comparisonPeriod, last30CurrentSkuTotal]);
 
     const rangeActive = selectedStartDay != null && selectedEndDay != null;
     const hasSelectedPeriodBiData = rangeActive || comparisonPeriod === "last30";
@@ -7820,12 +7839,11 @@ export default function DashboardPage() {
     }, [data, liveBiPayload, monthlySkuwiseRows, platform, comparisonPeriod]);
 
     const totalRowCm2Profit = useMemo(() => {
-        // The Last 30 days KPI is account-level BI data. Keep the P&L summary
-        // row on that same source instead of the SKU grand total, which can
-        // differ when CM2 adjustments are not allocated to individual SKUs.
-        if (comparisonPeriod === "last30" && biAlignedTotals?.total_current_profit_cm2 != null) {
+        // Last 30 days has a dedicated account total. aligned_totals is for
+        // the aligned comparison window and can include a different CM2 value.
+        if (comparisonPeriod === "last30" && liveBiPayload?.last30_totals?.total_cm2_profit != null) {
             return convertToDisplayCurrency(
-                toNumber(biAlignedTotals.total_current_profit_cm2),
+                toNumber(liveBiPayload.last30_totals.total_cm2_profit),
                 biSourceCurrency
             );
         }
@@ -7845,6 +7863,7 @@ export default function DashboardPage() {
         grandTotalRowRaw?.cm2_profit,
         grandTotalRowDisplay?.cm2_profit,
         comparisonPeriod,
+        liveBiPayload?.last30_totals?.total_cm2_profit,
         biAlignedTotals?.total_current_profit_cm2,
         convertToDisplayCurrency,
         biSourceCurrency,
@@ -7852,6 +7871,7 @@ export default function DashboardPage() {
 
     const totalRowCm2Margins = useMemo(() => {
         const totalNetSales = toNumber(
+            (comparisonPeriod === "last30" ? liveBiPayload?.last30_totals?.net_sales : null) ??
             grandTotalRowRaw?.net_sales ??
             grandTotalRowDisplay?.net_sales ??
             plSummaryTotals.net_sales
@@ -7869,6 +7889,8 @@ export default function DashboardPage() {
         );
     }, [
         totalRowCm2Profit,
+        comparisonPeriod,
+        liveBiPayload?.last30_totals?.net_sales,
         grandTotalRowRaw?.net_sales,
         grandTotalRowDisplay?.net_sales,
         plSummaryTotals.net_sales,
@@ -7957,7 +7979,9 @@ export default function DashboardPage() {
 
     // Prefer backend CM2 first.
     // Fallback to old formula only if backend CM2 is missing.
-    const rawCm2Profit =
+    const rawCm2Profit = comparisonPeriod === "last30" && liveBiPayload?.last30_totals?.total_cm2_profit != null
+        ? toNumber(liveBiPayload.last30_totals.total_cm2_profit)
+        :
         toNumber(
             grandTotalRowRaw?.total_cm2_profit ??
             grandTotalRowDisplay?.total_cm2_profit ??
@@ -9457,11 +9481,13 @@ export default function DashboardPage() {
         if (idxCm2 !== -1) {
             copy[idxCm2] = Number(
                 toNumberSafe(
-                    totalRow?.total_cm2_profit ??
-                    grandTotalRowRaw?.total_cm2_profit ??
-                    grandTotalRowDisplay?.total_cm2_profit ??
-                    cm2Profit ??
-                    totalRow?.cm2_profit ??
+                    comparisonPeriod === "last30"
+                        ? liveBiPayload?.last30_totals?.total_cm2_profit ?? totalRowCm2Profit
+                        : totalRow?.total_cm2_profit ??
+                            grandTotalRowRaw?.total_cm2_profit ??
+                            grandTotalRowDisplay?.total_cm2_profit ??
+                            cm2Profit ??
+                            totalRow?.cm2_profit ??
                     0
                 )
             );
@@ -9480,6 +9506,9 @@ export default function DashboardPage() {
         idxAds,
         idxOthers,
         idxCm2,
+        comparisonPeriod,
+        liveBiPayload?.last30_totals?.total_cm2_profit,
+        totalRowCm2Profit,
         adsSpendTotal,
         platformFee,
         cm2Profit,
@@ -9998,7 +10027,11 @@ export default function DashboardPage() {
             : toNumber(backendDashboardMetric("tacos").previous);
 
     const mtdCm2ProfitCurrentForDelta = hasSelectedPeriodBiData
-        ? toNumber(biAlignedTotals?.total_current_profit_cm2)
+        ? toNumber(
+            comparisonPeriod === "last30"
+                ? liveBiPayload?.last30_totals?.total_cm2_profit ?? biAlignedTotals?.total_current_profit_cm2
+                : biAlignedTotals?.total_current_profit_cm2
+        )
         : totalRowCm2Profit;
 
     const mtdCm2ProfitPreviousForDelta = hasSelectedPeriodBiData
@@ -10391,13 +10424,13 @@ export default function DashboardPage() {
                 ? dummyStatData.cm2Profit.current
                 : useGlobalLast30Totals
                     ? convertToDisplayCurrency(
-                        biAlignedTotals?.total_current_profit_cm2 ?? totalRowCm2Profit,
+                        liveBiPayload?.last30_totals?.total_cm2_profit ?? totalRowCm2Profit,
                         biSourceCurrency
                     )
                 : isStickyGlobal && comparisonPeriod !== "last30"
                     ? stickyTableTotals.cm2Profit
                     : comparisonPeriod === "last30"
-                        ? convertToDisplayCurrency(biAlignedTotals?.total_current_profit_cm2 ?? totalRowCm2Profit, biSourceCurrency)
+                        ? convertToDisplayCurrency(liveBiPayload?.last30_totals?.total_cm2_profit ?? totalRowCm2Profit, biSourceCurrency)
                         : totalRowCm2Profit,
 
             previous: shouldShowDummyUi
@@ -12818,7 +12851,9 @@ export default function DashboardPage() {
                 : 0)
             : Number(prev?.cm2Profit ?? 0);
 
-    const rangeCm2ProfitPctCurrent = toNumber(biAlignedTotals?.total_current_profit_percentage);
+    const rangeCm2ProfitPctCurrent = comparisonPeriod === "last30" && liveBiPayload?.last30_totals?.total_cm2_margins != null
+        ? toNumber(liveBiPayload.last30_totals.total_cm2_margins)
+        : toNumber(biAlignedTotals?.total_current_profit_percentage);
 
     const rangeCm2ProfitPctPrevious = toNumber(biAlignedTotals?.total_previous_profit_percentage);
 
