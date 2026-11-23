@@ -763,10 +763,18 @@ function computePlSummaryTotals(
             debt_payment: toNumber(debtPayment),
             disbursement: toNumber(disbursement),
             net_reimbursement: toNumber(currentNetReimbursement),
-            cm2_profit: has("cm2_profit") ? value("cm2_profit") : skuTotals.cm2_profit,
-            cm2_margins: has("cm2_profit") && has("net_sales") && value("net_sales")
-                ? (value("cm2_profit") / value("net_sales")) * 100
-                : skuTotals.cm2_margins,
+            cm2_profit: has("total_cm2_profit")
+                ? value("total_cm2_profit")
+                : has("cm2_profit")
+                    ? value("cm2_profit")
+                    : skuTotals.cm2_profit,
+            cm2_margins: has("total_cm2_margins")
+                ? value("total_cm2_margins")
+                : has("total_cm2_profit") && has("net_sales") && value("net_sales")
+                    ? (value("total_cm2_profit") / value("net_sales")) * 100
+                    : has("cm2_profit") && has("net_sales") && value("net_sales")
+                        ? (value("cm2_profit") / value("net_sales")) * 100
+                        : skuTotals.cm2_margins,
             net_sales: has("net_sales") ? value("net_sales") : skuTotals.net_sales,
         };
     }
