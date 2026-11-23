@@ -1434,6 +1434,73 @@ def _rolling_number(*values):
     return 0.0
 
 
+def _rolling_rows_have_cm2_data(rows):
+    for row in rows:
+        name = str(row.get("product_name") or "").strip().lower()
+        sku = str(row.get("sku") or "").strip().lower()
+        if name in {"total", "totals", "grand total", "others"} or sku in {
+            "total",
+            "totals",
+            "grand_total",
+            "others",
+        }:
+            continue
+
+        ads_spend = _rolling_number(
+            row.get("ads_spend"),
+            row.get("advertising_total"),
+            row.get("advertising_total_final"),
+        )
+        acos = _rolling_number(row.get("acos"))
+        net_sales = _rolling_number(row.get("net_sales"))
+        if not acos and net_sales:
+            acos = ads_spend / net_sales * 100
+
+        cm1_profit = _rolling_number(row.get("profit"))
+        cm2_profit = _rolling_number(
+            row.get("cm2_profit"),
+            row.get("cm2_profit_total"),
+            row.get("total_cm2_profit"),
+        )
+        if ads_spend != 0 or acos != 0 or abs(cm2_profit - cm1_profit) > 0.01:
+            return True
+
+    return False
+
+
+def _apply_rolling_amazon_fees_placement(rows, placement):
+    if placement != "after_cm1":
+        return rows
+
+    for row in rows:
+        amazon_fees = abs(_rolling_number(row.get("amazon_fee"), row.get("amazon_fees")))
+        profit = _rolling_number(row.get("profit")) + amazon_fees
+        net_sales = _rolling_number(row.get("net_sales"))
+        quantity = _rolling_number(row.get("total_quantity"))
+
+        row["profit"] = round(profit, 2)
+        row["profit_percentage"] = (
+            round(profit / net_sales * 100, 2) if net_sales else 0
+        )
+        row["unit_wise_profitability"] = (
+            round(profit / quantity, 2) if quantity else 0
+        )
+        if "Profit" in row:
+            row["Profit"] = profit
+        if "total_profit" in row:
+            row["total_profit"] = profit
+        if "cm1_profit" in row:
+            row["cm1_profit"] = profit
+        if "cm1_profit_per_unit" in row:
+            row["cm1_profit_per_unit"] = row["unit_wise_profitability"]
+        if "cm1_profit_per" in row:
+            row["cm1_profit_per"] = row["profit_percentage"]
+        if "cm1_profit_percentage" in row:
+            row["cm1_profit_percentage"] = row["profit_percentage"]
+
+    return rows
+
+
 def _build_rolling_card_total(rows):
     if isinstance(rows, dict):
         total = dict(rows)
@@ -1564,6 +1631,11 @@ def get_rolling_12_month_sku_data():
         country = (request.args.get('countryName') or '').strip().lower()
         if country not in {'uk', 'us', 'global'}:
             return jsonify({'error': 'countryName must be one of: uk, us, global'}), 400
+        amazon_fees_placement = (
+            request.args.get("amazonFeesPlacement") or "before_cm1"
+        ).strip().lower()
+        if amazon_fees_placement not in {"before_cm1", "after_cm1"}:
+            return jsonify({'error': 'Invalid amazonFeesPlacement'}), 400
 
         end_month_arg = request.args.get('endMonth')
         end_year_arg = request.args.get('endYear')
@@ -1652,6 +1724,18 @@ def get_rolling_12_month_sku_data():
                 selected_tables,
                 key_column,
             )
+            effective_amazon_placement = (
+                amazon_fees_placement
+                if _rolling_rows_have_cm2_data(rows)
+                else "before_cm1"
+            )
+            adjusted_card_totals = dict(card_totals)
+            _apply_rolling_amazon_fees_placement(
+                rows, effective_amazon_placement
+            )
+            _apply_rolling_amazon_fees_placement(
+                [adjusted_card_totals], effective_amazon_placement
+            )
             monthly_breakdown = {}
             if include_monthly_breakdown:
                 selected_table_by_period = dict(selected_tables)
@@ -1664,8 +1748,20 @@ def get_rolling_12_month_sku_data():
                         [(period, table_name)],
                         key_column,
                     )
+                    effective_month_placement = (
+                        amazon_fees_placement
+                        if _rolling_rows_have_cm2_data(monthly_rows)
+                        else "before_cm1"
+                    )
+                    adjusted_month_card_totals = dict(monthly_card_totals)
+                    _apply_rolling_amazon_fees_placement(
+                        monthly_rows, effective_month_placement
+                    )
+                    _apply_rolling_amazon_fees_placement(
+                        [adjusted_month_card_totals], effective_month_placement
+                    )
                     monthly_breakdown[period] = build_period_total(
-                        monthly_card_totals,
+                        adjusted_month_card_totals,
                         monthly_rows,
                     )
             response = {
@@ -1678,10 +1774,10 @@ def get_rolling_12_month_sku_data():
                 ],
                 "sku_count": len(rows),
                 "skus": rows,
-                "total": build_period_total(card_totals, rows),
+                "total": build_period_total(adjusted_card_totals, rows),
                 "monthly_breakdown": monthly_breakdown,
             }
-            return response, card_totals
+            return response, adjusted_card_totals
 
         current_response, current_card_total = period_response(
             current_periods,

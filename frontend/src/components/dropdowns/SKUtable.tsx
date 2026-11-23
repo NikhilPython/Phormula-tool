@@ -19,6 +19,7 @@ import {
   RiExpandDiagonalFill,
   RiCollapseDiagonalFill,
 } from "react-icons/ri";
+import { Check, Columns3, X } from "lucide-react";
 
 const TERM_DEFINITIONS: Record<string, string> = {
   product_name: "Product Name. The delta represents the change compared to the previous period.",
@@ -69,6 +70,11 @@ export type PromotionsPlacement = {
   side: "before" | "after";
   stage: "in_net_sales" | "before_cm1" | "after_cm1";
 };
+export type AmazonFeesPlacement = {
+  anchor: string;
+  side: "before" | "after";
+  stage: "before_cm1" | "after_cm1";
+};
 
 type SKUtableProps = {
   range: RangeType;
@@ -105,6 +111,8 @@ type SKUtableProps = {
   onMonthClick?: (month: string) => void;
   promotionsPlacement?: PromotionsPlacement;
   onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
+  amazonFeesPlacement?: AmazonFeesPlacement;
+  onAmazonFeesPlacementChange?: (placement: AmazonFeesPlacement) => void;
 };
 
 type TopBottomRow = {
@@ -818,6 +826,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
     stage: "in_net_sales",
   },
   onPromotionsPlacementChange,
+  amazonFeesPlacement = {
+    anchor: "cost_of_unit_sold",
+    side: "after",
+    stage: "before_cm1",
+  },
+  onAmazonFeesPlacementChange,
   // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -830,6 +844,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     other: true,
   });
   const [showAllRows, setShowAllRows] = useState(false);
+  const [isRearrangingColumns, setIsRearrangingColumns] = useState(false);
+  const [draftPromotionsPlacement, setDraftPromotionsPlacement] =
+    useState<PromotionsPlacement>(promotionsPlacement);
+  const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
+    useState<AmazonFeesPlacement>(amazonFeesPlacement);
   const [tableView, setTableView] = useState<"product" | "month">("product");
   const isMonthWiseView =
     range !== "monthly" && tableView === "month";
@@ -837,6 +856,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean> | undefined>(
     undefined
   );
+  useEffect(() => {
+    if (isRearrangingColumns) return;
+    setDraftPromotionsPlacement((current) =>
+      current.anchor === promotionsPlacement.anchor &&
+      current.side === promotionsPlacement.side &&
+      current.stage === promotionsPlacement.stage
+        ? current
+        : promotionsPlacement
+    );
+  }, [
+    isRearrangingColumns,
+    promotionsPlacement.anchor,
+    promotionsPlacement.side,
+    promotionsPlacement.stage,
+  ]);
   const toggleSummary = (key: "ads" | "other") => {
     setSummaryCollapsed((p) => ({ ...p, [key]: !p[key] }));
   };
@@ -1069,17 +1103,20 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     });
   }, [tableData, countryName, range, isMonthWiseView]);
+  const requestedPromotionsPlacement = isRearrangingColumns
+    ? draftPromotionsPlacement
+    : promotionsPlacement;
   const effectivePromotionsPlacement = useMemo<PromotionsPlacement>(
     () =>
-      promotionsPlacement.stage === "after_cm1" &&
+      requestedPromotionsPlacement.stage === "after_cm1" &&
       (range !== "monthly" || !hasCm2Data)
         ? {
             anchor: "profit_breakdown",
             side: "before",
             stage: "before_cm1",
           }
-        : promotionsPlacement,
-    [promotionsPlacement, range, hasCm2Data]
+        : requestedPromotionsPlacement,
+    [requestedPromotionsPlacement, range, hasCm2Data]
   );
 
   const getCm2PerUnit = (row: Partial<TableRow>) => {
@@ -1598,6 +1635,19 @@ const SKUtable: React.FC<SKUtableProps> = ({
       expandedCols: salesExpandedCols,
     },
 
+    ...(effectivePromotionsPlacement.stage !== "in_net_sales"
+      ? [{
+          id: "promotions_breakdown",
+          label: "Promotions",
+          info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
+          collapsedCols: [{ key: "promotional_rebates", label: "", align: "center" as const, width: "8%" }],
+          expandedCols: [
+            { key: "promotional_rebates", label: "Promotions", align: "center" as const, width: "8%", info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} /> },
+            { key: "promotional_rebates_percentage", label: "Promotions %", align: "center" as const, width: "8%", info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates_percentage} /> },
+          ],
+        } as ColGroup<TableRow>]
+      : []),
+
     {
       id: "amazon_breakdown",
       label: isUsCountry ? "Amazon Fees" : "Marketplace Fees",
@@ -1883,7 +1933,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
       { type: "group", id: "units_breakdown" },
       { type: "single", key: "asp" },
       { type: "group", id: "sales" },
-      { type: "single", key: "promotional_rebates_percentage" },
+      ...(effectivePromotionsPlacement.stage === "in_net_sales"
+        ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
+        : []),
       { type: "single", key: "cost_of_unit_sold" },
       { type: "group", id: "amazon_breakdown" },
       { type: "group", id: "other_transactions_breakdown" },
@@ -1905,14 +1957,27 @@ const SKUtable: React.FC<SKUtableProps> = ({
           ]
         : []),
     ],
-    [hasCm2Data, isMonthWiseView, isUsCountry]
+    [
+      hasCm2Data,
+      isMonthWiseView,
+      isUsCountry,
+      effectivePromotionsPlacement.stage,
+    ]
   );
 
+  const requestedAmazonFeesPlacement = isRearrangingColumns
+    ? draftAmazonFeesPlacement
+    : amazonFeesPlacement;
+  const activeAmazonFeesPlacement =
+    requestedAmazonFeesPlacement.stage === "after_cm1" &&
+    (range !== "monthly" || !hasCm2Data)
+      ? {
+          anchor: "profit_breakdown",
+          side: "before" as const,
+          stage: "before_cm1" as const,
+        }
+      : requestedAmazonFeesPlacement;
   const tableLayout = useMemo<SKUColumnLayoutItem[]>(() => {
-    if (effectivePromotionsPlacement.stage === "in_net_sales") {
-      return baseTableLayout;
-    }
-
     const layout = [...baseTableLayout];
     const anchorIndex = layout.findIndex(
       (item) =>
@@ -1944,12 +2009,59 @@ const SKUtable: React.FC<SKUtableProps> = ({
       );
     }
 
-    layout.splice(insertionIndex, 0, {
-      type: "single",
-      key: "promotional_rebates",
-    });
+    if (effectivePromotionsPlacement.stage !== "in_net_sales") {
+      layout.splice(insertionIndex, 0, {
+        type: "group",
+        id: "promotions_breakdown",
+      });
+    }
+
+    const amazonFeesIndex = layout.findIndex(
+      (item) => item.type === "group" && item.id === "amazon_breakdown"
+    );
+    if (amazonFeesIndex >= 0) {
+      layout.splice(amazonFeesIndex, 1);
+      const amazonAnchorIndex = layout.findIndex(
+        (item) =>
+          (item.type === "group" && item.id === activeAmazonFeesPlacement.anchor) ||
+          (item.type === "single" && item.key === activeAmazonFeesPlacement.anchor)
+      );
+      const salesBoundaryIndex = layout.findIndex(
+        (item) => item.type === "group" && item.id === "sales"
+      );
+      const endBoundaryId =
+        range === "monthly" && hasCm2Data
+          ? "cm2_profit_breakdown"
+          : "profit_breakdown";
+      const endBoundaryIndex = layout.findIndex(
+        (item) => item.type === "group" && item.id === endBoundaryId
+      );
+      const requestedAmazonIndex =
+        amazonAnchorIndex < 0
+          ? salesBoundaryIndex + 1
+          : amazonAnchorIndex +
+            (activeAmazonFeesPlacement.side === "after" ? 1 : 0);
+      const boundedAmazonIndex = Math.max(
+        salesBoundaryIndex + 1,
+        Math.min(
+          requestedAmazonIndex,
+          endBoundaryIndex < 0 ? layout.length : endBoundaryIndex
+        )
+      );
+      layout.splice(boundedAmazonIndex, 0, {
+        type: "group",
+        id: "amazon_breakdown",
+      });
+    }
+
     return layout;
-  }, [baseTableLayout, effectivePromotionsPlacement]);
+  }, [
+    baseTableLayout,
+    effectivePromotionsPlacement,
+    activeAmazonFeesPlacement,
+    range,
+    hasCm2Data,
+  ]);
 
   const anyGroupExpanded = useMemo(() => {
     if (!groups.length) return false;
@@ -1997,6 +2109,38 @@ const SKUtable: React.FC<SKUtableProps> = ({
     setAllColumnsExpanded(nextExpanded);
     setCollapsedGroups(buildAllGroupsCollapsedState(!nextExpanded));
   }, [allColumnsExpanded, buildAllGroupsCollapsedState, showAllRows]);
+
+  const handleStartColumnRearrangement = () => {
+    setDraftPromotionsPlacement(promotionsPlacement);
+    setDraftAmazonFeesPlacement(amazonFeesPlacement);
+    setIsRearrangingColumns(true);
+  };
+
+  const handleCancelColumnRearrangement = () => {
+    setDraftPromotionsPlacement(promotionsPlacement);
+    setDraftAmazonFeesPlacement(amazonFeesPlacement);
+    setIsRearrangingColumns(false);
+  };
+
+  const handleConfirmColumnRearrangement = () => {
+    if (
+      onPromotionsPlacementChange &&
+      (draftPromotionsPlacement.anchor !== promotionsPlacement.anchor ||
+        draftPromotionsPlacement.side !== promotionsPlacement.side ||
+        draftPromotionsPlacement.stage !== promotionsPlacement.stage)
+    ) {
+      onPromotionsPlacementChange(draftPromotionsPlacement);
+    }
+    if (
+      onAmazonFeesPlacementChange &&
+      (draftAmazonFeesPlacement.anchor !== amazonFeesPlacement.anchor ||
+        draftAmazonFeesPlacement.side !== amazonFeesPlacement.side ||
+        draftAmazonFeesPlacement.stage !== amazonFeesPlacement.stage)
+    ) {
+      onAmazonFeesPlacementChange(draftAmazonFeesPlacement);
+    }
+    setIsRearrangingColumns(false);
+  };
 
   const SINGLE_COLS: LeafCol<TableRow>[] = useMemo(
     () => [
@@ -3901,21 +4045,59 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 </button>
               </div>
             )}
-            <button
-              type="button"
-              onClick={handleToggleTableExpansion}
-              title={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
-              aria-label={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
-              className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
-            >
-              {isTableFullyExpanded ? (
-                <RiCollapseDiagonalFill size={18} className="font-extrabold" />
-              ) : (
-                <RiExpandDiagonalFill size={18} className="font-extrabold" />
-              )}
-            </button>
-
-            {!hideDownloadButton && <DownloadIconButton onClick={handleDownloadExcel} />}
+            {isRearrangingColumns ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleConfirmColumnRearrangement}
+                  title="Apply column arrangement"
+                  aria-label="Apply column arrangement"
+                  className="inline-flex rounded-md border border-emerald-300 bg-emerald-50 p-1.5 text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <Check size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelColumnRearrangement}
+                  title="Cancel column arrangement"
+                  aria-label="Cancel column arrangement"
+                  className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-gray-600 transition hover:bg-gray-100"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            ) : (
+              <>
+                {onPromotionsPlacementChange && (
+                  <button
+                    type="button"
+                    onClick={handleStartColumnRearrangement}
+                    disabled={loading}
+                    title="Rearrange columns"
+                    aria-label="Rearrange columns"
+                    className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Columns3 size={18} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleToggleTableExpansion}
+                  title={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                  aria-label={isTableFullyExpanded ? "Collapse rows and columns" : "Expand rows and columns"}
+                  className="inline-flex rounded-md border border-gray-300 bg-white p-1.5 text-blue-700 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                >
+                  {isTableFullyExpanded ? (
+                    <RiCollapseDiagonalFill size={18} className="font-extrabold" />
+                  ) : (
+                    <RiExpandDiagonalFill size={18} className="font-extrabold" />
+                  )}
+                </button>
+                {!hideDownloadButton && (
+                  <DownloadIconButton onClick={handleDownloadExcel} />
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -3997,11 +4179,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   return name === "total" || sku === "total";
                 }}
                 layout={tableLayout}
-                draggableColKeys={onPromotionsPlacementChange ? ["promotional_rebates"] : []}
+                draggableGroupIds={
+                  isRearrangingColumns && onPromotionsPlacementChange
+                    ? ["amazon_breakdown", "promotions_breakdown"]
+                    : []
+                }
+                draggableColKeys={
+                  isRearrangingColumns && onPromotionsPlacementChange
+                    ? ["promotional_rebates"]
+                    : []
+                }
                 dropTargetGroupIds={[
-                  ...(onPromotionsPlacementChange
+                  ...(isRearrangingColumns && onPromotionsPlacementChange
                     ? [
                         "sales",
+                        "promotions_breakdown",
                         "amazon_breakdown",
                         "other_transactions_breakdown",
                         "profit_breakdown",
@@ -4017,12 +4209,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     : []),
                 ]}
                 dropTargetColKeys={
-                  onPromotionsPlacementChange
+                  isRearrangingColumns && onPromotionsPlacementChange
                     ? [
                         "product_sales",
                         "refund_sales",
                         "tex_and_credits",
                         "net_sales",
+                        "promotional_rebates",
                         "promotional_rebates_percentage",
                         "cost_of_unit_sold",
                         "selling_fees",
@@ -4051,7 +4244,119 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     : []
                 }
                 onColumnDrop={(sourceKey, targetKey, side) => {
-                  if (sourceKey !== "promotional_rebates") return;
+                  if (
+                    !isRearrangingColumns ||
+                    !onPromotionsPlacementChange
+                  ) return;
+                  if (sourceKey === "amazon_breakdown") {
+                    if (
+                      targetKey === "amazon_breakdown" ||
+                      ["selling_fees", "fba_fees", "amazon_fee"].includes(targetKey)
+                    ) return;
+
+                    let anchor: string | null = null;
+                    let placementSide = side;
+                    const salesColumns = [
+                      "product_sales",
+                      "refund_sales",
+                      "tex_and_credits",
+                      "net_sales",
+                      "promotional_rebates",
+                    ];
+                    const marketplaceColumns = [
+                      "selling_fees",
+                      "fba_fees",
+                      "amazon_fee",
+                    ];
+                    const transactionColumns = [
+                      "net_taxes",
+                      "net_credits",
+                      "misc_transaction",
+                      "other_transactions",
+                    ];
+                    const cm1Columns = [
+                      "profit",
+                      "unit_wise_profitability",
+                      "profit_percentage",
+                    ];
+                    const adsColumns = [
+                      "product_spend",
+                      "display_spend",
+                      "brand_spend",
+                      "ads_spend",
+                    ];
+                    const cm2Columns = [
+                      "cm2_profit",
+                      "unit_wise_cm2_profitability",
+                      "cm2_margins",
+                    ];
+
+                    if (targetKey === "sales" || salesColumns.includes(targetKey)) {
+                      anchor = "sales";
+                      placementSide = "after";
+                    } else if (targetKey === "promotions_breakdown") {
+                      anchor = "promotions_breakdown";
+                    } else if (targetKey === "promotional_rebates_percentage") {
+                      anchor =
+                        effectivePromotionsPlacement.stage === "in_net_sales"
+                          ? "promotional_rebates_percentage"
+                          : "promotions_breakdown";
+                    } else if (targetKey === "cost_of_unit_sold") {
+                      anchor = targetKey;
+                    } else if (
+                      targetKey === "amazon_breakdown" ||
+                      marketplaceColumns.includes(targetKey)
+                    ) {
+                      return;
+                    } else if (
+                      targetKey === "other_transactions_breakdown" ||
+                      transactionColumns.includes(targetKey)
+                    ) {
+                      anchor = "other_transactions_breakdown";
+                    } else if (
+                      targetKey === "profit_breakdown" ||
+                      cm1Columns.includes(targetKey)
+                    ) {
+                      anchor = "profit_breakdown";
+                    } else if (
+                      targetKey === "ads_spend_breakdown" ||
+                      targetKey === "acos" ||
+                      adsColumns.includes(targetKey)
+                    ) {
+                      if (range !== "monthly" || !hasCm2Data) return;
+                      anchor =
+                        targetKey === "acos" ? "acos" : "ads_spend_breakdown";
+                    } else if (
+                      targetKey === "cm2_profit_breakdown" ||
+                      cm2Columns.includes(targetKey)
+                    ) {
+                      if (range !== "monthly" || !hasCm2Data) return;
+                      anchor = "cm2_profit_breakdown";
+                    }
+
+                    if (anchor) {
+                      setDraftAmazonFeesPlacement({
+                        anchor,
+                        side: placementSide,
+                        stage:
+                          range === "monthly" &&
+                          hasCm2Data &&
+                          (anchor === "profit_breakdown"
+                            ? placementSide === "after"
+                            : [
+                                "ads_spend_breakdown",
+                                "acos",
+                                "cm2_profit_breakdown",
+                              ].includes(anchor))
+                            ? "after_cm1"
+                            : "before_cm1",
+                      });
+                    }
+                    return;
+                  }
+                  if (!["promotional_rebates", "promotions_breakdown"].includes(sourceKey)) {
+                    return;
+                  }
                   const salesColumns = [
                     "product_sales",
                     "refund_sales",
@@ -4086,7 +4391,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   ];
 
                   if (targetKey === "sales") {
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: "sales",
                       side: "after",
                       stage: "before_cm1",
@@ -4094,7 +4399,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return;
                   }
                   if (salesColumns.includes(targetKey)) {
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: targetKey,
                       side: targetKey === "product_sales" ? "after" : side,
                       stage: "in_net_sales",
@@ -4102,7 +4407,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return;
                   }
                   if (targetKey === "net_sales") {
-                    onPromotionsPlacementChange?.(
+                    setDraftPromotionsPlacement(
                       side === "before"
                         ? {
                             anchor: "net_sales",
@@ -4123,7 +4428,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       (range !== "monthly" || !hasCm2Data)
                         ? "before"
                         : side;
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: "profit_breakdown",
                       side: placementSide,
                       stage: placementSide === "after" ? "after_cm1" : "before_cm1",
@@ -4135,7 +4440,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     cm2Columns.includes(targetKey)
                   ) {
                     if (range !== "monthly" || !hasCm2Data) return;
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: "cm2_profit_breakdown",
                       side: "before",
                       stage: "after_cm1",
@@ -4150,7 +4455,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     if (range !== "monthly" || !hasCm2Data) return;
                     const anchor =
                       targetKey === "acos" ? "acos" : "ads_spend_breakdown";
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor,
                       side,
                       stage: "after_cm1",
@@ -4161,7 +4466,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "amazon_breakdown" ||
                     marketplaceColumns.includes(targetKey)
                   ) {
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: "amazon_breakdown",
                       side,
                       stage: "before_cm1",
@@ -4172,7 +4477,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "other_transactions_breakdown" ||
                     transactionColumns.includes(targetKey)
                   ) {
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: "other_transactions_breakdown",
                       side,
                       stage: "before_cm1",
@@ -4183,7 +4488,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "cost_of_unit_sold" ||
                     targetKey === "promotional_rebates_percentage"
                   ) {
-                    onPromotionsPlacementChange?.({
+                    setDraftPromotionsPlacement({
                       anchor: targetKey,
                       side,
                       stage: "before_cm1",
@@ -4193,7 +4498,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 initialCollapsed={{
                   units_breakdown: true,
                   sales: true,
-                  promotional_rebates: true,
+                  promotions_breakdown: true,
                   cogs_breakdown: true,
                   amazon_breakdown: true,
                   other_transactions_breakdown: true,

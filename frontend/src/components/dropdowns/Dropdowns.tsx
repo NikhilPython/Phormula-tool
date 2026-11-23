@@ -22,7 +22,7 @@ import SummaryMetricCard from "./SummaryMetricCard";
 import { buildSkuWorksheetFromModel } from "@/lib/utils/excel/buildSkuWorksheet";
 import SkuTopBottomTables from "./SkuTopBottomTables";
 import type { TopBottomData } from "@/lib/pnl/topBottom";
-import type { PromotionsPlacement, TableRow } from "./SKUtable";
+import type { AmazonFeesPlacement, PromotionsPlacement, TableRow } from "./SKUtable";
 import { motion, AnimatePresence } from "framer-motion";
 import { RiExpandDiagonalFill, RiCollapseDiagonalFill } from "react-icons/ri";
 import Productinfoinpopup from '@/components/businessInsight/Productinfoinpopup';
@@ -6608,13 +6608,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     quarterVal: string,
     yearVal: string,
     countryVal: string,
-    placement: PromotionsPlacement
+    placement: PromotionsPlacement,
+    amazonPlacement: AmazonFeesPlacement
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
     const resolvedStage =
       rangeType !== "monthly" && placement.stage === "after_cm1"
         ? "before_cm1"
         : placement.stage;
+    const resolvedAmazonStage =
+      rangeType === "monthly" && amazonPlacement.stage === "after_cm1"
+        ? "after_cm1"
+        : "before_cm1";
 
     if (rangeType === "monthly") {
       const url = new URL(
@@ -6625,6 +6630,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("month", monthVal.toLowerCase());
       url.searchParams.set("year", String(yearVal));
       url.searchParams.set("promotionsPlacement", resolvedStage);
+      url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
 
       if (isGlobal && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
@@ -6645,6 +6651,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("year", String(yearVal));
       url.searchParams.set("userid", String(userid));
       url.searchParams.set("promotionsPlacement", resolvedStage);
+      url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
 
       if (isGlobal && homeCurrency) {
         url.searchParams.set("homeCurrency", homeCurrency);
@@ -6658,6 +6665,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("country", countryVal);
     url.searchParams.set("year", String(yearVal));
     url.searchParams.set("promotionsPlacement", resolvedStage);
+    url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
 
     if (isGlobal && homeCurrency) {
       url.searchParams.set("homeCurrency", homeCurrency);
@@ -7040,6 +7048,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       anchor: "net_sales",
       side: "before",
       stage: "in_net_sales",
+    });
+  const [amazonFeesPlacement, setAmazonFeesPlacement] =
+    useState<AmazonFeesPlacement>({
+      anchor: "cost_of_unit_sold",
+      side: "after",
+      stage: "before_cm1",
     });
 
   const [skuStatusMap, setSkuStatusMap] = useState<
@@ -7981,7 +7995,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     monthVal: string,
     yearVal: string,
     countryVal: string,
-    placement: PromotionsPlacement
+    placement: PromotionsPlacement,
+    amazonPlacement: AmazonFeesPlacement
   ) => {
     const isGlobal = countryVal.toLowerCase() === "global";
 
@@ -7993,6 +8008,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("month", monthVal.toLowerCase());
     url.searchParams.set("year", String(yearVal));
     url.searchParams.set("promotionsPlacement", placement.stage);
+    url.searchParams.set(
+      "amazonFeesPlacement",
+      amazonPlacement.stage === "after_cm1" ? "after_cm1" : "before_cm1"
+    );
 
     if (isGlobal && homeCurrency) {
       url.searchParams.set("homeCurrency", homeCurrency);
@@ -8081,11 +8100,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             range !== "monthly" && promotionsPlacement.stage === "after_cm1"
               ? { ...promotionsPlacement, stage: "before_cm1" as const }
               : promotionsPlacement;
+          const monthWiseAmazonPlacement =
+            range !== "monthly" && amazonFeesPlacement.stage === "after_cm1"
+              ? { ...amazonFeesPlacement, stage: "before_cm1" as const }
+              : amazonFeesPlacement;
           const url = buildMonthlySkuUrl(
             monthName,
             String(selectedYear),
             initialCountryName,
-            monthWisePlacement
+            monthWisePlacement,
+            monthWiseAmazonPlacement
           );
           const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
           if (!response.ok) return null;
@@ -8108,7 +8132,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
     void loadMonthWiseTotals();
     return () => { cancelled = true; };
-  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, range, activeTab, isRolling12Months]);
+  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, amazonFeesPlacement, range, activeTab, isRolling12Months]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
@@ -8318,11 +8342,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               quarterVal,
               yearVal,
               country,
-              promotionsPlacement
+              promotionsPlacement,
+              amazonFeesPlacement
             )
           );
       if (rolling12Months) {
         url.searchParams.set("countryName", country.toLowerCase());
+        url.searchParams.set(
+          "amazonFeesPlacement",
+          rangeType === "monthly" && amazonFeesPlacement.stage === "after_cm1"
+            ? "after_cm1"
+            : "before_cm1"
+        );
       }
 
       const res = await fetch(url.toString(), {
@@ -8401,7 +8432,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           country,
           rangeType !== "monthly" && promotionsPlacement.stage === "after_cm1"
             ? { ...promotionsPlacement, stage: "before_cm1" }
-            : promotionsPlacement
+            : promotionsPlacement,
+          rangeType === "monthly" && amazonFeesPlacement.stage === "after_cm1"
+            ? amazonFeesPlacement
+            : { ...amazonFeesPlacement, stage: "before_cm1" }
         );
 
         const prevRes = await fetch(prevUrl.toString(), {
@@ -10012,6 +10046,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     fetchCurrencyKey,
     isDemoMode,
     promotionsPlacement,
+    amazonFeesPlacement,
     isRolling12Months,
   ]);
 
@@ -11027,7 +11062,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         anchor: "net_sales",
         side: "before",
         stage: "in_net_sales",
-      }
+      },
+      amazonFeesPlacement
     );
 
     const res = await fetch(url.toString(), {
@@ -12869,6 +12905,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     promotionsPlacement={promotionsPlacement}
                     onPromotionsPlacementChange={
                       isDemoMode ? undefined : setPromotionsPlacement
+                    }
+                    amazonFeesPlacement={amazonFeesPlacement}
+                    onAmazonFeesPlacementChange={
+                      isDemoMode ? undefined : setAmazonFeesPlacement
                     }
                     yearlyTotalRow={
   (skuRowsWithStatus || []).find((row: any) => {

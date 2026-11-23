@@ -2293,6 +2293,15 @@ def _read_promotions_placement(allow_after_cm1=True):
     return placement
 
 
+def _read_amazon_fees_placement(allow_after_cm1=True):
+    placement = (request.args.get("amazonFeesPlacement") or "before_cm1").strip().lower()
+    if placement not in {"before_cm1", "after_cm1"}:
+        return None
+    if not allow_after_cm1 and placement == "after_cm1":
+        return "before_cm1"
+    return placement
+
+
 def _has_cm2_data(rows):
     for row in rows:
         name = str(row.get("product_name") or "").strip().lower()
@@ -2391,11 +2400,46 @@ def _apply_promotions_placement(rows, placement):
     return rows
 
 
+def _apply_amazon_fees_placement(rows, placement):
+    if placement != "after_cm1":
+        return rows
+
+    for row in rows:
+        amazon_fees = abs(safe_float(row.get("amazon_fee")))
+        profit = safe_float(row.get("profit")) + amazon_fees
+        net_sales = safe_float(row.get("net_sales"))
+        quantity = safe_float(row.get("total_quantity"))
+
+        row["profit"] = round(profit, 2)
+        row["profit_percentage"] = (
+            round(profit / net_sales * 100, 2) if net_sales else 0
+        )
+        row["unit_wise_profitability"] = (
+            round(profit / quantity, 2) if quantity else 0
+        )
+
+        if "Profit" in row:
+            row["Profit"] = row["profit"]
+        if "total_profit" in row:
+            row["total_profit"] = row["profit"]
+        if "cm1_profit" in row:
+            row["cm1_profit"] = row["profit"]
+        if "cm1_profit_per_unit" in row:
+            row["cm1_profit_per_unit"] = row["unit_wise_profitability"]
+        if "cm1_profit_percentage" in row:
+            row["cm1_profit_percentage"] = row["profit_percentage"]
+
+    return rows
+
+
 @product_bp.route('/YearlySKU', methods=['GET'])
 def YearlySKU():
     promotions_placement = _read_promotions_placement(allow_after_cm1=False)
     if promotions_placement is None:
         return jsonify({"error": "Invalid promotionsPlacement"}), 400
+    amazon_fees_placement = _read_amazon_fees_placement(allow_after_cm1=False)
+    if amazon_fees_placement is None:
+        return jsonify({"error": "Invalid amazonFeesPlacement"}), 400
 
     country = (request.args.get('country') or '').lower()
     country_param = request.args.get('country', '').lower()
@@ -2480,6 +2524,9 @@ def YearlySKU():
             except Exception:
                 pass
         current_data = _apply_promotions_placement(current_data, promotions_placement)
+        current_data = _apply_amazon_fees_placement(
+            current_data, amazon_fees_placement
+        )
 
         previous_year = get_previous_year(year)
         previous_table_name = f"skuwisemonthly_{user_id}_{country}_aggregated_till_current_months_{previous_year}"
@@ -2506,6 +2553,9 @@ def YearlySKU():
 
         previous_data = add_per_unit_fields(previous_data)
         previous_data = _apply_promotions_placement(previous_data, promotions_placement)
+        previous_data = _apply_amazon_fees_placement(
+            previous_data, amazon_fees_placement
+        )
 
         return jsonify({
             "current_table_name": table_name,
@@ -2622,6 +2672,9 @@ def quarterlyskutable():
     promotions_placement = _read_promotions_placement(allow_after_cm1=False)
     if promotions_placement is None:
         return jsonify({"error": "Invalid promotionsPlacement"}), 400
+    amazon_fees_placement = _read_amazon_fees_placement(allow_after_cm1=False)
+    if amazon_fees_placement is None:
+        return jsonify({"error": "Invalid amazonFeesPlacement"}), 400
 
     quarter = request.args.get('quarter')
     country_param = request.args.get('country', '')
@@ -2719,7 +2772,13 @@ def quarterlyskutable():
                 previous_data = []
 
         current_data = _apply_promotions_placement(current_data, promotions_placement)
+        current_data = _apply_amazon_fees_placement(
+            current_data, amazon_fees_placement
+        )
         previous_data = _apply_promotions_placement(previous_data, promotions_placement)
+        previous_data = _apply_amazon_fees_placement(
+            previous_data, amazon_fees_placement
+        )
 
         return jsonify({
             "current_table_name": table_name,
@@ -3631,6 +3690,9 @@ def skutableprofit():
     promotions_placement = _read_promotions_placement()
     if promotions_placement is None:
         return jsonify({"error": "Invalid promotionsPlacement"}), 400
+    amazon_fees_placement = _read_amazon_fees_placement()
+    if amazon_fees_placement is None:
+        return jsonify({"error": "Invalid amazonFeesPlacement"}), 400
 
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
@@ -4052,10 +4114,20 @@ def skutableprofit():
                 except Exception:
                     pass
             current_data = _add_product_status(current_data)
+            has_current_cm2_data = _has_cm2_data(current_data)
             current_placement = promotions_placement
-            if current_placement == "after_cm1" and not _has_cm2_data(current_data):
+            if current_placement == "after_cm1" and not has_current_cm2_data:
                 current_placement = "before_cm1"
             current_data = _apply_promotions_placement(current_data, current_placement)
+            current_amazon_fees_placement = amazon_fees_placement
+            if (
+                current_amazon_fees_placement == "after_cm1"
+                and not has_current_cm2_data
+            ):
+                current_amazon_fees_placement = "before_cm1"
+            current_data = _apply_amazon_fees_placement(
+                current_data, current_amazon_fees_placement
+            )
         except Exception as e:
             return jsonify({
                 "error": "Failed to calculate SKU profit data",
@@ -4092,7 +4164,20 @@ def skutableprofit():
                     pass
             except Exception:
                 previous_data = []
-            previous_data = _apply_promotions_placement(previous_data, current_placement)
+            has_previous_cm2_data = _has_cm2_data(previous_data)
+            previous_placement = promotions_placement
+            if previous_placement == "after_cm1" and not has_previous_cm2_data:
+                previous_placement = "before_cm1"
+            previous_data = _apply_promotions_placement(previous_data, previous_placement)
+            previous_amazon_fees_placement = amazon_fees_placement
+            if (
+                previous_amazon_fees_placement == "after_cm1"
+                and not has_previous_cm2_data
+            ):
+                previous_amazon_fees_placement = "before_cm1"
+            previous_data = _apply_amazon_fees_placement(
+                previous_data, previous_amazon_fees_placement
+            )
 
         return jsonify({
             "current_table_name": table_name,
