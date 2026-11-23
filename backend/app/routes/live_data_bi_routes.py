@@ -262,7 +262,7 @@ def _calculate_total_cm2_profit(cm2_profit, row):
         + abs(number(row.get("lost_total")))
         - abs(number(row.get("fba_disposal")))
         - abs(number(row.get("platform_management_fees")))
-        + number(row.get("other_adjustment"))
+        + abs(number(row.get("other_adjustment")))
     )
 
 
