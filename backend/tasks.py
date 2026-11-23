@@ -16,7 +16,6 @@ from app.utils.email_utils import (
     send_daily_inventory_alert_email,
 )
 from app.services.amazon_monthly_sync_service import sync_monthly_transactions_for_user
-from app.utils.email_utils import get_user_email_and_name_by_id, send_email_with_attachment
 from app.services.forecast_service import generate_forecast_for_user
 from app.routes.forecast_routes import generate_forecast_core
 from app.routes.live_data_bi_routes import build_weekly_email_summary_json
@@ -324,87 +323,6 @@ def get_users_for_monthly_amazon_sync():
 
 from sqlalchemy import text, func
 import pandas as pd
-import io
-import base64
-
-def _send_monthly_amazon_file_email(
-    *,
-    user_id: int,
-    to_email: str,
-    country: str,
-    year: int,
-    month: int,
-    pipeline_result: dict,
-):
-    if not to_email:
-        print(f"[WARN] No email found for user_id={user_id}, country={country}")
-        return
-
-    try:
-        month_name = datetime(year, month, 1).strftime("%B").lower()
-        table_name = f"skuwisemonthly_{user_id}_{country}_{month_name}{year}"
-
-        query = text(f'SELECT * FROM public."{table_name}"')
-        df = pd.read_sql(query, db.engine)
-
-        if df.empty:
-            print(
-                f"[WARN] SKU-wise table empty for "
-                f"user_id={user_id}, country={country}, table={table_name}"
-            )
-            return
-
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="SKUWise")
-
-        output.seek(0)
-        attachment_bytes = output.read()
-
-    except Exception as e:
-        db.session.rollback()
-        print(
-            f"[ERROR] Failed to fetch SKU-wise table for "
-            f"user_id={user_id}, country={country}: {repr(e)}"
-        )
-        return
-
-    filename = f"Monthly P&L Report {country.upper()} {year}-{month:02d}.xlsx"
-    subject = f"Monthly P&L Report - {country.upper()} - {year}-{month:02d}"
-
-    body = (
-        f"Hi,\n\n"
-        f"Please find attached the Amazon SKU-wise performance report for "
-        f"{country.upper()} ({year}-{month:02d}).\n\n"
-        f"Regards,\n"
-        f"Skinelements"
-    )
-
-    try:
-        send_email_with_attachment(
-            to_email=to_email,
-            subject=subject,
-            body=body,
-            attachment_bytes=attachment_bytes,
-            attachment_filename=filename,
-            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-
-        print(
-            f"[INFO] SKU-wise email sent to {to_email} "
-            f"for user_id={user_id}, country={country}"
-        )
-
-    except Exception as e:
-        db.session.rollback()
-        print(
-            f"[ERROR] Email send failed for "
-            f"user_id={user_id}, country={country}: {repr(e)}"
-        )
-
-
-
-
 @celery_app.task(name="tasks.sync_amazon_monthly_transactions")
 def sync_amazon_monthly_transactions(country_filter=None):
     with flask_app.app_context():
@@ -426,7 +344,6 @@ def sync_amazon_monthly_transactions(country_filter=None):
             for user in users:
                 try:
                     user_id = user["user_id"]
-                    email = user.get("email") or get_user_email_and_name_by_id(user_id)
                     country = (user.get("country") or "").strip().lower()
                     if country_filter and country != country_filter.lower():
                         continue
@@ -473,15 +390,6 @@ def sync_amazon_monthly_transactions(country_filter=None):
                         f"user_id={user_id}, country={country}, "
                         f"marketplace_id={marketplace_id}, year={year}, month={month}, "
                         f"count={result.get('count', 0)}"
-                    )
-
-                    _send_monthly_amazon_file_email(
-                        user_id=user_id,
-                        to_email=email,
-                        country=country,
-                        year=year,
-                        month=month,
-                        pipeline_result=result.get("pipeline_result") or {},
                     )
 
                 except Exception as e:

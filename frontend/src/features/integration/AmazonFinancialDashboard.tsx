@@ -496,28 +496,6 @@ function markDone(key: string) {
   window.localStorage.setItem(key, "1");
 }
 
-/** ✅ MTD EMAIL (run once per country in this browser) */
-// function lsKeyMtdEmail(country: string) {
-//   return `mtdEmailSent:${country}`;
-// }
-
-async function sendMtdReportEmail(country: string) {
-  return apiJson(`/send-report-email`, {
-    method: "POST",
-    body: JSON.stringify({ country }),
-  });
-}
-
-async function ensureMtdEmailSentOnce(country: string) {
-  // const key = lsKeyMtdEmail(country);
-
-  // if (wasDone(key)) return;
-
-  await sendMtdReportEmail(country);
-
-  // markDone(key);
-}
-
 /** ✅ NEW: hit /amazon_api/inventory/aged with NO params, once per country */
 async function syncInventoryAgedOnce(country: string) {
   const key = lsKeyInventoryAged(country);
@@ -2450,13 +2428,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       localStorage.setItem("selectedPlatform", dashboardPlatformForCountry(countryUsed));
       window.dispatchEvent(new Event("storage"));
 
-      // ✅ Send MTD email for first-time users
-      try {
-        await sendMtdReportEmail(countryUsed);
-      } catch (e) {
-        console.error("MTD email send failed", e);
-      }
-
       if (onClose) onClose();
       router.push(
         `/pnl-dashboard/MTD/${countryUsed}/${redirectMonthSlug}/${redirectYear}?amazonFetch=success&promptAmazonAds=1`
@@ -2976,18 +2947,6 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
       window.dispatchEvent(
         new Event("storage")
       );
-
-      // Send MTD email
-      try {
-        await ensureMtdEmailSentOnce(
-          countryUsed
-        );
-      } catch (e) {
-        console.error(
-          "MTD email send failed",
-          e
-        );
-      }
 
       if (onClose) {
         onClose();

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import {
     ExternalLink,
+    Mail,
     Plus,
     X,
 } from "lucide-react";
@@ -61,6 +62,7 @@ type Props = {
     onClose: () => void;
     onViewBreakdown?: () => void;
     onSetTarget?: () => void;
+    onEmailRecap?: () => Promise<void> | void;
     country: string;
 };
 
@@ -172,9 +174,11 @@ export default function MonthlyRecapModal({
     onClose,
     onViewBreakdown,
     onSetTarget,
+    onEmailRecap,
     country,
 }: Props) {
     const primaryBtnRef = useRef<HTMLButtonElement | null>(null);
+    const [emailing, setEmailing] = React.useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -187,12 +191,30 @@ export default function MonthlyRecapModal({
     if (!open || !data) return null;
 
     const { monthLabel, target, actual, skuHighlights, objectives, formatMoney, metrics } = data;
+    const normalizedCountry = country.toLowerCase();
+    const skuAspCurrency = normalizedCountry.includes("uk") || normalizedCountry.includes("gb")
+        ? "GBP"
+        : "USD";
+    const formatSkuAsp = (value: number) => new Intl.NumberFormat(
+        skuAspCurrency === "GBP" ? "en-GB" : "en-US",
+        { style: "currency", currency: skuAspCurrency, minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    ).format(value);
     const hasTarget = target > 0;
     const pct = hasTarget ? (actual / target) * 100 : null;
     const met = pct !== null && pct >= 100;
     const gap = Math.abs(actual - target);
 
     const orderedMetrics = [...metrics].sort((a, b) => metricRank(a.label) - metricRank(b.label));
+
+    const handleEmailRecap = async () => {
+        if (!onEmailRecap || emailing) return;
+        setEmailing(true);
+        try {
+            await onEmailRecap();
+        } finally {
+            setEmailing(false);
+        }
+    };
 
     const formatRecapMonth = (label: string) => {
         if (!label) return "";
@@ -460,7 +482,7 @@ export default function MonthlyRecapModal({
                                             <div className="min-w-0">
                                                 <p className="whitespace-nowrap text-[11px] text-charcoal-500">ASP</p>
                                                 <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
-                                                    {highlight.asp != null ? formatMoney(Number(highlight.asp.toFixed(2))) : "\u2014"}
+                                                    {highlight.asp != null ? formatSkuAsp(highlight.asp) : "\u2014"}
                                                 </p>
                                             </div>
 
@@ -555,14 +577,27 @@ export default function MonthlyRecapModal({
                     ) : (
                         <span />
                     )}
-                    <button
-                        ref={primaryBtnRef}
-                        type="button"
-                        onClick={onClose}
-                        className="rounded-md bg-[#2E3A59] px-5 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2943] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
-                    >
-                        Got it
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {onEmailRecap && (
+                            <button
+                                type="button"
+                                onClick={handleEmailRecap}
+                                disabled={emailing}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-[#5EA68E] px-3 py-2 text-xs font-semibold text-[#438A73] transition hover:bg-[#F1F8F5] disabled:cursor-wait disabled:opacity-60"
+                            >
+                                <Mail className="h-3.5 w-3.5" />
+                                {emailing ? "Sending…" : "Email recap"}
+                            </button>
+                        )}
+                        <button
+                            ref={primaryBtnRef}
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-md bg-[#2E3A59] px-5 py-2 text-xs font-semibold text-white transition hover:bg-[#1f2943] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#5EA68E] focus-visible:ring-offset-2"
+                        >
+                            Got it
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>,

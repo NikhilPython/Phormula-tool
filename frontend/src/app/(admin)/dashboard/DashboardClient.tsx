@@ -14733,6 +14733,45 @@ export default function DashboardPage() {
         recapMetrics, formatDisplayAmount,
     ]);
 
+    const handleEmailMonthlyRecap = useCallback(async () => {
+        if (!monthlyRecapData) return;
+        const token = localStorage.getItem("jwtToken");
+        if (!token) {
+            toast.error("Please sign in again to email this recap.");
+            return;
+        }
+
+        const monthly_recap = {
+            monthLabel: monthlyRecapData.monthLabel,
+            actual: monthlyRecapData.actual,
+            target: monthlyRecapData.target,
+            objectives: monthlyRecapData.objectives,
+            metrics: monthlyRecapData.metrics.map(({ label, value, previous, deltaPct, inverseDelta }) => ({
+                label, value, previous, deltaPct, inverseDelta,
+            })),
+            skuHighlights: monthlyRecapData.skuHighlights,
+            currencySymbol: targetSummaryCountry === "us" ? "$" : "£",
+        };
+
+        try {
+            const response = await fetch(`${baseURL}/send-report-email`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ country: targetSummaryCountry, monthly_recap }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || "Unable to send the monthly recap.");
+            }
+            toast.success("Monthly recap emailed successfully.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Unable to send the monthly recap.");
+        }
+    }, [monthlyRecapData, targetSummaryCountry]);
+
     const midMonthTargetReminderData = useMemo<MidMonthTargetReminderData | null>(() => {
         if (shouldShowDummyUi) return null;
 
@@ -14877,6 +14916,7 @@ export default function DashboardPage() {
             <MonthlyRecapModal
                 open={recapOpen}
                 data={monthlyRecapData}
+                onEmailRecap={handleEmailMonthlyRecap}
                 onClose={() => setRecapOpen(false)}
                 // onViewBreakdown={() => {
                 //     setRecapOpen(false);
