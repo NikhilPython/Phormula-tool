@@ -110,7 +110,7 @@ type SKUtableProps = {
   disableInternalFade?: boolean;
 
   onProductDetailClick?: (productName: string, sku?: string) => void;
-  onMonthClick?: (month: string) => void;
+  onMonthClick?: (month: string, year?: string) => void;
   promotionsPlacement?: PromotionsPlacement;
   onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
   amazonFeesPlacement?: AmazonFeesPlacement;
@@ -4684,7 +4684,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   const sku = String((row as any)?.sku || "").trim().toLowerCase();
 
                   if (isMonthWiseView && rawName && name !== "total") {
-                    onMonthClick?.(rawName);
+                    onMonthClick?.(rawName, String((row as any)?.year ?? ""));
                     return;
                   }
 

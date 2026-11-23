@@ -12967,13 +12967,20 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     onExportPayloadChange={handleSkuExportPayloadChange}
                     onOrderedRowsChange={handleSkuOrderedRowsChange}
                     onProductDetailClick={openAiProductDrawerByName}
-                    onMonthClick={(monthName) => {
+                    onMonthClick={(monthName, monthYear) => {
                       const monthKey = String(monthName || "").trim().toLowerCase();
                       if (!monthKey || monthIndexMap[monthKey] === undefined) return;
+                      // A month click drills into that monthly period, including
+                      // the row's calendar year when it came from rolling 12 months.
+                      const nextYear =
+                        isRolling12Months && monthYear
+                          ? String(monthYear)
+                          : String(selectedYear);
+                      setIsRolling12Months(false);
                       setRange("monthly");
                       setSelectedMonth(monthKey);
                       setSelectedQuarter("");
-                      setSelectedYear(String(selectedYear));
+                      setSelectedYear(nextYear);
                       setUploadsData(null);
                       setBargraphUploads([]);
                     }}
