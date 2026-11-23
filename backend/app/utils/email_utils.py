@@ -2635,6 +2635,257 @@ def get_user_email_and_name_by_id(user_id: int):
         return None, None
 
 
+def render_monthly_recap_email(recap: dict) -> str:
+    """Build an email-safe MonthlyRecapModal-style summary using HTML tables."""
+    import html
+    import math
+
+    if not recap:
+        return ""
+
+    def esc(value):
+        return html.escape(str(value if value is not None else ""))
+
+    def safe_float(value):
+        try:
+            number = float(value)
+            return number if math.isfinite(number) else None
+        except (TypeError, ValueError):
+            return None
+
+    currency = recap.get("currencySymbol", "£")
+
+    def money(value, decimals=0):
+        value = safe_float(value)
+        return f"{currency}{value:,.{decimals}f}" if value is not None else "—"
+
+    def number(value, decimals=0):
+        value = safe_float(value)
+        if value is None:
+            return "—"
+        return f"{value:,.{decimals}f}" if decimals else f"{value:,.0f}"
+
+    month_label = str(recap.get("monthLabel") or "")
+    month_parts = month_label.split()
+    display_month = (
+        f"{month_parts[0][:3]}'{month_parts[-1][-2:]}"
+        if len(month_parts) >= 2 else month_label
+    )
+
+    # Target & Objectives
+    actual = safe_float(recap.get("actual"))
+    target = safe_float(recap.get("target"))
+    has_target = target is not None and target > 0
+    achievement = (actual or 0) / target * 100 if has_target else None
+    achievement_text = f"{achievement:.1f}%" if achievement is not None else "—"
+    progress_width = max(0, min(100, achievement or 0))
+
+    objectives = recap.get("objectives") or []
+    objective_html = "".join(
+        f"""<span style="display:inline-block;background:#F2F4F7;color:#37455F;
+        padding:5px 9px;border-radius:14px;font-size:10px;margin:3px;">
+        <span style="color:#5EA68E;">●</span> {esc(item)}</span>"""
+        for item in objectives
+    )
+
+    target_html = f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+           style="border:1px solid #E6ECEF;border-radius:12px;margin:12px 0 10px;background:#FFFFFF;">
+      <tr><td colspan="3" align="center" style="padding:12px 8px 8px;font-size:16px;font-weight:bold;color:#37455F;">
+        Target &amp; Objectives
+      </td></tr>
+      <tr>
+        <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
+          <div style="font-size:11px;color:#50627A;"><span style="color:#ED9F50;">●</span> Net sales</div>
+          <div style="font-size:19px;font-weight:bold;color:#37455F;">{money(actual)}</div>
+        </td>
+        <td width="30%" align="center" valign="middle" style="padding:8px 2px;">
+          <div style="font-size:22px;font-weight:bold;color:#37455F;">{achievement_text}</div>
+          <div style="font-size:10px;color:#50627A;">Target Achieved</div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:7px;">
+            <tr><td height="6" style="background:#E7F1EC;border-radius:5px;font-size:1px;line-height:1px;">
+              <div style="height:6px;width:{progress_width:.1f}%;background:#ED9F50;border-radius:5px;font-size:1px;line-height:1px;">&nbsp;</div>
+            </td></tr>
+          </table>
+        </td>
+        <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
+          <div style="font-size:11px;color:#50627A;"><span style="color:#5EA68E;">●</span> Target</div>
+          <div style="font-size:19px;font-weight:bold;color:#37455F;">{money(target) if has_target else 'Not set'}</div>
+        </td>
+      </tr>
+      <tr><td colspan="3" align="center" style="padding:3px 6px 11px;">{objective_html}</td></tr>
+    </table>
+    """
+
+    # Six KPI cards, in the exact order used by MonthlyRecapModal.
+    metric_order = ["units", "asp", "net sales", "marketplace fees", "tacos", "cm2 profit"]
+    accent_map = {
+        "units": "#FDD36F", "asp": "#ED9F50", "net sales": "#75BBDA",
+        "marketplace fees": "#B75A5A", "tacos": "#3A8EA4", "cm2 profit": "#B8C78C",
+    }
+    metrics = recap.get("metrics") or []
+    metrics = sorted(
+        metrics,
+        key=lambda item: metric_order.index(str(item.get("label", "")).strip().lower())
+        if str(item.get("label", "")).strip().lower() in metric_order else len(metric_order),
+    )[:6]
+
+    metric_rows = []
+    for row_start in range(0, len(metrics), 3):
+        cells = []
+        for metric in metrics[row_start:row_start + 3]:
+            label = str(metric.get("label") or "")
+            key = label.strip().lower()
+            value = metric.get("value")
+            previous = metric.get("previous")
+            delta = safe_float(metric.get("deltaPct"))
+            is_currency = key in {"asp", "net sales", "marketplace fees", "cm2 profit"}
+            if key == "tacos":
+                taco_value = safe_float(value)
+                formatted_value = f"{taco_value:.2f}%" if taco_value is not None else "—"
+            else:
+                formatted_value = money(value, 2) if key == "asp" else money(value) if is_currency else number(value)
+            accent = accent_map.get(key, esc(metric.get("accent") or "#75BBDA"))
+
+            delta_html = ""
+            if delta is not None:
+                inverse = bool(metric.get("inverseDelta", False))
+                good = delta <= 0 if inverse else delta >= 0
+                delta_color = "#12B76A" if good else "#F04438"
+                arrow = "▲" if delta >= 0 else "▼"
+                delta_html = f"""<span style="font-size:10px;font-weight:bold;color:{delta_color};white-space:nowrap;">
+                    {arrow} {abs(delta):.2f}%</span>"""
+
+            previous_html = ""
+            if previous is not None:
+                previous_value = (
+                    f"{safe_float(previous):.2f}%"
+                    if key == "tacos" and safe_float(previous) is not None
+                    else money(previous, 2) if key == "asp"
+                    else money(previous) if is_currency else number(previous)
+                )
+                previous_html = f"""<div style="font-size:10px;color:#667085;margin-top:5px;">
+                    Last month: {previous_value}</div>"""
+
+            cells.append(f"""
+            <td width="33.33%" valign="top" style="padding:4px 3px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="border:1px solid #E6ECEF;border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
+                <tr><td style="padding:9px 8px;">
+                  <div style="font-size:11px;color:#50627A;">{esc(label)}</div>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                    <td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td>
+                    <td align="right" valign="bottom">{delta_html}</td>
+                  </tr></table>
+                  {previous_html}
+                </td></tr>
+              </table>
+            </td>
+            """)
+        while len(cells) < 3:
+            cells.append('<td width="33.33%" style="padding:4px 3px;">&nbsp;</td>')
+        metric_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    metrics_html = f"""
+    <div style="font-size:16px;font-weight:bold;color:#37455F;margin:16px 0 6px;">Key Metrics</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+      {''.join(metric_rows)}
+    </table>
+    """
+
+    # SKU cards: top seller full width, growth and decline side-by-side.
+    highlights = recap.get("skuHighlights") or []
+    sku_parts = []
+    if highlights:
+        top = highlights[0]
+        top_delta = safe_float(top.get("netSalesDeltaPct"))
+        if top_delta is None:
+            top_delta_html = ""
+        else:
+            top_color = "#12B76A" if top_delta >= 0 else "#F04438"
+            top_arrow = "▲" if top_delta >= 0 else "▼"
+            top_delta_html = f'<span style="font-size:10px;font-weight:bold;color:{top_color};">{top_arrow} {abs(top_delta):.2f}%</span>'
+
+        sku_parts.append(f"""
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="margin-top:10px;border:1px solid #7B9A6D;border-top:4px solid #7B9A6D;border-radius:10px;">
+          <tr><td colspan="5" style="padding:8px 10px 3px;font-size:10px;color:#667085;">{esc(top.get('title') or 'Top Selling SKU')}</td></tr>
+          <tr>
+            <td width="40%" style="padding:3px 5px 10px 10px;">
+              <div style="font-size:12px;font-weight:bold;color:#37455F;">{esc(top.get('name') or '—')} &nbsp;{top_delta_html}</div>
+              <div style="font-size:10px;color:#667085;">{esc(top.get('sku') or '')}</div>
+            </td>
+            <td width="15%" align="center" style="padding:3px;">
+              <div style="font-size:10px;color:#667085;">Units</div><b style="font-size:11px;color:#37455F;">{number(top.get('units'))}</b>
+            </td>
+            <td width="15%" align="center" style="padding:3px;">
+              <div style="font-size:10px;color:#667085;">ASP</div><b style="font-size:11px;color:#37455F;">{money(top.get('asp'), 2)}</b>
+            </td>
+            <td width="15%" align="center" style="padding:3px;">
+              <div style="font-size:10px;color:#667085;">Net sales</div><b style="font-size:11px;color:#37455F;">{money(top.get('netSales'))}</b>
+            </td>
+            <td width="15%" align="center" style="padding:3px 8px 3px 3px;">
+              <div style="font-size:10px;color:#667085;">CM2 Profit</div><b style="font-size:11px;color:#37455F;">{money(top.get('cm2Profit'))}</b>
+            </td>
+          </tr>
+        </table>
+        """)
+
+    if len(highlights) > 1:
+        bottom_cells = []
+        for item in highlights[1:3]:
+            is_growth = item.get("title") == "Highest Net Sales Growth"
+            accent = "#5EA68E" if is_growth else "#B75A5A"
+            value_color = "#12B76A" if is_growth else "#F04438"
+            verb = "Increased" if is_growth else "Decreased"
+            change = safe_float(item.get("netSalesChange"))
+            change_text = money(abs(change)) if change is not None else "—"
+            bottom_cells.append(f"""
+            <td width="50%" valign="top" style="padding:4px 3px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;">
+                <tr><td style="padding:8px 9px;">
+                  <div style="font-size:10px;color:#667085;margin-bottom:6px;">{esc(item.get('title') or '')}</div>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                    <td valign="middle">
+                      <div style="font-size:11px;font-weight:bold;color:#37455F;">{esc(item.get('name') or '—')}</div>
+                      <div style="font-size:10px;color:#667085;">{esc(item.get('sku') or '')}</div>
+                    </td>
+                    <td align="right" valign="middle">
+                      <div style="font-size:10px;color:#667085;">{verb}</div>
+                      <div style="font-size:11px;font-weight:bold;color:{value_color};">{change_text}</div>
+                    </td>
+                  </tr></table>
+                </td></tr>
+              </table>
+            </td>
+            """)
+        if len(bottom_cells) == 1:
+            bottom_cells.append('<td width="50%">&nbsp;</td>')
+        sku_parts.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' + ''.join(bottom_cells) + '</tr></table>')
+    else:
+        sku_parts.append('<p style="font-size:11px;color:#667085;">No additional SKU highlights for this month.</p>')
+
+    sku_html = f"""
+    <div style="font-size:16px;font-weight:bold;color:#37455F;margin:15px 0 6px;">SKU Sales Highlights</div>
+    {''.join(sku_parts) if sku_parts else '<p style="font-size:11px;color:#667085;">No SKU sales recorded for this month.</p>'}
+    """
+
+    return f"""
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px;border-collapse:collapse;background:#FFFFFF;">
+      <tr><td style="padding:0 0 3px;">
+        <div style="font-size:19px;line-height:1.35;font-weight:bold;color:#37455F;">
+          Here's how your <span style="color:#5EA68E;">{esc(display_month)}</span> went
+        </div>
+        <div style="font-size:11px;line-height:17px;color:#50627A;">
+          A snapshot of your sales, profitability, and overall performance for the month.
+        </div>
+      </td></tr>
+      <tr><td>{target_html}{metrics_html}{sku_html}</td></tr>
+    </table>
+    """
+
+
 def send_email_with_attachment(
     *,
     to_email: str,
@@ -2644,6 +2895,7 @@ def send_email_with_attachment(
     attachment_bytes: bytes,
     attachment_filename: str,
     mime_type: str = "application/octet-stream",
+    monthly_recap: dict = None,
 ):
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -2654,6 +2906,9 @@ def send_email_with_attachment(
     msg.set_content(body)
 
     safe_attachment_filename = html.escape(str(attachment_filename))
+
+    if not isinstance(monthly_recap, dict):
+        raise ValueError("The complete dashboard recap is required to send this email.")
 
     html_body = f"""
 <html>
@@ -2774,6 +3029,8 @@ def send_email_with_attachment(
               <p style="margin:0 0 18px 0; text-align:left;">
                 Hi <strong>{html.escape(user_name or "there")}</strong>,
               </p>
+
+              {render_monthly_recap_email(monthly_recap) if monthly_recap else ""}
 
               <p style="margin:0 0 14px 0; text-align:justify; text-justify:inter-word;">
                 Your <strong>Amazon SKU-wise monthly report</strong> is ready and attached to this email.
