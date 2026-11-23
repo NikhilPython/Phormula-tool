@@ -2227,6 +2227,12 @@ export default function DashboardProductwisePnlSection({
 
                 )}
 
+                {isRearrangingColumns && (
+                    <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
+                        ← Tailor your profitability methodology: Drag Promotions and Amazon Fees to the stages used in your calculations →
+                    </div>
+                )}
+
 
 
                 <div className="flex items-center gap-2">
