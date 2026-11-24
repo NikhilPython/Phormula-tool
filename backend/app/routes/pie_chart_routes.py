@@ -1,5 +1,6 @@
 from flask import request, jsonify, send_file, Blueprint
 import os
+import json
 import psycopg2
 from psycopg2 import sql
 from psycopg2.pool import ThreadedConnectionPool
@@ -1361,6 +1362,131 @@ def generate_pie_chart():
                 "compare_top5_net_sales": compare_net_sales,
             }
         }
+
+        # Keep the existing combined Global chart untouched while exposing the
+        # source rows and chart-ready current/previous slices for each market.
+        if country == "global" and table_type == "auto":
+            def country_chart_frame(country_key, *, previous=False):
+                if previous:
+                    if not include_previous or not prev_period_meta:
+                        return None, [], []
+                    if prev_period_meta.get("type") == "yearly":
+                        return fetch_yearly_data_from_monthly_tables(
+                            user_id=user_id,
+                            country=country_key,
+                            year=prev_period_meta.get("year"),
+                            months_to_process=current_processed_months,
+                        )
+                    if prev_period_meta.get("type") == "quarterly":
+                        return fetch_quarterly_data_from_monthly_tables(
+                            user_id=user_id,
+                            country=country_key,
+                            year=prev_period_meta.get("year"),
+                            quarter=prev_period_meta.get("quarter"),
+                        )
+                    prev_month = str(prev_period_meta.get("month") or "").strip().lower()
+                    prev_year = prev_period_meta.get("year")
+                    if prev_month and prev_year:
+                        if prev_month.isdigit():
+                            prev_month = datetime(2000, int(prev_month), 1).strftime("%B").lower()
+                        table = build_skuwise_table_name(user_id, country_key, prev_month, prev_year)
+                        return fetch_data_from_table(table), [table], [prev_month.title()]
+                    return None, [], []
+
+                if is_monthly_request:
+                    table = build_skuwise_table_name(user_id, country_key, month_str, year_str)
+                    frame = fetch_data_from_table(table)
+                    return frame, ([table] if frame is not None and not frame.empty else []), [month_str.title()]
+                if is_quarterly_request:
+                    return fetch_quarterly_data_from_monthly_tables(
+                        user_id=user_id,
+                        country=country_key,
+                        year=year_str,
+                        quarter=quarter,
+                        month=month_str,
+                    )
+                if rt == "yearly" or (year_str and not month and not quarter):
+                    return fetch_yearly_data_from_monthly_tables(
+                        user_id=user_id,
+                        country=country_key,
+                        year=year_str,
+                    )
+                return None, [], []
+
+            country_chart_payloads = {}
+            for country_key in ("uk", "us"):
+                current_frame, country_current_tables, country_current_months = country_chart_frame(
+                    country_key
+                )
+                previous_frame, country_previous_tables, _ = country_chart_frame(
+                    country_key, previous=True
+                )
+                current_labels, current_values = prepare_pie_chart_data(current_frame)
+                current_sales_rows = prepare_metric_rows(current_frame, "net_sales")
+                current_sales_labels, current_sales_values = prepare_pie_chart_data(
+                    current_frame, "net_sales"
+                )
+                previous_labels, previous_values = prepare_pie_chart_data(previous_frame)
+                previous_sales_rows = prepare_metric_rows(previous_frame, "net_sales")
+                previous_sales_labels, previous_sales_values = prepare_pie_chart_data(
+                    previous_frame, "net_sales"
+                )
+                current_labels = current_labels or []
+                current_values = current_values or []
+                previous_labels = previous_labels or []
+                previous_values = previous_values or []
+                current_sales_labels = current_sales_labels or []
+                current_sales_values = current_sales_values or []
+                previous_sales_labels = previous_sales_labels or []
+                previous_sales_values = previous_sales_values or []
+
+                country_compare = build_compare_top5_metric(
+                    current_rows=prepare_metric_rows(current_frame, "profit"),
+                    previous_rows=prepare_metric_rows(previous_frame, "profit"),
+                    metric_key="profit",
+                    current_key="current_profit",
+                    previous_key="previous_profit",
+                    delta_key="profit_delta",
+                    delta_percentage_key="profit_delta_percentage",
+                )
+
+                country_chart_payloads[country_key] = {
+                    "current": {
+                        "labels": current_labels,
+                        "values": current_values,
+                        "total_profit": sum(current_values),
+                        "net_sales": current_sales_rows,
+                        "net_sales_labels": current_sales_labels,
+                        "net_sales_values": current_sales_values,
+                        "total_net_sales": sum(current_sales_values),
+                        "tables_used": country_current_tables,
+                        "processed_months": country_current_months,
+                    },
+                    "previous": {
+                        "available": bool(previous_labels),
+                        "labels": previous_labels,
+                        "values": previous_values,
+                        "total_profit": sum(previous_values),
+                        "net_sales": previous_sales_rows,
+                        "net_sales_labels": previous_sales_labels,
+                        "net_sales_values": previous_sales_values,
+                        "total_net_sales": sum(previous_sales_values),
+                        "tables_used": country_previous_tables,
+                    },
+                    "compare_top5": country_compare,
+                }
+
+                response_data["data"][f"current_data_{country_key}"] = (
+                    json.loads(current_frame.to_json(orient="records"))
+                    if current_frame is not None and not current_frame.empty else []
+                )
+                response_data["data"][f"previous_data_{country_key}"] = (
+                    json.loads(previous_frame.to_json(orient="records"))
+                    if previous_frame is not None and not previous_frame.empty else []
+                )
+
+            response_data["data"]["country_charts"] = country_chart_payloads
+
         if current_cm2_profit:
             response_data['data']['cm2_profit'] = current_cm2_profit or []
             response_data['data']['cm2_profit_table_used'] = cm2_profit_table_used
