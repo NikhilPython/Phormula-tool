@@ -2797,6 +2797,44 @@ def get_current_global_data_for_live_bi(user_id: int, persist: bool = True):
 
     return payload_out
 
+def _normalize_previous_skuwise_acos(entry):
+    """Repair historical ad ratios from the source spend and sales columns."""
+    if not isinstance(entry, dict):
+        return entry
+
+    for row in entry.get("items") or []:
+        if not isinstance(row, dict):
+            continue
+
+        def number(*keys):
+            for key in keys:
+                try:
+                    value = float(row.get(key) or 0.0)
+                    if math.isfinite(value) and value != 0:
+                        return value
+                except (TypeError, ValueError, OverflowError):
+                    continue
+            return 0.0
+
+        spend = number("ads_spend", "total_ads")
+        if spend == 0:
+            spend = sum(number(key) for key in ("product_spend", "display_spend", "brand_spend"))
+
+        ad_sales = number("ads_sale_amount")
+        if ad_sales == 0:
+            ad_sales = sum(number(key) for key in ("sp_ads_sales", "sd_ads_sales", "sb_ads_sales"))
+            if ad_sales:
+                row["ads_sale_amount"] = round(ad_sales, 2)
+
+        net_sales = number("net_sales")
+        # `acos` is the field consumed by this dashboard's TACoS display.
+        # Preserve that contract; `ads_acos` uses ad-attributed sales.
+        row["acos"] = round(spend / net_sales * 100.0, 2) if net_sales else 0.0
+        row["ads_acos"] = round(spend / ad_sales * 100.0, 2) if ad_sales else 0.0
+
+    return entry
+
+
 def _load_previous_skuwise_months(user_id, country, now_utc, count=2):
     """Read full historical monthly SKU tables, without mutating them."""
     from sqlalchemy import text as sql_text
@@ -2837,7 +2875,7 @@ def _load_previous_skuwise_months(user_id, country, now_utc, count=2):
         except Exception as exc:
             logging.exception("Failed reading SKU history table %s", table_name)
             entry["error"] = str(exc)
-        out.append(entry)
+        out.append(_normalize_previous_skuwise_acos(entry))
     return out
 
 
@@ -5179,7 +5217,9 @@ def _restore_previous_month_skuwise_items(snapshot, user_id, country):
             else:
                 merged.append(fresh)
         # Only the two immediately preceding calendar months are returned.
-        candidate["previous_months_skuwise"] = merged
+        candidate["previous_months_skuwise"] = [
+            _normalize_previous_skuwise_acos(entry) for entry in merged
+        ]
     return snapshot
 
 
