@@ -7511,6 +7511,13 @@ def get_or_create_global_summary(
                     timeline=timeline,
                     year=year,
                 )
+            fresh_country_usd_metrics = build_country_usd_numeric_metrics(
+                user_id=user_id,
+                period=period,
+                timeline=timeline,
+                year=year,
+                available_countries=available_countries,
+            )
 
             fresh_metrics = {
                     "portfolio": fresh_global_numeric_metrics.get("portfolio", {}),
@@ -7546,6 +7553,9 @@ def get_or_create_global_summary(
                     allow_global_recommendations,
                 ),
                 "metrics": fresh_metrics,
+                "metrics_by_country": fresh_country_usd_metrics,
+                "metrics_uk": fresh_country_usd_metrics.get("uk", {}),
+                "metrics_us": fresh_country_usd_metrics.get("us", {}),
 
                 # ✅ NEW
                 "country_contribution_context": (
@@ -7830,6 +7840,9 @@ def get_or_create_global_summary(
         "allow_global_recommendations": allow_global_recommendations,
 
         "metrics": metrics,
+        "metrics_by_country": country_usd_metrics,
+        "metrics_uk": country_usd_metrics.get("uk", {}),
+        "metrics_us": country_usd_metrics.get("us", {}),
 
         # ✅ NEW
         "country_contribution_context": country_contribution_context,
@@ -7856,6 +7869,12 @@ def get_or_create_global_summary(
         "allow_recommendations": allow_global_recommendations,
 
         "metrics": metrics,
+
+        # Per-market USD-normalized numeric source, alongside the legacy
+        # combined Global metrics object.
+        "metrics_by_country": country_usd_metrics,
+        "metrics_uk": country_usd_metrics.get("uk", {}),
+        "metrics_us": country_usd_metrics.get("us", {}),
 
         # ✅ NEW
         "country_contribution_context": country_contribution_context,

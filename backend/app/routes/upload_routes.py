@@ -2061,6 +2061,7 @@ def upload_history():
         timeline = "12"
 
     performance_trend = None
+    performance_trend_by_country = {}
     try:
         if year is not None:
             performance_trend = get_performance_trend(
@@ -2070,13 +2071,22 @@ def upload_history():
                 timeline=timeline,
                 year=year,
             )
+            if trend_country == "global":
+                for country_key in ("uk", "us"):
+                    performance_trend_by_country[country_key] = get_performance_trend(
+                        user_id=user_id,
+                        country=country_key,
+                        period=period,
+                        timeline=timeline,
+                        year=year,
+                    )
     except Exception as e:
         # Keep upload_history usable even if trend fails
         import traceback
         print("Unexpected error computing performance_trend in /upload_history:", e)
         print(traceback.format_exc())
 
-    return jsonify({
+    response_payload = {
         'uploads': response,
         'performance_trend': performance_trend,
         'performance_trend_metric': metric,
@@ -2084,7 +2094,13 @@ def upload_history():
         'trend_period': period,
         'trend_timeline': timeline,
         'trend_year': year,
-    }), 200
+    }
+    if trend_country == "global":
+        response_payload['performance_trend_by_country'] = performance_trend_by_country
+        response_payload['performance_trend_uk'] = performance_trend_by_country.get("uk")
+        response_payload['performance_trend_us'] = performance_trend_by_country.get("us")
+
+    return jsonify(response_payload), 200
 
 
 ####################################################################################################################

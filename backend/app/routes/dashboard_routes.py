@@ -3814,13 +3814,14 @@ def cashflow():
             prev_month_name = None
 
         previous_summary = None
+        previous_cashflow_data = []
         try:
             previous_custom_months = None
 
             if period_type == 'yearly':
                 previous_custom_months = meta.get('processed_months', [])
 
-            prev_totals, _, _ = compute_cashflow_summary(
+            prev_totals, previous_cashflow_data, _ = compute_cashflow_summary(
                 user_id_value=user_id,
                 year_value=prev_year,
                 country_value=country,
@@ -3851,6 +3852,55 @@ def cashflow():
         }
 
         response_data.update(meta)
+
+        if country == 'global':
+            response_data['summary_by_country'] = {}
+            response_data['previous_summary_by_country'] = {}
+            response_data['detailed_data_by_country'] = {}
+            for country_key in ('uk', 'us'):
+                current_country_summary, current_country_data, current_country_meta = compute_cashflow_summary(
+                    user_id_value=user_id,
+                    year_value=year,
+                    country_value=country_key,
+                    period_type_value=period_type,
+                    month_name_value=month_name,
+                )
+                previous_country_summary, previous_country_data, previous_country_meta = compute_cashflow_summary(
+                    user_id_value=user_id,
+                    year_value=prev_year,
+                    country_value=country_key,
+                    period_type_value=prev_period_type,
+                    month_name_value=prev_month_name,
+                    custom_months_to_process=(
+                        previous_custom_months if period_type == 'yearly' else None
+                    ),
+                )
+                add_cashflow_summary_fields(current_country_summary)
+                add_cashflow_summary_fields(previous_country_summary)
+
+                current_record = current_country_data[0] if current_country_data else None
+                previous_record = previous_country_data[0] if previous_country_data else None
+
+                response_data[f'summary_{country_key}'] = current_country_summary
+                response_data[f'previous_summary_{country_key}'] = previous_country_summary
+                response_data[f'current_data_{country_key}'] = (
+                    current_record.get('data', []) if current_record else []
+                )
+                response_data[f'previous_data_{country_key}'] = (
+                    previous_record.get('data', []) if previous_record else []
+                )
+                response_data[f'card_metrics_{country_key}'] = build_cashflow_card_metrics(
+                    current_country_summary,
+                    previous_country_summary,
+                )
+                response_data['summary_by_country'][country_key] = current_country_summary
+                response_data['previous_summary_by_country'][country_key] = previous_country_summary
+                response_data['detailed_data_by_country'][country_key] = {
+                    'current': current_record,
+                    'previous': previous_record,
+                    'current_meta': current_country_meta,
+                    'previous_meta': previous_country_meta,
+                }
 
         return jsonify(response_data), 200
 

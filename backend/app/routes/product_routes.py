@@ -2587,14 +2587,96 @@ def YearlySKU():
             previous_data, amazon_fees_placement
         )
 
-        return jsonify({
+        response_payload = {
             "current_table_name": table_name,
             "used_current_tables": used_current_tables,
             "current_data": current_data,
             "previous_table_name": previous_table_name,
             "previous_data": previous_data,
             "card_metrics": build_pnl_card_metrics(current_data, previous_data),
-        }), 200
+        }
+
+        # Add UK/US slices for Global annual responses. Keep the legacy combined
+        # fields above and all country-specific response shapes unchanged.
+        if country == "global":
+            def load_country_year_rows(country_key):
+                country_table_name = f"skuwiseyearly_{user_id}_{country_key}_{year}_table"
+                country_current = []
+                try:
+                    country_table = Table(country_table_name, metadata, autoload_with=engine)
+                    with engine.connect() as conn:
+                        rows = conn.execute(select(*country_table.columns)).mappings().all()
+                    country_current = [_normalize_sku_row(dict(row)) for row in rows]
+                    country_current = _sync_total_advertising_components(country_current)
+                    country_current = add_per_unit_fields(country_current)
+                except Exception:
+                    country_current = []
+
+                try:
+                    selected_year = int(year)
+                    today_year = date.today().year
+                    month_limit = max(date.today().month - 1, 0)
+                    if country_key != "us" and selected_year == today_year:
+                        if month_limit == 0:
+                            country_current = []
+                        else:
+                            with engine.connect() as conn:
+                                monthly_rows, _ = get_year_monthly_aggregated_data(
+                                    conn=conn,
+                                    engine=engine,
+                                    metadata=metadata,
+                                    user_id=user_id,
+                                    country=country_key,
+                                    year=year,
+                                    month_limit=month_limit,
+                                )
+                            if monthly_rows:
+                                country_current = monthly_rows
+                except Exception:
+                    pass
+
+                country_previous = []
+                try:
+                    with engine.connect() as conn:
+                        country_previous, _ = get_previous_year_monthly_aggregated_data(
+                            conn=conn,
+                            engine=engine,
+                            metadata=metadata,
+                            user_id=user_id,
+                            country=country_key,
+                            year=year,
+                            month_limit=max(date.today().month - 1, 0),
+                        )
+                except Exception:
+                    country_previous = []
+
+                country_current = _apply_promotions_placement(
+                    country_current, promotions_placement
+                )
+                country_current = _apply_amazon_fees_placement(
+                    country_current, amazon_fees_placement
+                )
+                country_previous = add_per_unit_fields(country_previous)
+                country_previous = _apply_promotions_placement(
+                    country_previous, promotions_placement
+                )
+                country_previous = _apply_amazon_fees_placement(
+                    country_previous, amazon_fees_placement
+                )
+                return country_current, country_previous
+
+            current_data_uk, previous_data_uk = load_country_year_rows("uk")
+            current_data_us, previous_data_us = load_country_year_rows("us")
+            response_payload.update({
+                "current_data_uk": current_data_uk,
+                "current_data_us": current_data_us,
+                "previous_data_uk": previous_data_uk,
+                "previous_data_us": previous_data_us,
+                "card_metrics_uk": build_pnl_card_metrics(current_data_uk, previous_data_uk),
+                "card_metrics_us": build_pnl_card_metrics(current_data_us, previous_data_us),
+            })
+
+        return jsonify(response_payload), 200
 
     except SQLAlchemyError as e:
         return jsonify({'error': 'Error accessing the database'}), 500
@@ -3795,6 +3877,14 @@ def skutableprofit():
                 "previous_ads_table_name": None,
                 "previous_data": [],
                 "card_metrics": build_pnl_card_metrics([], []),
+                **({
+                    "current_data_uk": [],
+                    "current_data_us": [],
+                    "previous_data_uk": [],
+                    "previous_data_us": [],
+                    "card_metrics_uk": build_pnl_card_metrics([], []),
+                    "card_metrics_us": build_pnl_card_metrics([], []),
+                } if country == "global" else {}),
             }), 200
 
         ads_table_name = requested_ads_table_name if requested_ads_table_name in existing_tables else None
@@ -4051,7 +4141,7 @@ def skutableprofit():
 
             return add_per_unit_fields(final_data)
 
-        def _add_product_status(rows):
+        def _add_product_status(rows, country_override=None):
             if not rows:
                 return rows
 
@@ -4069,7 +4159,7 @@ def skutableprofit():
                 "us": ("sku_us", "product_status_us"),
                 "canada": ("sku_canada", "product_status_canada"),
             }
-            country_key = str(country or "").strip().lower().split("_", 1)[0]
+            country_key = str(country_override or country or "").strip().lower().split("_", 1)[0]
             if country_key == "ca":
                 country_key = "canada"
 
@@ -4222,7 +4312,7 @@ def skutableprofit():
                 previous_data, previous_amazon_fees_placement
             )
 
-        return jsonify({
+        response_payload = {
             "current_table_name": table_name,
             "current_ads_table_name": ads_table_name,
             "requested_ads_table_name": requested_ads_table_name,
@@ -4231,7 +4321,52 @@ def skutableprofit():
             "previous_ads_table_name": previous_ads_table_name,
             "previous_data": previous_data,
             "card_metrics": build_pnl_card_metrics(current_data, previous_data),
-        }), 200
+        }
+
+        # Add marketplace-specific views to Global responses without changing
+        # the existing combined fields or any country-specific response shape.
+        if country == "global":
+            prev_month, prev_year = get_previous_month(month, year)
+
+            def load_country_profit_rows(country_key, source_month, source_year, *, include_ads):
+                if not source_month or not source_year:
+                    return []
+                source_table = build_skuwise_table_name(
+                    user_id, country_key, source_month, source_year
+                )
+                if source_table not in existing_tables:
+                    return []
+                source_ads_table = source_table if include_ads and source_table in existing_tables else None
+                rows = _fetch_profit_data(source_table, source_ads_table)
+                rows = _add_product_status(rows, country_override=country_key)
+                has_cm2 = _has_cm2_data(rows)
+                promotion_stage = promotions_placement
+                if promotion_stage == "after_cm1" and not has_cm2 and not allow_after_cm1:
+                    promotion_stage = "before_cm1"
+                rows = _apply_promotions_placement(rows, promotion_stage)
+                fees_stage = amazon_fees_placement
+                if fees_stage == "after_cm1" and not has_cm2 and not allow_after_cm1:
+                    fees_stage = "before_cm1"
+                return _apply_amazon_fees_placement(rows, fees_stage)
+
+            current_data_uk = load_country_profit_rows("uk", month, year, include_ads=True)
+            current_data_us = load_country_profit_rows("us", month, year, include_ads=True)
+            previous_data_uk = [] if benchmark_only else load_country_profit_rows(
+                "uk", prev_month, prev_year, include_ads=False
+            )
+            previous_data_us = [] if benchmark_only else load_country_profit_rows(
+                "us", prev_month, prev_year, include_ads=False
+            )
+            response_payload.update({
+                "current_data_uk": current_data_uk,
+                "current_data_us": current_data_us,
+                "previous_data_uk": previous_data_uk,
+                "previous_data_us": previous_data_us,
+                "card_metrics_uk": build_pnl_card_metrics(current_data_uk, previous_data_uk),
+                "card_metrics_us": build_pnl_card_metrics(current_data_us, previous_data_us),
+            })
+
+        return jsonify(response_payload), 200
 
     except Exception as e:
         return jsonify({
