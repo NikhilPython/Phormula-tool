@@ -954,10 +954,6 @@ const getPrevRegionYearMonth = (region: RegionKey) => {
     };
 };
 
-const getDayOfMonthByRegion = (region: RegionKey) => {
-    return getRegionNow(region).getDate();
-};
-
 const getRegionDayInfo = (region: RegionKey) => {
     const now = getRegionNow(region);
     const todayDay = now.getDate();
@@ -1544,6 +1540,8 @@ export default function DashboardPage() {
 
     // Mid-month target reminder modal state
     const [midMonthReminderOpen, setMidMonthReminderOpen] = useState(false);
+    const midMonthReminderRequestRef = useRef(false);
+    const midMonthReminderShownRef = useRef(new Set<string>());
     const [midMonthObjective, setMidMonthObjective] = useState<{
         growth_intent: "conservative" | "balanced" | "aggressive";
         profit_priority: "high" | "protect_growth" | "sacrifice_short_term";
@@ -15204,17 +15202,45 @@ export default function DashboardPage() {
     useEffect(() => {
         if (typeof window === "undefined") return;
         if (!midMonthTargetReminderData || pageLoading || shouldShowDummyUi || unauthorized) return;
-        if (getDayOfMonthByRegion(activeDateRegion) !== 15) return;
 
         const token = localStorage.getItem("jwtToken");
         if (!token) return;
 
-        const userId = decodeJwtUserId(token) || "unknown";
-        const key = `midmonth_target_reminder_seen_${userId}_${currentDisplayMonth.year}_${currentDisplayMonth.monthName}`;
-        if (localStorage.getItem(key) === "1") return;
+        const localPeriodKey = `${activeDateRegion}_${currentDisplayMonth.year}_${currentDisplayMonth.monthName}`;
+        if (midMonthReminderShownRef.current.has(localPeriodKey)) return;
 
-        localStorage.setItem(key, "1"); // marked seen the moment it's displayed
-        setMidMonthReminderOpen(true);
+        const checkReminder = async () => {
+            if (midMonthReminderRequestRef.current || midMonthReminderShownRef.current.has(localPeriodKey)) return;
+            midMonthReminderRequestRef.current = true;
+            try {
+                const response = await fetch(
+                    `${baseURL}/mid-month-target-reminder?region=${encodeURIComponent(activeDateRegion.toLowerCase())}`,
+                    { headers: { Authorization: `Bearer ${token}` } },
+                );
+                const result = await response.json().catch(() => null);
+                if (!response.ok) throw new Error(result?.error || "Unable to check mid-month reminder");
+                if (!result?.eligible || !result.month) return;
+
+                midMonthReminderShownRef.current.add(localPeriodKey);
+                setMidMonthReminderOpen(true);
+                void fetch(`${baseURL}/mid-month-target-reminder/viewed`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ month: result.month }),
+                }).catch((error) => console.error("Failed to mark mid-month reminder viewed:", error));
+            } catch (error) {
+                console.error("Failed to check mid-month reminder:", error);
+            } finally {
+                midMonthReminderRequestRef.current = false;
+            }
+        };
+
+        void checkReminder();
+        const intervalId = window.setInterval(() => void checkReminder(), 15 * 60 * 1000);
+        return () => window.clearInterval(intervalId);
     }, [
         midMonthTargetReminderData,
         pageLoading,
@@ -15222,6 +15248,7 @@ export default function DashboardPage() {
         unauthorized,
         currentDisplayMonth,
         activeDateRegion,
+        baseURL,
     ]);
 
     // Keep the previous month's recap eligible until this user has seen it.

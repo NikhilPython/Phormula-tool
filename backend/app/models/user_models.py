@@ -640,6 +640,24 @@ class UserObjective(db.Model):
             f"objective_month={self.objective_month}, "
             f"growth_intent={self.growth_intent}>"
         )
+
+
+class MidMonthTargetReminder(db.Model):
+    __tablename__ = "mid_month_target_reminders"
+    __bind_key__ = "chatbot"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    reminder_month = Column(Date, nullable=False)
+    viewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "reminder_month", name="unique_user_mid_month_target_reminder"),
+    )
+
+    def __repr__(self):
+        return f"<MidMonthTargetReminder user_id={self.user_id}, month={self.reminder_month}, viewed={self.viewed_at is not None}>"
     
 class ProductAISummary(db.Model):
     __tablename__ = "product_ai_summary"

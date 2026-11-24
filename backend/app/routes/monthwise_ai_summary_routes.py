@@ -2,9 +2,10 @@ import traceback
 from flask import Blueprint, json, request, jsonify
 import jwt
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from config import Config
 from app import db
-from app.models.user_models import HistoricAISummary, UserObjective
+from app.models.user_models import HistoricAISummary, UserObjective, MidMonthTargetReminder
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, get_or_create_global_summary
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
@@ -225,6 +226,110 @@ def get_month_start(value=None):
         raise ValueError("month must be in 'YYYY-MM' or 'YYYY-MM-DD'")
 
 
+MID_MONTH_REMINDER_TIMEZONES = {
+    "global": "Asia/Kolkata",
+    "uk": "Europe/London",
+    "us": "America/Los_Angeles",
+    "ca": "America/Toronto",
+}
+
+
+def _mid_month_reminder_user_id():
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None, (jsonify({"error": "Authorization token is missing or invalid"}), 401)
+
+    try:
+        payload, _effective_user_id, _member_id = get_effective_user_id_from_token(auth_header.split(" ", 1)[1])
+        user_id = payload.get("user_id")
+        if not user_id:
+            return None, (jsonify({"error": "Invalid token payload"}), 401)
+        return int(user_id), None
+    except Exception:
+        return None, (jsonify({"error": "Invalid authorization token"}), 401)
+
+
+@summary_bp.route("/mid-month-target-reminder", methods=["GET"])
+def get_mid_month_target_reminder_status():
+    user_id, auth_error = _mid_month_reminder_user_id()
+    if auth_error:
+        return auth_error
+
+    region = (request.args.get("region") or "global").strip().lower()
+    timezone_name = MID_MONTH_REMINDER_TIMEZONES.get(region)
+    if not timezone_name:
+        return jsonify({"error": "region must be one of global, uk, us, ca"}), 400
+
+    try:
+        today = datetime.now(ZoneInfo(timezone_name)).date()
+        reminder_month = date(today.year, today.month, 1)
+        pending = MidMonthTargetReminder.query.filter_by(
+            user_id=user_id,
+            reminder_month=reminder_month,
+            viewed_at=None,
+        ).first()
+
+        if pending is None and today.day >= 15:
+            current = MidMonthTargetReminder.query.filter_by(
+                user_id=user_id,
+                reminder_month=reminder_month,
+            ).first()
+            if current is None:
+                pending = MidMonthTargetReminder(
+                    user_id=user_id,
+                    reminder_month=reminder_month,
+                )
+                db.session.add(pending)
+                db.session.commit()
+            elif current.viewed_at is None:
+                pending = current
+
+        return jsonify({
+            "eligible": pending is not None,
+            "month": pending.reminder_month.strftime("%Y-%m") if pending else None,
+            "region": region,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": "Unable to check mid-month reminder", "details": str(e)}), 500
+
+
+@summary_bp.route("/mid-month-target-reminder/viewed", methods=["POST"])
+def mark_mid_month_target_reminder_viewed():
+    user_id, auth_error = _mid_month_reminder_user_id()
+    if auth_error:
+        return auth_error
+
+    body = request.get_json(silent=True) or {}
+    try:
+        reminder_month = get_month_start(body.get("month"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    try:
+        reminder = MidMonthTargetReminder.query.filter_by(
+            user_id=user_id,
+            reminder_month=reminder_month,
+        ).first()
+        if reminder is None:
+            return jsonify({"error": "No pending reminder found for this month"}), 404
+
+        if reminder.viewed_at is None:
+            reminder.viewed_at = datetime.utcnow()
+            db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "month": reminder_month.strftime("%Y-%m"),
+            "viewed_at": reminder.viewed_at.isoformat() if reminder.viewed_at else None,
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc()
+        return jsonify({"error": "Unable to update reminder status", "details": str(e)}), 500
+
+
 @summary_bp.route("/objective", methods=["POST"])
 def save_user_objective():
     auth_header = request.headers.get("Authorization")
@@ -402,5 +507,3 @@ def get_user_objective():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": "Server error", "details": str(e)}), 500
-    
-    
