@@ -2816,9 +2816,15 @@ def _normalize_previous_skuwise_acos(entry):
                     continue
             return 0.0
 
-        spend = number("ads_spend", "total_ads")
-        if spend == 0:
-            spend = sum(number(key) for key in ("product_spend", "display_spend", "brand_spend"))
+        ad_spend = number("ads_spend")
+        if ad_spend == 0:
+            ad_spend = sum(number(key) for key in ("product_spend", "display_spend", "brand_spend"))
+
+        tacos_spend = number(
+            "advertising_total_final", "total_ads", "advertising_fees", "ads_spend"
+        )
+        if tacos_spend == 0:
+            tacos_spend = sum(number(key) for key in ("product_spend", "display_spend", "brand_spend"))
 
         ad_sales = number("ads_sale_amount")
         if ad_sales == 0:
@@ -2827,10 +2833,12 @@ def _normalize_previous_skuwise_acos(entry):
                 row["ads_sale_amount"] = round(ad_sales, 2)
 
         net_sales = number("net_sales")
-        # `acos` is the field consumed by this dashboard's TACoS display.
-        # Preserve that contract; `ads_acos` uses ad-attributed sales.
-        row["acos"] = round(spend / net_sales * 100.0, 2) if net_sales else 0.0
-        row["ads_acos"] = round(spend / ad_sales * 100.0, 2) if ad_sales else 0.0
+        # This dashboard's legacy `acos` field is used for TACoS; keep it on
+        # total advertising spend / net sales. `ads_acos` uses ad-attributed sales.
+        row["acos"] = round(tacos_spend / net_sales * 100.0, 2) if net_sales else 0.0
+        row["tacos_total_advertising_cost_of_sale"] = row["acos"]
+        row["tacos_pct"] = row["acos"]
+        row["ads_acos"] = round(ad_spend / ad_sales * 100.0, 2) if ad_sales else 0.0
 
     return entry
 
@@ -5059,7 +5067,7 @@ def finances_mtd_transactions():
     # Use the same displayed percentages for the comparison, rounded to the
     # precision shown on the cards.
     october_tacos = oct_totals.get("tacos_total_advertising_cost_of_sale")
-    september_tacos = sep_totals.get("acos")
+    september_tacos = sep_totals.get("tacos_total_advertising_cost_of_sale")
     if october_tacos is not None and september_tacos is not None:
         october_card_metrics["deltas"]["tacos_pct"] = _dashboard_delta(
             october_tacos,
