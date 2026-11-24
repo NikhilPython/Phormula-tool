@@ -206,10 +206,35 @@ def _ads(source: Mapping[str, Any]) -> float:
     ))
 
 
+def _tacos_ad_cost(source: Mapping[str, Any]) -> float:
+    """Total advertising cost for TACoS: Ads Spend + Cost of Advertisement bucket."""
+    deals = abs(_first(source, "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads"))
+    brand_or_visible = abs(_first_non_zero(source, "brand_spend", "visible_ads"))
+
+    total_ads = _first_non_zero(source, "total_ads", "advertising_fees")
+    ads_spend = abs(_first(source, "ads_spend"))
+
+    # Prefer an explicit total-ads figure when it already represents the full ad cost.
+    if total_ads != 0 and total_ads >= ads_spend:
+        return abs(total_ads)
+
+    composed = ads_spend + brand_or_visible + deals
+    if composed != 0:
+        return composed
+
+    return abs(_first_non_zero(
+        source,
+        "advertising_total_final",
+        "advertising_total",
+        "total_ads",
+        "ads_spend",
+    ))
+
+
 def calculate_pnl_tacos(source: Mapping[str, Any]) -> float:
     """Calculate period TACoS from full-precision ad costs and net sales."""
     net_sales = _first(source, "net_sales", "total_sales")
-    return _ads(source) / net_sales * 100 if net_sales else 0.0
+    return _tacos_ad_cost(source) / net_sales * 100 if net_sales else 0.0
 
 
 def find_total_row(rows: Iterable[Mapping[str, Any]] | None) -> MutableMapping[str, Any]:

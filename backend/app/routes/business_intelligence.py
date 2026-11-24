@@ -1482,10 +1482,17 @@ def _apply_rolling_promotions_placement(rows, placement):
 
     for row in rows:
         adjustment = abs(_rolling_number(row.get("promotional_rebates")))
-        net_sales = _rolling_number(row.get("net_sales")) + adjustment
+        net_sales = _rolling_number(row.get("net_sales")) + (0 if placement == "in_ads_spend" else adjustment)
         profit = _rolling_number(row.get("profit"))
         if placement == "after_cm1":
             profit += adjustment
+        if placement == "in_ads_spend":
+            ads = _rolling_number(row.get("ads_spend"), row.get("advertising_total"), row.get("advertising_total_final")) + adjustment
+            row["ads_spend"] = ads
+            row["acos"] = round(ads / net_sales * 100, 2) if net_sales else 0
+            row["total_cm2_profit"] = _rolling_number(row.get("total_cm2_profit"), row.get("cm2_profit")) - adjustment
+            if "cm2_profit" in row:
+                row["cm2_profit"] = _rolling_number(row.get("cm2_profit")) - adjustment
         quantity = _rolling_number(row.get("total_quantity"))
 
         row["net_sales"] = round(net_sales, 2)
@@ -1561,11 +1568,20 @@ def _apply_rolling_promotions_placement(rows, placement):
 
 
 def _apply_rolling_amazon_fees_placement(rows, placement):
-    if placement != "after_cm1":
+    if placement not in {"after_cm1", "in_ads_spend"}:
         return rows
 
     for row in rows:
         amazon_fees = abs(_rolling_number(row.get("amazon_fee"), row.get("amazon_fees")))
+        if placement == "in_ads_spend":
+            ads = _rolling_number(row.get("ads_spend"), row.get("advertising_total"), row.get("advertising_total_final")) + amazon_fees
+            net_sales = _rolling_number(row.get("net_sales"))
+            row["ads_spend"] = ads
+            row["acos"] = round(ads / net_sales * 100, 2) if net_sales else 0
+            row["total_cm2_profit"] = _rolling_number(row.get("total_cm2_profit"), row.get("cm2_profit")) - amazon_fees
+            if "cm2_profit" in row:
+                row["cm2_profit"] = _rolling_number(row.get("cm2_profit")) - amazon_fees
+            continue
         profit = _rolling_number(row.get("profit")) + amazon_fees
         net_sales = _rolling_number(row.get("net_sales"))
         quantity = _rolling_number(row.get("total_quantity"))
@@ -1777,7 +1793,7 @@ def get_rolling_12_month_sku_data():
         amazon_fees_placement = (
             request.args.get("amazonFeesPlacement") or "before_cm1"
         ).strip().lower()
-        if amazon_fees_placement not in {"before_cm1", "after_cm1"}:
+        if amazon_fees_placement not in {"before_cm1", "after_cm1", "in_ads_spend"}:
             return jsonify({'error': 'Invalid amazonFeesPlacement'}), 400
         promotions_placement = (
             request.args.get("promotionsPlacement") or "in_net_sales"
@@ -1787,6 +1803,7 @@ def get_rolling_12_month_sku_data():
             "after_net_sales",
             "before_cm1",
             "after_cm1",
+            "in_ads_spend",
         }:
             return jsonify({'error': 'Invalid promotionsPlacement'}), 400
         allow_after_cm1 = (

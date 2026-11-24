@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 
-VALID_PROMOTIONS_PLACEMENTS = {"in_net_sales", "before_cm1", "after_cm1"}
-VALID_AMAZON_FEES_PLACEMENTS = {"before_cm1", "after_cm1"}
+VALID_PROMOTIONS_PLACEMENTS = {"in_net_sales", "before_cm1", "after_cm1", "in_ads_spend"}
+VALID_AMAZON_FEES_PLACEMENTS = {"before_cm1", "after_cm1", "in_ads_spend"}
 
 
 def _number(row: dict[str, Any], key: str) -> float:
@@ -27,9 +27,11 @@ def apply_pnl_column_placements(
         raise ValueError("Invalid Amazon Fees placement")
 
     promotions_detached = promotions_placement != "in_net_sales"
+    promotions_in_ads = promotions_placement == "in_ads_spend"
+    fees_in_ads = amazon_fees_placement == "in_ads_spend"
     promotions_after_cm1 = promotions_placement == "after_cm1"
     amazon_fees_after_cm1 = amazon_fees_placement == "after_cm1"
-    if not promotions_detached and not amazon_fees_after_cm1:
+    if not promotions_detached and not amazon_fees_after_cm1 and not fees_in_ads:
         return
 
     for row in rows:
@@ -40,25 +42,41 @@ def apply_pnl_column_placements(
             _number(row, "promotional_rebates")
             or _number(row, "promotions")
         )
-        net_sales_delta = promotions if promotions_detached else 0.0
+        net_sales_delta = promotions if promotions_detached and not promotions_in_ads else 0.0
+        amazon_fees = (
+            abs(_number(row, "amazon_fees"))
+            or abs(_number(row, "marketplace_fees"))
+            or abs(_number(row, "marketplace_total"))
+            or (abs(_number(row, "selling_fees")) + abs(_number(row, "fba_fees")))
+        )
         cm1_delta = 0.0
         if promotions_after_cm1:
             cm1_delta += promotions
         if amazon_fees_after_cm1:
-            cm1_delta += (
-                abs(_number(row, "amazon_fees"))
-                or abs(_number(row, "marketplace_fees"))
-                or abs(_number(row, "marketplace_total"))
-                or (
-                    abs(_number(row, "selling_fees"))
-                    + abs(_number(row, "fba_fees"))
-                )
-            )
+            cm1_delta += amazon_fees
 
         net_sales = _number(row, "net_sales") + net_sales_delta
         cm1_profit = _number(row, "profit") + cm1_delta
         quantity = _number(row, "total_quantity") or _number(row, "quantity")
         cm2_profit = _number(row, "cm2_profit")
+        ads_addition = (promotions if promotions_in_ads else 0.0) + (amazon_fees if fees_in_ads else 0.0)
+        if ads_addition:
+            ads_spend = _number(row, "ads_spend") + ads_addition
+            row["ads_spend"] = ads_spend
+            row["ads_spend_raw"] = _number(row, "ads_spend_raw") + ads_addition
+            for key in ("advertising_total_final", "total_ads", "advertising_fees"):
+                if key in row:
+                    row[key] = _number(row, key) + ads_addition
+            row["acos"] = ads_spend / net_sales * 100 if net_sales else 0.0
+            row["cm2_profit"] = cm2_profit - ads_addition
+            row["cm2_profit_per"] = row["cm2_profit"] / net_sales * 100 if net_sales else 0.0
+            if "total_cm2_profit" in row:
+                row["total_cm2_profit"] = _number(row, "total_cm2_profit") - ads_addition
+            if "tacos_total_advertising_cost_of_sale" in row:
+                row["tacos_total_advertising_cost_of_sale"] = ads_spend / net_sales * 100 if net_sales else 0.0
+            if "tacos" in row:
+                row["tacos"] = ads_spend / net_sales * 100 if net_sales else 0.0
+            cm2_profit = row["cm2_profit"]
 
         row["net_sales"] = net_sales
         row["profit"] = cm1_profit
@@ -123,7 +141,9 @@ def apply_pnl_column_placements_to_payload(
                 "cm1_profit_per",
                 "cm1_profit_per_unit",
                 "cm2_profit_per",
-                "promotional_rebates_percentage",
+                "promotional_rebates_percentage", "ads_spend", "ads_spend_raw",
+                "acos", "cm2_profit", "cm2_profit_per", "total_cm2_profit",
+                "tacos_total_advertising_cost_of_sale", "total_ads",
             ):
                 if key in total_row:
                     totals[key] = total_row[key]

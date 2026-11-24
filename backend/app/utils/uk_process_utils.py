@@ -384,10 +384,14 @@ def merge_monthly_ads_into_sku_grouped(conn, sku_grouped, user_id, country, mont
     out["cm2_margins"] = out["cm2_profit_per"]
     out["ads_conversion_rate"] = np.where(clicks != 0, (ad_units / clicks) * 100.0, 0.0)
     out["ads_roas"] = np.where(spend != 0, ad_sales / spend, 0.0)
+    brand_spend = pd.to_numeric(out.get("brand_spend", 0.0), errors="coerce").fillna(0.0).abs()
+    deals_ads = pd.to_numeric(out.get("dealsvouchar_ads", 0.0), errors="coerce").fillna(0.0).abs()
+    total_ads_for_tacos = spend + brand_spend + deals_ads
     out["ads_acos"] = np.where(ad_sales != 0, (spend / ad_sales) * 100.0, 0.0)
     out["acos"] = out["ads_acos"]
+    out["total_ads"] = np.where(total_ads_for_tacos != 0, total_ads_for_tacos, spend)
     out["tacos_total_advertising_cost_of_sale"] = np.where(
-        net_sales != 0, (spend / net_sales) * 100.0, 0.0
+        net_sales != 0, (total_ads_for_tacos / net_sales) * 100.0, 0.0
     )
     out["reimbursement_vs_cm2_margins"] = np.where(
         out["cm2_profit"] != 0,
@@ -1778,6 +1782,17 @@ def process_skuwise_data(user_id, country, month, year):
         )
         sum_row["cm2_margins"] = abs(cm2_margins)
         sum_row["acos"] = abs(acos)
+        tacos_ads_spend = abs(float(advertising_total or 0.0))
+        tacos_cost_of_advertisement = abs(float(visible_ads_total or 0.0)) + abs(float(dealsvouchar_ads_total or 0.0))
+        tacos_total_ads = tacos_ads_spend + tacos_cost_of_advertisement
+        if "ads_spend" in sum_row.index:
+            sum_row["ads_spend"] = tacos_ads_spend
+        sum_row["total_ads"] = tacos_total_ads
+        sum_row["tacos_total_advertising_cost_of_sale"] = (
+            (tacos_total_ads / float(total_sales or 0.0)) * 100
+            if float(total_sales or 0.0) != 0
+            else 0.0
+        )
         sum_row["rembursment_vs_cm2_margins"] = (
             abs(float(rembursement_fee) / float(total_cm2_profit)) * 100
             if total_cm2_profit else 0.0

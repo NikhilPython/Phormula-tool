@@ -31,7 +31,7 @@ type DashboardProductwisePnlSectionProps = Record<string, any>;
 type DashboardColumnPlacement = {
     anchor: string;
     side: "before" | "after";
-    stage: "in_net_sales" | "before_cm1" | "after_cm1";
+    stage: "in_net_sales" | "before_cm1" | "after_cm1" | "in_ads_spend";
 };
 
 type DashboardTableLayoutItem =
@@ -285,15 +285,23 @@ export default function DashboardProductwisePnlSection({
 
     const activeProductwiseGroups = React.useMemo(() => {
         if (
-            !isUsPnlSkuLayout ||
             activePromotionsPlacement.stage === "in_net_sales"
         ) {
             return SKUWISE_GROUPS;
         }
 
-        return SKUWISE_GROUPS.map((group: any) =>
-            group.id === "sales"
-                ? {
+        return SKUWISE_GROUPS.flatMap((group: any) => {
+            if (activePromotionsPlacement.stage === "in_ads_spend" && group.id === "promotions") return [];
+            if (activePromotionsPlacement.stage === "in_ads_spend" && group.id === "ads_spend") {
+                return [{ ...group, expandedCols: [
+                    ...group.expandedCols.filter((column: any) => column.key !== "ads_spend"),
+                    { key: "promotional_rebates", label: "Promotions", align: "center", width: "8%" },
+                    { key: "promotional_rebates_percentage", label: "Promotions %", align: "center", width: "8%" },
+                    group.expandedCols.find((column: any) => column.key === "ads_spend"),
+                ].filter(Boolean) }];
+            }
+            return group.id === "sales"
+                ? [{
                     ...group,
                     collapsedCols: group.collapsedCols.filter(
                         (column: any) => column.key !== "promotional_rebates"
@@ -301,9 +309,9 @@ export default function DashboardProductwisePnlSection({
                     expandedCols: group.expandedCols.filter(
                         (column: any) => column.key !== "promotional_rebates"
                     ),
-                }
-                : group
-        );
+                }]
+                : [group];
+        });
     }, [SKUWISE_GROUPS, isUsPnlSkuLayout, activePromotionsPlacement.stage]);
 
     const productwiseLayout = React.useMemo<DashboardTableLayoutItem[]>(() => {
@@ -315,7 +323,9 @@ export default function DashboardProductwisePnlSection({
                 ? activePromotionsPlacement.stage === "in_net_sales"
                     ? [{ type: "single" as const, key: "promotional_rebates_percentage" }]
                     : []
-                : [{ type: "group" as const, id: "promotions" }]),
+                : activePromotionsPlacement.stage === "in_ads_spend"
+                    ? []
+                    : [{ type: "group" as const, id: "promotions" }]),
             { type: "single", key: "cogs" },
             { type: "group", id: "marketplace_fees" },
             { type: "group", id: "other_transactions" },
@@ -332,7 +342,8 @@ export default function DashboardProductwisePnlSection({
                     (item.type === "single" && item.key === key)
             );
         const promotionsIsSeparate =
-            !isUsPnlSkuLayout || activePromotionsPlacement.stage !== "in_net_sales";
+            (!isUsPnlSkuLayout || activePromotionsPlacement.stage !== "in_net_sales") &&
+            activePromotionsPlacement.stage !== "in_ads_spend";
 
         if (promotionsIsSeparate) {
             const existingIndex = findIndex("promotions");
@@ -384,7 +395,19 @@ export default function DashboardProductwisePnlSection({
 
     const handleColumnDrop = React.useCallback(
         (sourceKey: string, targetKey: string, side: "before" | "after") => {
+            const adsTargets = ["ads_spend", "product_spend", "display_spend"];
             if (sourceKey === "marketplace_fees") {
+                if (!adsTargets.includes(targetKey)) return;
+                setDraftAmazonFeesPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
+                return;
+            }
+            const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
+            if (isPromotionsSource) {
+                if (!adsTargets.includes(targetKey)) return;
+                setDraftPromotionsPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
+                return;
+            }
+            if (sourceKey === "unused_marketplace_fees") {
                 if (
                     targetKey === "marketplace_fees" ||
                     ["selling_fees", "fba_fees", "marketplace_total"].includes(targetKey)
@@ -430,13 +453,13 @@ export default function DashboardProductwisePnlSection({
                 return;
             }
 
-            const isPromotionsSource = [
+            const isLegacyPromotionsSource = [
                 "promotions",
                 "promotional_rebates",
                 "promotional_rebates_percentage",
             ].includes(sourceKey);
             if (
-                !isPromotionsSource ||
+                !isLegacyPromotionsSource ||
                 ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(
                     targetKey
                 )
@@ -2648,7 +2671,7 @@ export default function DashboardProductwisePnlSection({
                                     ? [
                                         "marketplace_fees",
                                         ...(!isUsPnlSkuLayout ||
-                                            activePromotionsPlacement.stage !== "in_net_sales"
+                                            (activePromotionsPlacement.stage !== "in_net_sales" && activePromotionsPlacement.stage !== "in_ads_spend")
                                             ? ["promotions"]
                                             : []),
                                     ]

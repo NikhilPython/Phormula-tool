@@ -35,7 +35,7 @@ export function buildSkuwiseTableColumns(
     options: {
         isUsSkuLayout?: boolean;
         hideSku?: boolean;
-        promotionsPlacement?: "in_net_sales" | "before_cm1" | "after_cm1";
+        promotionsPlacement?: "in_net_sales" | "before_cm1" | "after_cm1" | "in_ads_spend";
     } = {}
 ) {
     const isUsSkuLayout = Boolean(options.isUsSkuLayout);

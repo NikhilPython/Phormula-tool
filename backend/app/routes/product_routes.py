@@ -2027,8 +2027,13 @@ def aggregate_monthly_sku_rows(rows):
         # Percentages are not additive. Use the final period's ad costs,
         # including the TOTAL ad overrides above, and its combined net sales.
         tacos = calculate_pnl_tacos(row)
+        net_sales = safe_float(row.get("net_sales"))
+        ads_spend_for_acos = abs(safe_float(row.get("ads_spend")))
+        if ads_spend_for_acos == 0:
+            ads_spend_for_acos = abs(safe_float(row.get("advertising_total")))
+        acos = round((ads_spend_for_acos / net_sales) * 100, 2) if net_sales else 0.0
         row["tacos_total_advertising_cost_of_sale"] = tacos
-        row["acos"] = tacos  # Legacy P&L alias uses ad costs / net sales.
+        row["acos"] = acos
         for alias in ("tacos", "tacos_pct"):
             if alias in row:
                 row[alias] = tacos
@@ -2281,6 +2286,7 @@ _PROMOTIONS_PLACEMENTS = {
     "after_net_sales",
     "before_cm1",
     "after_cm1",
+    "in_ads_spend",
 }
 
 
@@ -2295,7 +2301,7 @@ def _read_promotions_placement(allow_after_cm1=True):
 
 def _read_amazon_fees_placement(allow_after_cm1=True):
     placement = (request.args.get("amazonFeesPlacement") or "before_cm1").strip().lower()
-    if placement not in {"before_cm1", "after_cm1"}:
+    if placement not in {"before_cm1", "after_cm1", "in_ads_spend"}:
         return None
     if not allow_after_cm1 and placement == "after_cm1":
         return "before_cm1"
@@ -2338,7 +2344,7 @@ def _apply_promotions_placement(rows, placement):
     for row in rows:
         promotion = safe_float(row.get("promotional_rebates"))
         adjustment = abs(promotion)
-        net_sales = safe_float(row.get("net_sales")) + adjustment
+        net_sales = safe_float(row.get("net_sales")) + (0 if placement == "in_ads_spend" else adjustment)
         profit = safe_float(row.get("profit"))
         if placement == "after_cm1":
             profit += adjustment
@@ -2361,6 +2367,13 @@ def _apply_promotions_placement(rows, placement):
         row["promotional_rebates_percentage"] = (
             round(adjustment / net_sales * 100, 2) if net_sales else 0
         )
+        if placement == "in_ads_spend":
+            row["ads_spend"] = safe_float(row.get("ads_spend")) + adjustment
+            row["acos"] = round(row["ads_spend"] / net_sales * 100, 2) if net_sales else 0
+            row["cm2_profit"] = safe_float(row.get("cm2_profit")) - adjustment
+            if "total_cm2_profit" in row:
+                row["total_cm2_profit"] = safe_float(row.get("total_cm2_profit")) - adjustment
+            row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
 
         if "Net_Sales" in row:
             row["Net_Sales"] = row["net_sales"]
@@ -2409,11 +2422,18 @@ def _apply_promotions_placement(rows, placement):
 
 
 def _apply_amazon_fees_placement(rows, placement):
-    if placement != "after_cm1":
+    if placement not in {"after_cm1", "in_ads_spend"}:
         return rows
 
     for row in rows:
         amazon_fees = abs(safe_float(row.get("amazon_fee")))
+        if placement == "in_ads_spend":
+            net_sales = safe_float(row.get("net_sales"))
+            row["ads_spend"] = safe_float(row.get("ads_spend")) + amazon_fees
+            row["acos"] = round(row["ads_spend"] / net_sales * 100, 2) if net_sales else 0
+            row["cm2_profit"] = safe_float(row.get("cm2_profit")) - amazon_fees
+            row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
+            continue
         profit = safe_float(row.get("profit")) + amazon_fees
         net_sales = safe_float(row.get("net_sales"))
         quantity = safe_float(row.get("total_quantity"))

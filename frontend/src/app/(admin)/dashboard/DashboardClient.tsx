@@ -144,7 +144,7 @@ import MidMonthTargetReminderModal, {
 type DashboardPnlPlacement = {
     anchor: string;
     side: "before" | "after";
-    stage: "in_net_sales" | "before_cm1" | "after_cm1";
+    stage: "in_net_sales" | "before_cm1" | "after_cm1" | "in_ads_spend";
 };
 
 /** Reject saved Global cards whose comparisons came from product-only totals. */
