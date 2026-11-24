@@ -15004,6 +15004,9 @@ export default function DashboardPage() {
                 netSalesIncrease,
                 netSalesDeltaPct: deltaPct,
                 asp: convertToDisplayCurrency(rawAsp, amazonDataCurrency), 
+                tacos: row.tacos_total_advertising_cost_of_sale == null
+                    ? null
+                    : toNumber(row.tacos_total_advertising_cost_of_sale),
             };
         });
         const best = [...rankedSkuHighlights].sort((a, b) => b.netSales - a.netSales)[0];
@@ -15024,6 +15027,7 @@ export default function DashboardPage() {
             netSalesDeltaPct: row.netSalesDeltaPct,
             units: row.units,
             asp: row.asp,
+            tacos: row.tacos,
             cm2Profit: row.cm2Profit,
         });
         const skuHighlights: MonthlyRecapData["skuHighlights"] = [];

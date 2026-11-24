@@ -16,6 +16,11 @@ export type ColumnDef<T extends Row> = {
   cellClassName?: string;
   headerClassName?: string;
   onHeaderClick?: () => void;
+  rowSpan?: (row: T, rowIndex: number) => number;
+  hideCell?: (row: T, rowIndex: number) => boolean;
+  cellColSpan?: (row: T, rowIndex: number) => number;
+  headerColSpan?: number;
+  hideHeader?: boolean;
 };
 
 type DataTableProps<T extends Row> = {
@@ -353,8 +358,10 @@ export default function DataTable<T extends Row>({
             <thead>
               <tr>
                 {columns.map((col, i) => (
+                  col.hideHeader ? null : (
                   <th
                     key={String(col.key) + i}
+                    colSpan={col.headerColSpan}
                     onClick={col.onHeaderClick}
                     style={{
                       ...getWidthStyle(col),
@@ -385,6 +392,7 @@ export default function DataTable<T extends Row>({
                       {formatHeader(col.header)}
                     </div>
                   </th>
+                  )
                 ))}
               </tr>
             </thead>
@@ -439,6 +447,7 @@ export default function DataTable<T extends Row>({
                     )}
                   >
                     {columns.map((col, ci) => {
+                      if (col.hideCell?.(row, (page - 1) * pageSize + ri)) return null;
                       const value =
                         (row as Record<string, React.ReactNode>)[String(col.key)];
 
@@ -451,6 +460,8 @@ export default function DataTable<T extends Row>({
                       return (
                         <td
                           key={String(col.key) + ci}
+                          colSpan={col.cellColSpan?.(row, (page - 1) * pageSize + ri)}
+                          rowSpan={col.rowSpan?.(row, (page - 1) * pageSize + ri)}
                           style={{
                             ...getWidthStyle(col),
                             ...(stickyColumnKeys.includes(keyStr)

@@ -10,6 +10,7 @@ import {
 import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
 import PageBreadcrumb from "../common/PageBreadCrumb";
 import { createPortal } from "react-dom";
+import DataTable, { type ColumnDef, type Row } from "@/components/ui/table/DataTable";
 
 const ACCENT_CLASS = {
     units: "border-[#FDD36F]", // Gold/Yellow
@@ -49,6 +50,7 @@ export type MonthlyRecapData = {
         units: number;
         cm2Profit: number | null;
         asp?: number | null;
+        tacos?: number | null;
     }>;
     objectives: string[];
     formatMoney: (val: number) => string;
@@ -206,6 +208,44 @@ export default function MonthlyRecapModal({
 
     const orderedMetrics = [...metrics].sort((a, b) => metricRank(a.label) - metricRank(b.label));
 
+    type SkuHighlightRow = Row & { category: React.ReactNode; categoryDetail: string; productName: React.ReactNode; units: string; asp: string; netSales: string; tacos: string; cm2Profit: string };
+    const skuTableRows: SkuHighlightRow[] = skuHighlights.map((highlight) => ({
+        category: highlight.title === "Top Selling SKU"
+            ? <div className="whitespace-normal">Top Selling SKU</div>
+            : <div className="whitespace-normal">Net Sales Growth</div>,
+        categoryDetail: highlight.title === "Highest Net Sales Growth" ? "Highest" : highlight.title === "Largest Net Sales Decline" ? "Lowest" : "",
+        productName: <div className="min-w-0 text-[11px] leading-tight"><div className="truncate font-semibold" title={highlight.name}>{highlight.name}</div>{highlight.sku && <div className="truncate text-[9px] text-slate-500">{highlight.sku}</div>}</div>,
+        units: Math.round(highlight.units || 0).toLocaleString(),
+        asp: highlight.asp != null ? formatSkuAsp(highlight.asp) : "—",
+        netSales: formatMoney(highlight.netSales),
+        tacos: highlight.tacos != null ? `${highlight.tacos.toFixed(2)}%` : "—",
+        cm2Profit: highlight.cm2Profit != null ? formatMoney(highlight.cm2Profit) : "—",
+    }));
+    const skuTableColumns: ColumnDef<SkuHighlightRow>[] = [
+        {
+            key: "category",
+            header: "Category",
+            width: "110px",
+            headerColSpan: 2,
+            cellColSpan: (row) => row.categoryDetail === "" ? 2 : 1,
+            rowSpan: (row, rowIndex) => row.categoryDetail === "Highest"
+                ? skuTableRows.slice(rowIndex).filter((item) => item.categoryDetail === "Highest" || item.categoryDetail === "Lowest").length
+                : 1,
+            hideCell: (row, rowIndex) => row.categoryDetail === "Lowest" && skuTableRows
+                .slice(0, rowIndex)
+                .some((item) => item.categoryDetail === "Highest"),
+            cellClassName: "!px-1 !py-1 text-[11px] font-semibold",
+            headerClassName: "!px-1 !py-1 !text-[11px]",
+        },
+        { key: "categoryDetail", header: "", width: "52px", hideHeader: true, hideCell: (row) => row.categoryDetail === "", cellClassName: "!px-1 !py-1 text-[10px] font-medium" },
+        { key: "productName", header: "Product Name", width: "110px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "units", header: "Units", width: "48px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "asp", header: "ASP", width: "58px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "netSales", header: "Net Sales", width: "72px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "tacos", header: "TACoS", width: "52px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "cm2Profit", header: "CM2 Profit", width: "80px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+    ];
+
     const handleEmailRecap = async () => {
         if (!onEmailRecap || emailing) return;
         setEmailing(true);
@@ -272,7 +312,7 @@ export default function MonthlyRecapModal({
                 aria-modal="true"
                 aria-labelledby="monthly-recap-title"
                 onClick={(e) => e.stopPropagation()}
-                className="relative max-h-full w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+                className="relative max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
             >
                 <button
                     type="button"
@@ -424,136 +464,18 @@ export default function MonthlyRecapModal({
                 {/* SKU sales highlights */}
                 <section className="mt-3 space-y-2" aria-label="SKU sales highlights">
                     {skuHighlights.length > 0 ? (
-                        <>
-                            {/* Top Selling SKU - Full Width */}
-                            {skuHighlights.slice(0, 1).map((highlight) => {
-                                const delta = highlight.netSalesDeltaPct;
-
-                                return (
-                                    <article
-                                        key={highlight.title}
-                                        className="rounded-xl border border-t-4 border-[#7B9A6D] px-3 py-2.5"
-                                    >
-                                        <p className="mb-1.5 text-[11px] text-charcoal-500">
-                                            {highlight.title}
-                                        </p>
-
-                                        <div className="flex w-full flex-row items-center justify-between gap-5">
-                                            {/* Name, SKU & Delta */}
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex min-w-0 items-center gap-2">
-                                                    <p
-                                                        className="truncate text-sm font-bold text-charcoal-500"
-                                                        title={highlight.name}
-                                                    >
-                                                        {highlight.name}
-                                                    </p>
-
-                                                    <p
-                                                        className={`shrink-0 whitespace-nowrap text-[11px] font-semibold ${delta == null
-                                                            ? "text-slate-400"
-                                                            : delta >= 0
-                                                                ? "text-emerald-600"
-                                                                : "text-red-600"
-                                                            }`}
-                                                    >
-                                                        {delta == null
-                                                            ? "—"
-                                                            : `${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(2)}%`}
-                                                    </p>
-                                                </div>
-
-                                                {highlight.sku && (
-                                                    <p className="mt-0.5 truncate text-[11px] text-charcoal-500">
-                                                        {highlight.sku}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {/* Units */}
-                                            <div className="min-w-0">
-                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">Units</p>
-                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
-                                                    {Math.round(highlight.units || 0).toLocaleString()}
-                                                </p>
-                                            </div>
-
-                                            {/* ASP */}
-                                            <div className="min-w-0">
-                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">ASP</p>
-                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
-                                                    {highlight.asp != null ? formatSkuAsp(highlight.asp) : "\u2014"}
-                                                </p>
-                                            </div>
-
-                                            {/* Net Sales */}
-                                            <div className="min-w-0">
-                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">Net sales</p>
-                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
-                                                    {formatMoney(highlight.netSales)}
-                                                </p>
-                                            </div>
-
-                                            {/* CM2 Profit */}
-                                            <div className="min-w-0">
-                                                <p className="whitespace-nowrap text-[11px] text-charcoal-500">CM2 Profit</p>
-                                                <p className="mt-0.5 truncate text-sm font-bold text-charcoal-500">
-                                                    {highlight.cm2Profit != null ? formatMoney(highlight.cm2Profit) : "\u2014"}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </article>
-                                );
-                            })}
-
-                            {/* Remaining 2 SKU Highlights - 2 Columns, 1 Row */}
-                            {skuHighlights.length > 1 && (
-                                <div className="grid grid-cols-2 gap-2">
-                                    {skuHighlights.slice(1, 3).map((highlight) => (
-                                        <article
-                                            key={highlight.title}
-                                            className={`min-w-0 rounded-xl border border-t-4 px-3 py-2.5 ${highlight.title === "Highest Net Sales Growth"
-                                                ? "border-[#5EA68E]"
-                                                : "border-[#B75A5A]"
-                                                }`}
-                                        >
-                                            <p className="mb-1.5 truncate text-[11px] text-charcoal-500">
-                                                {highlight.title}
-                                            </p>
-
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                                    <div className="min-w-0">
-                                                        <p
-                                                            className="truncate text-xs font-bold text-charcoal-500"
-                                                            title={highlight.name}
-                                                        >
-                                                            {highlight.name}
-                                                        </p>
-                                                        {highlight.sku && (
-                                                            <p className="truncate text-[11px] text-charcoal-500">
-                                                                {highlight.sku}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="shrink-0 text-right">
-                                                    <p className="text-[11px] text-charcoal-500">
-                                                        {highlight.title === "Highest Net Sales Growth" ? "Increased" : "Decreased"}
-                                                    </p>
-                                                    <p className={`text-xs font-bold ${highlight.title === "Highest Net Sales Growth" ? "text-emerald-600" : "text-red-600"}`}>
-                                                        {highlight.netSalesChange == null
-                                                            ? "—"
-                                                            : formatMoney(Math.abs(highlight.netSalesChange))}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </article>
-                                    ))}
-                                </div>
-                            )}
-                        </>
+                        <DataTable<SkuHighlightRow>
+                            columns={skuTableColumns}
+                            data={skuTableRows}
+                            paginate={false}
+                            scrollY={false}
+                            stickyHeader={false}
+                            zebra={false}
+                            headerMaxWidth={60}
+                            rowClassName={() => "!h-9"}
+                            className="overflow-x-hidden border-[#E6ECEF] shadow-none"
+                            tableClassName="!w-full !min-w-0 text-[11px]"
+                        />
                     ) : (
                         <div className="rounded-xl border border-t-4 border-[#7B9A6D] p-3">
                             <p className="text-xs text-charcoal-500">
