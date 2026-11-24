@@ -2937,12 +2937,18 @@ def live_mtd_vs_previous(period_mode=None):
         # ---------------------------
         start_day_str = request.args.get("start_day")
         end_day_str = request.args.get("end_day")
+        end_day_uk_str = request.args.get("end_day_uk")
+        end_day_us_str = request.args.get("end_day_us")
         try:
             start_day = int(start_day_str) if start_day_str else None
             end_day = int(end_day_str) if end_day_str else None
+            end_day_uk = int(end_day_uk_str) if end_day_uk_str else None
+            end_day_us = int(end_day_us_str) if end_day_us_str else None
         except ValueError:
             start_day = None
             end_day = None
+            end_day_uk = None
+            end_day_us = None
 
         generate_ai_insights = (
             request.args.get("generate_ai_insights", "false").lower()
@@ -2981,6 +2987,8 @@ def live_mtd_vs_previous(period_mode=None):
         )
         prev_start = ranges["previous"]["start"]
         prev_end = ranges["previous"]["end"]
+        prev_end_uk = prev_end
+        prev_end_us = prev_end
         curr_start = ranges["current"]["start"]
         curr_end = ranges["current"]["end"]
 
@@ -3041,8 +3049,13 @@ def live_mtd_vs_previous(period_mode=None):
                 as_of=as_of,
                 start_day=start_day,
                 end_day=end_day,
+                end_day_uk=end_day_uk,
+                end_day_us=end_day_us,
                 period_mode=period_mode,
             )
+            prev_period_meta = previous_global_payload.get("previous_period") or {}
+            prev_end_uk = date.fromisoformat(prev_period_meta.get("prev_end_uk", prev_end.isoformat()))
+            prev_end_us = date.fromisoformat(prev_period_meta.get("prev_end_us", prev_end.isoformat()))
 
             curr_global_items = remove_total_rows(
                 current_global_payload.get("skuwise_items_global", [])
@@ -4483,14 +4496,14 @@ def live_mtd_vs_previous(period_mode=None):
                 user_id,
                 "uk",
                 prev_start,
-                prev_end,
+                prev_end_uk,
             )
 
             _, previous_aligned_us_raw = safe_fetch_previous_period_data_for_global(
                 user_id,
                 "us",
                 prev_start,
-                prev_end,
+                prev_end_us,
             )
 
             previous_aligned_uk = _convert_daily_series_to_usd(
@@ -8073,6 +8086,8 @@ def get_previous_global_data_for_live_bi(
     as_of=None,
     start_day=None,
     end_day=None,
+    end_day_uk=None,
+    end_day_us=None,
     period_mode=None,
 ):
     ranges = (
@@ -8087,6 +8102,17 @@ def get_previous_global_data_for_live_bi(
 
     prev_start = ranges["previous"]["start"]
     prev_end = ranges["previous"]["end"]
+
+    def country_previous_end(country):
+        requested = end_day_uk if country == "uk" else end_day_us
+        if requested is None or period_mode == "last_30_days":
+            return prev_end
+        last_day = monthrange(prev_start.year, prev_start.month)[1]
+        day = max(prev_start.day, min(int(requested), last_day))
+        return date(prev_start.year, prev_start.month, day)
+
+    prev_end_uk = country_previous_end("uk")
+    prev_end_us = country_previous_end("us")
 
     prev_month_name = month_name[prev_start.month].lower()
     prev_year = prev_start.year
@@ -8211,14 +8237,14 @@ def get_previous_global_data_for_live_bi(
         user_id,
         "uk",
         prev_start,
-        prev_end,
+        prev_end_uk,
     )
 
     skuwise_items_us_raw, us_daily = safe_fetch_previous_period_data(
         user_id,
         "us",
         prev_start,
-        prev_end,
+        prev_end_us,
     )
 
     # -------------------------------------------------------------------------
@@ -8256,8 +8282,8 @@ def get_previous_global_data_for_live_bi(
     ) or 1.0
 
     dashboard_totals = combine_previous_dashboard_totals(
-        dashboard_totals_by_period.get(("uk", prev_start, prev_end)),
-        dashboard_totals_by_period.get(("us", prev_start, prev_end)),
+        dashboard_totals_by_period.get(("uk", prev_start, prev_end_uk)),
+        dashboard_totals_by_period.get(("us", prev_start, prev_end_us)),
         uk_to_usd_rate,
     )
     dashboard_full_totals = combine_previous_dashboard_totals(
@@ -8428,6 +8454,8 @@ def get_previous_global_data_for_live_bi(
         "previous_period": {
             "prev_start": prev_start.isoformat(),
             "prev_end": prev_end.isoformat(),
+            "prev_end_uk": prev_end_uk.isoformat(),
+            "prev_end_us": prev_end_us.isoformat(),
             "month": prev_month_name,
             "year": prev_year,
         },
@@ -8497,13 +8525,19 @@ def previous_skuwise_global():
     as_of = request.args.get("as_of")
     start_day = request.args.get("start_day")
     end_day = request.args.get("end_day")
+    end_day_uk = request.args.get("end_day_uk")
+    end_day_us = request.args.get("end_day_us")
 
     try:
         start_day = int(start_day) if start_day else None
         end_day = int(end_day) if end_day else None
+        end_day_uk = int(end_day_uk) if end_day_uk else None
+        end_day_us = int(end_day_us) if end_day_us else None
     except ValueError:
         start_day = None
         end_day = None
+        end_day_uk = None
+        end_day_us = None
 
     # ---------------- Shared previous-global builder ----------------
     try:
@@ -8512,6 +8546,8 @@ def previous_skuwise_global():
             as_of=as_of,
             start_day=start_day,
             end_day=end_day,
+            end_day_uk=end_day_uk,
+            end_day_us=end_day_us,
         )
 
         payload_out["success"] = True

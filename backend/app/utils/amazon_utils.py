@@ -3746,9 +3746,38 @@ def previous_period_metrics_from_df(df: pd.DataFrame, country: str, *, sku_metri
     return sku_metrics, prev_totals, daily_series
 
 
-def get_previous_month_mtd_payload(user_id: int, country: str, now_utc: datetime) -> dict:
-    # MTD range (keep existing behavior)
-    prev_start, prev_end = previous_month_mtd_range(now_utc)
+def get_previous_month_mtd_payload(
+    user_id: int,
+    country: str,
+    now_utc: datetime,
+    *,
+    as_of=None,
+    start_day=None,
+    end_day=None,
+) -> dict:
+    # Compare against the same selected day window used by the dashboard.
+    # Without this, a dashboard capped at its latest available day (for example
+    # Nov 1–20) was compared with the calendar MTD window (Oct 1–24).
+    if as_of:
+        try:
+            anchor_day = datetime.strptime(str(as_of), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            anchor_day = now_utc.date()
+    else:
+        anchor_day = now_utc.date()
+
+    if start_day is not None or end_day is not None:
+        prev_year = anchor_day.year - 1 if anchor_day.month == 1 else anchor_day.year
+        prev_month = 12 if anchor_day.month == 1 else anchor_day.month - 1
+        last_prev_day = calendar.monthrange(prev_year, prev_month)[1]
+        selected_start = max(1, min(int(start_day or 1), last_prev_day))
+        selected_end = max(selected_start, min(int(end_day or anchor_day.day), last_prev_day))
+        prev_start = date(prev_year, prev_month, selected_start)
+        prev_end = date(prev_year, prev_month, selected_end)
+    else:
+        prev_start, prev_end = previous_month_mtd_range(
+            datetime.combine(anchor_day, datetime.min.time(), tzinfo=timezone.utc)
+        )
 
     sku_metrics, prev_totals, _daily_series = fetch_previous_period_data(
         user_id=user_id,
