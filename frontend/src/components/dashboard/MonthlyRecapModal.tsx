@@ -214,13 +214,12 @@ export default function MonthlyRecapModal({
         highlight.sku?.trim().toLowerCase() || highlight.name.trim().toLowerCase();
     const topSellingMatchesHighestGrowth = !!topSellingHighlight && !!highestGrowthHighlight &&
         highlightIdentity(topSellingHighlight) === highlightIdentity(highestGrowthHighlight);
-    type SkuHighlightRow = Row & { category: string; categoryDetail: string; mergeSkuCells: boolean; hideMergedSkuCells: boolean; productName: React.ReactNode; units: string; asp: string; netSales: string; acos: string; cm2Profit: string };
+    type SkuHighlightRow = Row & { category: string; mergeSkuCells: boolean; hideMergedSkuCells: boolean; productName: React.ReactNode; units: string; asp: string; netSales: string; acos: string; cm2Profit: string };
     const skuTableRows: SkuHighlightRow[] = skuHighlights.map((highlight) => ({
-        category: highlight.title === "Top Selling SKU" ? "Top Selling SKU" : "Net Sales Growth",
-        categoryDetail: highlight.title === "Highest Net Sales Growth" ? "Highest" : highlight.title === "Largest Net Sales Decline" ? "Lowest" : "",
+        category: highlight.title === "Largest Net Sales Decline" ? "Lowest Net Sales Growth" : highlight.title,
         mergeSkuCells: topSellingMatchesHighestGrowth && highlight.title === "Top Selling SKU",
         hideMergedSkuCells: topSellingMatchesHighestGrowth && highlight.title === "Highest Net Sales Growth",
-        productName: <div className="min-w-0 text-[11px] leading-tight"><div className="truncate font-semibold" title={highlight.name}>{highlight.name}</div>{highlight.sku && <div className="truncate text-[9px] text-slate-500">{highlight.sku}</div>}</div>,
+        productName: <div className="min-w-0 text-[11px] leading-tight"><div className="truncate font-semibold" title={highlight.name}>{highlight.name}</div></div>,
         units: Math.round(highlight.units || 0).toLocaleString(),
         asp: highlight.asp != null ? formatSkuAsp(highlight.asp) : "—",
         netSales: formatMoney(highlight.netSales),
@@ -231,20 +230,11 @@ export default function MonthlyRecapModal({
         {
             key: "category",
             header: "Category",
-            width: "110px",
-            headerColSpan: 2,
-            cellColSpan: (row) => row.categoryDetail === "" ? 2 : 1,
-            rowSpan: (row, rowIndex) => row.categoryDetail === "Highest"
-                ? skuTableRows.slice(rowIndex).filter((item) => item.categoryDetail === "Highest" || item.categoryDetail === "Lowest").length
-                : 1,
-            hideCell: (row, rowIndex) => row.categoryDetail === "Lowest" && skuTableRows
-                .slice(0, rowIndex)
-                .some((item) => item.categoryDetail === "Highest"),
+            width: "162px",
             render: (row) => <div className="whitespace-normal">{row.category}</div>,
             cellClassName: "!px-1 !py-1 text-[11px] font-semibold",
             headerClassName: "!px-1 !py-1 !text-[11px]",
         },
-        { key: "categoryDetail", header: "", width: "52px", hideHeader: true, hideCell: (row) => row.categoryDetail === "", cellClassName: "!px-1 !py-1 text-[10px] font-medium" },
         { key: "productName", header: "Product Name", width: "110px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
         { key: "units", header: "Units", width: "48px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
         { key: "asp", header: "ASP", width: "58px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
