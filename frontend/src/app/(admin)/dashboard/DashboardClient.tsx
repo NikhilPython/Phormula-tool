@@ -14941,6 +14941,8 @@ export default function DashboardPage() {
             amazon_fee?: unknown;
             asp?: unknown;
             tacos_total_advertising_cost_of_sale?: unknown;
+            acos?: unknown;
+            ads_acos?: unknown;
             net_sales_delta?: unknown;
             net_sales_delta_percentage?: unknown;
         }> = historicalTotal
@@ -15004,9 +15006,9 @@ export default function DashboardPage() {
                 netSalesIncrease,
                 netSalesDeltaPct: deltaPct,
                 asp: convertToDisplayCurrency(rawAsp, amazonDataCurrency), 
-                tacos: row.tacos_total_advertising_cost_of_sale == null
+                acos: row.acos == null && row.ads_acos == null
                     ? null
-                    : toNumber(row.tacos_total_advertising_cost_of_sale),
+                    : toNumber(row.acos ?? row.ads_acos),
             };
         });
         const best = [...rankedSkuHighlights].sort((a, b) => b.netSales - a.netSales)[0];
@@ -15027,7 +15029,7 @@ export default function DashboardPage() {
             netSalesDeltaPct: row.netSalesDeltaPct,
             units: row.units,
             asp: row.asp,
-            tacos: row.tacos,
+            acos: row.acos,
             cm2Profit: row.cm2Profit,
         });
         const skuHighlights: MonthlyRecapData["skuHighlights"] = [];

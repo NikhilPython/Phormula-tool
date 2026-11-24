@@ -50,7 +50,7 @@ export type MonthlyRecapData = {
         units: number;
         cm2Profit: number | null;
         asp?: number | null;
-        tacos?: number | null;
+        acos?: number | null;
     }>;
     objectives: string[];
     formatMoney: (val: number) => string;
@@ -208,17 +208,23 @@ export default function MonthlyRecapModal({
 
     const orderedMetrics = [...metrics].sort((a, b) => metricRank(a.label) - metricRank(b.label));
 
-    type SkuHighlightRow = Row & { category: React.ReactNode; categoryDetail: string; productName: React.ReactNode; units: string; asp: string; netSales: string; tacos: string; cm2Profit: string };
+    const topSellingHighlight = skuHighlights.find((highlight) => highlight.title === "Top Selling SKU");
+    const highestGrowthHighlight = skuHighlights.find((highlight) => highlight.title === "Highest Net Sales Growth");
+    const highlightIdentity = (highlight: NonNullable<typeof topSellingHighlight>) =>
+        highlight.sku?.trim().toLowerCase() || highlight.name.trim().toLowerCase();
+    const topSellingMatchesHighestGrowth = !!topSellingHighlight && !!highestGrowthHighlight &&
+        highlightIdentity(topSellingHighlight) === highlightIdentity(highestGrowthHighlight);
+    type SkuHighlightRow = Row & { category: string; categoryDetail: string; mergeSkuCells: boolean; hideMergedSkuCells: boolean; productName: React.ReactNode; units: string; asp: string; netSales: string; acos: string; cm2Profit: string };
     const skuTableRows: SkuHighlightRow[] = skuHighlights.map((highlight) => ({
-        category: highlight.title === "Top Selling SKU"
-            ? <div className="whitespace-normal">Top Selling SKU</div>
-            : <div className="whitespace-normal">Net Sales Growth</div>,
+        category: highlight.title === "Top Selling SKU" ? "Top Selling SKU" : "Net Sales Growth",
         categoryDetail: highlight.title === "Highest Net Sales Growth" ? "Highest" : highlight.title === "Largest Net Sales Decline" ? "Lowest" : "",
+        mergeSkuCells: topSellingMatchesHighestGrowth && highlight.title === "Top Selling SKU",
+        hideMergedSkuCells: topSellingMatchesHighestGrowth && highlight.title === "Highest Net Sales Growth",
         productName: <div className="min-w-0 text-[11px] leading-tight"><div className="truncate font-semibold" title={highlight.name}>{highlight.name}</div>{highlight.sku && <div className="truncate text-[9px] text-slate-500">{highlight.sku}</div>}</div>,
         units: Math.round(highlight.units || 0).toLocaleString(),
         asp: highlight.asp != null ? formatSkuAsp(highlight.asp) : "—",
         netSales: formatMoney(highlight.netSales),
-        tacos: highlight.tacos != null ? `${highlight.tacos.toFixed(2)}%` : "—",
+        acos: highlight.acos != null ? `${highlight.acos.toFixed(2)}%` : "—",
         cm2Profit: highlight.cm2Profit != null ? formatMoney(highlight.cm2Profit) : "—",
     }));
     const skuTableColumns: ColumnDef<SkuHighlightRow>[] = [
@@ -234,16 +240,17 @@ export default function MonthlyRecapModal({
             hideCell: (row, rowIndex) => row.categoryDetail === "Lowest" && skuTableRows
                 .slice(0, rowIndex)
                 .some((item) => item.categoryDetail === "Highest"),
+            render: (row) => <div className="whitespace-normal">{row.category}</div>,
             cellClassName: "!px-1 !py-1 text-[11px] font-semibold",
             headerClassName: "!px-1 !py-1 !text-[11px]",
         },
         { key: "categoryDetail", header: "", width: "52px", hideHeader: true, hideCell: (row) => row.categoryDetail === "", cellClassName: "!px-1 !py-1 text-[10px] font-medium" },
-        { key: "productName", header: "Product Name", width: "110px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
-        { key: "units", header: "Units", width: "48px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
-        { key: "asp", header: "ASP", width: "58px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
-        { key: "netSales", header: "Net Sales", width: "72px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
-        { key: "tacos", header: "TACoS", width: "52px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
-        { key: "cm2Profit", header: "CM2 Profit", width: "80px", cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "productName", header: "Product Name", width: "110px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "units", header: "Units", width: "48px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "asp", header: "ASP", width: "58px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "netSales", header: "Net Sales", width: "72px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "acos", header: "ACoS", width: "52px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
+        { key: "cm2Profit", header: "CM2 Profit", width: "80px", rowSpan: (row) => row.mergeSkuCells ? 2 : 1, hideCell: (row) => row.hideMergedSkuCells, cellClassName: "!px-1 !py-1 text-[11px]", headerClassName: "!px-1 !py-1 !text-[11px]" },
     ];
 
     const handleEmailRecap = async () => {
