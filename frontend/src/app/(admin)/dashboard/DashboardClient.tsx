@@ -2344,15 +2344,30 @@ export default function DashboardPage() {
         [getRegionISODateFromTimestamp]
     );
 
-    const dashboardDateAnchor = lastRefreshAt ?? Date.now();
+    // A previous cache timestamp must not cap today's refresh window. It can
+    // otherwise freeze Global at the day when the cache was last saved.
+    const dashboardDateAnchor = useMemo(() => Date.now(), [lastRefreshAt]);
 
     const dashboardAllowedEndISO = useMemo(() => {
-        return getRegionISODateFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
-    }, [dashboardDateAnchor, dashboardTimeRegion, getRegionISODateFromTimestamp]);
+        return platform === "global"
+            ? getIstTodayISO()
+            : getRegionISODateFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
+    }, [platform, dashboardDateAnchor, dashboardTimeRegion, getRegionISODateFromTimestamp]);
 
     const dashboardAllowedDay = useMemo(() => {
-        return getRegionDayFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
-    }, [dashboardDateAnchor, dashboardTimeRegion, getRegionDayFromTimestamp]);
+        return platform === "global"
+            ? Number(dashboardAllowedEndISO.slice(8, 10)) || 1
+            : getRegionDayFromTimestamp(dashboardDateAnchor, dashboardTimeRegion);
+    }, [platform, dashboardAllowedEndISO, dashboardDateAnchor, dashboardTimeRegion, getRegionDayFromTimestamp]);
+
+    const globalUsAllowedDay = useMemo(
+        () => getRegionDayFromTimestamp(Date.now(), "US"),
+        [dashboardDateAnchor, getRegionDayFromTimestamp]
+    );
+    const globalUkAllowedDay = useMemo(
+        () => getRegionDayFromTimestamp(Date.now(), "UK"),
+        [dashboardDateAnchor, getRegionDayFromTimestamp]
+    );
 
     const dashboardDaysInMonth = useMemo(() => {
         const anchorDate = new Date(dashboardDateAnchor);
@@ -4735,6 +4750,14 @@ export default function DashboardPage() {
                 params.set("as_of", getGlobalPreviousSkuwiseAsOfISO());
                 params.set("start_day", String(selectedStartDay ?? 1));
                 params.set("end_day", String(Math.min(selectedEndDay ?? dashboardAllowedDay, dashboardAllowedDay)));
+                params.set("end_day_uk", String(Math.min(selectedEndDay ?? globalUkAllowedDay, globalUkAllowedDay)));
+                params.set("end_day_us", String(Math.min(selectedEndDay ?? globalUsAllowedDay, globalUsAllowedDay)));
+            } else {
+                // Keep the previous-period KPI window aligned with the same
+                // dashboard cutoff/range used by Global and the current cards.
+                params.set("as_of", dashboardAllowedEndISO);
+                params.set("start_day", String(selectedStartDay ?? 1));
+                params.set("end_day", String(Math.min(selectedEndDay ?? dashboardAllowedDay, dashboardAllowedDay)));
             }
 
             const url = `${FIN_MTD_TX_ENDPOINT}?${params.toString()}`;
@@ -4769,7 +4792,8 @@ export default function DashboardPage() {
         } finally {
             setLoading(false);
         }
-    }, [platform, amazonConnections, isMonthYearNA, selectedStartDay, selectedEndDay, dashboardAllowedDay]);
+    }, [platform, amazonConnections, isMonthYearNA, selectedStartDay, selectedEndDay,
+        dashboardAllowedDay, globalUkAllowedDay, globalUsAllowedDay]);
 
     const applyDashboardPnlColumnPlacements = useCallback(
         async (
@@ -5079,6 +5103,8 @@ export default function DashboardPage() {
                 as_of: getGlobalPreviousSkuwiseAsOfISO(),
                 start_day: String(finalStartDay),
                 end_day: String(finalEndDay),
+                end_day_uk: String(Math.min(endDay ?? globalUkAllowedDay, globalUkAllowedDay)),
+                end_day_us: String(Math.min(endDay ?? globalUsAllowedDay, globalUsAllowedDay)),
             });
 
             const res = await fetch(
@@ -5110,7 +5136,9 @@ export default function DashboardPage() {
         platform,
         selectedStartDay,
         selectedEndDay,
-        dashboardAllowedDay
+        dashboardAllowedDay,
+        globalUkAllowedDay,
+        globalUsAllowedDay,
     ]);
 
     const fetchLiveBiPayload = useCallback(
@@ -5156,8 +5184,15 @@ export default function DashboardPage() {
                 const finalStartDay = startDay ?? 1;
                 const finalEndDay = Math.min(endDay ?? dashboardAllowedDay, dashboardAllowedDay);
 
+                params.set("as_of", platform === "global"
+                    ? getGlobalPreviousSkuwiseAsOfISO()
+                    : dashboardAllowedEndISO);
                 params.set("start_day", String(finalStartDay));
                 params.set("end_day", String(finalEndDay));
+                if (platform === "global") {
+                    params.set("end_day_uk", String(Math.min(endDay ?? globalUkAllowedDay, globalUkAllowedDay)));
+                    params.set("end_day_us", String(Math.min(endDay ?? globalUsAllowedDay, globalUsAllowedDay)));
+                }
 
                 const res = await fetch(`${LIVE_MTD_BI_ENDPOINT}?${params.toString()}`, {
                     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -5228,6 +5263,10 @@ export default function DashboardPage() {
             currMonthName,
             currYear,
             dashboardAllowedDay,
+            dashboardAllowedEndISO,
+            globalUkAllowedDay,
+            globalUsAllowedDay,
+            platform,
         ]
     );
 
@@ -6539,7 +6578,40 @@ export default function DashboardPage() {
                     "inventory_current",
                     "live_mtd_bi",
                 ];
-                const result = await refreshRequest("POST", { ...refreshScope, steps });
+                let result: any;
+                try {
+                    result = await refreshRequest("POST", {
+                        ...refreshScope,
+                        steps,
+                        replace_active: platform === "global",
+                    });
+                } catch (error) {
+                    // A second tab (or a prior page instance) may already own
+                    // this exact Global refresh. Adopt its server run so this
+                    // tab can show progress and consume the published cache.
+                    if (!(error instanceof Error) || !error.message.includes("Refresh already in progress")) {
+                        throw error;
+                    }
+                    result = await refreshRequest("GET", refreshScope);
+                    if (!result.refresh_id || !["running", "saving"].includes(result.status)) {
+                        throw error;
+                    }
+                    const existingId = String(result.refresh_id);
+                    refreshPollingActiveRef.current = true;
+                    setTrackedRefreshId(existingId);
+                    window.localStorage.setItem(refreshStorageKey, existingId);
+                    setRefreshStatus({
+                        status: "running",
+                        message: result.current_step
+                            ? `Global refresh is updating ${String(result.current_step).replace(/_/g, " ")}...`
+                            : "Global refresh is already in progress...",
+                        completed: result.completed,
+                        total: result.total,
+                        refreshId: existingId,
+                        publishedPhase: result.published_phase ?? null,
+                    });
+                    return;
+                }
                 const rid = String(result.refresh_id);
                 refreshPollingActiveRef.current = true;
                 refreshIdRef.current = rid;

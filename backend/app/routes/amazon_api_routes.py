@@ -2919,6 +2919,8 @@ def finances_mtd_transactions():
                 as_of=request.args.get("as_of"),
                 start_day=request.args.get("start_day", type=int),
                 end_day=request.args.get("end_day", type=int),
+                end_day_uk=request.args.get("end_day_uk", type=int),
+                end_day_us=request.args.get("end_day_us", type=int),
             )
             previous_source = previous_global.get("dashboard_totals_global") or {
                 **(previous_global.get("derived_totals_global") or {}),
@@ -3761,7 +3763,14 @@ def finances_mtd_transactions():
         "reimbursement_vs_sales": round(reimbursement_vs_sales, 2),
     }
 
-    previous_period = get_previous_month_mtd_payload(user_id=user_id, country=ui_country, now_utc=now_utc)
+    previous_period = get_previous_month_mtd_payload(
+        user_id=user_id,
+        country=ui_country,
+        now_utc=now_utc,
+        as_of=request.args.get("as_of"),
+        start_day=request.args.get("start_day", type=int),
+        end_day=request.args.get("end_day", type=int),
+    )
     try:
         previous_months_count = int(request.args.get("previous_months", "2"))
         if not 1 <= previous_months_count <= 24:
@@ -5251,6 +5260,9 @@ def dashboard_refresh_status():
             from uuid import uuid4
             rid = str(uuid4())
             # Prevent overlapping refreshes, including from a newly logged-in tab.
+            # Global refreshes run in the browser, so a closed tab can otherwise
+            # leave a live lock until the 45-minute hard expiry. Treat a run with
+            # no acknowledged progress for 15 minutes as abandoned and recover it.
             with PHORMULA_ENGINE.begin() as conn:
                 conn.execute(text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
                              {"key": params["cache_key"]})
@@ -5258,17 +5270,31 @@ def dashboard_refresh_status():
                     UPDATE public.dashboard_refresh_runs
                        SET status='failed', error='Refresh expired', updated_at=now(), finished_at=now()
                      WHERE user_id=:uid AND cache_key=:cache_key
-                       AND status IN ('running','saving') AND expires_at <= now()
+                       AND status IN ('running','saving')
+                       AND (expires_at <= now() OR updated_at <= now() - interval '15 minutes')
                 """), {"uid": uid, "cache_key": params["cache_key"]})
                 active = conn.execute(text("""
                     SELECT * FROM public.dashboard_refresh_runs
                      WHERE user_id=:uid AND cache_key=:cache_key
                        AND status IN ('running','saving') AND expires_at > now()
+                       AND updated_at > now() - interval '15 minutes'
                      ORDER BY started_at DESC LIMIT 1
                 """), {"uid": uid, "cache_key": params["cache_key"]}).mappings().first()
                 if active:
-                    return jsonify({"success": False, "error": "Refresh already in progress",
-                                    **_refresh_public(active)}), 409
+                    if body.get("replace_active") is True and params["country"] == "global":
+                        # An explicit Global refresh request is also the user's
+                        # recovery action for a run stranded in another/closed tab.
+                        # The advisory lock serializes replacement and the old
+                        # run can no longer publish because it is marked failed.
+                        conn.execute(text("""
+                            UPDATE public.dashboard_refresh_runs
+                               SET status='failed', error='Superseded by a new Global refresh',
+                                   updated_at=now(), finished_at=now()
+                             WHERE refresh_id=CAST(:rid AS uuid) AND user_id=:uid
+                        """), {"rid": active["refresh_id"], "uid": uid})
+                    else:
+                        return jsonify({"success": False, "error": "Refresh already in progress",
+                                        **_refresh_public(active)}), 409
                 row = conn.execute(text("""
                     INSERT INTO public.dashboard_refresh_runs
                        (refresh_id,user_id,cache_key,country,steps,expires_at)
