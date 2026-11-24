@@ -113,6 +113,7 @@ def _read_monthly_recap_request():
             "netSalesDeltaPct": sku.get("netSalesDeltaPct"),
             "units": sku.get("units"),
             "asp": sku.get("asp"),
+            "acos": sku.get("acos"),
             "cm2Profit": sku.get("cm2Profit"),
         })
 
@@ -225,6 +226,11 @@ def _build_monthly_recap_from_report(df, user_id, country, month_name, year):
             cm2_profit = next((value for value in cm2_values if value not in (None, 0)), None)
             if cm2_profit is None:
                 cm2_profit = next((value for value in cm2_values if value is not None), None)
+            acos = number(row, "acos", "ads_acos", "acos_curr")
+            if acos is None:
+                ad_spend = number(row, "ads_spend", "advertising_total", "total_advertising_cost")
+                if ad_spend is not None and net_sales:
+                    acos = abs(ad_spend) / abs(net_sales) * 100
             ranked.append({
                 "name": str(row.get(name_col) or ""),
                 "sku": str(row.get("sku") or ""),
@@ -233,6 +239,7 @@ def _build_monthly_recap_from_report(df, user_id, country, month_name, year):
                 "netSalesDeltaPct": (change / abs(old_sales) * 100) if change is not None and old_sales else None,
                 "units": number(row, "total_quantity", "net_quantity", "quantity", "units") or 0,
                 "asp": number(row, "asp"),
+                "acos": acos,
                 "cm2Profit": cm2_profit,
             })
     top = sorted(ranked, key=lambda item: item["netSales"], reverse=True)

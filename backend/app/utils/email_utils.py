@@ -2749,7 +2749,10 @@ def render_monthly_recap_email(recap: dict) -> str:
 
             delta_html = ""
             if delta is not None:
-                inverse = bool(metric.get("inverseDelta", False))
+                inverse = bool(metric.get("inverseDelta", False)) or key in {
+                    "marketplace fees", "amazon fees", "tacos", "cost of ads",
+                    "cost of advertisement",
+                }
                 good = delta <= 0 if inverse else delta >= 0
                 delta_color = "#12B76A" if good else "#F04438"
                 arrow = "▲" if delta >= 0 else "▼"
@@ -2787,89 +2790,44 @@ def render_monthly_recap_email(recap: dict) -> str:
         metric_rows.append("<tr>" + "".join(cells) + "</tr>")
 
     metrics_html = f"""
-    <div style="font-size:16px;font-weight:bold;color:#37455F;margin:16px 0 6px;">Key Metrics</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:10px;">
       {''.join(metric_rows)}
     </table>
     """
 
-    # SKU cards: top seller full width, growth and decline side-by-side.
+    # Match MonthlyRecapModal's compact SKU table.
     highlights = recap.get("skuHighlights") or []
-    sku_parts = []
-    if highlights:
-        top = highlights[0]
-        top_delta = safe_float(top.get("netSalesDeltaPct"))
-        if top_delta is None:
-            top_delta_html = ""
-        else:
-            top_color = "#12B76A" if top_delta >= 0 else "#F04438"
-            top_arrow = "▲" if top_delta >= 0 else "▼"
-            top_delta_html = f'<span style="font-size:10px;font-weight:bold;color:{top_color};">{top_arrow} {abs(top_delta):.2f}%</span>'
-
-        sku_parts.append(f"""
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="margin-top:10px;border:1px solid #7B9A6D;border-top:4px solid #7B9A6D;border-radius:10px;">
-          <tr><td colspan="5" style="padding:8px 10px 3px;font-size:10px;color:#667085;">{esc(top.get('title') or 'Top Selling SKU')}</td></tr>
-          <tr>
-            <td width="40%" style="padding:3px 5px 10px 10px;">
-              <div style="font-size:12px;font-weight:bold;color:#37455F;">{esc(top.get('name') or '—')} &nbsp;{top_delta_html}</div>
-              <div style="font-size:10px;color:#667085;">{esc(top.get('sku') or '')}</div>
-            </td>
-            <td width="15%" align="center" style="padding:3px;">
-              <div style="font-size:10px;color:#667085;">Units</div><b style="font-size:11px;color:#37455F;">{number(top.get('units'))}</b>
-            </td>
-            <td width="15%" align="center" style="padding:3px;">
-              <div style="font-size:10px;color:#667085;">ASP</div><b style="font-size:11px;color:#37455F;">{money(top.get('asp'), 2)}</b>
-            </td>
-            <td width="15%" align="center" style="padding:3px;">
-              <div style="font-size:10px;color:#667085;">Net sales</div><b style="font-size:11px;color:#37455F;">{money(top.get('netSales'))}</b>
-            </td>
-            <td width="15%" align="center" style="padding:3px 8px 3px 3px;">
-              <div style="font-size:10px;color:#667085;">CM2 Profit</div><b style="font-size:11px;color:#37455F;">{money(top.get('cm2Profit'))}</b>
-            </td>
-          </tr>
-        </table>
-        """)
-
-    if len(highlights) > 1:
-        bottom_cells = []
-        for item in highlights[1:3]:
-            is_growth = item.get("title") == "Highest Net Sales Growth"
-            accent = "#5EA68E" if is_growth else "#B75A5A"
-            value_color = "#12B76A" if is_growth else "#F04438"
-            verb = "Increased" if is_growth else "Decreased"
-            change = safe_float(item.get("netSalesChange"))
-            change_text = money(abs(change)) if change is not None else "—"
-            bottom_cells.append(f"""
-            <td width="50%" valign="top" style="padding:4px 3px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;">
-                <tr><td style="padding:8px 9px;">
-                  <div style="font-size:10px;color:#667085;margin-bottom:6px;">{esc(item.get('title') or '')}</div>
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td valign="middle">
-                      <div style="font-size:11px;font-weight:bold;color:#37455F;">{esc(item.get('name') or '—')}</div>
-                      <div style="font-size:10px;color:#667085;">{esc(item.get('sku') or '')}</div>
-                    </td>
-                    <td align="right" valign="middle">
-                      <div style="font-size:10px;color:#667085;">{verb}</div>
-                      <div style="font-size:11px;font-weight:bold;color:{value_color};">{change_text}</div>
-                    </td>
-                  </tr></table>
-                </td></tr>
-              </table>
-            </td>
-            """)
-        if len(bottom_cells) == 1:
-            bottom_cells.append('<td width="50%">&nbsp;</td>')
-        sku_parts.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' + ''.join(bottom_cells) + '</tr></table>')
-    else:
-        sku_parts.append('<p style="font-size:11px;color:#667085;">No additional SKU highlights for this month.</p>')
-
-    sku_html = f"""
-    <div style="font-size:16px;font-weight:bold;color:#37455F;margin:15px 0 6px;">SKU Sales Highlights</div>
-    {''.join(sku_parts) if sku_parts else '<p style="font-size:11px;color:#667085;">No SKU sales recorded for this month.</p>'}
-    """
+    top = next((item for item in highlights if item.get("title") == "Top Selling SKU"), None)
+    highest_growth = next((item for item in highlights if item.get("title") == "Highest Net Sales Growth"), None)
+    identity = lambda item: (str(item.get("sku") or "").strip() or str(item.get("name") or "").strip()).lower()
+    merge_top_sku = bool(top and highest_growth and identity(top) == identity(highest_growth))
+    sku_headers = ["Category", "Product Name", "Units", "ASP", "Net Sales", "ACoS", "CM2 Profit"]
+    sku_header_html = "".join(
+        f'<th style="padding:6px 4px;background:#5EA68E;color:#FFFFFF;font-size:10px;font-weight:bold;text-align:center;border-right:1px solid #E6ECEF;">{header}</th>'
+        for header in sku_headers
+    )
+    sku_rows = []
+    for item in highlights:
+        title = item.get("title") or ""
+        category = "Lowest Net Sales Growth" if title == "Largest Net Sales Decline" else title
+        row = [
+            esc(category), esc(item.get("name") or "—"), number(item.get("units")),
+            money(item.get("asp"), 2), money(item.get("netSales")),
+            f"{safe_float(item.get('acos')):.2f}%" if safe_float(item.get("acos")) is not None else "—",
+            money(item.get("cm2Profit")),
+        ]
+        cells = []
+        for idx, value in enumerate(row):
+            if merge_top_sku and title == "Highest Net Sales Growth" and idx > 0:
+                continue
+            rowspan = ' rowspan="2"' if merge_top_sku and title == "Top Selling SKU" and idx > 0 else ""
+            cells.append(f'<td{rowspan} style="padding:7px 4px;text-align:center;vertical-align:middle;border:1px solid #E6ECEF;color:#344054;font-size:10px;">{value}</td>')
+        sku_rows.append("<tr>" + "".join(cells) + "</tr>")
+    sku_html = (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;border:1px solid #E6ECEF;border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden;">'
+        f'<thead><tr>{sku_header_html}</tr></thead><tbody>{"".join(sku_rows)}</tbody></table>'
+        if highlights else '<div style="margin-top:12px;padding:12px;border:1px solid #E6ECEF;border-radius:12px;color:#667085;font-size:11px;">No SKU highlights for this month.</div>'
+    )
 
     return f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px;border-collapse:collapse;background:#FFFFFF;">
@@ -3042,32 +3000,6 @@ def send_email_with_attachment(
                 Please review the attached file at your convenience and use it to track product-level performance,
                 identify movement across key metrics, and support faster business decisions.
               </p>
-
-              <!-- attachment box -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="
-                margin:20px 0;
-                background:#f8fafc;
-                border:1px solid #e5e7eb;
-                border-collapse:collapse;
-              ">
-                <tr>
-                  <td style="padding:14px 16px;">
-                    <div style="font-size:12px; color:#777777; margin-bottom:6px;">
-                      Attached file
-                    </div>
-
-                    <div style="
-                      font-size:15px;
-                      line-height:1.4;
-                      color:#1d6d84;
-                      font-weight:bold;
-                      word-break:break-word;
-                    ">
-                      {safe_attachment_filename}
-                    </div>
-                  </td>
-                </tr>
-              </table>
 
               <!-- report details -->
               <table width="100%" cellpadding="0" cellspacing="0" border="0" style="
