@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Bargraph from "./BarGraph";
 import GraphPage from "./GraphPage";
 import CircleChart from "./CircleChart";
@@ -4051,6 +4051,18 @@ const HASH_TO_FINANCE_TAB: Record<string, DashboardTab> = {
   "cash-flow": "cashFlow",
 };
 
+type FinanceMarket = "global" | "uk" | "us";
+
+const FINANCE_MARKET_OPTIONS: { value: FinanceMarket; label: string }[] = [
+  { value: "global", label: "Global" },
+  { value: "uk", label: "UK" },
+  { value: "us", label: "US" },
+];
+
+function supportsFinanceMarket(tab: DashboardTab) {
+  return tab === "graphs" || tab === "skuBreakdown" || tab === "cashFlow";
+}
+
 const DEMO_SUMMARY: Summary = {
   unit_sold: 0,
   total_sales: 0,
@@ -6551,7 +6563,7 @@ const inventoryActionLogic: ActionLogicItem[] = [
 /* ---------------------- Component ---------------------- */
 const Dropdowns: React.FC<DropdownsProps> = ({
   initialRanged,
-  initialCountryName,
+  initialCountryName: routeCountryName,
   initialMonth,
   initialYear,
 }) => {
@@ -6563,22 +6575,30 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const searchParams = useSearchParams();
 
   const ranged = initialRanged;
-  const countryName = initialCountryName || "";
   const month = initialMonth || "";
   const year = initialYear || "";
 
-  // const isGlobalPage = countryName.toLowerCase() === "global";
-  const isGlobalPage = (countryName || "").toLowerCase() === "global";
+  const [activeTab, setActiveTab] = useState<DashboardTab>("businessSummary");
+  const [showDashboardDetails, setShowDashboardDetails] = useState(false);
+  const [financeMarket, setFinanceMarket] = useState<FinanceMarket>("global");
 
-  const globalHomeCurrency = isGlobalPage ? homeCurrency : undefined;
+  const isGlobalPage = routeCountryName.toLowerCase() === "global";
+  const isDemoMode =
+    String(month).toUpperCase() === "NA" ||
+    String(year).toUpperCase() === "NA";
+  const showFinanceMarket = isGlobalPage && !isDemoMode &&
+    showDashboardDetails && supportsFinanceMarket(activeTab);
+  const countryName = showFinanceMarket ? financeMarket : routeCountryName;
+  const isCashFlowTab = showDashboardDetails && activeTab === "cashFlow";
+  const globalHomeCurrency = countryName.toLowerCase() === "global" ? homeCurrency : undefined;
 
   const adsCountry = useMemo<"UK" | "US" | "CA">(() => {
-    const c = String(initialCountryName || "").toLowerCase();
+    const c = routeCountryName.toLowerCase();
 
     if (c === "us" || c === "usa" || c === "united states") return "US";
     if (c === "ca" || c === "canada") return "CA";
     return "UK";
-  }, [initialCountryName]);
+  }, [routeCountryName]);
 
   const token = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -6680,7 +6700,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const fetchRolling12Months = async (
     countryValue: string,
     authToken: string | null,
-    allowAfterCm1 = false
+    allowAfterCm1 = false,
+    signal?: AbortSignal
   ) => {
     if (!authToken) throw new Error("Authorization token not found. Please login.");
 
@@ -6698,6 +6719,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       method: "GET",
       headers: { Authorization: `Bearer ${authToken}` },
       cache: "no-store",
+      signal,
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -6823,16 +6845,12 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return total;
   };
 
-  const isDemoMode =
-    String(month).toUpperCase() === "NA" ||
-    String(year).toUpperCase() === "NA";
-
-  const effectiveCountryName = isDemoMode ? "global" : countryName;
-  const effectiveHomeCurrency = isDemoMode ? "usd" : globalHomeCurrency;
+  const inventoryPageCountry = isDemoMode ? "global" : routeCountryName;
+  const inventoryPageHomeCurrency = isDemoMode ? "usd" : isGlobalPage ? homeCurrency : undefined;
 
   const currencySymbol = isDemoMode
     ? getCurrencySymbol("global")
-    : isGlobalPage
+    : globalHomeCurrency
       ? getCurrencySymbol(homeCurrency)
       : getCurrencySymbol(countryName || "");
 
@@ -6909,7 +6927,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     useState<string>("uk");
   const inventoryInsightsCountry = isGlobalPage
     ? selectedGlobalInventoryCountry
-    : countryName;
+    : routeCountryName;
   const inventoryInsightsCurrencySymbol = getCurrencySymbol(
     inventoryInsightsCountry
   );
@@ -7101,7 +7119,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       return { ...(row as any), product_status: status };
     });
-  }, [displaySkuRows, skuStatusMap]);
+  }, [displaySkuRows, skuStatusMap, countryName]);
 
   const isSkuJourneyProductRow = useCallback((row: TableRow | any) => {
     const name = String(row?.product_name || "").trim().toLowerCase();
@@ -7176,8 +7194,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   const [adsError, setAdsError] = useState<string | null>(null);
 
 
-  const [activeTab, setActiveTab] = useState<DashboardTab>("businessSummary");
-  const [showDashboardDetails, setShowDashboardDetails] = useState(false);
   const shouldScrollTabTopRef = useRef(false);
   const [pendingHash, setPendingHash] = useState<string>("");
   const [targetSummary, setTargetSummary] = useState<{
@@ -7214,7 +7230,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     if (typeof window !== "undefined" && window.location.hash) return;
     setActiveTab("businessSummary");
     setShowDashboardDetails(false);
-  }, [range, selectedMonth, selectedQuarter, selectedYear, countryName]);
+  }, [range, selectedMonth, selectedQuarter, selectedYear, routeCountryName]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -7325,9 +7341,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   };
 
   const getInventoryInsightsReportCountry = () => {
-    return String(countryName || "").toLowerCase() === "global"
-      ? selectedGlobalInventoryCountry
-      : countryName;
+    return inventoryInsightsCountry;
   };
 
   const getInventoryInsightsFileName = () => {
@@ -7840,6 +7854,40 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return String(first?.product_name || "").trim();
   }, [topData]);
 
+  const previousFinanceCountry = useRef(countryName);
+
+  useLayoutEffect(() => {
+    if (previousFinanceCountry.current === countryName) return;
+    previousFinanceCountry.current = countryName;
+
+    uploadHistoryRequestIdRef.current += 1;
+    aiRequestIdRef.current += 1;
+    setUploadsData(null);
+    setSkuRows([]);
+    setSkuRowsError(null);
+    setSkuNoDataFound(false);
+    setLoading(!isCashFlowTab);
+    setSkuRowsLoading(!isCashFlowTab);
+    setBargraphUploads([]);
+    setBargraphLoading(!isCashFlowTab);
+    setGraphPageUploads([]);
+    setGraphPageError(null);
+    setMonthWiseSkuRows([]);
+    setPerformanceTrend(null);
+    setTargetSummary(null);
+    setAiPanel(null);
+    setSelectedAiProductBlock(null);
+    setSelectedAiProductRecObj(null);
+    setShowNoDataOverlay(false);
+    setChartExportApi(null);
+    setSkuExportPayload(null);
+    setExpenseBreakdownPieBase64(null);
+    setProductWiseCm1PieBase64(null);
+    setProductWiseCm2PieBase64(null);
+    setPerformanceTrendBase64(null);
+    setTrendExportApi(null);
+  }, [countryName, isCashFlowTab]);
+
   useEffect(() => {
     setShowNoDataOverlay(false);
     setFocusedChart(null);
@@ -8038,9 +8086,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   // Fetch monthly total rows for the optional Month-wise P&L table view.
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
     const loadMonthWiseTotals = async () => {
-      if (!allDropdownsSelected || !selectedYear || !initialCountryName || isDemoMode) {
+      if (activeTab !== "skuBreakdown" || !allDropdownsSelected || !selectedYear || !countryName || isDemoMode) {
         setMonthWiseSkuRows([]);
         setMonthWiseSkuLoading(false);
         return;
@@ -8048,12 +8097,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setMonthWiseSkuLoading(true);
       const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-      if (isRolling12Months && activeTab === "skuBreakdown") {
+      if (isRolling12Months) {
         try {
           const payload = await fetchRolling12Months(
-            initialCountryName,
+            countryName,
             token,
-            true
+            true,
+            signal
           );
           const monthlyBreakdown = payload?.current_period?.monthly_breakdown ?? {};
           const rollingRows = Object.entries(monthlyBreakdown)
@@ -8096,13 +8146,13 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               }];
             });
 
-          if (!cancelled) {
+          if (!signal.aborted) {
             setMonthWiseSkuRows(rollingRows as TableRow[]);
           }
         } catch {
-          if (!cancelled) setMonthWiseSkuRows([]);
+          if (!signal.aborted) setMonthWiseSkuRows([]);
         } finally {
-          if (!cancelled) setMonthWiseSkuLoading(false);
+          if (!signal.aborted) setMonthWiseSkuLoading(false);
         }
         return;
       }
@@ -8120,12 +8170,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           const url = buildMonthlySkuUrl(
             monthName,
             String(selectedYear),
-            initialCountryName,
+            countryName,
             promotionsPlacement,
             amazonFeesPlacement,
             true
           );
-          const response = await fetch(url.toString(), { method: "GET", headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store" });
+          const response = await fetch(url.toString(), {
+            method: "GET",
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            cache: "no-store",
+            signal,
+          });
           if (!response.ok) return null;
           const payload = await response.json();
           const rawRows = payload?.current_data ?? payload?.data ?? [];
@@ -8139,14 +8194,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           return null;
         }
       }));
-      if (!cancelled) {
+      if (!signal.aborted) {
         setMonthWiseSkuRows(results.filter(Boolean).sort((a: any, b: any) => a._month_index - b._month_index) as TableRow[]);
         setMonthWiseSkuLoading(false);
       }
     };
     void loadMonthWiseTotals();
-    return () => { cancelled = true; };
-  }, [allDropdownsSelected, selectedYear, initialCountryName, isDemoMode, homeCurrency, promotionsPlacement, amazonFeesPlacement, range, activeTab, isRolling12Months]);
+    return () => controller.abort();
+  }, [allDropdownsSelected, selectedYear, countryName, isDemoMode, homeCurrency, promotionsPlacement, amazonFeesPlacement, range, activeTab, isRolling12Months]);
 
   const getPreviousMonthYear = (monthVal: string, yearVal: string) => {
     const idx = monthIndexMap[monthVal.toLowerCase()];
@@ -8314,7 +8369,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     quarterVal: string,
     yearVal: string,
     country: string,
-    rolling12Months = false
+    rolling12Months = false,
+    signal?: AbortSignal
   ) => {
     if (isDemoMode) {
       setLoading(false);
@@ -8331,8 +8387,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     if (!rangeType || !yearVal) return;
 
-    // Point 3: every request gets its own id
     const requestId = ++uploadHistoryRequestIdRef.current;
+    const isCurrentRequest = () => !signal?.aborted && requestId === uploadHistoryRequestIdRef.current;
 
     // Point 4: start all loaders together
     setLoading(true);
@@ -8379,15 +8435,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         cache: "no-store",
+        signal,
       });
 
-      // If another request started after this one, ignore this response
-      if (requestId !== uploadHistoryRequestIdRef.current) return;
+      if (!isCurrentRequest()) return;
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
 
-        if (requestId !== uploadHistoryRequestIdRef.current) return;
+        if (!isCurrentRequest()) return;
 
         console.error(`API Error: ${err?.error ?? res.statusText}`);
 
@@ -8406,7 +8462,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const raw = await res.json();
 
-      if (requestId !== uploadHistoryRequestIdRef.current) return;
+      if (!isCurrentRequest()) return;
 
       let finalRaw = rolling12Months
         ? {
@@ -8463,14 +8519,15 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           method: "GET",
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           cache: "no-store",
+          signal,
         });
 
-        if (requestId !== uploadHistoryRequestIdRef.current) return;
+        if (!isCurrentRequest()) return;
 
         if (prevRes.ok) {
           const prevRaw = await prevRes.json();
 
-          if (requestId !== uploadHistoryRequestIdRef.current) return;
+          if (!isCurrentRequest()) return;
 
           finalRaw = {
             ...raw,
@@ -8502,7 +8559,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         normalizedPreviousRows
       );
 
-      if (requestId !== uploadHistoryRequestIdRef.current) return;
+      if (!isCurrentRequest()) return;
 
       if (!rowsWithNetSalesDelta.length) {
         setSkuRows([]);
@@ -8577,7 +8634,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         });
       }
 
-      if (data?.summary) {
+      if (data?.summary && country === routeCountryName) {
         if (rangeType === "monthly" && yearVal && monthVal) {
           markFetched(yearVal, monthVal);
         }
@@ -8591,7 +8648,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         }
       }
     } catch (error: any) {
-      if (requestId !== uploadHistoryRequestIdRef.current) return;
+      if (!isCurrentRequest()) return;
 
       console.error("Error fetching data: ", error);
 
@@ -8602,7 +8659,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setBargraphUploads([]);
     } finally {
       // Only the newest request is allowed to stop loaders
-      if (requestId === uploadHistoryRequestIdRef.current) {
+      if (isCurrentRequest()) {
         setLoading(false);
         setSkuRowsLoading(false);
         setBargraphLoading(false);
@@ -9140,27 +9197,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (isDemoMode) {
-      setTargetSummary(DEMO_TARGET_SUMMARY);
-      return;
-    }
-
-    const ready =
-      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (range === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setTargetSummary(null);
-      return;
-    }
-
-    fetchTargetSummary();
-  }, [range, selectedMonth, selectedQuarter, selectedYear, initialCountryName, isDemoMode]);
-
-
-  const fetchPerformanceTrendFromHistory = async (rangeType: RangeType) => {
+  const fetchPerformanceTrendFromHistory = async (rangeType: RangeType, signal: AbortSignal) => {
     if (isDemoMode) {
       setPerformanceTrend(DEMO_PERFORMANCE_TREND);
       setPerformanceTrendMetric("net_sales");
@@ -9199,8 +9236,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         cache: "no-store",
+        signal,
       });
 
+      if (signal.aborted) return;
       if (!res.ok) {
         setPerformanceTrend(null);
         return;
@@ -9208,10 +9247,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       const data = await res.json();
 
+      if (signal.aborted) return;
       setPerformanceTrend(data.performance_trend ?? null);
       setPerformanceTrendMetric(data.performance_trend_metric ?? "net_sales");
-    } catch (e) {
-      setPerformanceTrend(null);
+    } catch {
+      if (!signal.aborted) setPerformanceTrend(null);
     }
   };
 
@@ -9280,7 +9320,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (!token || !countryName || !overviewActionYear || !overviewActionMonth) {
+    if (!token || !routeCountryName || !overviewActionYear || !overviewActionMonth) {
       setOverviewActionItems([]);
       setBackendInventorySummaryOverview(null);
       setGlobalInventoryCountryMetrics({});
@@ -9300,7 +9340,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const url = new URL(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/dashboard/action-items`
         );
-        url.searchParams.set("country_key", String(countryName).toLowerCase());
+        url.searchParams.set("country_key", String(routeCountryName).toLowerCase());
         url.searchParams.set("month_name", overviewActionMonth);
         url.searchParams.set("year", overviewActionYear);
 
@@ -9330,7 +9370,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           payload?.inventory_summary_overview ?? null
         );
 
-        if (String(countryName).toLowerCase() === "global") {
+        if (String(routeCountryName).toLowerCase() === "global") {
           const countryMetrics: PnlSummaryCountryInventoryMetrics = {};
           await Promise.all(
             (["uk", "us"] as const).map(async (country) => {
@@ -9383,7 +9423,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     return () => controller.abort();
   }, [
-    countryName,
+    routeCountryName,
     isDemoMode,
     overviewActionMonth,
     overviewActionYear,
@@ -9399,7 +9439,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
     if (
       !token ||
-      !countryName ||
+      !routeCountryName ||
       !overviewPeriod.month ||
       !overviewPeriod.year
     ) {
@@ -9418,7 +9458,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const url = new URL(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/getDispatchfile`
         );
-        url.searchParams.set("country", countryName);
+        url.searchParams.set("country", routeCountryName);
         url.searchParams.set("month", overviewPeriod.month);
         url.searchParams.set("year", overviewPeriod.year);
 
@@ -9451,7 +9491,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     void fetchOverviewDispatch();
     return () => controller.abort();
   }, [
-    countryName,
+    routeCountryName,
     isDemoMode,
     overviewPeriod.month,
     overviewPeriod.year,
@@ -9460,7 +9500,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const fetchSingleMonthTargetSummary = async (
     monthName: string,
-    yearValue: string | number = selectedYear
+    yearValue: string | number,
+    signal: AbortSignal
   ) => {
     const token =
       typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
@@ -9468,9 +9509,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/target-summary`);
     url.searchParams.set("month", monthName);
     url.searchParams.set("year", String(yearValue));
-    url.searchParams.set("country", initialCountryName.toLowerCase());
+    url.searchParams.set("country", countryName.toLowerCase());
 
-    if (initialCountryName.toLowerCase() === "global" && homeCurrency) {
+    if (countryName.toLowerCase() === "global" && homeCurrency) {
       url.searchParams.set("currency", homeCurrency.toLowerCase());
     }
 
@@ -9478,6 +9519,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       method: "GET",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
+      signal,
     });
 
     if (!res.ok) {
@@ -9498,14 +9540,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     };
   };
 
-  const fetchTargetSummary = async () => {
+  const fetchTargetSummary = async (signal: AbortSignal) => {
     if (isDemoMode) {
       setTargetSummaryLoading(false);
       setTargetSummary(DEMO_TARGET_SUMMARY);
       return;
     }
 
-    if (!selectedYear || !initialCountryName) return;
+    if (!selectedYear || !countryName) return;
 
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
@@ -9577,15 +9619,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       const [monthlyResults, previousMonthlyResults] = await Promise.all([
         Promise.all(
           monthsToFetch.map((monthName) =>
-            fetchSingleMonthTargetSummary(monthName, selectedYearNum)
+            fetchSingleMonthTargetSummary(monthName, selectedYearNum, signal)
           )
         ),
         Promise.all(
           previousMonthsToFetch.map((monthName) =>
-            fetchSingleMonthTargetSummary(monthName, previousYear)
+            fetchSingleMonthTargetSummary(monthName, previousYear, signal)
           )
         ),
       ]);
+      if (signal.aborted) return;
 
       const totals = monthlyResults.reduce(
         (acc, curr) => {
@@ -9620,10 +9663,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         cashflow_delta: cashflowDelta,
       });
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Failed to fetch target summary:", error);
       setTargetSummary(null);
     } finally {
-      setTargetSummaryLoading(false);
+      if (!signal.aborted) setTargetSummaryLoading(false);
     }
   };
 
@@ -9712,6 +9756,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       setTargetSummary(DEMO_TARGET_SUMMARY);
       return;
     }
+    if (isCashFlowTab) return;
 
     const ready =
       (range === "monthly" && !!selectedMonth && !!selectedYear) ||
@@ -9723,15 +9768,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    fetchTargetSummary();
+    const controller = new AbortController();
+    void fetchTargetSummary(controller.signal);
+    return () => controller.abort();
   }, [
     range,
     selectedMonth,
     selectedQuarter,
     selectedYear,
-    initialCountryName,
+    countryName,
     homeCurrency,
     isDemoMode,
+    isCashFlowTab,
   ]);
 
   const clearAmazonFetchQueryParams = () => {
@@ -9882,7 +9930,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    if (!countryName) {
+    if (!routeCountryName) {
       setAvailablePeriods(null);
       return;
     }
@@ -9902,10 +9950,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/upload_history`
         );
 
-        url.searchParams.set("country", countryName);
+        url.searchParams.set("country", routeCountryName);
         url.searchParams.set("period", "monthly");
 
-        if (countryName.toLowerCase() === "global" && homeCurrency) {
+        if (routeCountryName.toLowerCase() === "global" && homeCurrency) {
           url.searchParams.set("homeCurrency", homeCurrency);
         }
 
@@ -9956,7 +10004,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return () => {
       ignore = true;
     };
-  }, [countryName, fetchCurrencyKey, homeCurrency, isDemoMode, token]);
+  }, [routeCountryName, fetchCurrencyKey, homeCurrency, isDemoMode, token]);
 
   useEffect(() => {
     if (isDemoMode) return;
@@ -10029,37 +10077,38 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     return () => {
       ignore = true;
     };
-  }, [isDemoMode, countryName]);
+  }, [isDemoMode]);
+
+  const summaryRange: RangeType = activeTab === "skuwiseProfit" && range === "monthly"
+    ? "yearly"
+    : range;
+  const useRollingFinanceSummary = isRolling12Months &&
+    (activeTab === "graphs" || activeTab === "skuBreakdown");
 
   useEffect(() => {
-    if (isDemoMode) return;
-    if (!countryName) return;
-
-    const safeRange: RangeType =
-      activeTab === "skuwiseProfit" && range === "monthly"
-        ? "yearly"
-        : range;
-
-    if (!selectedYear) return;
+    if (isDemoMode || isCashFlowTab || !countryName || !selectedYear) return;
 
     const ready =
-      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (safeRange === "yearly" && !!selectedYear);
+      (summaryRange === "monthly" && !!selectedMonth) ||
+      (summaryRange === "quarterly" && !!selectedQuarter) ||
+      summaryRange === "yearly";
 
     if (!ready) return;
 
-    fetchUploadHistory(
-      safeRange,
-      safeRange === "monthly" ? selectedMonth : "",
-      safeRange === "quarterly" ? selectedQuarter || "" : "",
+    const controller = new AbortController();
+    void fetchUploadHistory(
+      summaryRange,
+      summaryRange === "monthly" ? selectedMonth : "",
+      summaryRange === "quarterly" ? selectedQuarter || "" : "",
       selectedYear,
       countryName,
-      isRolling12Months && (activeTab === "graphs" || activeTab === "skuBreakdown")
+      useRollingFinanceSummary,
+      controller.signal
     );
+    return () => controller.abort();
   }, [
-    activeTab,
-    range,
+    summaryRange,
+    isCashFlowTab,
     selectedMonth,
     selectedQuarter,
     selectedYear,
@@ -10068,11 +10117,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     isDemoMode,
     promotionsPlacement,
     amazonFeesPlacement,
-    isRolling12Months,
+    useRollingFinanceSummary,
   ]);
 
   useEffect(() => {
-    if (isDemoMode) return;
+    if (isDemoMode || isCashFlowTab) return;
 
     if (isRolling12Months) {
       setAiPanel(null);
@@ -10110,35 +10159,31 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedYear,
     countryName,
     isDemoMode,
+    isCashFlowTab,
     isRolling12Months,
   ]);
 
   useEffect(() => {
-    if (isDemoMode) return;
+    if (isDemoMode || activeTab !== "graphs" || isRolling12Months) return;
 
-    if (isRolling12Months) return;
-
-    const safeRange: RangeType =
-      activeTab === "skuwiseProfit" && range === "monthly"
-        ? "yearly"
-        : range;
-
-    if (!safeRange || !selectedYear) {
+    if (!range || !selectedYear) {
       setPerformanceTrend(null);
       return;
     }
 
     const ready =
-      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (safeRange === "yearly" && !!selectedYear);
+      (range === "monthly" && !!selectedMonth && !!selectedYear) ||
+      (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
+      (range === "yearly" && !!selectedYear);
 
     if (!ready) {
       setPerformanceTrend(null);
       return;
     }
 
-    fetchPerformanceTrendFromHistory(safeRange);
+    const controller = new AbortController();
+    void fetchPerformanceTrendFromHistory(range, controller.signal);
+    return () => controller.abort();
   }, [
     activeTab,
     range,
@@ -10160,8 +10205,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       buildInventoryInsightsFromResponses(
         inventoryRawResponses.inventory,
         inventoryRawResponses.ageSummary,
-        effectiveCountryName,
-        effectiveHomeCurrency,
+        inventoryPageCountry,
+        inventoryPageHomeCurrency,
         selectedAgeingTrendBucket,
         selectedGlobalInventoryCountry,
         range,
@@ -10172,8 +10217,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [
     selectedAgeingTrendBucket,
     inventoryRawResponses,
-    effectiveCountryName,
-    effectiveHomeCurrency,
+    inventoryPageCountry,
+    inventoryPageHomeCurrency,
     isDemoMode,
     selectedGlobalInventoryCountry,
   ]);
@@ -10195,8 +10240,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
   }, [
     selectedAgeingTrendBucket,
     inventoryRawResponses,
-    effectiveCountryName,
-    effectiveHomeCurrency,
+    inventoryPageCountry,
+    inventoryPageHomeCurrency,
     isDemoMode,
     selectedGlobalInventoryCountry,
     range,
@@ -10247,22 +10292,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       return;
     }
 
-    const safeRange: RangeType =
-      activeTab === "skuwiseProfit" && range === "monthly"
-        ? "yearly"
-        : range;
+    if (activeTab !== "graphs" || !selectedYear || !countryName) return;
+    if (range !== "yearly" && (range !== "quarterly" || !selectedQuarter)) return;
 
-    if (!safeRange || !selectedYear || !countryName) return;
-
-    const ready =
-      (safeRange === "monthly" && !!selectedMonth && !!selectedYear) ||
-      (safeRange === "quarterly" && !!selectedQuarter && !!selectedYear) ||
-      (safeRange === "yearly" && !!selectedYear);
-
-    if (!ready) {
-      setGraphPageUploads([]);
-      return;
-    }
+    const controller = new AbortController();
+    const { signal } = controller;
 
     const fetchGraphPageUploadsFromSku = async () => {
       setGraphPageLoading(true);
@@ -10272,81 +10306,45 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         const token =
           typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
 
-        if (safeRange === "monthly") {
-          const rows = await fetchMonthlySkuRowsForGraph(
-            selectedMonth,
-            selectedYear,
-            countryName,
-            token
-          );
-
-          setGraphPageUploads(rows);
-          setGraphPageLoading(false);
-          return;
-        }
-
-        if (safeRange === "quarterly" && selectedQuarter) {
-          const months = quarterToMonths[selectedQuarter];
-
-          const rowsNested = await Promise.all(
-            months.map((m) =>
-              fetchMonthlySkuRowsForGraph(
-                m.toLowerCase(),
-                selectedYear,
-                countryName,
-                token
-              )
-            )
-          );
-
-          setGraphPageUploads(rowsNested.flat());
-          setGraphPageLoading(false);
-          return;
-        }
-
-        if (safeRange === "yearly") {
-          if (isRolling12Months) {
-            const payload = await fetchRolling12Months(countryName, token);
-            setGraphPageUploads(
-              mapRollingMonthlyTotalsToUploadRows(payload, countryName)
-            );
-            setGraphPageLoading(false);
-            return;
+        if (isRolling12Months) {
+          const payload = await fetchRolling12Months(countryName, token, false, signal);
+          if (!signal.aborted) {
+            setGraphPageUploads(mapRollingMonthlyTotalsToUploadRows(payload, countryName));
           }
-
-          const rowsNested = await Promise.all(
-            allMonths.map((m) =>
-              fetchMonthlySkuRowsForGraph(
-                m.toLowerCase(),
-                selectedYear,
-                countryName,
-                token
-              )
-            )
-          );
-
-          setGraphPageUploads(rowsNested.flat());
-          setGraphPageLoading(false);
           return;
         }
-      } catch (e: any) {
+
+        const months = range === "quarterly" && selectedQuarter
+          ? quarterToMonths[selectedQuarter]
+          : allMonths;
+        const rows = await Promise.all(
+          months.map((month) =>
+            fetchMonthlySkuRowsForGraph(month.toLowerCase(), selectedYear, countryName, token, signal)
+          )
+        );
+        if (!signal.aborted) setGraphPageUploads(rows.flat());
+      } catch (error: any) {
+        if (signal.aborted) return;
         setGraphPageUploads([]);
-        setGraphPageError(e?.message || "Failed to fetch graph data from SKU tables");
-        setGraphPageLoading(false);
+        setGraphPageError(error?.message || "Failed to fetch graph data from SKU tables");
+      } finally {
+        if (!signal.aborted) setGraphPageLoading(false);
       }
     };
 
-    fetchGraphPageUploadsFromSku();
+    void fetchGraphPageUploadsFromSku();
+    return () => controller.abort();
   }, [
     activeTab,
     range,
-    selectedMonth,
     selectedQuarter,
     selectedYear,
     countryName,
     homeCurrency,
     isDemoMode,
     isRolling12Months,
+    promotionsPlacement,
+    amazonFeesPlacement,
   ]);
 
   useEffect(() => {
@@ -10415,7 +10413,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory_current`
     );
 
-    url.searchParams.set("country_key", String(countryName).toLowerCase());
+    url.searchParams.set("country_key", String(routeCountryName).toLowerCase());
     url.searchParams.set("year", String(selectedYear));
 
     if (range === "monthly") {
@@ -10565,7 +10563,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       (range === "quarterly" && !!selectedQuarter && !!selectedYear) ||
       (range === "yearly" && !!selectedYear);
 
-    if (!ready || !countryName) {
+    if (!ready || !routeCountryName) {
       setInventoryInsightsData(null);
       setInventoryRawResponses(null);
       setInventoryInsightsError(null);
@@ -10593,7 +10591,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               fetchSingleMonthInventoryAgeSummary(
                 monthName,
                 selectedYear,
-                countryName,
+                routeCountryName,
                 ac.signal
               )
             )
@@ -10629,8 +10627,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           buildInventoryInsightsFromResponses(
             fulfilledInventory,
             fulfilledAgeSummary,
-            effectiveCountryName,
-            effectiveHomeCurrency,
+            inventoryPageCountry,
+            inventoryPageHomeCurrency,
             "all",
             selectedGlobalInventoryCountry,
             range,
@@ -10660,11 +10658,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedMonth,
     selectedQuarter,
     selectedYear,
-    countryName,
+    routeCountryName,
     isDemoMode,
     selectedGlobalInventoryCountry,
-    effectiveCountryName,
-    effectiveHomeCurrency,
+    inventoryPageCountry,
+    inventoryPageHomeCurrency,
     currencySymbol,
   ]);
 
@@ -11073,7 +11071,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     monthVal: string,
     yearVal: string,
     countryVal: string,
-    token: string | null
+    token: string | null,
+    signal: AbortSignal
   ): Promise<UploadRow[]> => {
     const url = buildMonthlySkuUrl(
       monthVal,
@@ -11091,6 +11090,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       method: "GET",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: "no-store",
+      signal,
     });
 
     if (!res.ok) return [];
@@ -11398,7 +11398,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             inventoryRawResponses?.inventory ?? [],
             inventoryRawResponses?.ageSummary ?? [],
             "global",
-            effectiveHomeCurrency,
+            inventoryPageHomeCurrency,
             selectedAgeingTrendBucket,
             value,
             range,
@@ -11829,7 +11829,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     shouldScrollTabTopRef.current = true;
     setShowDashboardDetails(true);
     setActiveTab(tab);
-    if (!["graphs", "skuBreakdown", "cashFlow"].includes(tab)) {
+    if (!supportsFinanceMarket(tab)) {
       setIsRolling12Months(false);
     }
     syncTabToHash(tab);
@@ -11879,7 +11879,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
 
   const handleConnectAmazonPreview = () => {
-    router.push(`/profile/${countryName}/NA/NA`);
+    router.push(`/profile/${routeCountryName}/NA/NA`);
   };
 
   const inventoryInsightsReportCountry = getInventoryInsightsReportCountry();
@@ -11903,9 +11903,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             <PageBreadcrumb pageTitle="Financial Metrics - Amazon" variant="page" align="left" textSize="2xl" />
             <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
               {/* Amazon{" "} */}
-              {effectiveCountryName?.toLowerCase() === "global"
+              {inventoryPageCountry?.toLowerCase() === "global"
                 ? "Global"
-                : effectiveCountryName?.toUpperCase()}
+                : inventoryPageCountry?.toUpperCase()}
             </span>
           </div>
           <p className="text-xs 2xl:text-sm text-charcoal-500 mt-1">
@@ -11928,7 +11928,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           <PeriodFiltersTable
             range={
               isRolling12Months &&
-              (activeTab === "graphs" || activeTab === "skuBreakdown" || activeTab === "cashFlow")
+              supportsFinanceMarket(activeTab)
                 ? "last12months"
                 : activeTab === "skuwiseProfit" && range === "monthly"
                   ? "yearly"
@@ -11946,7 +11946,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             allowedRanges={
               activeTab === "skuwiseProfit"
                 ? ["quarterly", "yearly"]
-                : activeTab === "graphs" || activeTab === "skuBreakdown" || activeTab === "cashFlow"
+                : supportsFinanceMarket(activeTab)
                   ? ["monthly", "quarterly", "yearly", "last12months"]
                   : ["monthly", "quarterly", "yearly"]
             }
@@ -11997,7 +11997,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       setActiveTab(t);
 
                       if (
-                        !["graphs", "skuBreakdown", "cashFlow"].includes(t) &&
+                        !supportsFinanceMarket(t) &&
                         isRolling12Months
                       ) {
                         setIsRolling12Months(false);
@@ -12033,6 +12033,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                   Back to overview
                 </button>
               </div>
+              {showFinanceMarket && (
+                <div role="group" aria-label="Financial marketplace" className="flex justify-end pt-1">
+                  <SegmentedToggle
+                    value={financeMarket}
+                    options={FINANCE_MARKET_OPTIONS}
+                    onChange={setFinanceMarket}
+                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                    compact
+                  />
+                </div>
+              )}
             </div>
 
             {/* ===================== SUMMARY CARDS (OPTIONAL: ALWAYS SHOW) ===================== */}
@@ -12438,7 +12449,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* ---------- TAB 1: GRAPHS ---------- */}
               {activeTab === "graphs" && (
 
-                <div id="finance-dashboard" className="scroll-mt-[80px]">
+                <div id="finance-dashboard" key={countryName} className="scroll-mt-[80px]">
                   {/* Monthly */}
                   {range === "monthly" && selectedMonth && selectedYear && (
                     <>
@@ -12463,7 +12474,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={isRolling12Months ? "last12months" : range}
                                   month={selectedMonth}
                                   year={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
@@ -12526,7 +12537,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={range}
                                   selectedMonth={selectedMonth}
                                   selectedYear={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
@@ -12551,7 +12562,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               month={selectedMonth}
                               selectedQuarter={undefined}
                               year={selectedYear}
-                              countryName={initialCountryName}
+                              countryName={countryName}
                               homeCurrency={globalHomeCurrency}
                               onExportBase64Ready={setExpenseBreakdownPieBase64}
                               isPreviewMode={isDemoMode}
@@ -12564,7 +12575,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               month={isDemoMode ? "NA" : selectedMonth}
                               selectedQuarter={undefined}
                               year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
+                              countryName={isDemoMode ? "global" : countryName}
                               homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                               onExportBase64Ready={setProductWiseCm1PieBase64}
                               disableInternalFade={isDemoMode}
@@ -12600,7 +12611,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={range}
                                   quarter={selectedQuarter}
                                   year={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
@@ -12663,7 +12674,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={isRolling12Months ? "last12months" : range}
                                   selectedQuarter={selectedQuarter}
                                   selectedYear={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
@@ -12689,7 +12700,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               month={undefined}
                               selectedQuarter={selectedQuarter}
                               year={selectedYear}
-                              countryName={initialCountryName}
+                              countryName={countryName}
                               homeCurrency={globalHomeCurrency}
                               onExportBase64Ready={setExpenseBreakdownPieBase64}
                               isPreviewMode={isDemoMode}
@@ -12702,7 +12713,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               month={undefined}
                               selectedQuarter={isDemoMode ? undefined : selectedQuarter}
                               year={isDemoMode ? "NA" : selectedYear}
-                              countryName={isDemoMode ? "global" : initialCountryName}
+                              countryName={isDemoMode ? "global" : countryName}
                               homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                               onExportBase64Ready={setProductWiseCm1PieBase64}
                               disableInternalFade={isDemoMode}
@@ -12737,7 +12748,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                 <PerformanceTrendChart
                                   range={isRolling12Months ? "last12months" : range}
                                   year={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
@@ -12799,7 +12810,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                 <GraphPage
                                   range={isRolling12Months ? "last12months" : range}
                                   selectedYear={selectedYear}
-                                  countryName={initialCountryName}
+                                  countryName={countryName}
                                   homeCurrency={globalHomeCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
@@ -12824,7 +12835,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             month={undefined}
                             selectedQuarter={undefined}
                             year={selectedYear}
-                            countryName={initialCountryName}
+                            countryName={countryName}
                             homeCurrency={globalHomeCurrency}
                             onExportBase64Ready={setExpenseBreakdownPieBase64}
                             disableInternalFade={isDemoMode}
@@ -12838,7 +12849,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             month={undefined}
                             selectedQuarter={undefined}
                             year={isDemoMode ? "NA" : selectedYear}
-                            countryName={isDemoMode ? "global" : initialCountryName}
+                            countryName={isDemoMode ? "global" : countryName}
                             homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                             onExportBase64Ready={setProductWiseCm1PieBase64}
                             disableInternalFade={isDemoMode}
@@ -12898,7 +12909,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         selectedQuarter={selectedQuarter}
                         selectedMonth={selectedMonth}
                         homeCurrency={globalHomeCurrency}
-                        countryName={initialCountryName}
+                        countryName={countryName}
                         portfolioRecommendation={aiPanel?.portfolioRecommendation}
                         targetSummary={targetSummary}
                         currencySymbol={currencySymbol}
@@ -12912,14 +12923,14 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               {/* ---------- TAB 3: SKU / PRODUCTWISE P&L ---------- */}
               {activeTab === "skuBreakdown" && allDropdownsSelected && (
 
-                <div id="pnl-breakdown" className="mt-4 space-y-4 scroll-mt-[80px]">
+                <div id="pnl-breakdown" key={countryName} className="mt-4 space-y-4 scroll-mt-[80px]">
                   <SKUtable
                     range={range || "yearly"}
                     isRolling12Months={isRolling12Months}
                     month={range === "monthly" ? selectedMonth : ""}
                     quarter={range === "quarterly" ? selectedQuarter : ""}
                     year={selectedYear}
-                    countryName={isDemoMode ? "global" : initialCountryName}
+                    countryName={isDemoMode ? "global" : countryName}
                     homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
@@ -13040,7 +13051,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     return (
                       <ProductwisePerformance
                         key={[
-                          initialCountryName,
+                          countryName,
                           productWiseRange,
                           selectedQuarter,
                           selectedYear,
@@ -13048,7 +13059,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                           isDemoMode ? "demo" : "live",
                         ].join("-")}
                         embedded
-                        countryNameProp={isDemoMode ? "global" : initialCountryName}
+                        countryNameProp={isDemoMode ? "global" : countryName}
                         rangeProp={productWiseRange}
                         selectedMonthProp={isDemoMode ? "NA" : ""}
                         selectedQuarterProp={
@@ -13090,8 +13101,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
                 <div id="cash-flow" className="mt-4 scroll-mt-[80px]">
                   <CashFlowPage
+                    key={countryName}
                     embedded
-                    countryNameProp={isDemoMode ? "global" : initialCountryName}
+                    countryNameProp={isDemoMode ? "global" : countryName}
                     rangeProp={isRolling12Months ? "last12months" : range}
                     selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
                     selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
@@ -13213,11 +13225,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       >
         <div className="max-h-[85vh] overflow-y-auto">
           <FileUploadForm
-            initialCountry={initialCountryName}
+            initialCountry={routeCountryName}
             onClose={() => setShowUploadModal(false)}
             onComplete={() => {
               setShowUploadModal(false);
-              fetchUploadHistory(range, selectedMonth, selectedQuarter || "", selectedYear, initialCountryName);
+              fetchUploadHistory(range, selectedMonth, selectedQuarter || "", selectedYear, countryName);
             }}
           />
         </div>
