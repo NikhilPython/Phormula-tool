@@ -7464,10 +7464,9 @@ def live_mtd_vs_previous(period_mode=None):
         # SEND EMAIL
         # ---------------------------
         user_email = payload.get("email") or request.args.get("email")
-        user_name = None
-
+        stored_email, user_name = get_user_email_and_name_by_id(user_id)
         if not user_email:
-            user_email, user_name = get_user_email_and_name_by_id(user_id)
+            user_email = stored_email
 
         if isinstance(user_email, tuple):
             user_email = user_email[0]
@@ -7521,6 +7520,8 @@ def live_mtd_vs_previous(period_mode=None):
                         deep_link_token=email_token,
                         weekly_email_summary_json=weekly_email_summary_json,
                         brand_name=get_user_brand_name_by_id(user_id),
+                        live_bi_data=response_payload,
+                        user_name=user_name,
                     )
 
                     if sent:

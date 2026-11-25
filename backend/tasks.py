@@ -203,6 +203,8 @@ def send_live_bi_email_daily(country_filter=None):
                         deep_link_token=email_token,
                         weekly_email_summary_json=weekly_email_summary_json,
                         brand_name=get_user_brand_name_by_id(user_id),
+                        live_bi_data=result.get("response_payload"),
+                        user_name=get_user_email_and_name_by_id(user_id)[1],
                     )
 
                     mark_bi_email_sent(user_id, country)

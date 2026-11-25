@@ -1162,10 +1162,13 @@ def send_live_bi_email(
     sku_to_product=None,
     portfolio_recommendation=None,
     brand_name=None,
+    live_bi_data=None,
+    user_name=None,
 ):
     import traceback
     import html
     import re
+    import math
 
     if not to_email:
         print("[WARN] No email provided.")
@@ -1176,7 +1179,7 @@ def send_live_bi_email(
     country_label = str(country or "").strip().upper()
     brand_subject = f" | {brand_name}" if brand_name else ""
     subject = f"Phormula Weekly Live BI Report {period_label}{brand_subject} | Amazon {country_label}"
-    header_title = f"Business Insights Report {period_label}".strip()
+    header_title = f"Business insights Report {period_label}".strip()
 
     # ---------------------------
     # Overall summary
@@ -1206,6 +1209,178 @@ def send_live_bi_email(
     {html.escape(str(summary_text))}
 </p>
 """
+
+    def render_live_bi_recap(data):
+        if not isinstance(data, dict):
+            return ""
+
+        def finite_number(value):
+            try:
+                number = float(value)
+                return number if math.isfinite(number) else None
+            except (TypeError, ValueError):
+                return None
+
+        totals = data.get("aligned_totals") or {}
+        target_data = data.get("target_context") or {}
+        objective_data = data.get("objective_context") or {}
+        currency_symbol = ((data.get("currency") or {}).get("symbol") or "$").strip()
+
+        def money(value, decimals=0):
+            value = finite_number(value)
+            return f"{currency_symbol}{value:,.{decimals}f}" if value is not None else "—"
+
+        actual = finite_number(totals.get("total_current_net_sales"))
+        target = finite_number(target_data.get("target_sales"))
+        has_target = target is not None and target > 0
+        achievement = actual / target * 100 if has_target and actual is not None else None
+        progress_width = max(0, min(100, achievement or 0))
+        achievement_text = f"{achievement:.1f}%" if achievement is not None else "—"
+
+        def objective_title(value):
+            return " ".join(part.capitalize() for part in re.sub(r"[_-]+", " ", str(value or "")).split())
+
+        objectives = []
+        if objective_data.get("growth_intent"):
+            objectives.append(f"Growth focus: {objective_title(objective_data['growth_intent'])}")
+        if objective_data.get("profit_priority"):
+            objectives.append(f"Profit focus: {objective_title(objective_data['profit_priority'])}")
+        clearance = objective_data.get("inventory_clearance_priority")
+        if clearance is not None:
+            objectives.append("Prioritise clearing ageing inventory" if clearance else "Inventory dilution: No")
+        objective_html = "".join(
+            f'<span style="display:inline-block;background:#F2F4F7;color:#37455F;padding:5px 9px;border-radius:14px;font-size:10px;margin:3px;text-transform:capitalize;"><span style="color:#5EA68E;">●</span> {html.escape(item)}</span>'
+            for item in objectives
+        )
+
+        target_html = f"""
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #E6ECEF;border-radius:12px;margin:12px 0 10px;background:#FFFFFF;">
+          <tr><td colspan="3" align="center" style="padding:12px 8px 8px;font-size:16px;font-weight:bold;color:#37455F;">Target and Objectives</td></tr>
+          <tr>
+            <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
+              <div style="font-size:11px;color:#50627A;"><span style="color:#ED9F50;">●</span> Net sales</div>
+              <div style="font-size:19px;font-weight:bold;color:#37455F;">{money(actual)}</div>
+            </td>
+            <td width="30%" align="center" valign="middle" style="padding:8px 8px;">
+              <div style="font-size:22px;font-weight:bold;color:#37455F;">{achievement_text}</div>
+              <div style="font-size:10px;color:#50627A;">Target Achieved</div>
+              {f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:7px;border-collapse:collapse;"><tr><td height="6" bgcolor="#5EA68E" style="height:6px;padding:0;background:#5EA68E;border-radius:5px;font-size:1px;line-height:1px;"><table role="presentation" width="{progress_width:.1f}%" cellpadding="0" cellspacing="0" border="0" style="width:{progress_width:.1f}%;border-collapse:collapse;"><tr><td height="6" bgcolor="#ED9F50" style="height:6px;padding:0;background:#ED9F50;border-radius:5px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr></table>' if has_target else ''}
+            </td>
+            <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
+              <div style="font-size:11px;color:#50627A;"><span style="color:#5EA68E;">●</span> Target</div>
+              <div style="font-size:19px;font-weight:bold;color:#37455F;">{money(target) if has_target else 'Not set'}</div>
+            </td>
+          </tr>
+          {f'<tr><td colspan="3" align="center" style="padding:3px 6px 11px;">{objective_html}</td></tr>' if objective_html else ''}
+        </table>
+        """
+
+        metric_specs = [
+            ("Units", totals.get("total_current_quantity"), "units_change_percentage", "number", "#FDD36F", False),
+            ("ASP", totals.get("total_current_asp"), "asp_change_percentage", "money2", "#ED9F50", False),
+            ("Net Sales", actual, "net_sales_change_percentage", "money", "#75BBDA", False),
+            ("Ads", totals.get("total_current_advertising"), "advertising_change_percentage", "money", "#B75A5A", True),
+            ("TACoS", totals.get("total_current_tacos"), "tacos_change_percentage", "percent", "#3A8EA4", True),
+            ("CM2 Profit", totals.get("total_current_profit_cm2"), "cm2_profit_change_percentage", "money", "#B8C78C", False),
+        ]
+        metric_rows = []
+        for start in range(0, len(metric_specs), 3):
+            cells = []
+            for label, value, delta_key, fmt, accent, inverse in metric_specs[start:start + 3]:
+                numeric_value = finite_number(value)
+                delta = finite_number(totals.get(delta_key))
+                if fmt == "number":
+                    formatted_value = f"{numeric_value:,.0f}" if numeric_value is not None else "—"
+                elif fmt == "money2":
+                    formatted_value = money(numeric_value, 2)
+                elif fmt == "percent":
+                    formatted_value = f"{numeric_value:.2f}%" if numeric_value is not None else "—"
+                else:
+                    formatted_value = money(numeric_value)
+                delta_html = ""
+                if delta is not None:
+                    good = delta <= 0 if inverse else delta >= 0
+                    color = "#12B76A" if good else "#F04438"
+                    arrow = "▲" if delta >= 0 else "▼"
+                    delta_html = f'<span style="font-size:10px;font-weight:bold;color:{color};white-space:nowrap;">{arrow} {abs(delta):.2f}%</span>'
+                cells.append(f"""
+                <td width="33.33%" valign="top" style="padding:4px 3px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid {accent};border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
+                    <tr><td style="padding:9px 8px;">
+                      <div style="font-size:11px;color:#50627A;">{label}</div>
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td><td align="right" valign="bottom">{delta_html}</td></tr></table>
+                    </td></tr>
+                  </table>
+                </td>
+                """)
+            metric_rows.append("<tr>" + "".join(cells) + "</tr>")
+        metrics_html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:10px;">' + "".join(metric_rows) + "</table>"
+
+        # Keep this recap table independent from the recommendation cards below.
+        # Build highlights from Live BI's MTD product rows, as the monthly recap
+        # does, while the bottom recommendation section keeps its existing SKUs.
+        growth = data.get("categorized_growth") or {}
+        candidates = []
+        seen_products = set()
+        for bucket in ("top_80_skus", "new_skus", "reviving_skus", "other_skus"):
+            rows = growth.get(bucket) or []
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                identity = str(row.get("sku") or row.get("product_name") or "").strip().lower()
+                if not identity or identity in seen_products:
+                    continue
+                seen_products.add(identity)
+                candidates.append(row)
+
+        def growth_value(row):
+            metric = row.get("Net Sales Growth (%)")
+            value = metric.get("value") if isinstance(metric, dict) else None
+            return finite_number(value)
+
+        top_seller = max(candidates, key=lambda row: finite_number(row.get("net_sales_curr")) or 0, default=None)
+        growth_rows = [row for row in candidates if growth_value(row) is not None]
+        highest_growth = max(growth_rows, key=growth_value, default=None)
+        lowest_growth = min(growth_rows, key=growth_value, default=None)
+        highlights = []
+        for title, row in (("Top Selling SKU", top_seller), ("Highest Net Sales Growth", highest_growth), ("Lowest Net Sales Growth", lowest_growth)):
+            if row is not None:
+                highlights.append((title, row))
+
+        same_top_and_growth = bool(
+            top_seller and highest_growth
+            and str(top_seller.get("sku") or top_seller.get("product_name") or "").strip().lower()
+            == str(highest_growth.get("sku") or highest_growth.get("product_name") or "").strip().lower()
+        )
+        table_headers = ["Category", "Product Name", "Units", "ASP", "Net Sales", "ACoS", "CM2 Profit"]
+        header_html = "".join(f'<th style="padding:6px 4px;background:#5EA68E;color:#FFFFFF;font-size:10px;font-weight:bold;text-align:center;border-right:1px solid #E6ECEF;">{header}</th>' for header in table_headers)
+        sku_rows = []
+        for title, sku in highlights:
+            acos = finite_number(sku.get("ads_acos_curr"))
+            values = [
+                title, sku.get("product_name") or sku.get("sku") or "—",
+                f"{finite_number(sku.get('quantity_curr')):,.0f}" if finite_number(sku.get("quantity_curr")) is not None else "—",
+                money(sku.get("asp_curr"), 2), money(sku.get("net_sales_curr")),
+                f"{acos:.2f}%" if acos is not None else "—", money(sku.get("cm2_profit_curr")),
+            ]
+            cells = []
+            for column_index, value in enumerate(values):
+                if same_top_and_growth and title == "Highest Net Sales Growth" and column_index > 0:
+                    continue
+                rowspan = ' rowspan="2"' if same_top_and_growth and title == "Top Selling SKU" and column_index > 0 else ""
+                cells.append(f'<td{rowspan} style="padding:7px 4px;text-align:center;vertical-align:middle;border:1px solid #E6ECEF;color:#344054;font-size:10px;">{html.escape(str(value))}</td>')
+            sku_rows.append("<tr>" + "".join(cells) + "</tr>")
+        sku_html = (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;border:1px solid #E6ECEF;border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden;">'
+            f'<thead><tr>{header_html}</tr></thead><tbody>{"".join(sku_rows)}</tbody></table>'
+            if sku_rows else ""
+        )
+        recap_heading = f'<div style="font-size:16px;line-height:1.35;font-weight:bold;color:#37455F;margin:14px 0 3px;">Here\'s how your MTD went</div>'
+        return recap_heading + target_html + metrics_html + sku_html
+
+    live_bi_recap_html = render_live_bi_recap(live_bi_data)
 
     portfolio_html = ""
     if portfolio_recommendation:
@@ -1780,8 +1955,8 @@ def send_live_bi_email(
           return f"""
           <div class="weekly-metric-box" style="
               display:inline-block;
-              width:12.5%;
-              max-width:12.5%;
+              width:25%;
+              max-width:25%;
               padding:3px;
               vertical-align:top;
               box-sizing:border-box;
@@ -2165,6 +2340,20 @@ def send_live_bi_email(
         }}
 
         @media only screen and (max-width: 767px) {{
+  .email-container {{
+    width:100% !important;
+    max-width:100% !important;
+  }}
+
+  .top-report-title {{
+    font-size:14px !important;
+    line-height:18px !important;
+  }}
+
+  .content-cell {{
+    padding:22px 24px 26px !important;
+  }}
+
   .period-pill {{
     max-width: 100% !important;
   }}
@@ -2198,8 +2387,8 @@ def send_live_bi_email(
 
 .weekly-metric-box {{
   display: inline-block !important;
-  width: 12.5% !important;
-  max-width: 12.5% !important;
+  width: 25% !important;
+  max-width: 25% !important;
   padding: 4px !important;
   vertical-align: top !important;
   box-sizing: border-box !important;
@@ -2230,8 +2419,8 @@ def send_live_bi_email(
 
   .weekly-metric-box {{
     display: inline-block !important;
-    width: 24.5% !important;
-    max-width: 24.5% !important;
+    width: 49% !important;
+    max-width: 49% !important;
     padding: 3px !important;
     vertical-align: top !important;
     box-sizing: border-box !important;
@@ -2258,8 +2447,8 @@ def send_live_bi_email(
         /* Desktop/laptop */
         @media only screen and (min-width: 768px) {{
           .email-wrapper {{
-             width: 78% !important;
-            max-width: 80% !important;
+             width: 600px !important;
+            max-width: 600px !important;
             margin: 0 auto !important;
           }}
 
@@ -2362,23 +2551,14 @@ def send_live_bi_email(
       </style>
     </head>
 
-    <body style="font-family:'Lato', Arial, sans-serif; background:#FFFFFF; padding:0; margin:0;">
-      <div class="outer-padding" style="padding:0;">
-       <div class="email-wrapper" style="
-  width:100%;
-  max-width:1100px;
-  margin:0 auto;
-  background:#fff;
-  border:none;
-  box-sizing:border-box;
-  overflow:hidden;
-">
-
-          <!-- Top green header -->
-<div class="top-header" style="background:#7FB5A5; padding:18px 24px;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#FFFFFF;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:16px 0;">
+       <tr><td align="center">
+        <table class="email-container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#FFFFFF;border-collapse:collapse;">
+          <tr><td style="background:#5EA68E;padding:18px 24px;color:#FFFFFF;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;border-collapse:collapse;">
     <tr>
-      <td style="vertical-align:middle; text-align:left; width:110px; white-space:nowrap;">
+      <td width="110" style="vertical-align:middle;text-align:left;white-space:nowrap;">
         <img
           src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/output-onlinepngtools_ypplvv"
           alt="Phormula"
@@ -2386,45 +2566,22 @@ def send_live_bi_email(
           style="display:block; width:40px; max-width:40px; height:auto; border:0;"
         />
       </td>
-      <td style="vertical-align:middle; text-align:right;">
-        <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
-          {html.escape(header_title)}
-        </div>
+      <td width="382" align="right" class="top-report-title" style="font-size:16px;line-height:18px;color:#F8EDCF;text-align:right;vertical-align:middle;white-space:nowrap;">
+        {html.escape(header_title)}
       </td>
     </tr>
   </table>
-</div>
-
-          <!-- Main content -->
-          <div class="main-content" style="
-            padding:34px 32px 28px 32px;
-            text-align:center;
-            border-left:1px solid #E4E7EC;
-            border-right:1px solid #E4E7EC;
-          ">
-            <!-- Summary section -->
-            <div style="text-align:left;">
-              <h3 style="color:#37455F; margin:0 0 12px 0; font-size:16px;">
-                Your Summary
-              </h3>
-
-              <div style="
-                font-size:14px;
-                color:#555;
-                margin-bottom:8px;
-                text-align:justify;
-                text-justify:inter-word;
-                line-height:1.8;
-              ">
-                {summary_html}
-                {portfolio_html}
-                {high_alert_html}
-              </div>
-            </div>
+</td></tr>
+          <tr><td class="content-cell" style="padding:22px 32px 26px;color:#444444;font-size:14px;line-height:1.7;border-left:1px solid #E4E7EC;border-right:1px solid #E4E7EC;text-align:left;">
+            <p style="margin:0 0 12px;text-align:left;">Hi <strong>{html.escape(user_name or 'there')}</strong>,</p>
+            {summary_html}
+            {live_bi_recap_html}
+            {portfolio_html}
+            {high_alert_html}
 
             <!-- Recommendation section -->
-            <div style="text-align:left; margin-top:28px;">
-              <h3 style="color:#37455F; margin:0 0 14px 0; font-size:16px;">
+            <div style="text-align:left;margin-top:22px;">
+              <h3 style="color:#37455F;margin:0 0 10px 0;font-size:14px;">
                 Recommendations
               </h3>
 
@@ -2439,30 +2596,19 @@ def send_live_bi_email(
 
             {deep_link_html}
 
-            <div style="text-align:left; margin-top:24px;">
-              <p style="font-size:12px; color:#999; margin:0 0 6px 0;">
-                This email was auto-generated from Live BI.
-              </p>
-              <p style="font-size:12px; color:#999; margin:0;">
-                Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
-              </p>
-            </div>
-          </div>
-
-          <!-- Bottom green footer strip -->
-         <!-- Footer -->
-          <div style="
-            background:#7FB5A5;
-            padding:12px 18px;
-            text-align:center;
-            color:#F8EDCF;
-            font-size:12px;
-            font-family:'Lato', Arial, sans-serif;
-          ">
+            <p style="margin:18px 0 0;text-align:left;">Warm regards,</p>
+            <p style="margin:0;text-align:left;"><strong>The Phormula Team</strong></p>
+            <p style="margin:0;text-align:left;"><a href="mailto:care@phormula.io" style="color:#37455F;text-decoration:none;">care@phormula.io</a></p>
+          </td></tr>
+          <tr><td class="note-cell" style="border-top:1px solid #DDDDDD;padding:14px 32px 16px;background:#FFFFFF;font-size:12px;color:#999999;line-height:1.6;border-left:1px solid #E4E7EC;border-right:1px solid #E4E7EC;text-align:left;">
+            This email was generated automatically by Phormula. Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
+          </td></tr>
+          <tr><td align="center" style="background:#5EA68E;padding:12px 18px;color:#F8EDCF;font-size:12px;line-height:1.5;text-align:center;">
             © 2026 Phormula. All rights reserved.
-          </div>
-        </div>
-      </div>
+          </td></tr>
+        </table>
+       </td></tr>
+      </table>
     </body>
   </html>
     """
@@ -2728,7 +2874,7 @@ def render_monthly_recap_email(recap: dict) -> str:
                     <td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td>
                     <td align="right" valign="bottom">{delta_html}</td>
                   </tr></table>
-                  {previous_html}
+
                 </td></tr>
               </table>
             </td>
