@@ -321,7 +321,7 @@ def send_live_bi_email_daily(country_filter=None):
                         brand_name=get_user_brand_name_by_id(user_id),
                         live_bi_data=result.get("response_payload"),
                         user_name=get_user_email_and_name_by_id(user_id)[1],
-                        dashboard_recap=_get_dashboard_email_recap_snapshot(user_id, country),
+                        dashboard_recap=(result.get("response_payload") or {}).get("email_dashboard_recap"),
                     )
 
                     mark_bi_email_sent(user_id, country)

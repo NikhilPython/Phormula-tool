@@ -123,7 +123,7 @@ def align_prev_curr_by_sku(prev_data, curr_data):
         except Exception:
             return None
         x = x.strip()
-        if x.lower() in ("", "nan", "none", "null"):
+        if x.lower() in ("", "nan", "none", "null", "<na>", "nat"):
             return None
         return x
 
@@ -145,6 +145,16 @@ def align_prev_curr_by_sku(prev_data, curr_data):
 
     prev_df = base.merge(prev_df, on="sku", how="left")
     curr_df = base.merge(curr_df, on="sku", how="left")
+
+    # A previous-only SKU has a blank current name after the union. Keep its
+    # known name in both periods instead of serializing pandas NaN to the API.
+    for df in (prev_df, curr_df):
+        if "product_name" not in df.columns:
+            df["product_name"] = None
+        df["product_name"] = df["product_name"].map(normalize_sku)
+    previous_names = prev_df["product_name"].copy()
+    prev_df["product_name"] = previous_names.combine_first(curr_df["product_name"]).fillna(prev_df["sku"])
+    curr_df["product_name"] = curr_df["product_name"].combine_first(previous_names).fillna(curr_df["sku"])
 
     NUM_COLS = [
         "quantity",
@@ -2474,6 +2484,8 @@ def build_weekly_email_summary_json(
     Keeps dashboard detailed but email short, precise, and actionable.
     """
 
+    from app.utils.live_bi_utils import safe_strip
+
     currency_symbol = (currency or {}).get("symbol") or "$"
 
     # ---------------------------
@@ -2528,8 +2540,8 @@ def build_weekly_email_summary_json(
         strategy = (sku_strategy_actions or {}).get(sku, {}) or {}
 
         product_name = (
-            row.get("product_name")
-            or strategy.get("product_name")
+            safe_strip(row.get("product_name"))
+            or safe_strip(strategy.get("product_name"))
             or sku
         )
 
@@ -2579,11 +2591,9 @@ def build_weekly_email_summary_json(
         cm2_profit_curr = row.get("cm2_profit_curr", row.get("cm2_profit", 0.0))
         cm2_profit_prev = row.get("cm2_profit_prev", 0.0)
 
-        cm2_profit_growth_pct = (
-            row.get("cm2_profit_growth_pct")
-            or (row.get("CM2 Profit Growth (%)") or {}).get("value")
-            or 0.0
-        )
+        cm2_profit_growth_pct = row.get("cm2_profit_growth_pct")
+        if cm2_profit_growth_pct is None:
+            cm2_profit_growth_pct = (row.get("CM2 Profit Growth (%)") or {}).get("value", 0.0)
 
         cm2_profit_per_unit_curr = row.get("cm2_profit_per_unit_curr", 0.0)
         cm2_profit_per_unit_prev = row.get("cm2_profit_per_unit_prev", 0.0)
@@ -5331,6 +5341,9 @@ def live_mtd_vs_previous(period_mode=None):
                 user_id=int(user_id),
                 country=country,
                 now_utc=now_for_previous_card,
+                as_of=curr_end.isoformat(),
+                start_day=curr_start.day,
+                end_day=curr_end.day,
             )
 
             previous_card_totals_for_summary = (
@@ -7199,6 +7212,20 @@ def live_mtd_vs_previous(period_mode=None):
 
         # print("[EMAIL DEBUG] high_alert_coverage_summary:", high_alert_coverage_summary)
 
+        from app.utils.live_bi_email_metrics import (
+            build_email_metric_rows, build_email_dashboard_recap,
+        )
+        email_metric_rows = build_email_metric_rows(
+            frontend_all_action_rows,
+            # Use current P&L rows captured BEFORE previous/current alignment.
+            # Aligned rows also contain zero-filled SKUs sold only last month.
+            curr_ai_data_for_net_sales_pie,
+            previous_card_payload_for_summary.get("sku_metrics") or prev_data_aligned,
+        )
+        email_dashboard_recap = build_email_dashboard_recap(
+            curr_ai_totals, previous_card_totals_for_summary,
+        )
+
         # ✅ Weekly email-only short JSON for UK/US
         weekly_email_summary_json = build_weekly_email_summary_json(
             country=country,
@@ -7209,7 +7236,7 @@ def live_mtd_vs_previous(period_mode=None):
             portfolio_recommendation=portfolio_recommendation,
             recommended_actions_mtd=recommended_actions_mtd,
             sku_strategy_actions=sku_strategy_actions,
-            all_action_rows=frontend_all_action_rows,
+            all_action_rows=email_metric_rows,
             high_alert_coverage_summary=high_alert_coverage_summary,
             max_skus=3,
         )
@@ -7229,6 +7256,8 @@ def live_mtd_vs_previous(period_mode=None):
             "country": country,
             "currency": currency,
             "weekly_email_summary_json": weekly_email_summary_json,
+            "email_metric_rows": email_metric_rows,
+            "email_dashboard_recap": email_dashboard_recap,
             "high_alert_coverage_summary": high_alert_coverage_summary,
             "ai_last_refreshed_at": ai_last_refreshed_at,
             "ads_monthly": payload_ai.get("ads_monthly", {}),

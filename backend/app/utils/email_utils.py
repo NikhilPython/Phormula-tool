@@ -1175,6 +1175,17 @@ def send_live_bi_email(
         print("[WARN] No email provided.")
         return False
 
+    # Server P&L context is available for automatic emails as well as manual ones.
+    # A supplied dashboard snapshot may fill individual fields, including zero.
+    server_recap = (live_bi_data or {}).get("email_dashboard_recap") or {}
+    supplied_recap = dashboard_recap or {}
+    dashboard_recap = {**server_recap, **supplied_recap}
+    for period in ("current", "previous"):
+        dashboard_recap[period] = {
+            **(server_recap.get(period) or {}),
+            **{key: value for key, value in (supplied_recap.get(period) or {}).items() if value is not None},
+        }
+
     period_label = re.sub(r"\s*[–—]\s*", "-", str(curr_label or "")).strip()
     brand_name = re.sub(r"[\r\n]+", " ", str(brand_name or "")).strip()
     country_label = str(country or "").strip().upper()
@@ -1210,6 +1221,13 @@ def send_live_bi_email(
     {html.escape(str(summary_text))}
 </p>
 """
+
+    def email_product_name(*values):
+        for value in values:
+            text = str(value).strip() if value is not None else ""
+            if text.lower() not in {"", "nan", "none", "null", "<na>", "nat"}:
+                return text
+        return "Unknown"
 
     def render_live_bi_recap(data):
         if not isinstance(data, dict):
@@ -1331,8 +1349,9 @@ def send_live_bi_email(
         growth = data.get("categorized_growth") or {}
         candidates = []
         seen_products = set()
-        for bucket in ("top_80_skus", "new_skus", "reviving_skus", "other_skus"):
-            rows = growth.get(bucket) or []
+        email_rows = data.get("email_metric_rows")
+        for bucket in (("email",) if email_rows is not None else ("top_80_skus", "new_skus", "reviving_skus", "new_or_reviving_skus", "other_skus")):
+            rows = email_rows if bucket == "email" else growth.get(bucket) or []
             if not isinstance(rows, list):
                 continue
             for row in rows:
@@ -1365,7 +1384,7 @@ def send_live_bi_email(
                     "quantity_curr": item.get("units"),
                     "asp_curr": item.get("asp"),
                     "net_sales_curr": item.get("net_sales"),
-                    "ads_acos_curr": item.get("acos"),
+                    "acos_curr": item.get("acos"),
                     "cm2_profit_curr": item.get("cm2_profit"),
                 }))
         else:
@@ -1382,9 +1401,9 @@ def send_live_bi_email(
         header_html = "".join(f'<th style="padding:6px 4px;background:#5EA68E;color:#FFFFFF;font-size:10px;font-weight:bold;text-align:center;border-right:1px solid #E6ECEF;">{header}</th>' for header in table_headers)
         sku_rows = []
         for title, sku in highlights:
-            acos = finite_number(sku.get("ads_acos_curr"))
+            acos = finite_number(sku.get("acos_curr"))
             values = [
-                title, sku.get("product_name") or sku.get("sku") or "—",
+                title, email_product_name(sku.get("product_name"), sku.get("sku")),
                 f"{finite_number(sku.get('quantity_curr')):,.0f}" if finite_number(sku.get("quantity_curr")) is not None else "—",
                 money(sku.get("asp_curr"), 2), money(sku.get("net_sales_curr")),
                 f"{acos:.2f}%" if acos is not None else "—", money(sku.get("cm2_profit_curr")),
@@ -1475,7 +1494,7 @@ def send_live_bi_email(
         if not sku:
             return "Unknown"
         if sku_to_product and isinstance(sku_to_product, dict):
-            return sku_to_product.get(sku) or sku
+            return email_product_name(sku_to_product.get(sku), sku)
         return sku
 
     def _strip_html_tags(text: str) -> str:
@@ -1919,7 +1938,7 @@ def send_live_bi_email(
         """
     
     def render_weekly_email_action_card(item: dict) -> str:
-      product_name = html.escape(str(item.get("product_name") or item.get("sku") or "Unknown"))
+      product_name = html.escape(email_product_name(item.get("product_name"), item.get("sku")))
       metric_cards = item.get("metric_cards") or []
       action = html.escape(str(item.get("action") or ""))
 
