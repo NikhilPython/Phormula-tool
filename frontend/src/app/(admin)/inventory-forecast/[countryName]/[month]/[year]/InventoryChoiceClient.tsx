@@ -1704,6 +1704,8 @@ export default function InventoryFlowPage() {
   const [filteredUploads, setFilteredUploads] = useState<UploadItem[]>([]);
   const [missingMonths, setMissingMonths] = useState<string[]>([]);
   const [excelData, setExcelData] = useState<ForecastRow[] | null>(null);
+  const [countryForecastData, setCountryForecastData] = useState<Record<string, ForecastRow[]> | null>(null);
+  const [forecastViewCountry, setForecastViewCountry] = useState<'global' | 'uk' | 'us'>('global');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -1722,6 +1724,22 @@ export default function InventoryFlowPage() {
   const [shipmentDetailsRequestKey, setShipmentDetailsRequestKey] = useState(0);
   const [outletElement, setOutletElement] =
     useState<HTMLDivElement | null>(null);
+
+  const inventoryDisplayData = countryName === 'global' && forecastViewCountry !== 'global'
+    ? countryForecastData?.[forecastViewCountry] ?? []
+    : excelData ?? [];
+  const selectedForecastCountry = countryName === 'global'
+    ? forecastViewCountry
+    : countryName;
+  const visibleForecastCountry = selectedForecastCountry;
+
+  useEffect(() => {
+    if (countryName === 'global') {
+      setForecastViewCountry('global');
+      return;
+    }
+    setForecastViewCountry(countryName === 'uk' || countryName === 'us' ? countryName : 'global');
+  }, [countryName]);
 
   useEffect(() => {
     const header = stickyPageHeaderRef.current;
@@ -2111,6 +2129,7 @@ export default function InventoryFlowPage() {
 
     forecastInFlightRef.current = requestKey;
     latestForecastRequestRef.current = requestKey;
+    if (countryName === 'global') setCountryForecastData(null);
 
     try {
       const token = tokenOrFail();
@@ -2159,40 +2178,71 @@ export default function InventoryFlowPage() {
         const blob = await res.blob();
         const buffer = await blob.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const parseForecastSheet = (sheetName?: string) => {
+          if (!sheetName || !workbook.Sheets[sheetName]) return [];
+          const rows = XLSX.utils.sheet_to_json<any[]>(workbook.Sheets[sheetName], {
+            header: 1,
+            defval: '',
+          });
+          const headerRowIndex = countryName === 'global' ? 0 : 6;
+          if (!rows || rows.length <= headerRowIndex) return [];
 
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-          header: 1,
-          defval: '',
-        });
+          const rawHeaders = (rows[headerRowIndex] || []).map((header) =>
+            String(header ?? '').trim().replace(/\s+Sold$/i, '')
+          );
+          return rows.slice(headerRowIndex + 1)
+            .filter((row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== ''))
+            .map((row) => {
+              const obj: ForecastRow = {};
+              rawHeaders.forEach((header, index) => {
+                if (header) obj[header] = row[index] ?? '';
+              });
+              return obj;
+            });
+        };
 
-        if (!rows || rows.length < 7) {
+        const globalSheetName = workbook.SheetNames.find((name) => name.toLowerCase() === 'global')
+          || workbook.SheetNames[0];
+        const jsonRows = parseForecastSheet(globalSheetName);
+
+        if (!jsonRows.length) {
           setExcelData([]);
+          setCountryForecastData(null);
           setError('Forecast file format is invalid.');
           setLoading(false);
           return;
         }
 
-        const headerRowIndex = countryName === 'global' ? 0 : 6;
-        const rawHeaders = (rows[headerRowIndex] || []).map((header) =>
-          String(header ?? '').trim().replace(/\s+Sold$/i, '')
-        );
-
-        const dataRows = rows.slice(headerRowIndex + 1);
-
-        const jsonRows: ForecastRow[] = dataRows
-          .filter(
-            (row) => Array.isArray(row) && row.some((cell) => String(cell ?? '').trim() !== '')
-          )
-          .map((row) => {
-            const obj: ForecastRow = {};
-            rawHeaders.forEach((header, index) => {
-              if (header) obj[header] = row[index] ?? '';
-            });
-            return obj;
-          });
-
         setExcelData(jsonRows);
+        if (countryName === 'global') {
+          const ukSheet = workbook.SheetNames.find((name) => name.toLowerCase() === 'uk');
+          const usSheet = workbook.SheetNames.find((name) => name.toLowerCase() === 'us');
+          const splitRows: Record<string, ForecastRow[]> = {
+            uk: parseForecastSheet(ukSheet),
+            us: parseForecastSheet(usSheet),
+          };
+
+          if (!ukSheet || !usSheet) {
+            try {
+              const splitResponse = await fetch(
+                `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/forecast_allmonths?country=global&month=${encodeURIComponent(effectiveMonth)}&year=${encodeURIComponent(effectiveYear)}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (splitResponse.ok) {
+                const splitJson = await splitResponse.json();
+                if (!ukSheet && Array.isArray(splitJson?.data_uk)) splitRows.uk = splitJson.data_uk;
+                if (!usSheet && Array.isArray(splitJson?.data_us)) splitRows.us = splitJson.data_us;
+              }
+            } catch {
+              // The workbook sheets remain the source of truth when the fallback is unavailable.
+            }
+          }
+
+          if (latestForecastRequestRef.current !== requestKey) return;
+          setCountryForecastData(splitRows);
+        } else {
+          setCountryForecastData(null);
+        }
         setError(null);
         setLoading(false);
         return;
@@ -2202,15 +2252,18 @@ export default function InventoryFlowPage() {
 
       if (Array.isArray(data?.forecast)) {
         setExcelData(data.forecast);
+        setCountryForecastData(null);
         setError(null);
         setLoading(false);
         return;
       }
       setExcelData([]);
+      setCountryForecastData(null);
       setError(data?.warning || data?.message || 'Forecast generated, but no file was returned.');
       setLoading(false);
     } catch (err: any) {
       setExcelData([]);
+      setCountryForecastData(null);
       setError(err?.message || 'Failed to fetch forecast');
       setLoading(false);
     } finally {
@@ -2260,25 +2313,25 @@ export default function InventoryFlowPage() {
 
   useEffect(() => {
     if (activeTab !== 'purchaseOrder' || isDemoMode) return;
-    if (!countryName || !sharedMonth || !sharedYear) return;
+    if (!selectedForecastCountry || !sharedMonth || !sharedYear) return;
 
     const normalizedMonth = normalizeMonthForApi(sharedMonth);
-    const key = `${countryName}-${normalizedMonth}-${sharedYear}`;
+    const key = `${selectedForecastCountry}-${normalizedMonth}-${sharedYear}`;
     if (lastPoTriggerRef.current === key) return;
 
     lastPoTriggerRef.current = key;
 
     const run = async () => {
       try {
-        await ensureForecastExists(countryName, normalizedMonth, sharedYear);
-        await triggerPurchaseOrderApi(countryName, normalizedMonth, sharedYear);
+        await ensureForecastExists(selectedForecastCountry, normalizedMonth, sharedYear);
+        await triggerPurchaseOrderApi(selectedForecastCountry, normalizedMonth, sharedYear);
       } catch (err: any) {
         console.error('PO API error:', err);
       }
     };
 
     void run();
-  }, [activeTab, countryName, sharedMonth, sharedYear, isDemoMode]);
+  }, [activeTab, selectedForecastCountry, sharedMonth, sharedYear, isDemoMode]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -2509,9 +2562,9 @@ export default function InventoryFlowPage() {
                   />
 
                   <span className="text-green-500 font-bold text-base sm:text-xl lg:text-lg 2xl:text-2xl">
-                    {countryName?.toLowerCase() === 'global'
+                    {visibleForecastCountry === 'global'
                       ? 'Global'
-                      : countryName?.toUpperCase()}
+                      : visibleForecastCountry?.toUpperCase()}
                   </span>
                 </div>
 
@@ -2540,6 +2593,33 @@ export default function InventoryFlowPage() {
                 onChange={handleTabChange}
                 className="w-fit shrink-0"
               />
+
+              {countryName === 'global' && !isDemoMode && (
+                <div
+                  role="group"
+                  aria-label="Inventory forecast marketplace"
+                  className="ml-auto inline-flex shrink-0 items-center rounded-xl border border-gray-300 bg-white p-1"
+                >
+                  {(['global', 'uk', 'us'] as const).map((market) => {
+                    const active = forecastViewCountry === market;
+                    return (
+                      <button
+                        key={market}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setForecastViewCountry(market)}
+                        className={`min-w-[48px] rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          active
+                            ? 'bg-[#5EA68E] text-white shadow-sm'
+                            : 'text-slate-800 hover:bg-slate-50'
+                        }`}
+                      >
+                        {market === 'global' ? 'Global' : market.toUpperCase()}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {(activeTab === 'dispatch' || activeTab === 'purchaseOrder') && (
                 <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -2637,10 +2717,10 @@ export default function InventoryFlowPage() {
                 ) : activeTab === 'inventory' ? (
                   <div id="inventory-forecast" className="product-click-table scroll-mt-20 relative" onClickCapture={handleForecastProductClick}>
                     <DisplayInventoryForecast
-                      countryName={countryName}
+                      countryName={countryName === 'global' ? forecastViewCountry : countryName}
                       month={effectiveMonth}
                       year={effectiveYear}
-                      data={excelData ?? []}
+                      data={inventoryDisplayData}
                       isDemoMode={isDemoMode}
                     />
 
@@ -2699,7 +2779,7 @@ export default function InventoryFlowPage() {
                     ) : (
                       <DispatchPage
                         embedded
-                        countryNameProp={countryName}
+                        countryNameProp={selectedForecastCountry}
                         selectedMonthProp={sharedMonth}
                         selectedYearProp={sharedYear}
                         showAllRowsProp={showAllDispatchRows}
@@ -2721,7 +2801,7 @@ export default function InventoryFlowPage() {
                     ) : (
                       <PurchaseOrderPage
                         embedded
-                        countryNameProp={countryName}
+                        countryNameProp={selectedForecastCountry}
                         selectedMonthProp={sharedMonth}
                         selectedYearProp={sharedYear}
                         showAllRowsProp={showAllPoRows}

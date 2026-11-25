@@ -900,9 +900,11 @@ def generate_pie_chart():
 
         country_param = (body.get('country') or request.args.get('country') or '').strip().lower()
 
-        currency_param = None
-        if country_param == "global":
-            currency_param = (body.get('homeCurrency') or request.args.get('homeCurrency') or 'USD').strip().lower()
+        currency_param = (
+            body.get('homeCurrency')
+            or request.args.get('homeCurrency')
+            or ('usd' if country_param == 'global' else '')
+        ).strip().lower()
 
         country = resolve_country(country_param, currency_param)
 

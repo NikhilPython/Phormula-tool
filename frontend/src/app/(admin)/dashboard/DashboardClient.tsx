@@ -9661,10 +9661,19 @@ export default function DashboardPage() {
 
         if (!shouldPersist) return;
 
-        const payload = buildDashboardCachePayload();
-
         // Do not publish an untracked snapshot during a tracked refresh.
         const publishingRefreshId = refreshIdRef.current;
+        const payload = buildDashboardCachePayload();
+        // A tracked refresh creates a new dashboard snapshot. The cached
+        // lastRefreshAt can still contain the previous run's timestamp, so
+        // stamp this payload with the time of the snapshot being published.
+        // saveDashboardCacheToBackend rejects stale writes; only after it
+        // succeeds do we expose this timestamp in the UI.
+        const publishingTimestamp = publishingRefreshId ? Date.now() : null;
+        if (publishingTimestamp) {
+            payload.lastRefreshAt = publishingTimestamp;
+        }
+
         saveDashboardCacheToBackend(payload)
             .then(() => {
                 shouldPostCacheRef.current = false;
@@ -9677,7 +9686,7 @@ export default function DashboardPage() {
                     refreshIdRef.current = null;
                     refreshStepRef.current.clear();
                     refreshPollingActiveRef.current = false;
-                    setLastRefreshAt(Date.now());
+                    setLastRefreshAt(publishingTimestamp ?? Date.now());
                     setRefreshStatus({ status: "completed", message: "All data updated successfully" });
                 }
             })

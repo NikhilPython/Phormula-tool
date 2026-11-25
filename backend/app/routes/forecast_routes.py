@@ -529,7 +529,82 @@ def forecast_allmonths():
         data = filtered_df.to_dict(orient='records')
 
         print("Selected columns passed to frontend:", columns)
-        return jsonify({'columns': columns, 'data': data}), 200
+        response_payload = {'columns': columns, 'data': data}
+
+        if str(country).strip().lower() == 'global':
+            data_by_country = {}
+            columns_by_country = {}
+            current_month_abbr = datetime.now().strftime("%b").lower()
+
+            for country_key in ('uk', 'us'):
+                country_filename = (
+                    f'inventory_forecast_{user_id}_{country_key}_{current_month_abbr}+2.xlsx'
+                )
+                country_stored = load_file_from_db(
+                    user_id=user_id,
+                    country=country_key,
+                    filename=country_filename,
+                )
+                if not country_stored:
+                    data_by_country[country_key] = []
+                    columns_by_country[country_key] = []
+                    continue
+
+                country_df = pd.read_excel(
+                    BytesIO(country_stored.data), header=6, engine='openpyxl'
+                )
+                country_df.columns = [str(col).strip() for col in country_df.columns]
+                country_df = exclude_discontinued_sku_rows(
+                    country_df,
+                    user_id=user_id,
+                    country=country_key,
+                    sku_column='sku',
+                    product_name_column='Product Name',
+                )
+
+                country_month_columns = []
+                for col in country_df.columns:
+                    col_str = str(col)
+                    if re.match(r"^[A-Za-z]{3}'\d{2}\s+Sold$", col_str) or re.match(r"^[A-Za-z]{3}'\d{2}$", col_str):
+                        country_month_columns.append(col_str)
+                    elif col_str in full_month_names:
+                        renamed = f"{month_abbrev[col_str]}'{year_short}"
+                        country_df.rename(columns={col_str: renamed}, inplace=True)
+                        country_month_columns.append(renamed)
+
+                country_month_columns = sorted(set(country_month_columns), key=month_key)
+                country_sold_columns = [col for col in country_month_columns if col.endswith(' Sold')]
+                country_forecast_columns = []
+                for col in country_month_columns:
+                    if col.endswith(' Sold'):
+                        continue
+                    col_year, col_month = col_month_year(col)
+                    if (col_year > selected_year) or (
+                        col_year == selected_year and col_month >= selected_month_num
+                    ):
+                        country_forecast_columns.append(col)
+                country_selected_months = country_sold_columns + country_forecast_columns
+
+                country_selected_columns = [
+                    col for col in ('sku', 'Product Name') if col in country_df.columns
+                ] + country_selected_months
+                if 'Projected Sales Total' in country_df.columns:
+                    country_selected_columns.append('Projected Sales Total')
+                country_result = country_df[country_selected_columns].copy()
+                country_result = country_result.where(pd.notnull(country_result), None)
+                country_records = country_result.to_dict(orient='records')
+                country_columns = list(country_result.columns)
+
+                data_by_country[country_key] = country_records
+                columns_by_country[country_key] = country_columns
+
+            response_payload['data_by_country'] = data_by_country
+            response_payload['columns_by_country'] = columns_by_country
+            for country_key in ('uk', 'us'):
+                response_payload[f'data_{country_key}'] = data_by_country[country_key]
+                response_payload[f'columns_{country_key}'] = columns_by_country[country_key]
+
+        return jsonify(response_payload), 200
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token has expired'}), 401
@@ -625,12 +700,62 @@ def forecast_monthrange():
         first_month = month_columns_sorted[0]
         last_month = month_columns_sorted[-1]
 
-        return jsonify({
+        response_payload = {
             "first_month": first_month,
             "last_month": last_month,
             "month_range": f"{first_month}-{last_month}",
             "month_columns": month_columns_sorted
-        }), 200
+        }
+
+        if country == "global":
+            country_ranges = {}
+            current_month_abbr = datetime.now().strftime("%b").lower()
+            for country_key in ("uk", "us"):
+                country_filename = (
+                    f'inventory_forecast_{user_id}_{country_key}_{current_month_abbr}+2.xlsx'
+                )
+                country_file = load_file_from_db(
+                    user_id=user_id,
+                    country=country_key,
+                    filename=country_filename,
+                )
+                if not country_file:
+                    country_ranges[country_key] = {
+                        "first_month": None,
+                        "last_month": None,
+                        "month_range": None,
+                        "month_columns": [],
+                    }
+                    continue
+
+                country_df = pd.read_excel(
+                    BytesIO(country_file.data), header=6, engine="openpyxl"
+                )
+                country_columns = [str(col).strip() for col in country_df.columns]
+                country_month_columns = sorted(
+                    [col for col in country_columns if month_pattern.match(col)],
+                    key=parse_month,
+                )
+                country_first = country_month_columns[0] if country_month_columns else None
+                country_last = country_month_columns[-1] if country_month_columns else None
+                country_ranges[country_key] = {
+                    "first_month": country_first,
+                    "last_month": country_last,
+                    "month_range": (
+                        f"{country_first}-{country_last}"
+                        if country_first and country_last else None
+                    ),
+                    "month_columns": country_month_columns,
+                }
+
+            response_payload["country_ranges"] = country_ranges
+            for country_key in ("uk", "us"):
+                response_payload[f"first_month_{country_key}"] = country_ranges[country_key]["first_month"]
+                response_payload[f"last_month_{country_key}"] = country_ranges[country_key]["last_month"]
+                response_payload[f"month_range_{country_key}"] = country_ranges[country_key]["month_range"]
+                response_payload[f"month_columns_{country_key}"] = country_ranges[country_key]["month_columns"]
+
+        return jsonify(response_payload), 200
 
     except jwt.ExpiredSignatureError:
         return jsonify({'error': 'Token expired'}), 401
@@ -865,6 +990,8 @@ def forecast_global():
             except Exception:
                 return pd.Timestamp.max
 
+        country_forecast_frames = {}
+
         # =========================================================
         # CASE 1: Only UK or only US exists
         # Create a real GLOBAL-format file with header at row 1.
@@ -901,6 +1028,7 @@ def forecast_global():
                 )
 
             source_df = normalize_forecast_df(source_df)
+            country_forecast_frames = {source_country.upper(): source_df.copy()}
 
             month_cols = [
                 c for c in source_df.columns
@@ -952,7 +1080,10 @@ def forecast_global():
             global_df = global_df[['Product Name', 'sku'] + month_cols]
 
             buf = BytesIO()
-            global_df.to_excel(buf, index=False, engine='openpyxl')
+            with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+                global_df.to_excel(writer, index=False, sheet_name='Global')
+                for sheet_name, country_df in country_forecast_frames.items():
+                    country_df.to_excel(writer, index=False, sheet_name=sheet_name)
             buf.seek(0)
 
             save_file_to_db(
@@ -988,6 +1119,7 @@ def forecast_global():
         # =========================================================
         df_uk = normalize_forecast_df(df_uk)
         df_us = normalize_forecast_df(df_us)
+        country_forecast_frames = {"UK": df_uk.copy(), "US": df_us.copy()}
 
         required_cols = ['Product Name', 'sku']
 
@@ -1131,7 +1263,10 @@ def forecast_global():
         global_df = global_df[['Product Name', 'sku'] + forecast_cols]
 
         buf = BytesIO()
-        global_df.to_excel(buf, index=False, engine='openpyxl')
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            global_df.to_excel(writer, index=False, sheet_name='Global')
+            for sheet_name, country_df in country_forecast_frames.items():
+                country_df.to_excel(writer, index=False, sheet_name=sheet_name)
         buf.seek(0)
 
         save_file_to_db(
@@ -2219,6 +2354,7 @@ def Pnlforecasts():
         conversion_rate = get_usd_conversion_rate(month, year)
         print(f"🔎 FINAL conversion_rate used for global: {conversion_rate}")
 
+        country_pnl_frames = {}
         # IMPORTANT: always regenerate global from latest available country files
         if uk_exists and us_exists:
             print("📊 Creating combined global forecast from UK and US data")
@@ -2233,6 +2369,10 @@ def Pnlforecasts():
             df_us_original = exclude_discontinued_sku_rows(
                 df_us_original, user_id, "us", "sku", "product_name"
             )
+            country_pnl_frames = {
+                "UK": df_uk_original.copy(),
+                "US": df_us_original.copy(),
+            }
 
             df_uk = df_uk_original.copy()
             df_us = df_us_original.copy()
@@ -2251,6 +2391,7 @@ def Pnlforecasts():
             df_uk_original = exclude_discontinued_sku_rows(
                 df_uk_original, user_id, "uk", "sku", "product_name"
             )
+            country_pnl_frames = {"UK": df_uk_original.copy()}
             df_uk = df_uk_original.copy()
             df_uk['country'] = 'UK'
 
@@ -2262,6 +2403,7 @@ def Pnlforecasts():
             df_global = exclude_discontinued_sku_rows(
                 df_global, user_id, "us", "sku", "product_name"
             )
+            country_pnl_frames = {"US": df_global.copy()}
 
         else:
             return jsonify({'error': 'Unexpected scenario while generating global PnL'}), 500
@@ -2270,7 +2412,10 @@ def Pnlforecasts():
             df_global = df_global.drop(columns=['country'])
 
         buf = BytesIO()
-        df_global.to_excel(buf, index=False, engine='openpyxl')
+        with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            df_global.to_excel(writer, index=False, sheet_name='Global')
+            for sheet_name, country_df in country_pnl_frames.items():
+                country_df.to_excel(writer, index=False, sheet_name=sheet_name)
         buf.seek(0)
 
         save_file_to_db(
@@ -2557,6 +2702,108 @@ def Pnlforecast_previous_months():
                         continue
             return float(default)
 
+        def load_country_month_payload(country_key):
+            candidates = [
+                f"skuwisemonthly_{user_id}_{country_key}_{month_name}{year}",
+                f"skuwisemonthly_{user_id}_{country_key}_{month_name}{year}_table",
+            ]
+            country_table = next(
+                (candidate for candidate in candidates if inspector.has_table(candidate)),
+                None,
+            )
+            if not country_table:
+                return {
+                    "data": [],
+                    "totals": {
+                        'net_sales_total': 0,
+                        'advertising_total': 0,
+                        'amazon_fee_total': 0,
+                        'cm2_profit_total': 0,
+                        'profit_total': 0,
+                        'cost_of_unit_sold_total': 0,
+                    },
+                    "record_count": 0,
+                    "table_name": None,
+                }
+
+            country_table_obj = Table(
+                country_table, MetaData(), autoload_with=engine
+            )
+            country_result = db_session.execute(country_table_obj.select())
+            country_rows = country_result.fetchall()
+            country_data = []
+            for country_row in country_rows:
+                item = {}
+                for column, value in country_row._mapping.items():
+                    item[column] = (
+                        float(value)
+                        if isinstance(value, (int, float, Decimal))
+                        else value
+                    )
+                country_data.append(item)
+
+            total = next((
+                item for item in country_data
+                if str(item.get('sku', '')).strip().upper() == 'TOTAL'
+                or str(item.get('product_name', '')).strip().upper() == 'TOTAL'
+            ), None)
+            excluded = [
+                item for item in country_data
+                if item is not total
+            ]
+            country_totals = {
+                'net_sales_total': round(sum(
+                    get_best_key(item, ['net_sales', 'netsales']) for item in excluded
+                ), 2),
+                'advertising_total': round(get_best_key(total or {}, [
+                    'advertising_total', 'advertisingtotal', 'advertising_costs',
+                    'advertising', 'ad_spend', 'ppc_spend'
+                ]), 2),
+                'amazon_fee_total': round(sum(
+                    get_best_key(item, ['amazon_fee', 'amazonfee']) for item in excluded
+                ), 2),
+                'cm2_profit_total': round(get_best_key(total or {}, [
+                    'cm2_profit', 'cm2profit', 'cm2_profit_loss', 'contribution_margin_2'
+                ]), 2),
+                'profit_total': round(sum(
+                    get_best_key(item, ['profit', 'cm1_profit', 'cm1profit']) for item in excluded
+                ), 2),
+                'cost_of_unit_sold_total': round(sum(
+                    get_best_key(item, ['cost_of_unit_sold', 'costofunitsold', 'cogs'])
+                    for item in excluded
+                ), 2),
+            }
+            return {
+                "data": country_data,
+                "totals": country_totals,
+                "record_count": len(country_data),
+                "table_name": country_table,
+            }
+
+        def add_global_country_payload(response_payload):
+            if record_country.lower() != "global":
+                return response_payload
+            by_country = {
+                country_key: load_country_month_payload(country_key)
+                for country_key in ("uk", "us")
+            }
+            response_payload["data_by_country"] = {
+                key: value["data"] for key, value in by_country.items()
+            }
+            response_payload["totals_by_country"] = {
+                key: value["totals"] for key, value in by_country.items()
+            }
+            response_payload["table_names_by_country"] = {
+                key: value["table_name"] for key, value in by_country.items()
+            }
+            response_payload["record_counts_by_country"] = {
+                key: value["record_count"] for key, value in by_country.items()
+            }
+            for country_key, value in by_country.items():
+                response_payload[f"data_{country_key}"] = value["data"]
+                response_payload[f"totals_{country_key}"] = value["totals"]
+            return response_payload
+
         try:
             if period_type == 'monthly':
                 if record_country.lower() == "global":
@@ -2572,7 +2819,7 @@ def Pnlforecast_previous_months():
             rows = result.fetchall()
 
             if not rows:
-                return jsonify({
+                return jsonify(add_global_country_payload({
                     'data': [],
                     'totals': {
                         'net_sales_total': 0,
@@ -2582,7 +2829,7 @@ def Pnlforecast_previous_months():
                         'profit_total': 0,
                         'cost_of_unit_sold_total': 0
                     }
-                }), 200
+                })), 200
 
             columns = result.keys()
             data = []
@@ -2668,7 +2915,7 @@ def Pnlforecast_previous_months():
                 'cost_of_unit_sold_total': round(cost_of_unit_sold_total, 2)
             }
 
-            return jsonify({
+            return jsonify(add_global_country_payload({
                 'data': data,
                 'totals': totals,
                 'record_count': len(data),
@@ -2689,7 +2936,7 @@ def Pnlforecast_previous_months():
                         'cm2_profit_columns_checked': ['cm2_profit', 'cm2profit', 'cm2_profit_loss', 'contribution_margin_2']
                     }
                 }
-            }), 200
+            })), 200
 
         except Exception as e:
             db_session.rollback()

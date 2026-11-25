@@ -1960,6 +1960,8 @@ def upload_history():
     # ✅ read optional params (existing)
     country_param = (request.args.get('country') or "").strip().lower()
     home_currency = (request.args.get('homeCurrency') or "").strip().lower()
+    if country_param == "uk" and home_currency == "usd":
+        country_param = "uk_usd"
 
     # (Optional) If you want "latest" logic stable
     uploads = (

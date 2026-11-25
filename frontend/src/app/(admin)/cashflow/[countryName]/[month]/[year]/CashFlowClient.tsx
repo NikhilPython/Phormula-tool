@@ -25,6 +25,7 @@ import CashFlowSankey from "@/components/cashflow/CashFlowSankey";
 interface CashFlowPageProps {
   embedded?: boolean;
   countryNameProp?: string;
+  currencyOverride?: "usd";
   rangeProp?: PeriodType;
   selectedMonthProp?: string;
   selectedQuarterProp?: string;
@@ -296,6 +297,7 @@ const quarterToPeriodTypeMap: Record<string, string> = {
 const CashFlowPage: React.FC<CashFlowPageProps> = ({
   embedded = false,
   countryNameProp,
+  currencyOverride,
   rangeProp,
   selectedMonthProp,
   selectedQuarterProp,
@@ -324,7 +326,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
 
   const effectiveCountryForCurrency = isPreviewMode
     ? "global"
-    : countryName;
+    : currencyOverride ?? countryName;
 
 
   const currencySymbol = getCurrencySymbol(effectiveCountryForCurrency);
@@ -480,9 +482,9 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       const country = countryName.toLowerCase();
       searchParams.set("country", country);
 
-      // ✅ Tell backend to convert UK GBP -> USD before global total
-      if (country === "global") {
-        searchParams.set("homeCurrency", "usd");
+      const requestCurrency = currencyOverride ?? (country === "global" ? "usd" : undefined);
+      if (requestCurrency) {
+        searchParams.set("homeCurrency", requestCurrency);
       }
     }
 
@@ -514,6 +516,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months/cashflow`
     );
     url.searchParams.set("countryName", countryName.toLowerCase());
+    if (currencyOverride) url.searchParams.set("homeCurrency", currencyOverride);
 
     const response = await fetch(url.toString(), {
       method: "GET",
@@ -711,7 +714,7 @@ const CashFlowPage: React.FC<CashFlowPageProps> = ({
     } else if (periodType === "last12months") {
       void fetchCashFlowData();
     }
-  }, [periodType, month, year, selectedQuarter, isPreviewMode]);
+  }, [periodType, month, year, selectedQuarter, isPreviewMode, countryName, currencyOverride]);
 
   // user data (company/brand) for export headers
   const [userData, setUserData] = useState<{

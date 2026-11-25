@@ -119,7 +119,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
   pnlRowFromSku = null,
   summaryFromSku = null,
 }) => {
-  const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
+  const normalizedHomeCurrency = homeCurrency?.trim().toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   // ✅ IMPORTANT: explicit preview mode from parent wins
@@ -128,9 +128,7 @@ const CircleChart: React.FC<CircleChartProps> = ({
     String(month ?? "").toUpperCase() === "NA" ||
     String(year ?? "").toUpperCase() === "NA";
 
-  const currencySymbol = isGlobalPage
-    ? getCurrencySymbol(homeCurrency || "usd")
-    : getCurrencySymbol(countryName || "");
+  const currencySymbol = getCurrencySymbol(normalizedHomeCurrency || (isGlobalPage ? "usd" : countryName));
 
   const [uploadsData, setUploadsData] = useState<UploadHistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -245,8 +243,8 @@ const CircleChart: React.FC<CircleChartProps> = ({
           year: String(year ?? ""),
         });
 
-        if (isGlobalPage && homeCurrency) {
-          params.append("homeCurrency", homeCurrency);
+        if (normalizedHomeCurrency) {
+          params.set("homeCurrency", normalizedHomeCurrency);
         }
 
         if (range === "monthly" && month) {

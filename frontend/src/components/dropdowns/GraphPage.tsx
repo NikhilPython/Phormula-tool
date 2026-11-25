@@ -171,9 +171,7 @@ const GraphPage: React.FC<GraphPageProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
   const normalizedHomeCurrency = (homeCurrency || "").trim().toLowerCase();
 
-  const currencySymbol = isGlobalPage
-    ? getCurrencySymbol(normalizedHomeCurrency || "usd")
-    : getCurrencySymbol(countryName || "");
+  const currencySymbol = getCurrencySymbol(normalizedHomeCurrency || (isGlobalPage ? "usd" : countryName));
 
   const [allValuesZero, setAllValuesZero] = useState(false);
   const [showModal, setShowModal] = useState(false);

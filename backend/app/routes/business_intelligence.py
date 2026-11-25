@@ -1777,6 +1777,10 @@ def _build_rolling_card_total(rows):
     return total
 
 
+def _rolling_finance_table_country(country, currency):
+    return "uk_usd" if country == "uk" and currency.strip().lower() == "usd" else country
+
+
 @business_intelligence_bp.route('/MonthsforBI/rolling-12-months', methods=['GET'])
 def get_rolling_12_month_sku_data():
     auth_header = request.headers.get('Authorization')
@@ -1815,7 +1819,8 @@ def get_rolling_12_month_sku_data():
         if bool(end_month_arg) != bool(end_year_arg):
             return jsonify({'error': 'endMonth and endYear must be provided together'}), 400
 
-        table_pattern = f"skuwisemonthly_{user_id}_{country}_%"
+        table_country = _rolling_finance_table_country(country, request.args.get("homeCurrency", ""))
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_%"
         tables_query = text("""
             SELECT table_name
             FROM information_schema.tables
@@ -1830,7 +1835,7 @@ def get_rolling_12_month_sku_data():
 
         available_tables = {}
         for table_name in table_names:
-            period = parse_period_from_table_name(table_name, user_id, country)
+            period = parse_period_from_table_name(table_name, user_id, table_country)
             if not period:
                 continue
             # Prefer the established naming convention when both variants exist.
@@ -2048,7 +2053,8 @@ def get_rolling_12_month_cashflow_data():
         if bool(end_month_arg) != bool(end_year_arg):
             return jsonify({'error': 'endMonth and endYear must be provided together'}), 400
 
-        table_pattern = f"skuwisemonthly_{user_id}_{country}_%"
+        table_country = _rolling_finance_table_country(country, request.args.get("homeCurrency", ""))
+        table_pattern = f"skuwisemonthly_{user_id}_{table_country}_%"
         tables_query = text("""
             SELECT table_name
             FROM information_schema.tables
@@ -2063,7 +2069,7 @@ def get_rolling_12_month_cashflow_data():
 
         available_tables = {}
         for table_name in table_names:
-            period = parse_period_from_table_name(table_name, user_id, country)
+            period = parse_period_from_table_name(table_name, user_id, table_country)
             if not period:
                 continue
             has_table_suffix = table_name.endswith("_table")
