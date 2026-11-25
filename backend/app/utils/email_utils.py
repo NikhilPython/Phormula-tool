@@ -1161,6 +1161,7 @@ def send_live_bi_email(
     sku_actions=None,
     sku_to_product=None,
     portfolio_recommendation=None,
+    brand_name=None,
 ):
     import traceback
     import html
@@ -1170,13 +1171,12 @@ def send_live_bi_email(
         print("[WARN] No email provided.")
         return False
 
-    if weekly_email_summary_json and isinstance(weekly_email_summary_json, dict):
-        subject = (
-            weekly_email_summary_json.get("subject_line")
-            or f"[Phormula] Weekly Live BI Insights - {str(country).upper()} ({curr_label})"
-        )
-    else:
-        subject = f"[Phormula] Live MTD Business Insights - {str(country).upper()} ({curr_label})"
+    period_label = re.sub(r"\s*[–—]\s*", "-", str(curr_label or "")).strip()
+    brand_name = re.sub(r"[\r\n]+", " ", str(brand_name or "")).strip()
+    country_label = str(country or "").strip().upper()
+    brand_subject = f" | {brand_name}" if brand_name else ""
+    subject = f"Phormula Weekly Live BI Report {period_label}{brand_subject} | Amazon {country_label}"
+    header_title = f"Business Insights Report {period_label}".strip()
 
     # ---------------------------
     # Overall summary
@@ -2388,7 +2388,7 @@ def send_live_bi_email(
       </td>
       <td style="vertical-align:middle; text-align:right;">
         <div style="font-size:16px; color:#F8EDCF; font-weight:500;">
-          Business Insights Report
+          {html.escape(header_title)}
         </div>
       </td>
     </tr>
@@ -2402,77 +2402,12 @@ def send_live_bi_email(
             border-left:1px solid #E4E7EC;
             border-right:1px solid #E4E7EC;
           ">
-
-            <!-- Brand -->
-            <img
-              src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
-              alt="Phormula Logo"
-              width="220"
-              style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
-            />
-
-            <div class="report-title" style="font-size:18px; color:#414042; font-weight:500; margin-bottom:24px;">
-              Live MTD vs Previous Period – Business Insights
-            </div>
-
-            <!-- Combined pill -->
-<div class="period-pill" style="
-  display:block;
-  width:100%;
-  max-width:450px;
-  background:#FFFFFF;
-  border:1px solid #e4e7ec;
-  border-radius:12px;
-  overflow:hidden;
-  margin:0 auto 30px auto;
-  text-align:center;
-  box-sizing:border-box;
-">
-  <table class="period-pill-table" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="
-    width:100%;
-    border-collapse:separate;
-  ">
-    <tr class="period-pill-row">
-      <td class="period-country-cell" style="
-        padding:16px 22px;
-        font-size:18px;
-        font-weight:700;
-        color:#5EA68E;
-        line-height:1.2;
-        white-space:nowrap;
-        vertical-align:middle;
-        text-align:center;
-        width:28%;
-        border-right:1px solid #e4e7ec;
-      ">
-        {html.escape(str(country).upper())}
-      </td>
-
-      <td class="period-date-cell" style="
-        padding:16px 18px;
-        font-size:16px;
-        font-weight:700;
-        color:#414042;
-        line-height:1.35;
-        white-space:normal;
-        word-break:break-word;
-        overflow-wrap:break-word;
-        vertical-align:middle;
-        text-align:center;
-        width:72%;
-      ">
-        {html.escape(str(prev_label))} vs {html.escape(str(curr_label))}
-      </td>
-    </tr>
-  </table>
-</div>
-
             <hr style="margin:14px 0 26px 0; border:none; border-top:1px solid #D0D5DD;" />
 
             <!-- Summary section -->
             <div style="text-align:left;">
               <h3 style="color:#37455F; margin:0 0 12px 0; font-size:20px;">
-                Overall Summary
+                Your Summary
               </h3>
 
               <div style="
@@ -2633,6 +2568,21 @@ def get_user_email_and_name_by_id(user_id: int):
     except Exception as e:
         print(f"[ERROR] Failed to fetch user email/name for id={user_id}: {e}")
         return None, None
+
+
+def get_user_brand_name_by_id(user_id: int):
+    """Fetch the user's configured brand name for report email titles."""
+    try:
+        query = text('SELECT brand_name FROM "user" WHERE id = :uid LIMIT 1')
+        with engine_hist.connect() as conn:
+            row = conn.execute(query, {"uid": user_id}).fetchone()
+        if not row:
+            return None
+        value = row[0] if isinstance(row, tuple) else row.brand_name
+        return (value or "").strip() or None
+    except Exception as e:
+        print(f"[WARN] Failed to fetch brand name for id={user_id}: {e}")
+        return None
 
 
 def render_monthly_recap_email(recap: dict) -> str:

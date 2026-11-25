@@ -11,6 +11,7 @@ from app.services.live_bi_email_service import build_live_mtd_bi_payload
 from app.utils.email_utils import (
     send_live_bi_email,
     get_user_email_and_name_by_id,
+    get_user_brand_name_by_id,
     has_recent_bi_email,
     mark_bi_email_sent,
     send_daily_inventory_alert_email,
@@ -201,6 +202,7 @@ def send_live_bi_email_daily(country_filter=None):
                         curr_label=result["curr_label"],
                         deep_link_token=email_token,
                         weekly_email_summary_json=weekly_email_summary_json,
+                        brand_name=get_user_brand_name_by_id(user_id),
                     )
 
                     mark_bi_email_sent(user_id, country)

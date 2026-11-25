@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.utils.live_bi_utils import ( build_movement_context, generate_sku_inventory_flags, build_rolling_monthly_series, compute_total_asp, compute_total_unit_profitability, fetch_sku_product_mapping, fetch_skuwisemonthly_ads_cm2_current_month, fetch_user_objective, generate_inventory_alerts_for_all_skus, get_mtd_and_prev_ranges, get_last_30_days_ranges,fetch_previous_period_data,fetch_current_mtd_data,fetch_last_30_days_current_data,calculate_growth,aggregate_totals,build_segment_total_row,build_sku_context,build_ai_summary,generate_live_insight,fetch_historical_skus_last_6_months, render_live_recommended_action, render_portfolio_inventory_block,round_numeric_values, run_inventory_ai_summary, run_live_prompt_1_5_summary, run_live_prompt_1_analysis, totals_from_daily_series,construct_prev_table_name,compute_sku_metrics_from_df,
 compute_inventory_coverage_ratio,fetch_estimated_storage_cost_next_month,fetch_first_seen_sku_date,fetch_inventory_aged_by_user,build_portfolio_inventory_alerts, build_global_journey_comparison_for_product, generate_live_insight_with_app_context, fetch_new_skus_from_products_open_date, fetch_current_ai_values_from_skuwisemonthly,fetch_adsdaily_sku_mtd_ads,
 attach_adsdaily_mtd_ads_to_growth_rows, fetch_inventory_policy_context, fetch_current_inventory_snapshot, get_ai_refresh_slot,fetch_live_target_context,fetch_previous_cm2_profit_from_skuwisemonthly,fetch_sponsored_brands_spend)
-from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
+from app.utils.email_utils import (send_live_bi_email,get_user_email_and_name_by_id,get_user_brand_name_by_id,has_recent_bi_email,mark_bi_email_sent,)
 from app.utils.monthwise_ai_summary_utils import run_prompt_2_strategy
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.pnl_column_placements import (
@@ -7520,6 +7520,7 @@ def live_mtd_vs_previous(period_mode=None):
                         curr_label=curr_label,
                         deep_link_token=email_token,
                         weekly_email_summary_json=weekly_email_summary_json,
+                        brand_name=get_user_brand_name_by_id(user_id),
                     )
 
                     if sent:
