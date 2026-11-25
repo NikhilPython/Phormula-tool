@@ -2246,8 +2246,8 @@ def send_live_bi_email(
         <p style="text-align:center; margin-top:24px;">
           <a href="{dashboard_url}"
             style="display:inline-block; background:#37455F; color:#f8edcf;
-                    padding:10px 24px; text-decoration:none; border-radius:8px;
-                    font-size:14px;">
+                    padding:8px 18px; text-decoration:none; border-radius:8px;
+                    font-size:13px;">
             Open Live BI Dashboard
           </a>
         </p>
@@ -2661,7 +2661,7 @@ def send_live_bi_email(
             <p style="margin:0;text-align:left;"><a href="mailto:care@phormula.io" style="color:#37455F;text-decoration:none;">care@phormula.io</a></p>
           </td></tr>
           <tr><td class="note-cell" style="border-top:1px solid #DDDDDD;padding:14px 32px 16px;background:#FFFFFF;font-size:12px;color:#999999;line-height:1.6;border-left:1px solid #E4E7EC;border-right:1px solid #E4E7EC;text-align:left;">
-            This email was generated automatically by Phormula. Support: <a href="mailto:care@phormula.io" style="color:#37455F;">care@phormula.io</a>
+            This email was generated automatically by Phormula.
           </td></tr>
           <tr><td align="center" style="background:#5EA68E;padding:12px 18px;color:#F8EDCF;font-size:12px;line-height:1.5;text-align:center;">
             © 2026 Phormula. All rights reserved.
@@ -3170,11 +3170,11 @@ def send_email_with_attachment(
                             display:inline-block;
                             background:#37455f;
                             color:#f8edce;
-                            padding:12px 24px;
+                            padding:8px 18px;
                             text-decoration:none;
-                            font-size:14px;
+                            font-size:13px;
                             font-weight:bold;
-                            border-radius:10px;
+                            border-radius:8px;
                             text-align:center;
                             margin:0 auto;
                           ">
