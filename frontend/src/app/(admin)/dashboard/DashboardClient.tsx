@@ -3231,6 +3231,7 @@ export default function DashboardPage() {
 
 
         setTargetSummaries(next);
+        return next;
     }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
     const fetchPrevTargetSummary = useCallback(async () => {
@@ -5146,6 +5147,7 @@ export default function DashboardPage() {
             generateInsights = false,
             skipLoader = false,
             dataOnlyRefresh = false,
+            dashboardRecap = null,
 
             // ✅ ADD THIS
             manualAiRefresh = false,
@@ -5187,6 +5189,9 @@ export default function DashboardPage() {
                     : dashboardAllowedEndISO);
                 params.set("start_day", String(finalStartDay));
                 params.set("end_day", String(finalEndDay));
+                if (dashboardRecap && typeof dashboardRecap === "object") {
+                    params.set("dashboard_recap", JSON.stringify(dashboardRecap));
+                }
                 if (platform === "global") {
                     params.set("end_day_uk", String(Math.min(endDay ?? globalUkAllowedDay, globalUkAllowedDay)));
                     params.set("end_day_us", String(Math.min(endDay ?? globalUsAllowedDay, globalUsAllowedDay)));
@@ -5594,7 +5599,7 @@ export default function DashboardPage() {
             ensureDashboardLoadActive();
 
             setStep(1, "MTD Fetching", 15, "Fetching target summary...");
-            await fetchTargetSummary();
+            const dashboardTargets = await fetchTargetSummary();
             ensureDashboardLoadActive();
             await fetchPrevTargetSummary();
             ensureDashboardLoadActive();
@@ -5625,7 +5630,7 @@ export default function DashboardPage() {
 
             setStep(1, "MTD Fetching", 62, "Fetching Amazon MTD data...");
             if (trackStep) await trackStep("mtd_transactions", "running");
-            await fetchAmazon(Boolean(trackStep));
+            let dashboardMtdPayload = await fetchAmazon(Boolean(trackStep));
             ensureDashboardLoadActive();
 
             if (shopifyStore?.shop_name && shopifyStore?.access_token) {
@@ -5661,7 +5666,7 @@ export default function DashboardPage() {
                 await runAdsBackgroundSync({ forceReportSync: true, trackStep });
                 ensureDashboardLoadActive();
                 // Ads DB writes change profitability; rebuild MTD after Ads finishes.
-                await fetchAmazon(Boolean(trackStep));
+                dashboardMtdPayload = await fetchAmazon(Boolean(trackStep));
                 ensureDashboardLoadActive();
             }
 
@@ -5670,11 +5675,86 @@ export default function DashboardPage() {
                 setStep(3, "Plotting Graph", 20, "Fetching Live BI data.");
 
                 if (trackStep) await trackStep("live_mtd_bi", "running");
+                const countryKey = platform === "amazon-us" ? "us" : platform === "amazon-ca" ? "ca" : platform === "global" ? "global" : "uk";
+                const dashboardCurrent = dashboardMtdPayload?.dashboard_totals_global
+                    ?? dashboardMtdPayload?.dashboard_totals
+                    ?? dashboardMtdPayload?.totals
+                    ?? {};
+                const dashboardDerived = dashboardMtdPayload?.derived_totals_global
+                    ?? dashboardMtdPayload?.derived_totals
+                    ?? {};
+                const dashboardPrevious = dashboardMtdPayload?.previous_period?.totals ?? {};
+                const currentDashboardSkus = (dashboardMtdPayload?.skuwise_items ?? [])
+                    .filter((row: any) => {
+                        const sku = String(row?.sku ?? "").trim().toUpperCase();
+                        const name = String(row?.product_name ?? "").trim().toLowerCase();
+                        return !["TOTAL", "GRAND_TOTAL"].includes(sku) && !["total", "grand total"].includes(name);
+                    });
+                const previousDashboardSkus = dashboardMtdPayload?.previous_period?.sku_metrics ?? [];
+                const previousDashboardBySku = new Map(previousDashboardSkus.map((row: any) => [String(row?.sku ?? "").trim().toLowerCase(), row]));
+                const dashboardSkuHighlights = (() => {
+                    const normalized = currentDashboardSkus.map((row: any) => {
+                        const sku = String(row?.sku ?? "").trim();
+                        const previousRow: any = previousDashboardBySku.get(sku.toLowerCase());
+                        const sales = Number(row?.net_sales ?? 0);
+                        const previousSales = Number(previousRow?.net_sales);
+                        const growth = Number.isFinite(previousSales) && previousSales !== 0
+                            ? ((sales - previousSales) / Math.abs(previousSales)) * 100
+                            : null;
+                        return { row, sku, sales, growth };
+                    }).filter((item: any) => item.sku && Number.isFinite(item.sales));
+                    const top = [...normalized].sort((a: any, b: any) => b.sales - a.sales)[0];
+                    const growing = normalized.filter((item: any) => item.growth !== null)
+                        .sort((a: any, b: any) => b.growth - a.growth);
+                    const declining = [...growing].sort((a: any, b: any) => a.growth - b.growth);
+                    const toHighlight = (title: string, item: any) => item ? {
+                        title,
+                        sku: item.sku,
+                        name: item.row?.product_name ?? item.sku,
+                        units: item.row?.total_quantity ?? item.row?.quantity ?? item.row?.net_quantity,
+                        asp: item.row?.asp,
+                        net_sales: item.row?.net_sales,
+                        acos: item.row?.acos ?? item.row?.ads_acos,
+                        cm2_profit: item.row?.total_cm2_profit ?? item.row?.cm2_profit,
+                    } : null;
+                    return [
+                        toHighlight("Top Selling SKU", top),
+                        toHighlight("Highest Net Sales Growth", growing[0]),
+                        toHighlight("Lowest Net Sales Growth", declining[0]),
+                    ].filter(Boolean);
+                })();
+                const dashboardRecap = dashboardMtdPayload ? {
+                    target_sales: dashboardTargets?.[countryKey]?.target_sales,
+                    sku_highlights: dashboardSkuHighlights,
+                    current: {
+                        units: dashboardCurrent.quantity ?? dashboardCurrent.total_quantity,
+                        asp: dashboardDerived.asp ?? dashboardCurrent.asp,
+                        net_sales: dashboardDerived.net_sales ?? dashboardCurrent.net_sales,
+                        advertising: dashboardDerived.advertising_fees ?? dashboardCurrent.advertising_fees,
+                        tacos: (dashboardDerived.net_sales ?? dashboardCurrent.net_sales)
+                            ? ((dashboardDerived.advertising_fees ?? dashboardCurrent.advertising_fees ?? 0) / (dashboardDerived.net_sales ?? dashboardCurrent.net_sales)) * 100
+                            : 0,
+                        cm2_profit: dashboardDerived.cm2_profit ?? dashboardCurrent.cm2_profit,
+                    },
+                    previous: {
+                        units: dashboardPrevious.quantity ?? dashboardPrevious.total_quantity,
+                        asp: dashboardPrevious.asp,
+                        net_sales: dashboardPrevious.net_sales,
+                        advertising: dashboardPrevious.advertising_fees,
+                        tacos: dashboardPrevious.tacos
+                            ?? dashboardPrevious.tacos_total_advertising_cost_of_sale
+                            ?? (dashboardPrevious.net_sales
+                                ? ((dashboardPrevious.advertising_fees ?? 0) / dashboardPrevious.net_sales) * 100
+                                : undefined),
+                        cm2_profit: dashboardPrevious.cm2_profit,
+                    },
+                } : null;
                 await fetchLiveBiPayload({
                     startDay: selectedStartDay,
                     endDay: selectedEndDay,
                     generateInsights: false,
                     skipLoader: true,
+                    dashboardRecap,
 
                     // ✅ Browser/page reload must fetch backend cached AI summary.
                     // Do not preserve stale parent AI summary here.

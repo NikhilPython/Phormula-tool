@@ -32,6 +32,122 @@ load_dotenv(dotenv_path, override=True)
 db_url = os.getenv("DATABASE_URL")
 db_url1 = os.getenv("DATABASE_ADMIN_URL") or db_url
 
+
+def _get_dashboard_email_recap_snapshot(user_id, country):
+    """Read the latest fresh Dashboard MTD payload for scheduled BI email rendering."""
+    try:
+        from sqlalchemy import text
+        from app.routes.amazon_api_routes import PHORMULA_ENGINE
+
+        now_utc = datetime.now(timezone.utc)
+        month_number = now_utc.month
+        year_number = now_utc.year
+        cutoff_ms = int((now_utc - timedelta(hours=36)).timestamp() * 1000)
+        with PHORMULA_ENGINE.connect() as conn:
+            payload = conn.execute(text("""
+                SELECT payload
+                FROM public.live_dashboard_cache
+                WHERE user_id = :user_id
+                  AND country = :country
+                  AND month = :month
+                  AND year = :year
+                  AND saved_at >= :cutoff_ms
+                ORDER BY saved_at DESC
+                LIMIT 1
+            """), {
+                "user_id": int(user_id), "country": country,
+                "month": month_number, "year": year_number,
+                "cutoff_ms": cutoff_ms,
+            }).scalar()
+
+        if isinstance(payload, str):
+            import json
+            payload = json.loads(payload)
+        if not isinstance(payload, dict):
+            return None
+
+        dashboard_data = payload.get("data") or {}
+        current_totals = dashboard_data.get("totals") or {}
+        derived_totals = dashboard_data.get("derived_totals") or {}
+        previous_totals = (dashboard_data.get("previous_period") or {}).get("totals") or {}
+        country_targets = payload.get("targetSummaries") or {}
+        target = (country_targets.get(country) or {}).get("target_sales")
+
+        current_skus = dashboard_data.get("skuwise_items") or []
+        previous_skus = ((dashboard_data.get("previous_period") or {}).get("sku_metrics") or [])
+        previous_by_sku = {
+            str(row.get("sku") or "").strip().lower(): row
+            for row in previous_skus if isinstance(row, dict)
+        }
+        candidates = []
+        for row in current_skus:
+            if not isinstance(row, dict):
+                continue
+            sku = str(row.get("sku") or "").strip()
+            if not sku or sku.upper() in {"TOTAL", "GRAND_TOTAL"}:
+                continue
+            try:
+                sales = float(row.get("net_sales") or 0)
+            except (TypeError, ValueError):
+                continue
+            previous = previous_by_sku.get(sku.lower()) or {}
+            try:
+                previous_sales = float(previous.get("net_sales"))
+            except (TypeError, ValueError):
+                previous_sales = 0
+            growth = (sales - previous_sales) / abs(previous_sales) * 100 if previous_sales else None
+            candidates.append((row, sku, sales, growth))
+
+        top = max(candidates, key=lambda item: item[2], default=None)
+        with_growth = [item for item in candidates if item[3] is not None]
+        highest = max(with_growth, key=lambda item: item[3], default=None)
+        lowest = min(with_growth, key=lambda item: item[3], default=None)
+
+        def highlight(title, item):
+            if not item:
+                return None
+            row, sku, _, _ = item
+            return {
+                "title": title,
+                "sku": sku,
+                "name": row.get("product_name") or sku,
+                "units": row.get("total_quantity", row.get("quantity", row.get("net_quantity"))),
+                "asp": row.get("asp"),
+                "net_sales": row.get("net_sales"),
+                "acos": row.get("acos", row.get("ads_acos")),
+                "cm2_profit": row.get("total_cm2_profit", row.get("cm2_profit")),
+            }
+
+        previous_net_sales = previous_totals.get("net_sales")
+        previous_advertising = previous_totals.get("advertising_fees")
+        return {
+            "target_sales": target,
+            "current": {
+                "units": current_totals.get("quantity", current_totals.get("total_quantity")),
+                "asp": derived_totals.get("asp", current_totals.get("asp")),
+                "net_sales": derived_totals.get("net_sales", current_totals.get("net_sales")),
+                "advertising": derived_totals.get("advertising_fees", current_totals.get("advertising_fees")),
+                "tacos": current_totals.get("tacos_total_advertising_cost_of_sale"),
+                "cm2_profit": derived_totals.get("cm2_profit", current_totals.get("cm2_profit")),
+            },
+            "previous": {
+                "units": previous_totals.get("quantity", previous_totals.get("total_quantity")),
+                "asp": previous_totals.get("asp"),
+                "net_sales": previous_net_sales,
+                "advertising": previous_advertising,
+                "tacos": previous_totals.get("tacos_total_advertising_cost_of_sale"),
+                "cm2_profit": previous_totals.get("cm2_profit"),
+            },
+            "sku_highlights": [item for item in (
+                highlight("Top Selling SKU", top),
+                highlight("Highest Net Sales Growth", highest),
+                highlight("Lowest Net Sales Growth", lowest),
+            ) if item],
+        }
+    except Exception as exc:
+        print(f"[WARN] Could not load Dashboard recap snapshot for scheduled email: {exc}")
+        return None
+
 #---------------------------------------------  Celery Beat scheduled tasks for live BI email ---------------------------------------------------------#
 
 def get_users_for_live_bi_email():
@@ -205,6 +321,7 @@ def send_live_bi_email_daily(country_filter=None):
                         brand_name=get_user_brand_name_by_id(user_id),
                         live_bi_data=result.get("response_payload"),
                         user_name=get_user_email_and_name_by_id(user_id)[1],
+                        dashboard_recap=_get_dashboard_email_recap_snapshot(user_id, country),
                     )
 
                     mark_bi_email_sent(user_id, country)

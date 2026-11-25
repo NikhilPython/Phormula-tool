@@ -7506,6 +7506,16 @@ def live_mtd_vs_previous(period_mode=None):
 
                     weekly_email_summary_json = response_payload.get("weekly_email_summary_json")
 
+                    dashboard_recap = None
+                    try:
+                        dashboard_recap_arg = request.args.get("dashboard_recap")
+                        if dashboard_recap_arg:
+                            parsed_dashboard_recap = json.loads(dashboard_recap_arg)
+                            if isinstance(parsed_dashboard_recap, dict):
+                                dashboard_recap = parsed_dashboard_recap
+                    except (TypeError, ValueError):
+                        print("[WARN] Ignoring invalid dashboard recap snapshot for email.")
+
                     
 
 
@@ -7522,6 +7532,7 @@ def live_mtd_vs_previous(period_mode=None):
                         brand_name=get_user_brand_name_by_id(user_id),
                         live_bi_data=response_payload,
                         user_name=user_name,
+                        dashboard_recap=dashboard_recap,
                     )
 
                     if sent:

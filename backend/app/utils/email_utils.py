@@ -1164,6 +1164,7 @@ def send_live_bi_email(
     brand_name=None,
     live_bi_data=None,
     user_name=None,
+    dashboard_recap=None,
 ):
     import traceback
     import html
@@ -1224,14 +1225,19 @@ def send_live_bi_email(
         totals = data.get("aligned_totals") or {}
         target_data = data.get("target_context") or {}
         objective_data = data.get("objective_context") or {}
+        dashboard_current = (dashboard_recap or {}).get("current") or {}
+        dashboard_previous = (dashboard_recap or {}).get("previous") or {}
+        has_dashboard_snapshot = bool(dashboard_current)
         currency_symbol = ((data.get("currency") or {}).get("symbol") or "$").strip()
 
         def money(value, decimals=0):
             value = finite_number(value)
             return f"{currency_symbol}{value:,.{decimals}f}" if value is not None else "—"
 
-        actual = finite_number(totals.get("total_current_net_sales"))
-        target = finite_number(target_data.get("target_sales"))
+        actual = finite_number(dashboard_current.get("net_sales")) if has_dashboard_snapshot else finite_number(totals.get("total_current_net_sales"))
+        target = finite_number((dashboard_recap or {}).get("target_sales")) if has_dashboard_snapshot else None
+        if target is None:
+            target = finite_number(target_data.get("target_sales"))
         has_target = target is not None and target > 0
         achievement = actual / target * 100 if has_target and actual is not None else None
         progress_width = max(0, min(100, achievement or 0))
@@ -1276,19 +1282,22 @@ def send_live_bi_email(
         """
 
         metric_specs = [
-            ("Units", totals.get("total_current_quantity"), "units_change_percentage", "number", "#FDD36F", False),
-            ("ASP", totals.get("total_current_asp"), "asp_change_percentage", "money2", "#ED9F50", False),
-            ("Net Sales", actual, "net_sales_change_percentage", "money", "#75BBDA", False),
-            ("Ads", totals.get("total_current_advertising"), "advertising_change_percentage", "money", "#B75A5A", True),
-            ("TACoS", totals.get("total_current_tacos"), "tacos_change_percentage", "percent", "#3A8EA4", True),
-            ("CM2 Profit", totals.get("total_current_profit_cm2"), "cm2_profit_change_percentage", "money", "#B8C78C", False),
+            ("Units", dashboard_current.get("units", totals.get("total_current_quantity")), "units_change_percentage", "units", "number", "#FDD36F", False),
+            ("ASP", dashboard_current.get("asp", totals.get("total_current_asp")), "asp_change_percentage", "asp", "money2", "#ED9F50", False),
+            ("Net Sales", actual, "net_sales_change_percentage", "net_sales", "money", "#75BBDA", False),
+            ("Ads", dashboard_current.get("advertising", totals.get("total_current_advertising")), "advertising_change_percentage", "advertising", "money", "#B75A5A", True),
+            ("TACoS", dashboard_current.get("tacos", totals.get("total_current_tacos")), "tacos_change_percentage", "tacos", "percent", "#3A8EA4", True),
+            ("CM2 Profit", dashboard_current.get("cm2_profit", totals.get("total_current_profit_cm2")), "cm2_profit_change_percentage", "cm2_profit", "money", "#B8C78C", False),
         ]
         metric_rows = []
         for start in range(0, len(metric_specs), 3):
             cells = []
-            for label, value, delta_key, fmt, accent, inverse in metric_specs[start:start + 3]:
+            for label, value, delta_key, dashboard_key, fmt, accent, inverse in metric_specs[start:start + 3]:
                 numeric_value = finite_number(value)
                 delta = finite_number(totals.get(delta_key))
+                if has_dashboard_snapshot:
+                    previous_value = finite_number(dashboard_previous.get(dashboard_key))
+                    delta = ((numeric_value - previous_value) / abs(previous_value) * 100) if numeric_value is not None and previous_value not in (None, 0) else None
                 if fmt == "number":
                     formatted_value = f"{numeric_value:,.0f}" if numeric_value is not None else "—"
                 elif fmt == "money2":
@@ -1305,10 +1314,10 @@ def send_live_bi_email(
                     delta_html = f'<span style="font-size:10px;font-weight:bold;color:{color};white-space:nowrap;">{arrow} {abs(delta):.2f}%</span>'
                 cells.append(f"""
                 <td width="33.33%" valign="top" style="padding:4px 3px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:2px solid {accent};border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
                     <tr><td style="padding:9px 8px;">
                       <div style="font-size:11px;color:#50627A;">{label}</div>
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td><td align="right" valign="bottom">{delta_html}</td></tr></table>
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ><tr><td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td><td align="right" valign="bottom">{delta_html}</td></tr></table>
                     </td></tr>
                   </table>
                 </td>
@@ -1317,8 +1326,8 @@ def send_live_bi_email(
         metrics_html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:10px;">' + "".join(metric_rows) + "</table>"
 
         # Keep this recap table independent from the recommendation cards below.
-        # Build highlights from Live BI's MTD product rows, as the monthly recap
-        # does, while the bottom recommendation section keeps its existing SKUs.
+        # Prefer Dashboard MTD SKU data when supplied by the dashboard request;
+        # scheduled/background callers can still fall back to Live BI's MTD rows.
         growth = data.get("categorized_growth") or {}
         candidates = []
         seen_products = set()
@@ -1345,9 +1354,24 @@ def send_live_bi_email(
         highest_growth = max(growth_rows, key=growth_value, default=None)
         lowest_growth = min(growth_rows, key=growth_value, default=None)
         highlights = []
-        for title, row in (("Top Selling SKU", top_seller), ("Highest Net Sales Growth", highest_growth), ("Lowest Net Sales Growth", lowest_growth)):
-            if row is not None:
-                highlights.append((title, row))
+        dashboard_highlights = (dashboard_recap or {}).get("sku_highlights") or []
+        if has_dashboard_snapshot and isinstance(dashboard_highlights, list) and dashboard_highlights:
+            for item in dashboard_highlights:
+                if not isinstance(item, dict):
+                    continue
+                highlights.append((item.get("title") or "", {
+                    "sku": item.get("sku"),
+                    "product_name": item.get("name"),
+                    "quantity_curr": item.get("units"),
+                    "asp_curr": item.get("asp"),
+                    "net_sales_curr": item.get("net_sales"),
+                    "ads_acos_curr": item.get("acos"),
+                    "cm2_profit_curr": item.get("cm2_profit"),
+                }))
+        else:
+            for title, row in (("Top Selling SKU", top_seller), ("Highest Net Sales Growth", highest_growth), ("Lowest Net Sales Growth", lowest_growth)):
+                if row is not None:
+                    highlights.append((title, row))
 
         same_top_and_growth = bool(
             top_seller and highest_growth

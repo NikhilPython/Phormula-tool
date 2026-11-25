@@ -130,6 +130,7 @@ export type MonthlySkuwiseTableRow = MonthlySkuwiseRow & {
 export type FetchLiveBiPayloadArgs = {
     startDay?: number | null;
     endDay?: number | null;
+    dashboardRecap?: Record<string, unknown> | null;
     generateInsights?: boolean;
     skipLoader?: boolean;
     dataOnlyRefresh?: boolean;
