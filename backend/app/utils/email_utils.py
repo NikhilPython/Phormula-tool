@@ -1232,7 +1232,7 @@ def send_live_bi_email(
             border-radius:10px;
             padding:14px 16px;
         ">
-          <div style="font-size:16px; font-weight:700; color:#37455F; margin-bottom:6px;">
+          <div style="font-size:14px; font-weight:700; color:#37455F; margin-bottom:6px;">
             Portfolio recommendation
           </div>
           <div style="font-size:14px; color:#555; line-height:1.7;">
@@ -1701,7 +1701,7 @@ def send_live_bi_email(
           <div class="sku-card-td" style="padding:16px 16px 14px 16px; box-sizing:border-box;">
 
             <div class="sku-product-title" style="
-                font-size:18px;
+                font-size:16px;
                 font-weight:700;
                 color:#37455f;
                 padding-bottom:10px;
@@ -1800,7 +1800,7 @@ def send_live_bi_email(
                   overflow:hidden;
               ">
                   <div class="weekly-metric-label" style="
-                      font-size:10px;
+                      font-size:11px;
                       line-height:1.15;
                       color:#475467;
                       font-weight:500;
@@ -1814,7 +1814,7 @@ def send_live_bi_email(
                   </div>
 
                   <div class="weekly-metric-value" style="
-                      font-size:12px;
+                      font-size:14px;
                       line-height:1.15;
                       font-weight:700;
                       color:#344054;
@@ -2158,7 +2158,7 @@ def send_live_bi_email(
 
         .recommendations-content h3,
         .recommendations-content h4 {{
-          font-size: 18px !important;
+          font-size: 16px !important;
           line-height: 1.35 !important;
           margin: 18px 0 10px 0 !important;
           color: #14213D !important;
@@ -2206,12 +2206,12 @@ def send_live_bi_email(
 }}
 
 .weekly-metric-label {{
-  font-size: 10px !important;
+  font-size: 11px !important;
   line-height: 1.15 !important;
 }}
 
 .weekly-metric-value {{
-  font-size: 12px !important;
+  font-size: 14px !important;
   line-height: 1.15 !important;
 }}
 
@@ -2238,12 +2238,12 @@ def send_live_bi_email(
   }}
 
   .weekly-metric-label {{
-    font-size: 9px !important;
+    font-size: 10px !important;
     line-height: 1.15 !important;
   }}
 
   .weekly-metric-value {{
-    font-size: 11px !important;
+    font-size: 12px !important;
     line-height: 1.15 !important;
   }}
 
@@ -2296,7 +2296,7 @@ def send_live_bi_email(
           }}
 
           .report-title {{
-            font-size: 20px !important;
+            font-size: 16px !important;
           }}
 
 .metrics-table {{
@@ -2402,11 +2402,9 @@ def send_live_bi_email(
             border-left:1px solid #E4E7EC;
             border-right:1px solid #E4E7EC;
           ">
-            <hr style="margin:14px 0 26px 0; border:none; border-top:1px solid #D0D5DD;" />
-
             <!-- Summary section -->
             <div style="text-align:left;">
-              <h3 style="color:#37455F; margin:0 0 12px 0; font-size:20px;">
+              <h3 style="color:#37455F; margin:0 0 12px 0; font-size:16px;">
                 Your Summary
               </h3>
 
@@ -2426,7 +2424,7 @@ def send_live_bi_email(
 
             <!-- Recommendation section -->
             <div style="text-align:left; margin-top:28px;">
-              <h3 style="color:#37455F; margin:0 0 14px 0; font-size:20px;">
+              <h3 style="color:#37455F; margin:0 0 14px 0; font-size:16px;">
                 Recommendations
               </h3>
 
