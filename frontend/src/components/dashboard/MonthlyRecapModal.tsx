@@ -343,7 +343,7 @@ export default function MonthlyRecapModal({
                 {/* Sales vs target */}
                 <section className="mt-3 rounded-xl border border-[#E6ECEF] px-4 py-2.5">
                     <h3 className="mb-1 text-lg text-center font-semibold text-[#37455F]">
-                        Target &amp; Objectives
+                        Target and Objectives
                     </h3>
 
                     <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">

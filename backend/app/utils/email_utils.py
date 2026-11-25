@@ -2692,7 +2692,7 @@ def render_monthly_recap_email(recap: dict) -> str:
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
            style="border:1px solid #E6ECEF;border-radius:12px;margin:12px 0 10px;background:#FFFFFF;">
       <tr><td colspan="3" align="center" style="padding:12px 8px 8px;font-size:16px;font-weight:bold;color:#37455F;">
-        Target &amp; Objectives
+        Target and Objectives
       </td></tr>
       <tr>
         <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
@@ -2773,7 +2773,7 @@ def render_monthly_recap_email(recap: dict) -> str:
             cells.append(f"""
             <td width="33.33%" valign="top" style="padding:4px 3px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                     style="border:1px solid #E6ECEF;border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
+                     style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
                 <tr><td style="padding:9px 8px;">
                   <div style="font-size:11px;color:#50627A;">{esc(label)}</div>
                   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -2832,11 +2832,8 @@ def render_monthly_recap_email(recap: dict) -> str:
     return f"""
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0 18px;border-collapse:collapse;background:#FFFFFF;">
       <tr><td style="padding:0 0 3px;">
-        <div style="font-size:19px;line-height:1.35;font-weight:bold;color:#37455F;">
+        <div style="font-size:16px;line-height:1.35;font-weight:bold;color:#37455F;">
           Here's how your <span style="color:#5EA68E;">{esc(display_month)}</span> went
-        </div>
-        <div style="font-size:11px;line-height:17px;color:#50627A;">
-          A snapshot of your sales, profitability, and overall performance for the month.
         </div>
       </td></tr>
       <tr><td>{target_html}{metrics_html}{sku_html}</td></tr>
@@ -2939,37 +2936,16 @@ def send_email_with_attachment(
                     vertical-align:middle;
                     white-space:nowrap;
                   ">
-                    Amazon SKU Performance Report
+                    Phormula Monthly P&amp;L Report
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- logo/title -->
-          <tr>
-            <td align="center" style="
-              padding:28px 30px 18px 30px;
-              background:#ffffff;
-              border-left:1px solid #e4e7ec;
-              border-right:1px solid #e4e7ec;
-            ">
-              <img
-                src="https://res.cloudinary.com/du58s6gdz/image/upload/f_auto,q_auto/Logo_Phormula_pmbp8q"
-                alt="Phormula Logo"
-                width="220"
-                style="display:block; width:220px; max-width:220px; height:auto; margin:0 auto 14px auto; border:0;"
-              />
-
-              <div style="font-size:18px; color:#4a4a4a; line-height:1.4;">
-                Your Amazon SKU-wise Monthly Report is ready
-              </div>
-            </td>
-          </tr>
-
           <!-- divider -->
           <tr>
-            <td style="border-top:1px solid #dddddd; font-size:1px; line-height:1px;">&nbsp;</td>
+            <td style="font-size:1px; line-height:1px;">&nbsp;</td>
           </tr>
 
           <!-- body -->
@@ -2984,7 +2960,7 @@ def send_email_with_attachment(
               border-left:1px solid #e4e7ec;
               border-right:1px solid #e4e7ec;
             ">
-              <p style="margin:0 0 18px 0; text-align:left;">
+              <p style="margin:0 0 12px 0; text-align:left;">
                 Hi <strong>{html.escape(user_name or "there")}</strong>,
               </p>
 
