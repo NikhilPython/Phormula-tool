@@ -5,7 +5,8 @@ import { useSelector } from "react-redux";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Loader from "@/components/loader/Loader";
-import AmazonStatCard from "@/components/dashboard/AmazonStatCard";
+import AmazonStatCard, { type AmazonStatCardProps } from "@/components/dashboard/AmazonStatCard";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 // import CurrentInventorySection from "@/components/dashboard/CurrentInventorySection";
 import { useCurrentInventoryExcelExport } from "@/lib/inventory/useCurrentInventoryExcelExport";
 import { RootState } from "@/lib/store";
@@ -610,14 +611,18 @@ function computePlSummaryTotalsFromSource(source: any): PlSummaryTotals {
     };
 }
 
-function getGrandTotalRow(rows: any[] = []) {
+function findSkuwiseTotalRow(rows: any[] = []) {
+    if (!Array.isArray(rows)) return undefined;
+
     return (
         rows.find((r) => ["GRAND_TOTAL", "TOTAL"].includes(String(r?.sku || "").toUpperCase())) ||
         rows.find((r) => ["grand total", "total"].includes(String(r?.product_name || "").toLowerCase())) ||
-        rows.find((r) => r?.isTotal) ||
-        rows[rows.length - 1] ||
-        {}
+        rows.find((r) => r?.isTotal)
     );
+}
+
+function getGrandTotalRow(rows: any[] = []) {
+    return findSkuwiseTotalRow(rows) ?? rows[rows.length - 1] ?? {};
 }
 
 const pickFirstNonZeroNumber = (...values: any[]) => {
@@ -2010,18 +2015,20 @@ export default function DashboardPage() {
     type GlobalMtdView = "global" | "uk" | "us";
 
     const [globalMtdView, setGlobalMtdView] = useState<GlobalMtdView>("global");
-
-    const globalMtdCountry = useMemo<"uk" | "us">(() => {
-        return globalMtdView === "us" ? "us" : "uk";
-    }, [globalMtdView]);
+    const selectedMarketplace =
+        platform === "global" && showDashboardDetails &&
+        (activeTab === "live" || activeTab === "productwise") &&
+        globalMtdView !== "global" ? globalMtdView : null;
+    const pnlMarketplace = activeTab === "productwise" ? selectedMarketplace : null;
+    const pnlCountryName = pnlMarketplace ?? countryName;
 
     const isUkPnlSkuLayout = useMemo(() => {
-        const normalizedCountry = String(countryName || "").trim().toLowerCase();
+        const normalizedCountry = String(pnlCountryName || "").trim().toLowerCase();
         return (
             ["uk", "united kingdom", "gb", "great britain"].includes(normalizedCountry) ||
             platform === "amazon-uk"
         );
-    }, [countryName, platform]);
+    }, [pnlCountryName, platform]);
 
     const isUsPnlSkuLayout = useMemo(() => {
         const normalizedCountry = String(countryName || "").trim().toLowerCase();
@@ -2042,16 +2049,7 @@ export default function DashboardPage() {
         us?: any;
     }>({});
 
-    const timezoneCountry = useMemo<"uk" | "us">(() => {
-        if (platform === "amazon-us") return "us";
-        if (platform === "amazon-uk") return "uk";
-
-        // For global, choose the currently selected MTD country if you use one.
-        if (platform === "global") return globalMtdCountry;
-
-        // Default fallback
-        return "uk";
-    }, [platform, globalMtdCountry]);
+    const timezoneCountry = platform === "amazon-us" ? "us" : "uk";
 
     const fetchCountryTime = useCallback(async () => {
         if (typeof window === "undefined") return null;
@@ -2307,13 +2305,10 @@ export default function DashboardPage() {
 
     const dashboardTimeRegion: RegionKey = useMemo(() => {
         // Keep dashboard data date aligned with the same timezone used by "Last Updated at"
-        if (platform === "global" && isUsAmazonConnected) return "US";
-
-        if (platform === "global" && globalMtdCountry === "us") return "US";
-        if (platform === "global" && globalMtdCountry === "uk") return "UK";
+        if (platform === "global") return isUsAmazonConnected ? "US" : "UK";
 
         return activeDateRegion;
-    }, [platform, isUsAmazonConnected, globalMtdCountry, activeDateRegion]);
+    }, [platform, isUsAmazonConnected, activeDateRegion]);
 
     const getRegionISODateFromTimestamp = useCallback(
         (timestamp: number | string | Date, region: RegionKey) => {
@@ -2382,12 +2377,15 @@ export default function DashboardPage() {
         return new Date(year, month, 0).getDate();
     }, [dashboardDateAnchor, dashboardTimeRegion]);
 
+    const salesDataEndISO = selectedMarketplace
+        ? getRegionISODateFromTimestamp(dashboardDateAnchor, selectedMarketplace === "uk" ? "UK" : "US")
+        : dashboardAllowedEndISO;
     const isCurrentPointAllowed = useCallback(
         (point?: DailyPoint) => {
             if (!point?.date) return false;
-            return point.date <= dashboardAllowedEndISO;
+            return point.date <= salesDataEndISO;
         },
-        [dashboardAllowedEndISO]
+        [salesDataEndISO]
     );
 
     const isPreviousPointAllowed = useCallback(
@@ -2593,7 +2591,6 @@ export default function DashboardPage() {
         }
     }, [globalMtdViewOptions, globalMtdView]);
 
-    const [todaySalesRaw, setTodaySalesRaw] = useState<number>(0);
 
     const [prevTargetSummaries, setPrevTargetSummaries] = useState<{
         uk?: any;
@@ -3190,7 +3187,7 @@ export default function DashboardPage() {
         return "uk";
     }, [platform]);
 
-    const fetchTargetSummary = useCallback(async () => {
+    const fetchTargetSummary = useCallback(async (marketplace?: "uk" | "us", signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setTargetSummaries({});
             return;
@@ -3201,9 +3198,10 @@ export default function DashboardPage() {
 
         if (!token) return;
 
-        const { monthName, year } = getRegionYearMonth(activeDateRegion);
+        const region = marketplace === "uk" ? "UK" : marketplace === "us" ? "US" : activeDateRegion;
+        const { monthName, year } = getRegionYearMonth(region);
 
-        const countries = [targetSummaryCountry];
+        const countries = [marketplace ?? targetSummaryCountry];
 
         const results = await Promise.all(
             countries.map(async (country) => {
@@ -3215,6 +3213,7 @@ export default function DashboardPage() {
 
                 const res = await fetch(`${baseURL}/target-summary?${params.toString()}`, {
                     method: "GET",
+                    signal,
                     headers: {
                         Accept: "application/json",
                         Authorization: `Bearer ${token}`,
@@ -3230,11 +3229,13 @@ export default function DashboardPage() {
         const next = Object.fromEntries(results);
 
 
-        setTargetSummaries(next);
+        if (!signal?.aborted) {
+            setTargetSummaries((current) => platform === "global" ? { ...current, ...next } : next);
+        }
         return next;
     }, [activeDateRegion, targetSummaryCountry, isMonthYearNA, platform]);
 
-    const fetchPrevTargetSummary = useCallback(async () => {
+    const fetchPrevTargetSummary = useCallback(async (marketplace?: "uk" | "us", signal?: AbortSignal) => {
         if (isMonthYearNA) {
             setPrevTargetSummaries({});
             return;
@@ -3245,9 +3246,11 @@ export default function DashboardPage() {
 
         if (!token) return;
 
-        const { monthName, year } = getPrevBackendCountryYearMonth();
+        const { monthName, year } = marketplace
+            ? getPrevRegionYearMonth(marketplace === "uk" ? "UK" : "US")
+            : getPrevBackendCountryYearMonth();
 
-        const countries = [targetSummaryCountry];
+        const countries = [marketplace ?? targetSummaryCountry];
 
         const results = await Promise.all(
             countries.map(async (country) => {
@@ -3259,6 +3262,7 @@ export default function DashboardPage() {
 
                 const res = await fetch(`${baseURL}/target-summary?${params.toString()}`, {
                     method: "GET",
+                    signal,
                     headers: {
                         Accept: "application/json",
                         Authorization: `Bearer ${token}`,
@@ -3272,7 +3276,9 @@ export default function DashboardPage() {
         );
 
         const next = Object.fromEntries(results);
-        setPrevTargetSummaries(next);
+        if (!signal?.aborted) {
+            setPrevTargetSummaries((current) => platform === "global" ? { ...current, ...next } : next);
+        }
     }, [
         targetSummaryCountry,
         isMonthYearNA,
@@ -3299,6 +3305,16 @@ export default function DashboardPage() {
         fetchTargetSummary();
         fetchPrevTargetSummary();
     }, [platform, fetchTargetSummary, fetchPrevTargetSummary]);
+
+    useEffect(() => {
+        if (!selectedMarketplace || shouldShowDummyUi || isMonthYearNA) return;
+        const controller = new AbortController();
+        void Promise.allSettled([
+            fetchTargetSummary(selectedMarketplace, controller.signal),
+            fetchPrevTargetSummary(selectedMarketplace, controller.signal),
+        ]);
+        return () => controller.abort();
+    }, [selectedMarketplace, shouldShowDummyUi, isMonthYearNA, fetchTargetSummary, fetchPrevTargetSummary]);
 
     // ─── Mid-month reminder: hydrate the current country's objective so the
     // modal pre-fills the user's existing selections instead of resetting
@@ -4560,14 +4576,14 @@ export default function DashboardPage() {
                 return biDailySeries.current_mtd || [];
             }
 
-            if (globalMtdView === "uk") {
+            if (selectedMarketplace === "uk") {
                 return (
                     biDailySeries.current_mtd_uk ||
                     filterSeriesByCountry(biDailySeries.current_mtd, "uk")
                 );
             }
 
-            if (globalMtdView === "us") {
+            if (selectedMarketplace === "us") {
                 return (
                     biDailySeries.current_mtd_us ||
                     filterSeriesByCountry(biDailySeries.current_mtd, "us")
@@ -4582,14 +4598,14 @@ export default function DashboardPage() {
                 return biDailySeries.previous || [];
             }
 
-            if (globalMtdView === "uk") {
+            if (selectedMarketplace === "uk") {
                 return (
                     biDailySeries.previous_uk ||
                     filterSeriesByCountry(biDailySeries.previous, "uk")
                 );
             }
 
-            if (globalMtdView === "us") {
+            if (selectedMarketplace === "us") {
                 return (
                     biDailySeries.previous_us ||
                     filterSeriesByCountry(biDailySeries.previous, "us")
@@ -4667,7 +4683,7 @@ export default function DashboardPage() {
         convertToDisplayCurrency,
         biDataCurrency,
         platform,
-        globalMtdView,
+        selectedMarketplace,
         isCurrentPointAllowed,
     ]);
 
@@ -7030,26 +7046,12 @@ export default function DashboardPage() {
     }, [backendDashboardMetric, curr.profitPct, prev.profitPct]);
 
     /* ===================== ✅ RANGE KPIs FOR CARDS (FROM SAME BI DATA AS GRAPH) ===================== */
-    useEffect(() => {
+    const todaySalesRaw = useMemo(() => {
         const pts = (biDailySeriesHome?.current_mtd || []).filter(isCurrentPointAllowed);
-
-        if (!pts.length) {
-            setTodaySalesRaw(0);
-            return;
-        }
-
-        const exact = pts.find(
-            (p) => Number(p.date?.slice(8, 10)) === dashboardAllowedDay
-        );
-
-        if (exact?.net_sales != null) {
-            setTodaySalesRaw(Number(exact.net_sales) || 0);
-            return;
-        }
-
-        const latest = [...pts].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
-        setTodaySalesRaw(Number(latest?.net_sales) || 0);
-    }, [biDailySeriesHome, isCurrentPointAllowed, dashboardAllowedDay]);
+        const today = pts.find((p) => p.date === salesDataEndISO);
+        const latest = pts.sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+        return toNumber(today?.net_sales ?? latest?.net_sales);
+    }, [biDailySeriesHome, isCurrentPointAllowed, salesDataEndISO]);
 
 
     const last30CurrentSkuTotal = useMemo(() => {
@@ -7439,22 +7441,111 @@ export default function DashboardPage() {
     const onlyAmazon = amazonIntegrated && !shopifyIntegrated;
     const onlyShopify = shopifyIntegrated && !amazonIntegrated;
 
+    const marketplaceFinancials = useMemo(() => {
+        if (!selectedMarketplace) return null;
+
+        const isLast30 = comparisonPeriod === "last30";
+        const source = isLast30 ? liveBiPayload : data;
+        const currency = isLast30 ? currencyForCountry(selectedMarketplace) : "USD";
+        const toDisplay = (amount: number) => convertToDisplayCurrency(amount, currency);
+        const currentRows = source?.[`skuwise_items_${selectedMarketplace}`];
+        const previousRows = isLast30
+            ? source?.[`previous_skuwise_items_${selectedMarketplace}`]
+            : previousSkuwiseGlobalData?.[`skuwise_items_${selectedMarketplace}`];
+
+        const moneyFields = [
+            "asp", "gross_sales", "gross_sales_per_unit", "refund_sales", "net_sales",
+            "previous_net_sales", "net_sales_delta", "net_sales_per_unit", "promotional_rebates",
+            "cogs", "fba_fees", "selling_fees", "amazon_fees", "marketplace_fees",
+            "ads_spend", "total_ads", "advertising_total", "advertising_total_final",
+            "advertising_fees", "product_spend", "sponsored_product", "Sponsored_Product",
+            "display_spend", "sponsored_display", "Sponsored_Display", "brand_spend",
+            "sponsored_brand", "display_brand", "Display_brand", "Sponsored_Brand",
+            "cm2_profit", "total_cm2_profit", "profit", "cm1_profit", "cm1_profit_per_unit",
+            "unit_wise_profitability", "cm2_profit_per_unit", "tax", "net_taxes", "credits",
+            "net_credits", "tax_and_credits", "other_transactions", "other_transaction_fees",
+            "misc_transaction", "misc_transactions", "platform_fee", "platformfeenew",
+            "platform_fee_inventory_storage", "lost_total", "other", "dealsvouchar_ads",
+            "current_net_reimbursement", "debt_payment", "disbursement", "placement_fee",
+            "placement_fees", "shipment_fees", "shipping_charges", "customs_fee", "customs_fees",
+            "storage_fee", "storage_fees", "short_term_storage_fee", "long_term_storage_fee",
+            "platform_management_fees", "other_adjustment", "fba_disposal",
+        ];
+        const convertRows = (rows: unknown) => Array.isArray(rows)
+            ? rows.map((row) => {
+                const result = { ...row, country: selectedMarketplace };
+                for (const field of moneyFields) {
+                    if (row[field] != null) result[field] = toDisplay(toNumber(row[field]));
+                }
+                return result;
+            })
+            : [];
+
+        return {
+            current: convertRows(currentRows),
+            previous: convertRows(previousRows),
+        };
+    }, [selectedMarketplace, comparisonPeriod, liveBiPayload, data, previousSkuwiseGlobalData, convertToDisplayCurrency]);
+
+    const pnlMarketplaceFinancials = pnlMarketplace ? marketplaceFinancials : null;
+
+    const marketplaceCardMetrics = useMemo(() => {
+        if (!selectedMarketplace || shouldShowDummyUi) return {};
+        if (comparisonPeriod !== "last30") {
+            return data?.dashboard_card_metrics_by_country?.[selectedMarketplace] ?? {};
+        }
+
+        const buildPeriodMetrics = (rows: any[]) => {
+            const total = findSkuwiseTotalRow(rows) ?? {};
+            const units = toNumber(total.total_quantity ?? total.net_quantity ?? total.quantity);
+            const netSales = toNumber(total.net_sales);
+            const ads = toNumber(total.advertising_total_final ?? total.total_ads ?? total.advertising_fees ?? total.ads_spend);
+            const cm2 = toNumber(total.total_cm2_profit ?? total.cm2_profit);
+            const promotions = toNumber(total.promotional_rebates);
+            return {
+                units: { value: units },
+                asp: { value: toNumber(total.asp ?? (units ? netSales / units : 0)) },
+                gross_sales: { value: toNumber(total.gross_sales) },
+                net_sales: { value: netSales },
+                cost_of_ads: { value: ads },
+                tacos: { value: netSales ? (ads / netSales) * 100 : 0 },
+                cm2_profit: { value: cm2, percentage: netSales ? (cm2 / netSales) * 100 : 0 },
+                promotions: { value: Math.abs(promotions), percentage: netSales ? (promotions / netSales) * 100 : 0 },
+            };
+        };
+
+        const current = buildPeriodMetrics(marketplaceFinancials?.current ?? []);
+        const previous = buildPeriodMetrics(marketplaceFinancials?.previous ?? []);
+        return Object.fromEntries(Object.entries(current).map(([key, metric]) => {
+            const prev = previous[key as keyof typeof previous];
+            return [key, {
+                current: metric.value,
+                previous: prev.value,
+                change_percentage: safeDeltaPct(metric.value, prev.value),
+                current_per_unit: current.units.value ? metric.value / current.units.value : 0,
+                previous_per_unit: previous.units.value ? prev.value / previous.units.value : 0,
+                current_percentage: "percentage" in metric ? metric.percentage : undefined,
+                previous_percentage: "percentage" in prev ? prev.percentage : undefined,
+            }];
+        }));
+    }, [selectedMarketplace, shouldShowDummyUi, comparisonPeriod, data, marketplaceFinancials]);
+
     const monthlySkuwiseRows = useMemo<MonthlySkuwiseRow[]>(() => {
         const last30SkuwiseItems = comparisonPeriod === "last30"
             ? (platform === "global"
                 ? liveBiPayload?.skuwise_items_global ?? liveBiPayload?.skuwise_items
                 : liveBiPayload?.skuwise_items)
             : null;
-        const items = Array.isArray(last30SkuwiseItems)
+        const items = pnlMarketplaceFinancials?.current ?? (Array.isArray(last30SkuwiseItems)
             ? last30SkuwiseItems
             : platform === "global"
                 ? (data as any)?.skuwise_items_global ?? []
-                : (data as any)?.skuwise_items ?? [];
+                : (data as any)?.skuwise_items ?? []);
 
         if (!Array.isArray(items)) return [];
 
         const body =
-            platform === "global"
+            platform === "global" && !pnlMarketplace
                 ? items.filter((r: any) => {
                     const sku = String(r?.sku || "").toUpperCase();
                     const name = String(r?.product_name || "").trim().toLowerCase();
@@ -7478,17 +7569,18 @@ export default function DashboardPage() {
             return sku === "GRAND_TOTAL" || sku === "TOTAL" || name === "grand total" || name === "total";
         });
 
-        const previousSkuwiseItems = comparisonPeriod === "last30"
+        const previousSkuwiseItems = pnlMarketplaceFinancials?.previous ?? (comparisonPeriod === "last30"
             ? (platform === "global"
                 ? liveBiPayload?.previous_skuwise_items_global ?? []
                 : liveBiPayload?.previous_skuwise_items ?? [])
-            : [];
+            : []);
         const previousBySku = new Map<string, any>(
             (Array.isArray(previousSkuwiseItems) ? previousSkuwiseItems : [])
                 .filter((row: any) => row?.sku)
                 .map((row: any) => [String(row.sku).trim().toUpperCase(), row])
         );
-        const actionRows = Array.isArray(liveBiPayload?.all_action_rows) ? liveBiPayload.all_action_rows : [];
+        const actionRows = !pnlMarketplace && Array.isArray(liveBiPayload?.all_action_rows) ? liveBiPayload.all_action_rows : [];
+        const alignedTotals = pnlMarketplace ? null : liveBiPayload?.aligned_totals;
         const actionBySku = new Map<string, any>(
             actionRows.filter((row: any) => row?.sku)
                 .map((row: any) => [String(row.sku).trim().toUpperCase(), row])
@@ -7503,14 +7595,15 @@ export default function DashboardPage() {
                 previousRow?.product_name,
                 actionRow?.product_name,
             ].find((value) => !isMissingDisplayName(value));
+            const previousNetSales =
+                r.previous_net_sales ?? actionRow?.net_sales_prev ?? previousRow?.net_sales;
             const backendNetSalesDeltaPct =
                 r.net_sales_delta_percentage ??
                 actionRow?.["Net Sales Growth (%)"]?.value ??
-                actionRow?.net_sales_growth_pct;
-            const backendPreviousNetSales =
-                r.previous_net_sales ?? actionRow?.net_sales_prev ?? previousRow?.net_sales;
+                actionRow?.net_sales_growth_pct ??
+                (pnlMarketplace ? safeDeltaPct(r.net_sales, previousNetSales) : null);
             const rawTax = Number(r.net_taxes ?? r.tax ?? 0);
-            const tax = countryName === "uk" ? Math.abs(rawTax) : rawTax;
+            const tax = pnlCountryName === "uk" ? Math.abs(rawTax) : rawTax;
             const credits = Number(r.credits ?? r.net_credits ?? 0);
             const miscTransaction = Number(r.misc_transaction ?? r.misc_transactions ?? 0);
 
@@ -7522,6 +7615,7 @@ export default function DashboardPage() {
             );
 
             return {
+                ...(pnlMarketplace ? r : {}),
                 sno: isTotal ? undefined : (idx ?? 0) + 1,
                 sku: String(r.sku ?? ""),
                 product_name: getSkuwiseDisplayProductName({ ...r, product_name: resolvedProductName }),
@@ -7553,7 +7647,7 @@ export default function DashboardPage() {
                 refund_sales: Number(r.refund_sales ?? 0),
                 net_sales_tax_and_credits: Number(r.tax_and_credits ?? 0),
                 net_sales: Number(r.net_sales ?? 0),
-                previous_net_sales: backendPreviousNetSales,
+                previous_net_sales: previousNetSales,
                 net_sales_delta: r.net_sales_delta ?? actionRow?.net_sales_delta,
                 net_sales_delta_percentage: backendNetSalesDeltaPct ?? null,
 
@@ -7563,9 +7657,9 @@ export default function DashboardPage() {
                 cogs: Number(r.cogs ?? 0),
                 fba_fees: Number(r.fba_fees ?? 0),
                 selling_fees: Number(r.selling_fees ?? 0),
-                ads_spend: Number(r.ads_spend ?? actionRow?.ads_spend_curr ?? actionRow?.ads_spend ?? (isTotal ? liveBiPayload?.aligned_totals?.total_current_advertising : 0) ?? 0),
+                ads_spend: Number(r.ads_spend ?? actionRow?.ads_spend_curr ?? actionRow?.ads_spend ?? (isTotal ? alignedTotals?.total_current_advertising : 0) ?? 0),
                 acos: Number(r.acos ?? actionRow?.ads_acos_curr ?? actionRow?.acos_curr ?? 0),
-                cm2_profit: Number(r.cm2_profit ?? actionRow?.cm2_profit_curr ?? (isTotal ? liveBiPayload?.aligned_totals?.total_current_profit_cm2 : 0) ?? 0),
+                cm2_profit: Number(r.cm2_profit ?? actionRow?.cm2_profit_curr ?? (isTotal ? alignedTotals?.total_current_profit_cm2 : 0) ?? 0),
                 cm2_profit_growth_pct:
                     r.cm2_profit_growth_pct === undefined ||
                         r.cm2_profit_growth_pct === null
@@ -7625,7 +7719,7 @@ export default function DashboardPage() {
             mapped.push(totalRow);
         }
         return mapped;
-    }, [countryName, data, platform, comparisonPeriod, liveBiPayload]);
+    }, [pnlCountryName, pnlMarketplace, pnlMarketplaceFinancials, data, platform, comparisonPeriod, liveBiPayload]);
 
 
     const PRODUCTWISE_MONEY_KEYS: ProductwiseMoneyKey[] = [
@@ -8090,6 +8184,10 @@ export default function DashboardPage() {
     const mtdUnitsDelta = toNumber(backendDashboardMetric("units").change_percentage);
 
     const plSummaryTotals = useMemo<PlSummaryTotals>(() => {
+        if (pnlMarketplaceFinancials) {
+            return computePlSummaryTotalsFromSkuwise(pnlMarketplaceFinancials.current);
+        }
+
         const isLast30Days = comparisonPeriod === "last30";
         return computePlSummaryTotals(
             isLast30Days ? liveBiPayload : data,
@@ -8097,14 +8195,17 @@ export default function DashboardPage() {
             platform,
             isLast30Days
         );
-    }, [data, liveBiPayload, monthlySkuwiseRows, platform, comparisonPeriod]);
+    }, [pnlMarketplaceFinancials, data, liveBiPayload, monthlySkuwiseRows, platform, comparisonPeriod]);
 
+    const pnlLast30Totals = comparisonPeriod === "last30" && !pnlMarketplace
+        ? liveBiPayload?.last30_totals
+        : null;
     const totalRowCm2Profit = useMemo(() => {
         // Last 30 days has a dedicated account total. aligned_totals is for
         // the aligned comparison window and can include a different CM2 value.
-        if (comparisonPeriod === "last30" && liveBiPayload?.last30_totals?.total_cm2_profit != null) {
+        if (pnlLast30Totals?.total_cm2_profit != null) {
             return convertToDisplayCurrency(
-                toNumber(liveBiPayload.last30_totals.total_cm2_profit),
+                toNumber(pnlLast30Totals.total_cm2_profit),
                 biSourceCurrency
             );
         }
@@ -8123,16 +8224,14 @@ export default function DashboardPage() {
         plSummaryTotals.cm2_profit,
         grandTotalRowRaw?.cm2_profit,
         grandTotalRowDisplay?.cm2_profit,
-        comparisonPeriod,
-        liveBiPayload?.last30_totals?.total_cm2_profit,
-        biAlignedTotals?.total_current_profit_cm2,
+        pnlLast30Totals,
         convertToDisplayCurrency,
         biSourceCurrency,
     ]);
 
     const totalRowCm2Margins = useMemo(() => {
         const totalNetSales = toNumber(
-            (comparisonPeriod === "last30" ? liveBiPayload?.last30_totals?.net_sales : null) ??
+            pnlLast30Totals?.net_sales ??
             grandTotalRowRaw?.net_sales ??
             grandTotalRowDisplay?.net_sales ??
             plSummaryTotals.net_sales
@@ -8150,8 +8249,7 @@ export default function DashboardPage() {
         );
     }, [
         totalRowCm2Profit,
-        comparisonPeriod,
-        liveBiPayload?.last30_totals?.net_sales,
+        pnlLast30Totals,
         grandTotalRowRaw?.net_sales,
         grandTotalRowDisplay?.net_sales,
         plSummaryTotals.net_sales,
@@ -8240,8 +8338,8 @@ export default function DashboardPage() {
 
     // Prefer backend CM2 first.
     // Fallback to old formula only if backend CM2 is missing.
-    const rawCm2Profit = comparisonPeriod === "last30" && liveBiPayload?.last30_totals?.total_cm2_profit != null
-        ? toNumber(liveBiPayload.last30_totals.total_cm2_profit)
+    const rawCm2Profit = pnlLast30Totals?.total_cm2_profit != null
+        ? toNumber(pnlLast30Totals.total_cm2_profit)
         :
         toNumber(
             grandTotalRowRaw?.total_cm2_profit ??
@@ -8259,60 +8357,26 @@ export default function DashboardPage() {
         0
     );
 
-    const adsSpendTotal =
-        platform === "global"
-            ? convertToDisplayCurrency(rawAdsSpendTotal, amazonDataCurrency)
-            : rawAdsSpendTotal;
-
-    const costOfAds =
-        platform === "global"
-            ? convertToDisplayCurrency(rawCostOfAds, amazonDataCurrency)
-            : rawCostOfAds;
-
-    const cm2Profit =
-        platform === "global"
-            ? convertToDisplayCurrency(rawCm2Profit, amazonDataCurrency)
-            : rawCm2Profit;
+    const pnlDisplayAmount = (value: number) => platform === "global" && !pnlMarketplace
+        ? convertToDisplayCurrency(value, amazonDataCurrency)
+        : value;
+    const adsSpendTotal = pnlDisplayAmount(rawAdsSpendTotal);
+    const costOfAds = pnlDisplayAmount(rawCostOfAds);
+    const cm2Profit = pnlDisplayAmount(rawCm2Profit);
 
     const cm2Margins = rawCm2Margins;
 
-    const platformFee =
-        platform === "global"
-            ? convertToDisplayCurrency(Math.abs(rawPlatformFee), amazonDataCurrency)
-            : Math.abs(rawPlatformFee);
-
-    const sponsoredProductsSpend =
-        platform === "global"
-            ? convertToDisplayCurrency(rawSponsoredProductsSpend, amazonDataCurrency)
-            : rawSponsoredProductsSpend;
-
-    const sponsoredBrandSpend =
-        platform === "global"
-            ? convertToDisplayCurrency(rawSponsoredBrandSpend, amazonDataCurrency)
-            : rawSponsoredBrandSpend;
-
-    const dealVoucher =
-        platform === "global"
-            ? convertToDisplayCurrency(rawDealVouchers, amazonDataCurrency)
-            : rawDealVouchers;
+    const platformFee = pnlDisplayAmount(Math.abs(rawPlatformFee));
+    const sponsoredProductsSpend = pnlDisplayAmount(rawSponsoredProductsSpend);
+    const sponsoredBrandSpend = pnlDisplayAmount(rawSponsoredBrandSpend);
+    const dealVoucher = pnlDisplayAmount(rawDealVouchers);
 
     // Alias because your file uses both names.
     const dealVouchers = dealVoucher;
 
-    const inventoryStorageFees =
-        platform === "global"
-            ? convertToDisplayCurrency(rawInventoryStorageFees, amazonDataCurrency)
-            : rawInventoryStorageFees;
-
-    const lost_inventory_total =
-        platform === "global"
-            ? convertToDisplayCurrency(rawLostInventoryTotal, amazonDataCurrency)
-            : rawLostInventoryTotal;
-
-    const otherPlatformFee =
-        platform === "global"
-            ? convertToDisplayCurrency(rawOtherPlatformFee, amazonDataCurrency)
-            : rawOtherPlatformFee;
+    const inventoryStorageFees = pnlDisplayAmount(rawInventoryStorageFees);
+    const lost_inventory_total = pnlDisplayAmount(rawLostInventoryTotal);
+    const otherPlatformFee = pnlDisplayAmount(rawOtherPlatformFee);
 
 
     const amazonPl = () => {
@@ -9401,17 +9465,28 @@ export default function DashboardPage() {
 
     const buildDashboardCachePayload = useCallback(() => {
         const finalLastRefreshAt = lastRefreshAt ?? Date.now();
+        const globalPeriodSource = comparisonPeriod === "last30" ? liveBiPayload : data;
+        const globalTotal = pnlMarketplace
+            ? findSkuwiseTotalRow(globalPeriodSource?.skuwise_items_global) ?? {}
+            : null;
+        const globalSummary = pnlMarketplace
+            ? globalPeriodSource?.last30_totals ?? data?.derived_totals_global
+            : null;
 
         return {
             schemaVersion: DASHBOARD_CACHE_SCHEMA_VERSION,
             complete: true,
             source: "dashboard_client",
             data,
-            adsSpendTotal,
-            cm2Profit,
-            grandTotalProfit: toNumber(grandTotalRowDisplay?.profit),
-            grandTotalPlatformFee: toNumber(grandTotalRowDisplay?.platform_fee),
-            shipmentCharges: toNumber(plSummaryTotals?.shipment_charges ?? 0),
+            adsSpendTotal: globalTotal
+                ? convertToDisplayCurrency(toNumber(globalTotal.total_ads ?? globalSummary?.advertising_fees), "USD")
+                : adsSpendTotal,
+            cm2Profit: globalTotal
+                ? convertToDisplayCurrency(toNumber(globalSummary?.total_cm2_profit ?? globalTotal.total_cm2_profit ?? globalTotal.cm2_profit), "USD")
+                : cm2Profit,
+            grandTotalProfit: toNumber(globalTotal ? globalTotal.profit : grandTotalRowDisplay?.profit),
+            grandTotalPlatformFee: toNumber(globalTotal ? globalTotal.platform_fee : grandTotalRowDisplay?.platform_fee),
+            shipmentCharges: toNumber(globalTotal ? globalSummary?.shipment_fees ?? globalTotal.shipment_fees : plSummaryTotals?.shipment_charges),
 
             biDailySeries,
             biPeriods,
@@ -9452,6 +9527,9 @@ export default function DashboardPage() {
         };
     }, [
         data,
+        pnlMarketplace,
+        comparisonPeriod,
+        convertToDisplayCurrency,
         adsSpendTotal,
         cm2Profit,
         grandTotalRowDisplay?.profit,
@@ -9873,6 +9951,8 @@ export default function DashboardPage() {
     // /dashboard/action-items returns this from the DB-backed monthly totals,
     // so the P&L summary must not recalculate TACoS independently.
     const tacosFromDisplayedCardsForSummary = useMemo(() => {
+        if (pnlMarketplace) return toNumber(marketplaceCardMetrics.tacos?.current);
+
         if (comparisonPeriod === "last30") {
             const rowTacos = last30CurrentSkuTotal?.tacos_total_advertising_cost_of_sale;
             if (rowTacos != null) return toNumber(rowTacos);
@@ -9902,6 +9982,8 @@ export default function DashboardPage() {
             0
         );
     }, [
+        pnlMarketplace,
+        marketplaceCardMetrics,
         comparisonPeriod,
         last30CurrentSkuTotal,
         liveBiPayload?.last30_totals?.tacos_total_advertising_cost_of_sale,
@@ -9936,6 +10018,10 @@ export default function DashboardPage() {
     ]);
 
     const reimbursementVsCm2PctForSummary = useMemo(() => {
+        if (pnlMarketplace) {
+            return totalRowCm2Profit ? (reimbursementForSummary / totalRowCm2Profit) * 100 : 0;
+        }
+
         if (comparisonPeriod === "last30") {
             const last30Value = liveBiPayload?.last30_totals?.reimbursement_vs_cm2_margins;
             if (last30Value != null) return toNumber(last30Value);
@@ -9954,6 +10040,8 @@ export default function DashboardPage() {
         const cm2 = toNumber(cm2Profit);
         return cm2 ? (reimbursementForSummary / cm2) * 100 : 0;
     }, [
+        pnlMarketplace,
+        totalRowCm2Profit,
         comparisonPeriod,
         platform,
         liveBiPayload?.last30_totals?.reimbursement_vs_cm2_margins,
@@ -9966,6 +10054,12 @@ export default function DashboardPage() {
     ]);
 
     const reimbursementVsSalesPctForSummary = useMemo(() => {
+        if (pnlMarketplace) {
+            return plSummaryTotals.net_sales
+                ? (reimbursementForSummary / plSummaryTotals.net_sales) * 100
+                : 0;
+        }
+
         if (comparisonPeriod === "last30") {
             const last30Value = liveBiPayload?.last30_totals?.reimbursement_vs_sales;
             if (last30Value != null) return toNumber(last30Value);
@@ -9984,6 +10078,7 @@ export default function DashboardPage() {
         const netSales = toNumber(plSummaryTotals.net_sales) || toNumber(stats_mtdHome);
         return netSales ? (reimbursementForSummary / netSales) * 100 : 0;
     }, [
+        pnlMarketplace,
         comparisonPeriod,
         platform,
         liveBiPayload?.last30_totals?.reimbursement_vs_sales,
@@ -10893,16 +10988,7 @@ export default function DashboardPage() {
 
     const finalBarLabels = shouldShowDummyUi ? dummyBarLabels : labels;
 
-    const globalCurrentGraphValues = useMemo(() => {
-        const rows =
-            platform === "global" && Array.isArray(data?.skuwise_items_global)
-                ? data.skuwise_items_global
-                : Array.isArray(data?.skuwise_items)
-                    ? data.skuwise_items
-                    : monthlySkuwiseRows || [];
-
-        const grand = getGrandTotalRow(rows) as GrandTotalSkuwiseRow;
-
+    const getPnlGraphValues = (grand: GrandTotalSkuwiseRow) => {
         const currentPlatformFee = toNumber(
             grand?.platform_fee ??
             grand?.platformfeenew ??
@@ -10952,15 +11038,27 @@ export default function DashboardPage() {
                 grand?.cm2_profit
             ),
         } as Record<string, number>;
-    }, [
-        platform,
-        data,
-        monthlySkuwiseRows,
-    ]);
+    };
+
+    const globalCurrentGraphValues = useMemo(() => {
+        const rows =
+            platform === "global" && Array.isArray(data?.skuwise_items_global)
+                ? data.skuwise_items_global
+                : Array.isArray(data?.skuwise_items)
+                    ? data.skuwise_items
+                    : monthlySkuwiseRows || [];
+
+        return getPnlGraphValues(getGrandTotalRow(rows));
+    }, [platform, data, monthlySkuwiseRows]);
 
     const finalBarValues = useMemo(() => {
         if (shouldShowDummyUi) {
             return dummyBarValues;
+        }
+
+        if (pnlMarketplaceFinancials) {
+            const totals = getPnlGraphValues(findSkuwiseTotalRow(pnlMarketplaceFinancials.current) ?? {});
+            return finalBarLabels.map((label) => Math.round(toNumber(totals[label])));
         }
 
         if (platform === "global") {
@@ -10973,6 +11071,7 @@ export default function DashboardPage() {
     }, [
         shouldShowDummyUi,
         dummyBarValues,
+        pnlMarketplaceFinancials,
         platform,
         finalBarLabels,
         globalCurrentGraphValues,
@@ -11060,6 +11159,11 @@ export default function DashboardPage() {
             return dummyPrevBarValues;
         }
 
+        if (pnlMarketplaceFinancials) {
+            const totals = getPnlGraphValues(findSkuwiseTotalRow(pnlMarketplaceFinancials.previous) ?? {});
+            return finalBarLabels.map((label) => Math.round(toNumber(totals[label])));
+        }
+
         if (platform === "global") {
             return finalBarLabels.map((label) =>
                 Math.round(toNumber(globalPreviousGraphValues[label]))
@@ -11070,13 +11174,16 @@ export default function DashboardPage() {
     }, [
         shouldShowDummyUi,
         dummyPrevBarValues,
+        pnlMarketplaceFinancials,
         platform,
         finalBarLabels,
         globalPreviousGraphValues,
         prevValues,
     ]);
 
-    const finalAllValuesZero = shouldShowDummyUi ? false : allValuesZero;
+    const finalAllValuesZero = shouldShowDummyUi ? false : pnlMarketplace
+        ? [...finalBarValues, ...finalPrevBarValues].every((value) => value === 0)
+        : allValuesZero;
 
     const finalBiDailySeriesHome: GraphDailySeries | null = shouldShowDummyUi
         ? (dummyBiDailySeriesHome as GraphDailySeries)
@@ -11305,7 +11412,7 @@ export default function DashboardPage() {
             if (!rowsToExport.length) return;
 
             const periodLabel = formattedMonthYear;
-            const titleCountry = countryName === "global" ? "Global" : countryName.toUpperCase();
+            const titleCountry = pnlCountryName === "global" ? "Global" : pnlCountryName.toUpperCase();
 
             const companyName =
                 (userData as any)?.companyName ||
@@ -11672,15 +11779,15 @@ export default function DashboardPage() {
             const summaryRows = isUsPnlSkuLayout ? usSummaryRows : legacySummaryRows;
 
             exportPnLProductwiseBreakdownMtdExcel({
-                filename: `Amazon-PnL-Productwise-MTD-${periodLabel}.xlsx`,
+                filename: `Amazon-PnL-Productwise-MTD-${pnlMarketplace ? `${titleCountry}-` : ""}${periodLabel}.xlsx`,
                 titleLine: `Amazon ${titleCountry} - P&L Productwise Breakdown MTD - ${periodLabel}`,
-                countryName,
+                countryName: pnlCountryName,
                 titleCountry,
                 platformLabel: "Phormula",
                 periodLabel,
                 companyName,
                 brandName: String(brandName || ""),
-                homeCurrencyCode: profileHomeCurrency,
+                homeCurrencyCode: pnlMarketplace ? displayCurrency : profileHomeCurrency,
                 isUsLayout: isUsPnlSkuLayout,
                 dataRows,
                 summaryRows,
@@ -11692,7 +11799,9 @@ export default function DashboardPage() {
         monthlySkuwiseRowsDisplay,
         plSortConfig,
         formattedMonthYear,
-        countryName,
+        pnlCountryName,
+        pnlMarketplace,
+        displayCurrency,
         platform,
         isUsPnlSkuLayout,
         isUkPnlSkuLayout,
@@ -12107,6 +12216,43 @@ export default function DashboardPage() {
         ? dummyCm1ProfitPieData
         : netSalesPieData;
 
+    const marketplacePnlPies = useMemo(() => {
+        if (!pnlMarketplaceFinancials) return null;
+        const { current, previous } = pnlMarketplaceFinancials;
+        const skuKey = (row: any) => String(row?.sku ?? "").trim().toUpperCase();
+        const previousBySku = new Map(previous.map((row) => [skuKey(row), row]));
+        const total = findSkuwiseTotalRow(current);
+        const products = current.filter((row) =>
+            row !== total && skuKey(row) && !row.isOthers && !row.isTotal
+        );
+
+        const buildPie = (amount: (row: any) => number): Cm1PieSlice[] => {
+            const slices = products.map((row) => {
+                const value = amount(row);
+                const prevValue = amount(previousBySku.get(skuKey(row)));
+                return {
+                    name: getSkuwiseDisplayProductName(row),
+                    value,
+                    prevValue,
+                    deltaPct: safeDeltaPct(value, prevValue),
+                };
+            }).filter(({ value, prevValue }) => value !== 0 || prevValue !== 0);
+            const totalAbs = slices.reduce((sum, { value }) => sum + Math.abs(value), 0);
+            return slices
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .map((slice) => ({
+                    ...slice,
+                    pct: totalAbs ? (Math.abs(slice.value) / totalAbs) * 100 : 0,
+                }));
+        };
+
+        return {
+            netSales: buildPie((row) => toNumber(row?.net_sales)),
+            cm1: buildPie((row) => toNumber(row?.profit ?? row?.cm1_profit)),
+            cm2: buildPie((row) => toNumber(row?.cm2_profit ?? row?.total_cm2_profit)),
+        };
+    }, [pnlMarketplaceFinancials]);
+
 
 
     const hasRealInventoryRows = Array.isArray(invRows) && invRows.length > 0;
@@ -12132,7 +12278,7 @@ export default function DashboardPage() {
         inventoryAlerts: finalInventoryAlerts,
         userData,
         convertToDisplayCurrency,
-        selectedInventoryCountry: globalMtdCountry,
+        selectedInventoryCountry: selectedGlobalInventoryCountry,
     });
 
     const finalTargetData = shouldShowDummyUi ? dummyTargetData : targetData;
@@ -12479,7 +12625,7 @@ export default function DashboardPage() {
                     ? Number(source.cm2_profit_per_unit_growth_pct)
                     : 0;
 
-            const valueCurrency: CurrencyCode = platform === "global" ? "USD" : biSourceCurrency;
+            const valueCurrency = pnlMarketplace ? displayCurrency : biSourceCurrency;
 
             return [
                 {
@@ -12554,7 +12700,8 @@ export default function DashboardPage() {
             ];
         },
         [
-            platform,
+            pnlMarketplace,
+            displayCurrency,
             biSourceCurrency,
             convertToDisplayCurrency,
             formatDisplayAmount,
@@ -12678,7 +12825,7 @@ export default function DashboardPage() {
                 return;
             }
 
-            const liveRow = findLiveBiRowForPnlRow(row);
+            const liveRow = pnlMarketplace ? null : findLiveBiRowForPnlRow(row);
             const insight = findLiveBiInsightForPnlRow(row, liveRow);
             const productName =
                 liveRow?.product_name ||
@@ -12704,24 +12851,27 @@ export default function DashboardPage() {
                     ["CA", getFirstCountryActionForDrawer(journey, "ca")],
                     ["India", getFirstCountryActionForDrawer(journey, "india")],
                 ] as const;
+                const selectedActions = pnlMarketplace
+                    ? countryActions.filter(([country]) => country.toLowerCase() === pnlMarketplace)
+                    : countryActions;
 
                 journeyPoints = Array.isArray(journey?.journey_comparison)
                     ? journey.journey_comparison
                     : toDrawerPoints(insight?.product_journey);
 
-                recommendationPoints = countryActions
+                recommendationPoints = selectedActions
                     .map(([country, action]) =>
                         action?.recommendation ? `${country}: ${action.recommendation}` : ""
                     )
                     .filter(Boolean);
 
-                advertisingPoints = countryActions
+                advertisingPoints = selectedActions
                     .map(([country, action]) =>
                         action?.ads_recommendation ? `${country}: ${action.ads_recommendation}` : ""
                     )
                     .filter(Boolean);
 
-                inventoryPoints = countryActions
+                inventoryPoints = selectedActions
                     .map(([country, action]) =>
                         action?.inventory_recommendation
                             ? `${country}: ${action.inventory_recommendation}`
@@ -12802,6 +12952,7 @@ export default function DashboardPage() {
         },
         [
             platform,
+            pnlMarketplace,
             findLiveBiRowForPnlRow,
             findLiveBiInsightForPnlRow,
             findGlobalJourneyForPnlRow,
@@ -13385,167 +13536,122 @@ export default function DashboardPage() {
 
     const secondsLeft = remainingSteps * 30;
 
-    const getCountryMtdCardData = useCallback((country: "uk" | "us") => {
-        const countryMetrics = (data as any)?.dashboard_card_metrics_by_country?.[country];
-        const metrics = countryMetrics || (data as any)?.dashboard_card_metrics || {};
-        const metric = (key: string) => metrics[key] || {};
+    const marketplaceCards: AmazonStatCardProps[] = selectedMarketplace ? [
+        { key: "units", label: "Units", className: "border-[#FDD36F] border-t-4" },
+        { key: "asp", label: "ASP", className: "border-[#B75A5A] border-t-4" },
+        { key: "gross_sales", label: "Gross Sales", className: "border-[#ED9F50] border-t-4", perUnit: true },
+        { key: "net_sales", label: "Net Sales", className: "border-[#6BBDE3] border-t-4", perUnit: true },
+        { key: "cost_of_ads", label: "Cost of Ads", className: "border-[#C58A5A] border-t-4", perUnit: true, inverseDelta: true },
+        { key: "tacos", label: "TACoS", className: "border-[#3A8EA4] border-t-4", inverseDelta: true },
+        { key: "cm2_profit", label: "CM2 Profit", className: "border-[#A8BE7A] border-t-4", showPercentage: true },
+        { key: "promotions", label: "Promotions", className: "border-[#7B9A6D] border-t-4", showPercentage: true, inverseDelta: true },
+    ].map(({ key, label, className, perUnit, inverseDelta, showPercentage }) => {
+        const metric = marketplaceCardMetrics[key] ?? {};
+        const displayValue = (value: number) => {
+            const numeric = toNumber(value);
+            return comparisonPeriod === "last30" || key === "units" || key === "tacos"
+                ? numeric
+                : convertToDisplayCurrency(numeric, "USD");
+        };
+        const formatter = key === "units" ? fmtInt : key === "tacos" ? fmtPct2 :
+            (value: number) => formatDisplayAmount(value, label);
+        const absolute = key === "promotions";
 
         return {
-            units: toNumber(metric("units").current),
-            prevUnits: toNumber(metric("units").previous),
-            unitsDelta: toNumber(metric("units").change_percentage),
-            grossSales: toNumber(metric("gross_sales").current),
-            prevGrossSales: toNumber(metric("gross_sales").previous),
-            grossSalesPerUnit: toNumber(metric("gross_sales").current_per_unit),
-            prevGrossSalesPerUnit: toNumber(metric("gross_sales").previous_per_unit),
-            grossSalesDelta: toNumber(metric("gross_sales").change_percentage),
-            netSales: toNumber(metric("net_sales").current),
-            prevNetSales: toNumber(metric("net_sales").previous),
-            netSalesPerUnit: toNumber(metric("net_sales").current_per_unit),
-            prevNetSalesPerUnit: toNumber(metric("net_sales").previous_per_unit),
-            netSalesDelta: toNumber(metric("net_sales").change_percentage),
-            asp: toNumber(metric("asp").current),
-            prevAsp: toNumber(metric("asp").previous),
-            aspDelta: toNumber(metric("asp").change_percentage),
-            ads: toNumber(metric("cost_of_ads").current),
-            prevAds: toNumber(metric("cost_of_ads").previous),
-            adsPerUnit: toNumber(metric("cost_of_ads").current_per_unit),
-            prevAdsPerUnit: toNumber(metric("cost_of_ads").previous_per_unit),
-            adsDelta: toNumber(metric("cost_of_ads").change_percentage),
-            tacos: toNumber(metric("tacos").current),
-            prevTacos: toNumber(metric("tacos").previous),
-            tacosDelta: toNumber(metric("tacos").change_percentage),
-            cm2Profit: toNumber(metric("cm2_profit").current),
-            prevCm2Profit: toNumber(metric("cm2_profit").previous),
-            cm2ProfitDelta: toNumber(metric("cm2_profit").change_percentage),
-            cm2Pct: toNumber(metric("cm2_profit").current_percentage),
-            prevCm2Pct: toNumber(metric("cm2_profit").previous_percentage),
-            promotions: toNumber(metric("promotions").current),
-            prevPromotions: toNumber(metric("promotions").previous),
-            promotionsDelta: toNumber(metric("promotions").change_percentage),
-            promotionsPct: toNumber(metric("promotions").current_percentage),
-            prevPromotionsPct: toNumber(metric("promotions").previous_percentage),
+            label,
+            current: displayValue(metric.current),
+            previous: displayValue(metric.previous),
+            deltaPct: metric.change_percentage == null ? null : toNumber(metric.change_percentage),
+            loading: !shouldShowDummyUi && (loading || biLoading || last30Loading),
+            formatter: showPercentage
+                ? (value: number) => formatCurrentAmountWithPct(value, toNumber(metric.current_percentage), label, absolute)
+                : formatter,
+            previousFormatter: showPercentage
+                ? (value: number) => formatAmountWithPct(value, toNumber(metric.previous_percentage), label, absolute)
+                : formatter,
+            currentPerUnit: perUnit ? displayValue(metric.current_per_unit) : undefined,
+            previousPerUnit: perUnit ? displayValue(metric.previous_per_unit) : undefined,
+            perUnitFormatter: formatDisplayAmountNoDecimals,
+            inverseDelta,
+            bottomLabel: stickyKpiPreviousLabel,
+            className,
         };
-    }, [data]);
+    }) : [];
 
-    const renderCountryMtdCards = (country: "uk" | "us") => {
-        const c = getCountryMtdCardData(country);
-        const title = country === "uk" ? "UK MTD Sales (USD)" : "US MTD Sales (USD)";
+    const renderCountryMtdCards = () => (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 2xl:gap-3 auto-rows-fr">
+            {marketplaceCards.map((card) => <AmazonStatCard key={card.label} {...card} />)}
+        </div>
+    );
 
-        return (
-            <div className="">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 lg:gap-2 2xl:gap-3 ">
-                    <AmazonStatCard
-                        label="Units"
-                        current={c.units}
-                        previous={c.prevUnits}
-                        deltaPct={c.unitsDelta}
-                        formatter={fmtInt}
-                        bottomLabel={prevLabel}
-                        className="border-[#FDD36F] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
+    const marketplaceTargetStats = (() => {
+        if (!selectedMarketplace || shouldShowDummyUi) return null;
 
-                    <AmazonStatCard
-                        label="ASP"
-                        current={c.asp}
-                        previous={c.prevAsp}
-                        deltaPct={c.aspDelta}
-                        formatter={formatDisplayAmount}
-                        previousFormatter={formatDisplayAmount}
-                        bottomLabel={prevLabel}
-                        className="border-[#B75A5A] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
+        const region = selectedMarketplace === "uk" ? "UK" : "US";
+        const currency = currencyForCountry(selectedMarketplace);
+        const currentSummary = targetSummaries[selectedMarketplace];
+        const previousSummary = prevTargetSummaries[selectedMarketplace];
+        const lastMonthTotalHome = convertToDisplayCurrency(toNumber(previousSummary?.net_sales_total), currency);
+        const targetHome = convertToDisplayCurrency(toNumber(currentSummary?.target_sales), currency) || lastMonthTotalHome;
+        const previousTargetHome = convertToDisplayCurrency(toNumber(previousSummary?.target_sales), currency) || lastMonthTotalHome;
+        const netSales = marketplaceCards.find(({ label }) => label === "Net Sales");
+        const mtdHome = toNumber(netSales?.current);
+        const lastMonthToDateHome = toNumber(netSales?.previous);
+        const { todayDay } = getRegionDayInfo(region);
+        const completionPct = (todayDay / getDaysInMonthByRegion(region)) * 100;
+        const currentTotal = findSkuwiseTotalRow(marketplaceFinancials?.current);
+        const previousTotal = findSkuwiseTotalRow(marketplaceFinancials?.previous);
+        const previousDashboardTotals = previousSkuwiseGlobalData?.[`dashboard_totals_${selectedMarketplace}`];
+        const reimbursement = {
+            current: toNumber(currentTotal?.current_net_reimbursement),
+            previous: comparisonPeriod === "last30"
+                ? toNumber(previousTotal?.current_net_reimbursement)
+                : convertToDisplayCurrency(toNumber(previousDashboardTotals?.previous_net_reimbursement ??
+                    previousDashboardTotals?.current_net_reimbursement ?? previousDashboardTotals?.net_reimbursement), "USD"),
+        };
+        const trend = (sales: number) => targetHome > 0 ? (sales / targetHome) * 100 - completionPct : 0;
+        const regionalValues: RegionMetrics = {
+            mtdUSD: mtdHome,
+            lastMonthToDateUSD: lastMonthToDateHome,
+            lastMonthTotalUSD: lastMonthTotalHome,
+            targetUSD: targetHome,
+            decTargetUSD: targetHome,
+        };
 
-                    <AmazonStatCard
-                        label="Gross Sales"
-                        current={c.grossSales}
-                        previous={c.prevGrossSales}
-                        deltaPct={c.grossSalesDelta}
-                        formatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                        previousFormatter={(val) => formatDisplayAmount(val, "Gross Sales")}
-                        currentPerUnit={c.grossSalesPerUnit}
-                        previousPerUnit={c.prevGrossSalesPerUnit}
-                        perUnitFormatter={formatDisplayAmountNoDecimals}
-                        bottomLabel={prevLabel}
-                        className="border-[#ED9F50] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
+        return {
+            region,
+            regionalValues,
+            mtdHome,
+            lastMonthToDateHome,
+            lastMonthTotalHome,
+            targetHome,
+            previousTargetHome,
+            salesTrendPct: safeDeltaPct(mtdHome, lastMonthToDateHome) ?? 0,
+            targetTrendPct: trend(mtdHome),
+            previousTargetTrendPct: trend(lastMonthToDateHome),
+            targetTrendDelta: targetHome > 0 ? ((mtdHome - lastMonthToDateHome) / targetHome) * 100 : 0,
+            completionPct,
+            reimbursement,
+        };
+    })();
 
-                    <AmazonStatCard
-                        label="Net Sales"
-                        current={c.netSales}
-                        previous={c.prevNetSales}
-                        deltaPct={c.netSalesDelta}
-                        formatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                        previousFormatter={(val) => formatDisplayAmount(val, "Net Sales")}
-                        currentPerUnit={c.netSalesPerUnit}
-                        previousPerUnit={c.prevNetSalesPerUnit}
-                        perUnitFormatter={formatDisplayAmountNoDecimals}
-                        bottomLabel={prevLabel}
-                        className="border-[#6BBDE3] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
-
-
-
-                    <AmazonStatCard
-                        label="Cost of Ads"
-                        current={c.ads}
-                        previous={c.prevAds}
-                        deltaPct={c.adsDelta}
-                        inverseDelta
-                        currentPerUnit={c.adsPerUnit}
-                        previousPerUnit={c.prevAdsPerUnit}
-                        perUnitFormatter={formatDisplayAmountNoDecimals}
-                        formatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                        previousFormatter={(val) => formatDisplayAmount(val, "Cost of Ads")}
-                        bottomLabel={prevLabel}
-                        className="border-[#C58A5A] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
-
-                    <AmazonStatCard
-                        label="TACoS"
-                        current={c.tacos}
-                        previous={c.prevTacos}
-                        deltaPct={c.tacosDelta}
-                        inverseDelta
-                        formatter={fmtPct2}
-                        bottomLabel={prevLabel}
-                        className="border-[#3A8EA4] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
-
-                    <AmazonStatCard
-                        label="CM2 Profit"
-                        current={c.cm2Profit}
-                        previous={c.prevCm2Profit}
-                        deltaPct={c.cm2ProfitDelta}
-                        formatter={(val) => formatCurrentAmountWithPct(val, c.cm2Pct, "CM2 Profit")}
-                        previousFormatter={(val) => formatAmountWithPct(val, c.prevCm2Pct, "CM2 Profit")}
-                        bottomLabel={prevLabel}
-                        className="border-[#A8BE7A] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
-
-                    <AmazonStatCard
-                        label="Promotions"
-                        current={c.promotions}
-                        previous={c.prevPromotions}
-                        deltaPct={c.promotionsDelta}
-                        inverseDelta
-                        formatter={(val) => formatCurrentAmountWithPct(val, c.promotionsPct, "Promotions", true)}
-                        previousFormatter={(val) => formatAmountWithPct(val, c.prevPromotionsPct, "Promotions", true)}
-                        bottomLabel={prevLabel}
-                        className="border-[#7B9A6D] border-t-4"
-                        loading={!shouldShowDummyUi && (loading || biLoading)}
-                    />
-                </div>
-            </div>
-        );
-    };
+    const productwiseStickyKpiItems = pnlMarketplace
+        ? stickyKpiItems.map((item) => {
+            const card = marketplaceCards.find(({ label }) => label === item.label);
+            if (card) return { ...item, ...card, className: item.className };
+            if (!marketplaceTargetStats) return item;
+            if (item.label === "Target") {
+                const { targetHome, previousTargetHome } = marketplaceTargetStats;
+                return { ...item, current: targetHome, previous: previousTargetHome, deltaPct: safeDeltaPct(targetHome, previousTargetHome) };
+            }
+            return {
+                ...item,
+                current: marketplaceTargetStats.targetTrendPct,
+                previous: marketplaceTargetStats.previousTargetTrendPct,
+                deltaPct: marketplaceTargetStats.targetTrendDelta,
+            };
+        })
+        : stickyKpiItems;
 
     const renderGlobalMtdCards = () => {
         const c = globalMtdCardData;
@@ -15571,8 +15677,19 @@ export default function DashboardPage() {
                             />
                         </div> */}
 
-                        {["summary", "productwise"].includes(activeTab) && (
-                            <DashboardStickyKpis items={stickyKpiItems} />
+                        {activeTab === "productwise" && platform === "global" && globalMtdViewOptions.length > 1 && (
+                            <div className="mt-2 flex justify-end md:mt-4">
+                                <SegmentedToggle
+                                    value={globalMtdView}
+                                    options={globalMtdViewOptions}
+                                    onChange={setGlobalMtdView}
+                                    textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                                />
+                            </div>
+                        )}
+
+                        {(activeTab === "summary" || activeTab === "productwise") && (
+                            <DashboardStickyKpis items={productwiseStickyKpiItems} />
                         )}
 
                         {activeTab === "action" && (
@@ -15650,7 +15767,13 @@ export default function DashboardPage() {
                                 comparisonPeriod={comparisonPeriod}
                                 dummyStatData={dummyStatData}
                                 globalMtdCardData={globalMtdCardData}
-                                backendCardDeltas={backendCardDeltas}
+                                backendCardDeltas={marketplaceTargetStats ? {
+                                    ...backendCardDeltas,
+                                    target_reimbursement: safeDeltaPct(
+                                        marketplaceTargetStats.reimbursement.current,
+                                        marketplaceTargetStats.reimbursement.previous
+                                    ),
+                                } : backendCardDeltas}
                                 loading={loading}
                                 shopifyLoading={shopifyLoading}
                                 biLoading={biLoading}
@@ -15701,7 +15824,7 @@ export default function DashboardPage() {
                                 shopifyPrevDeriv={shopifyPrevDeriv}
                                 finalBiDailySeriesHome={finalBiDailySeriesHome}
                                 finalBiPeriods={finalBiPeriods}
-                                dashboardAllowedEndISO={dashboardAllowedEndISO}
+                                dashboardAllowedEndISO={salesDataEndISO}
                                 biUiLoading={biUiLoading}
                                 biError={biError}
                                 currencySymbol={currencySymbol}
@@ -15733,6 +15856,24 @@ export default function DashboardPage() {
                                 finalRangeCompletedPct={finalRangeCompletedPct}
                                 lastRefreshAt={lastRefreshAt}
                                 dashboardCompletedTimeZone={dashboardCompletedTimeZone}
+                                {...(marketplaceTargetStats && {
+                                    regions: { ...regions, [marketplaceTargetStats.region]: marketplaceTargetStats.regionalValues },
+                                    targetRegion: marketplaceTargetStats.region,
+                                    finalTargetsMtdHome: marketplaceTargetStats.mtdHome,
+                                    finalStatsTargetHome: marketplaceTargetStats.targetHome,
+                                    finalTargetsLastMonthTotalHome: marketplaceTargetStats.lastMonthTotalHome,
+                                    finalTargetsLastMonthToDateHome: marketplaceTargetStats.lastMonthToDateHome,
+                                    finalStatsSalesTrendPct: marketplaceTargetStats.salesTrendPct,
+                                    finalStatsTargetTrendPct: marketplaceTargetStats.targetTrendPct,
+                                    finalTargetsReimbursement: marketplaceTargetStats.reimbursement,
+                                    stickyTargetHome: marketplaceTargetStats.targetHome,
+                                    targets_mtdHome: marketplaceTargetStats.mtdHome,
+                                    targets_lastMonthTotalHome: marketplaceTargetStats.lastMonthTotalHome,
+                                    targets_lastMonthToDateHome: marketplaceTargetStats.lastMonthToDateHome,
+                                    targets_reimbursement: marketplaceTargetStats.reimbursement,
+                                    finalRangeCompletedPct: marketplaceTargetStats.completionPct,
+                                    salesTargetBiAlignedTotals: null,
+                                })}
                             />
                         )}
 
@@ -15836,7 +15977,7 @@ export default function DashboardPage() {
                                     formatSummaryValue={formatSummaryValue}
                                     lost_inventory_total={lost_inventory_total}
                                     otherPlatformFee={otherPlatformFee}
-                                    countryName={countryName}
+                                    countryName={pnlCountryName}
                                     isUsPnlSkuLayout={isUsPnlSkuLayout}
                                     isUkPnlSkuLayout={isUkPnlSkuLayout}
                                     promotionsPlacement={dashboardPromotionsPlacement}
@@ -15858,7 +15999,7 @@ export default function DashboardPage() {
                                     isMtdPlExpanded={isMtdPlExpanded}
                                     setIsMtdPlExpanded={setIsMtdPlExpanded}
                                     chartRef={chartRef}
-                                    countryNameForGraph={countryNameForGraph}
+                                    countryNameForGraph={pnlMarketplace ?? countryNameForGraph}
                                     formattedMonthYear={formattedMonthYear}
                                     currencySymbol={currencySymbol}
                                     finalBarLabels={finalBarLabels}
@@ -15869,9 +16010,9 @@ export default function DashboardPage() {
                                     loading={loading}
                                     finalAllValuesZero={finalAllValuesZero}
                                     isUsingDummyData={isUsingDummyData}
-                                    netSalesPieData={finalNetSalesPieData}
-                                    finalCm1ProfitPieData={finalCm1ProfitPieData}
-                                    cm2ProfitPieData={cm2ProfitPieData}
+                                    netSalesPieData={shouldShowDummyUi ? finalNetSalesPieData : marketplacePnlPies?.netSales ?? finalNetSalesPieData}
+                                    finalCm1ProfitPieData={shouldShowDummyUi ? finalCm1ProfitPieData : marketplacePnlPies?.cm1 ?? finalCm1ProfitPieData}
+                                    cm2ProfitPieData={shouldShowDummyUi ? cm2ProfitPieData : marketplacePnlPies?.cm2 ?? cm2ProfitPieData}
                                     displayCurrency={displayCurrency}
                                 />
                             </>
