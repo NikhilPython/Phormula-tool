@@ -650,8 +650,56 @@ def build_live_mtd_bi_payload(
         "remaining_skus_block": remaining_skus_block,
     }
 
+    from app.utils.live_bi_utils import (
+        fetch_current_ai_values_from_skuwisemonthly,
+        fetch_current_inventory_snapshot, fetch_live_target_context,
+    )
+    from app.routes.amazon_api_routes import get_previous_month_mtd_payload
+    from app.routes.live_data_bi_routes import build_weekly_email_summary_json
+    from app.utils.live_bi_email_metrics import (
+        build_email_metric_rows, build_email_dashboard_recap,
+    )
+
+    monthly_rows, monthly_totals, _ = fetch_current_ai_values_from_skuwisemonthly(
+        user_id=user_id, country=country, curr_end=curr_end,
+    )
+    previous_pnl = get_previous_month_mtd_payload(
+        user_id=int(user_id), country=country, now_utc=datetime.combine(today, datetime.min.time()),
+        as_of=curr_end.isoformat(), start_day=curr_start.day, end_day=curr_end.day,
+    ) or {}
+    email_rows = build_email_metric_rows(
+        growth_data, monthly_rows, previous_pnl.get("sku_metrics") or prev_data_aligned,
+    )
+    inventory, _ = fetch_current_inventory_snapshot(
+        user_id=user_id, country=country, year=curr_end.year, month=curr_end.month,
+    )
+    inventory = {str(sku).strip().upper(): values for sku, values in inventory.items()}
+    for row in email_rows:
+        values = inventory.get(str(row.get("sku") or "").strip().upper()) or {}
+        for key in ("current_inventory", "coverage_ratio_months"):
+            if values.get(key) is not None:
+                row[key] = values[key]
+    response_payload["target_context"] = fetch_live_target_context(
+        user_id=user_id, country=country, curr_end=curr_end,
+        current_net_sales=monthly_totals.get("net_sales", 0.0),
+    )
+    response_payload["currency"] = currency
+    response_payload["email_metric_rows"] = email_rows
+    response_payload["email_dashboard_recap"] = build_email_dashboard_recap(
+        monthly_totals, previous_pnl.get("totals") or {},
+    )
+    weekly_summary = build_weekly_email_summary_json(
+        country=country, prev_label=prev_label, curr_label=curr_label,
+        currency=currency, overall_summary=overall_summary,
+        portfolio_recommendation=portfolio_recommendation,
+        recommended_actions_mtd=recommended_actions_mtd,
+        sku_strategy_actions=sku_strategy_actions, all_action_rows=email_rows,
+    )
+    response_payload["weekly_email_summary_json"] = weekly_summary
+
     return {
         "status": "ok",
+        "weekly_email_summary_json": weekly_summary,
         "response_payload": response_payload,
         "overall_summary": overall_summary,
         "overall_actions": overall_actions,

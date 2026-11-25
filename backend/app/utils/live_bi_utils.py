@@ -2418,7 +2418,7 @@ def fetch_current_ai_values_from_skuwisemonthly(
     if "product_name" not in df.columns:
         df["product_name"] = ""
     else:
-        df["product_name"] = df["product_name"].astype(str).str.strip()
+        df["product_name"] = df["product_name"].map(safe_strip)
 
     # ✅ Robust TOTAL row detection
     total_mask = (
@@ -2469,7 +2469,9 @@ def fetch_current_ai_values_from_skuwisemonthly(
     if "product_name" not in sku_df.columns:
         sku_df["product_name"] = sku_df["sku"]
     else:
-        sku_df["product_name"] = sku_df["product_name"].fillna(sku_df["sku"])
+        sku_df["product_name"] = sku_df.apply(
+            lambda row: safe_strip(row.get("product_name"), default=row["sku"]), axis=1,
+        )
 
     # -------------------------------------------------
     # Normalize monthly-table columns to your AI expected keys
@@ -3238,7 +3240,11 @@ def calculate_growth(prev_data, curr_data, key="sku", numeric_fields=None) -> li
             continue
 
         growth_row = {
-            "product_name": row2.get("product_name"),
+            "product_name": (
+                safe_strip(row2.get("product_name"))
+                or safe_strip(prev_dict.get(item_key, {}).get("product_name"))
+                or str(item_key)
+            ),
             key: item_key,
         }
 
@@ -3702,14 +3708,12 @@ def safe_strip(x, default=""):
     # handles None, NaN, numbers, etc.
     if x is None:
         return default
-    if isinstance(x, float) and np.isnan(x):
-        return default
     try:
         s = str(x)
     except Exception:
         return default
     s = s.strip()
-    return s if s else default
+    return default if s.lower() in {"", "nan", "none", "null", "<na>", "nat"} else s
 
 
 
