@@ -1379,13 +1379,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
     }
   }, [homeCurrency, isGlobalPage]);
 
-  const effectiveHomeCurrency = isGlobalPage
-    ? (homeCurrency || persistedHomeCurrency || "usd").toLowerCase()
-    : "";
-
-  const currencySymbol = isGlobalPage
-    ? getCurrencySymbol(effectiveHomeCurrency || "usd")
-    : getCurrencySymbol(countryName || "");
+  const effectiveHomeCurrency = homeCurrency?.trim().toLowerCase() ||
+    (isGlobalPage ? persistedHomeCurrency || "usd" : countryName);
+  const currencySymbol = getCurrencySymbol(effectiveHomeCurrency);
 
   const getDisplayProductNameFromRow = useCallback((row: TableRow): string => {
     const productName = (row as any)?.product_name;

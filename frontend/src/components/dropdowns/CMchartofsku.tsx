@@ -178,7 +178,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
   metric = "net_sales",
   showCm2Toggle = false,
 }) => {
-  const normalizedHomeCurrency = (homeCurrency || "usd").toLowerCase();
+  const normalizedHomeCurrency = homeCurrency?.trim().toLowerCase();
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const isDemoMode =
@@ -193,9 +193,7 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
     { name: "Others", value: 1100, prevValue: 900, pct: 9.17, deltaPct: 22.22 },
   ];
 
-  const currencySymbol = isGlobalPage
-    ? getCurrencySymbol(homeCurrency || "usd")
-    : getCurrencySymbol(countryName || "");
+  const currencySymbol = getCurrencySymbol(normalizedHomeCurrency || (isGlobalPage ? "usd" : countryName));
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -559,8 +557,8 @@ const CMchartofsku: React.FC<CmChartOfSkuProps> = ({
           range: range || "",
         });
 
-        if (isGlobalPage && homeCurrency) {
-          params.append("homeCurrency", homeCurrency);
+        if (normalizedHomeCurrency) {
+          params.set("homeCurrency", normalizedHomeCurrency);
         }
 
         if (range === "monthly" && month) {

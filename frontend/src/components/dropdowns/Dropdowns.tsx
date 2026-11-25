@@ -2254,6 +2254,7 @@ type RightProductDrawerProps = {
 
   // ✅ ADD THIS
   currencySymbol?: string;
+  displayCurrency?: "USD";
 
   // ✅ NEW: ProductwisePerformance graph data
   perfLoading?: boolean;
@@ -2314,6 +2315,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
   quarter,
   drawerPeriodText,
   currencySymbol,
+  displayCurrency,
   perfLoading = false,
   perfError = null,
   perfData = null,
@@ -2821,6 +2823,7 @@ const RightProductDrawer: React.FC<RightProductDrawerProps> = ({
                         : block.name
                     }
                     countryName={countryName}
+                    displayCurrency={displayCurrency}
                     isOtherSkus={!!block.isOtherSkus}
                     otherSkuProductNames={
                       block.isOtherSkus
@@ -6590,7 +6593,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     showDashboardDetails && supportsFinanceMarket(activeTab);
   const countryName = showFinanceMarket ? financeMarket : routeCountryName;
   const isCashFlowTab = showDashboardDetails && activeTab === "cashFlow";
-  const globalHomeCurrency = countryName.toLowerCase() === "global" ? homeCurrency : undefined;
+  const ukCurrencyOverride = showFinanceMarket && countryName === "uk" ? "usd" : undefined;
+  const financialCurrency = countryName.toLowerCase() === "global" ? homeCurrency : ukCurrencyOverride;
 
   const adsCountry = useMemo<"UK" | "US" | "CA">(() => {
     const c = routeCountryName.toLowerCase();
@@ -6631,7 +6635,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     placement: PromotionsPlacement,
     amazonPlacement: AmazonFeesPlacement
   ) => {
-    const isGlobal = countryVal.toLowerCase() === "global";
+    const requestCurrency = countryVal.toLowerCase() === "global" ? homeCurrency : ukCurrencyOverride;
     const resolvedStage =
       rangeType !== "monthly" && placement.stage === "after_cm1"
         ? "before_cm1"
@@ -6655,8 +6659,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         url.searchParams.set("allowAfterCm1", "true");
       }
 
-      if (isGlobal && homeCurrency) {
-        url.searchParams.set("homeCurrency", homeCurrency);
+      if (requestCurrency) {
+        url.searchParams.set("homeCurrency", requestCurrency);
       }
 
       return url.toString();
@@ -6676,8 +6680,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("promotionsPlacement", resolvedStage);
       url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
 
-      if (isGlobal && homeCurrency) {
-        url.searchParams.set("homeCurrency", homeCurrency);
+      if (requestCurrency) {
+        url.searchParams.set("homeCurrency", requestCurrency);
       }
 
       return url.toString();
@@ -6690,8 +6694,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("promotionsPlacement", resolvedStage);
     url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
 
-    if (isGlobal && homeCurrency) {
-      url.searchParams.set("homeCurrency", homeCurrency);
+    if (requestCurrency) {
+      url.searchParams.set("homeCurrency", requestCurrency);
     }
 
     return url.toString();
@@ -6709,6 +6713,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/MonthsforBI/rolling-12-months`
     );
     url.searchParams.set("countryName", countryValue.toLowerCase());
+    if (ukCurrencyOverride) url.searchParams.set("homeCurrency", ukCurrencyOverride);
     url.searchParams.set("promotionsPlacement", promotionsPlacement.stage);
     url.searchParams.set("amazonFeesPlacement", amazonFeesPlacement.stage);
     if (allowAfterCm1) {
@@ -6850,9 +6855,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
   const currencySymbol = isDemoMode
     ? getCurrencySymbol("global")
-    : globalHomeCurrency
-      ? getCurrencySymbol(homeCurrency)
-      : getCurrencySymbol(countryName || "");
+    : getCurrencySymbol(financialCurrency || countryName);
 
   const getInitialSelectedYear = () => {
     if (isDemoMode) return String(new Date().getFullYear());
@@ -7474,9 +7477,39 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         null;
 
       setSelectedAiProductRecObj(recObj);
-      setSelectedAiProductBlock(block);
+      if (!ukCurrencyOverride) {
+        setSelectedAiProductBlock(block);
+        return;
+      }
+
+      const row = (skuKey ? displaySkuRows.find((item) => normalizeKey(item.sku || "") === normalizeKey(skuKey)) : undefined)
+        ?? displaySkuRows.find((item) => normalizeKey(item.product_name || "") === normalizedClickedName);
+      const journey = row?.sku_journey_metrics;
+      const moneyMetrics: Record<string, { current?: number; delta_pct?: number } | undefined> = {
+        "asp": journey?.asp ?? { current: row?.asp },
+        "net sales": journey?.net_sales ?? { current: row?.net_sales },
+        "cm1 profit": journey?.cm1_profit ?? { current: row?.profit },
+        "cm1 profit per unit": journey?.cm1_profit_per_unit ?? { current: row?.unit_wise_profitability },
+        "cm2 profit": { current: row?.cm2_profit },
+        "cm2 profit per unit": { current: row?.cm2_profit_per_unit },
+        "ads": { current: row?.advertising_total_final },
+      };
+      const formatUsdMetrics = (metrics: ProductInsightMetric[] = []) => metrics.flatMap((metric) => {
+        const label = metric.label.trim().toLowerCase();
+        if (!Object.hasOwn(moneyMetrics, label)) return [metric];
+        const amount = moneyMetrics[label];
+        if (amount?.current == null) return [];
+        const value = amount.current.toLocaleString("en-US", { style: "currency", currency: "USD" });
+        const delta = amount.delta_pct == null ? "" : ` (${amount.delta_pct.toFixed(2)}%)`;
+        return [{ ...metric, value: value + delta }];
+      });
+      setSelectedAiProductBlock({
+        ...block,
+        metrics: formatUsdMetrics(block.metrics),
+        drawerOnlyMetrics: formatUsdMetrics(block.drawerOnlyMetrics),
+      });
     },
-    [aiProductBlocks, aiSkuActions, nameToSkuMap]
+    [aiProductBlocks, aiSkuActions, nameToSkuMap, ukCurrencyOverride, displaySkuRows]
   );
 
 
@@ -7542,10 +7575,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             body: JSON.stringify({
               product_name: productName,
               country: countryName,
-              home_currency:
-                countryName.toLowerCase() === "global"
-                  ? homeCurrency
-                  : currencySymbol,
+              home_currency: financialCurrency ?? currencySymbol,
             }),
             cache: "no-store",
             signal: ac.signal,
@@ -7574,7 +7604,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     selectedAiProductBlock,
     aiProductBlocks,
     countryName,
-    homeCurrency,
+    financialCurrency,
     currencySymbol,
   ]);
 
@@ -8059,7 +8089,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     amazonPlacement: AmazonFeesPlacement,
     allowAfterCm1 = false
   ) => {
-    const isGlobal = countryVal.toLowerCase() === "global";
+    const requestCurrency = countryVal.toLowerCase() === "global" ? homeCurrency : ukCurrencyOverride;
 
     const url = new URL(
       `${process.env.NEXT_PUBLIC_API_BASE_URL}/skutableprofit`
@@ -8077,8 +8107,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("allowAfterCm1", "true");
     }
 
-    if (isGlobal && homeCurrency) {
-      url.searchParams.set("homeCurrency", homeCurrency);
+    if (requestCurrency) {
+      url.searchParams.set("homeCurrency", requestCurrency);
     }
 
     return url;
@@ -8418,6 +8448,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           );
       if (rolling12Months) {
         url.searchParams.set("countryName", country.toLowerCase());
+        if (ukCurrencyOverride) url.searchParams.set("homeCurrency", ukCurrencyOverride);
         url.searchParams.set(
           "promotionsPlacement",
           promotionsPlacement.stage
@@ -9228,8 +9259,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("year", String(selectedYear));
       url.searchParams.set("metric", performanceTrendMetric);
 
-      if (countryName.toLowerCase() === "global" && homeCurrency) {
-        url.searchParams.set("homeCurrency", homeCurrency);
+      if (financialCurrency) {
+        url.searchParams.set("homeCurrency", financialCurrency);
       }
 
       const res = await fetch(url.toString(), {
@@ -12475,7 +12506,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   month={selectedMonth}
                                   year={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
                                   metric={performanceTrendMetric}
@@ -12538,7 +12569,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   selectedMonth={selectedMonth}
                                   selectedYear={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
                                   onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
@@ -12563,7 +12594,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               selectedQuarter={undefined}
                               year={selectedYear}
                               countryName={countryName}
-                              homeCurrency={globalHomeCurrency}
+                              homeCurrency={financialCurrency}
                               onExportBase64Ready={setExpenseBreakdownPieBase64}
                               isPreviewMode={isDemoMode}
                               pnlRowFromSku={bargraphUploads?.[0] ?? null}
@@ -12576,7 +12607,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               selectedQuarter={undefined}
                               year={isDemoMode ? "NA" : selectedYear}
                               countryName={isDemoMode ? "global" : countryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              homeCurrency={isDemoMode ? "usd" : financialCurrency}
                               onExportBase64Ready={setProductWiseCm1PieBase64}
                               disableInternalFade={isDemoMode}
                               showCm2Toggle={topBottomHasCm2Data}
@@ -12612,7 +12643,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   quarter={selectedQuarter}
                                   year={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
                                   metric={performanceTrendMetric}
@@ -12675,7 +12706,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   selectedQuarter={selectedQuarter}
                                   selectedYear={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
                                   onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
@@ -12701,7 +12732,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               selectedQuarter={selectedQuarter}
                               year={selectedYear}
                               countryName={countryName}
-                              homeCurrency={globalHomeCurrency}
+                              homeCurrency={financialCurrency}
                               onExportBase64Ready={setExpenseBreakdownPieBase64}
                               isPreviewMode={isDemoMode}
                               pnlRowFromSku={bargraphUploads?.[0] ?? null}
@@ -12714,7 +12745,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                               selectedQuarter={isDemoMode ? undefined : selectedQuarter}
                               year={isDemoMode ? "NA" : selectedYear}
                               countryName={isDemoMode ? "global" : countryName}
-                              homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                              homeCurrency={isDemoMode ? "usd" : financialCurrency}
                               onExportBase64Ready={setProductWiseCm1PieBase64}
                               disableInternalFade={isDemoMode}
                               showCm2Toggle={topBottomHasCm2Data}
@@ -12749,7 +12780,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={isRolling12Months ? "last12months" : range}
                                   year={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   currencySymbol={currencySymbol}
                                   data={performanceTrend}
                                   metric={performanceTrendMetric}
@@ -12811,7 +12842,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                                   range={isRolling12Months ? "last12months" : range}
                                   selectedYear={selectedYear}
                                   countryName={countryName}
-                                  homeCurrency={globalHomeCurrency}
+                                  homeCurrency={financialCurrency}
                                   hideDownloadButton
                                   onExportApiReady={setChartExportApi}
                                   onNoDataChange={(noData) => setShowNoDataOverlay(noData)}
@@ -12836,7 +12867,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             selectedQuarter={undefined}
                             year={selectedYear}
                             countryName={countryName}
-                            homeCurrency={globalHomeCurrency}
+                            homeCurrency={financialCurrency}
                             onExportBase64Ready={setExpenseBreakdownPieBase64}
                             disableInternalFade={isDemoMode}
                             isPreviewMode={isDemoMode}
@@ -12850,7 +12881,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                             selectedQuarter={undefined}
                             year={isDemoMode ? "NA" : selectedYear}
                             countryName={isDemoMode ? "global" : countryName}
-                            homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                            homeCurrency={isDemoMode ? "usd" : financialCurrency}
                             onExportBase64Ready={setProductWiseCm1PieBase64}
                             disableInternalFade={isDemoMode}
                             showCm2Toggle={topBottomHasCm2Data}
@@ -12908,7 +12939,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                         selectedYear={selectedYear}
                         selectedQuarter={selectedQuarter}
                         selectedMonth={selectedMonth}
-                        homeCurrency={globalHomeCurrency}
+                        homeCurrency={financialCurrency}
                         countryName={countryName}
                         portfolioRecommendation={aiPanel?.portfolioRecommendation}
                         targetSummary={targetSummary}
@@ -12931,7 +12962,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     quarter={range === "quarterly" ? selectedQuarter : ""}
                     year={selectedYear}
                     countryName={isDemoMode ? "global" : countryName}
-                    homeCurrency={isDemoMode ? "usd" : globalHomeCurrency}
+                    homeCurrency={isDemoMode ? "usd" : financialCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
                     promotionsPlacement={promotionsPlacement}
@@ -13104,6 +13135,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     key={countryName}
                     embedded
                     countryNameProp={isDemoMode ? "global" : countryName}
+                    currencyOverride={ukCurrencyOverride}
                     rangeProp={isRolling12Months ? "last12months" : range}
                     selectedMonthProp={isDemoMode ? "NA" : range === "monthly" ? selectedMonth : ""}
                     selectedQuarterProp={isDemoMode ? "" : range === "quarterly" ? selectedQuarter : ""}
@@ -13274,6 +13306,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
             : ""
         }
         currencySymbol={currencySymbol}
+        displayCurrency={ukCurrencyOverride ? "USD" : undefined}
         bestPerformanceLoading={aiBestPerformanceLoading}
         bestPerformanceError={aiBestPerformanceError}
         bestPerformanceData={aiBestPerformanceData}

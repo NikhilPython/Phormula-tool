@@ -52,10 +52,10 @@ def table_exists(conn, table_name: str) -> bool:
     return bool(conn.execute(q, {"table": table_name}).scalar())
 
 
-def get_gbp_to_usd_rate(month: int, year: int) -> float:
+def get_gbp_to_usd_rate(month: int, year: int, default: float | None = 1.0) -> float | None:
     """
     Fetch GBP -> USD conversion rate for the selected month/year.
-    If no rate is found, fallback to 1 to avoid breaking the chart.
+    Return the caller's default when the rate is unavailable.
     """
     month_name = MONTH_MAP[int(month)].lower()
 
@@ -77,7 +77,7 @@ def get_gbp_to_usd_rate(month: int, year: int) -> float:
             }
         ).scalar()
 
-    return float(rate or 1)
+    return float(rate) if rate and rate > 0 else default
 
 
 def calc_asp(net_sales, units):
@@ -388,6 +388,21 @@ def fetch_monthly_daily(conn, user_id, country, month, year):
 
     if country == "global":
         return fetch_monthly_daily_global(conn, user_id, month, year)
+
+    if country == "uk_usd":
+        data = fetch_monthly_daily_single_country(conn, user_id, "uk", month, year)
+        if not data:
+            return None
+
+        rate = get_gbp_to_usd_rate(month, year, default=None)
+        if rate is None:
+            return None
+
+        return {
+            **data,
+            "net_sales": [value * rate for value in data["net_sales"]],
+            "asp": [value * rate for value in data["asp"]],
+        }
 
     return fetch_monthly_daily_single_country(conn, user_id, country, month, year)
 

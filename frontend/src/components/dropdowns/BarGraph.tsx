@@ -169,9 +169,7 @@ const Bargraph: React.FC<BargraphProps> = ({
   const isGlobalPage = (countryName || "").toLowerCase() === "global";
 
   const normalizedHomeCurrency = (homeCurrency || "").toLowerCase();
-  const effectiveCurrencyCode = isGlobalPage
-    ? normalizedHomeCurrency || "usd"
-    : countryName;
+  const effectiveCurrencyCode = normalizedHomeCurrency || (isGlobalPage ? "usd" : countryName);
   const currencySymbol = getCurrencySymbol(effectiveCurrencyCode);
 
   // ✅ Use parent-provided rows
