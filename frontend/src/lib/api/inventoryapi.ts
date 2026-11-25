@@ -17,8 +17,17 @@ export type UploadHistoryRes = { uploads: UploadItem[] };
 
 export type ForecastRow = Record<string, any>;
 
-// JSON view coming from /api/forecast_allmonths -> {columns, data}
-export type ForecastViewRes = { columns: string[]; data: ForecastRow[] };
+// Global views also carry the original UK and US forecast rows separately.
+export type ForecastViewRes = {
+  columns: string[];
+  data: ForecastRow[];
+  columns_by_country?: Record<string, string[]>;
+  data_by_country?: Record<string, ForecastRow[]>;
+  columns_uk?: string[];
+  columns_us?: string[];
+  data_uk?: ForecastRow[];
+  data_us?: ForecastRow[];
+};
 
 export type ForecastRes = { forecast: ForecastRow[] } | ForecastRow[];
 
@@ -78,7 +87,13 @@ export const inventoryApi = baseApi.injectEndpoints({
       transformResponse: (resp: any): ForecastViewRes => {
         const columns = Array.isArray(resp?.columns) ? resp.columns : [];
         const data = Array.isArray(resp?.data) ? resp.data : [];
-        return { columns, data };
+        return {
+          ...resp,
+          columns,
+          data,
+          columns_by_country: resp?.columns_by_country ?? {},
+          data_by_country: resp?.data_by_country ?? {},
+        };
       },
       providesTags: (_res, _err, { country, month, year }) => [
         { type: FORECAST_TAG, id: `${country}-${month}-${year}` },
