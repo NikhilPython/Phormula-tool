@@ -1288,7 +1288,7 @@ def send_live_bi_email(
             <td width="30%" align="center" valign="middle" style="padding:8px 8px;">
               <div style="font-size:22px;font-weight:bold;color:#37455F;">{achievement_text}</div>
               <div style="font-size:10px;color:#50627A;">Target Achieved</div>
-              {f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:7px;border-collapse:collapse;"><tr><td height="6" bgcolor="#5EA68E" style="height:6px;padding:0;background:#5EA68E;border-radius:5px;font-size:1px;line-height:1px;"><table role="presentation" width="{progress_width:.1f}%" cellpadding="0" cellspacing="0" border="0" style="width:{progress_width:.1f}%;border-collapse:collapse;"><tr><td height="6" bgcolor="#ED9F50" style="height:6px;padding:0;background:#ED9F50;border-radius:5px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr></table>' if has_target else ''}
+              {f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:7px;border-collapse:collapse;"><tr><td height="6" bgcolor="#D0D5DD" style="height:6px;padding:0;background:#D0D5DD;border-radius:5px;font-size:1px;line-height:1px;"><table role="presentation" width="{progress_width:.1f}%" cellpadding="0" cellspacing="0" border="0" style="width:{progress_width:.1f}%;border-collapse:collapse;"><tr><td height="6" bgcolor="#ED9F50" style="height:6px;padding:0;background:#ED9F50;border-radius:5px;font-size:1px;line-height:1px;">&nbsp;</td></tr></table></td></tr></table>' if has_target else ''}
             </td>
             <td width="35%" align="center" valign="middle" style="padding:8px 3px;">
               <div style="font-size:11px;color:#50627A;"><span style="color:#5EA68E;">●</span> Target</div>
@@ -1332,7 +1332,7 @@ def send_live_bi_email(
                     delta_html = f'<span style="font-size:10px;font-weight:bold;color:{color};white-space:nowrap;">{arrow} {abs(delta):.2f}%</span>'
                 cells.append(f"""
                 <td width="33.33%" valign="top" style="padding:4px 3px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;background:#FFFFFF;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid {accent};border-top:4px solid {accent};border-radius:10px;border-collapse:separate;border-spacing:0;overflow:hidden;background:#FFFFFF;">
                     <tr><td style="padding:9px 8px;">
                       <div style="font-size:11px;color:#50627A;">{label}</div>
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ><tr><td style="font-size:16px;font-weight:bold;color:#37455F;padding-top:4px;">{formatted_value}</td><td align="right" valign="bottom">{delta_html}</td></tr></table>
@@ -1450,10 +1450,10 @@ def send_live_bi_email(
             border-radius:10px;
             padding:14px 16px;
         ">
-          <div style="font-size:14px; font-weight:700; color:#37455F; margin-bottom:6px;">
+          <div style="font-size:14px; font-weight:700; color:#414042; margin-bottom:6px;">
             Portfolio recommendation
           </div>
-          <div style="font-size:14px; color:#555; line-height:1.7;">
+          <div style="font-size:14px; color:#414042; line-height:1.7;">
             {portfolio_body}
           </div>
         </div>
@@ -1466,23 +1466,38 @@ def send_live_bi_email(
 
         if high_alert.get("available"):
             high_alert_message = high_alert.get("message") or ""
+            high_alert_detail = re.sub(
+                r"^\s*High\s+Alert\s*(?:[-–—>]+|:)\s*",
+                "",
+                str(high_alert_message),
+                flags=re.IGNORECASE,
+            ).strip()
 
             high_alert_html = f"""
             <div style="
                 margin-top:14px;
-                background:#FFF8E7;
-                border:1px solid #F5D48A;
-                border-left:4px solid #F04438;
+                background:#F8FAFC;
+                border:1px solid #B75A5A;
+                border-top:4px solid #B75A5A;
                 border-radius:10px;
                 padding:12px 16px;
             ">
               <div style="
                   font-size:14px;
-                  color:#B42318;
-                  line-height:1.7;
                   font-weight:700;
+                  color:#414042;
+                  line-height:1.4;
+                  margin-bottom:4px;
               ">
-                {html.escape(str(high_alert_message))}
+                High Alert
+              </div>
+              <div style="
+                  font-size:14px;
+                  color:#414042;
+                  line-height:1.6;
+                  font-weight:400;
+              ">
+                {html.escape(high_alert_detail)}
               </div>
             </div>
             """
@@ -1969,6 +1984,8 @@ def send_live_bi_email(
               change_color = "#475467"
               arrow = ""
 
+          change_value = change_text.lstrip("+-").strip()
+
           return f"""
           <div class="weekly-metric-delta" style="
               font-size:10px;
@@ -1981,7 +1998,7 @@ def send_live_bi_email(
               overflow:hidden;
               text-overflow:ellipsis;
           ">
-              {arrow} {html.escape(change_text)}
+              {arrow} {html.escape(change_value)}
           </div>
           """
 
@@ -2011,7 +2028,7 @@ def send_live_bi_email(
                   height:64px;
                   border:1px solid {border_color};
                   border-top:3px solid {border_color};
-                  border-radius:8px;
+                  border-radius:10px;
                   background:#FFFFFF;
                   padding:6px 6px 5px 6px;
                   box-sizing:border-box;
@@ -2624,7 +2641,7 @@ def send_live_bi_email(
 
             <!-- Recommendation section -->
             <div style="text-align:left;margin-top:22px;">
-              <h3 style="color:#37455F;margin:0 0 10px 0;font-size:14px;">
+              <h3 style="color:#37455F;margin:0 0 10px 0;font-size:16px;">
                 Recommendations
               </h3>
 
