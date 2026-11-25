@@ -2683,7 +2683,7 @@ def render_monthly_recap_email(recap: dict) -> str:
     objectives = recap.get("objectives") or []
     objective_html = "".join(
         f"""<span style="display:inline-block;background:#F2F4F7;color:#37455F;
-        padding:5px 9px;border-radius:14px;font-size:10px;margin:3px;">
+        padding:5px 9px;border-radius:14px;font-size:10px;margin:3px;text-transform:capitalize;">
         <span style="color:#5EA68E;">●</span> {esc(item)}</span>"""
         for item in objectives
     )

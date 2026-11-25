@@ -433,12 +433,17 @@ def send_report_email():
         attachment_bytes = output.getvalue()
 
         # 7) File name / subject
-        display_month = month_name.capitalize()
+        display_month = f"{month_name[:3].title()}'{str(year)[-2:]}"
         display_country = country.upper()
+        brand_name = re.sub(r"[\r\n]+", " ", str(data.get("brandName") or "")).strip()
+        safe_brand_filename = re.sub(r"[^A-Za-z0-9 ._-]+", "_", brand_name).strip(" ._")
+        brand_suffix = f" - {brand_name}" if brand_name else ""
+        filename_brand_suffix = f" - {safe_brand_filename}" if safe_brand_filename else ""
 
-        attachment_filename = f"Monthly P&L Report {display_country} {display_month} {year}.xlsx"
-        subject = f"Monthly P&L Report {display_country} {display_month} {year}"
-        body = f"Please find attached the Monthly P&L Report {display_country} {display_month} {year}."
+        attachment_filename = f"Monthly P&L Report {display_country} {display_month}{filename_brand_suffix}.xlsx"
+        brand_subject = f" | {brand_name}" if brand_name else ""
+        subject = f"Phormula Monthly P&L Report {display_month}{brand_subject} | Amazon {display_country}"
+        body = f"Please find attached the Monthly P&L Report {display_country} {display_month}{brand_suffix}."
 
         mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

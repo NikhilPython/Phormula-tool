@@ -15138,7 +15138,7 @@ export default function DashboardPage() {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                body: JSON.stringify({ country: targetSummaryCountry, monthly_recap }),
+                body: JSON.stringify({ country: targetSummaryCountry, brandName, monthly_recap }),
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || !result.success) {
@@ -15148,7 +15148,7 @@ export default function DashboardPage() {
         } catch (error) {
             toast.error(error instanceof Error ? error.message : "Unable to send the monthly recap.");
         }
-    }, [monthlyRecapData, targetSummaryCountry]);
+    }, [monthlyRecapData, targetSummaryCountry, brandName]);
 
     const midMonthTargetReminderData = useMemo<MidMonthTargetReminderData | null>(() => {
         if (shouldShowDummyUi) return null;
