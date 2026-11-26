@@ -8,6 +8,7 @@ import React, {
   type JSX,
   useCallback,
 } from "react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
@@ -2727,6 +2728,11 @@ export default function ReferralFeesDashboard(): JSX.Element {
       return;
     }
 
+    if (!userId || userId === "unknown") {
+      setLoading(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -2756,12 +2762,47 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       const url = `${baseURL}/get_table_data/${fileName}?${params.toString()}`;
 
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (!res.ok) throw new Error(`Failed to fetch referral data (${res.status})`);
+      if (isGlobalPage && res.status === 404 && range === "monthly") {
+        // Global reconciliation is built from each marketplace's saved report.
+        // Prime both country reports first so the API can combine their cached rows.
+        await Promise.all((["uk", "us"] as const).map(async (market) => {
+          const countryParams = new URLSearchParams({
+            country: market,
+            month,
+            year,
+          });
+          const countryFileName = `user_${userId}_${market}_${month}${year}_data`.toLowerCase();
+          const countryResponse = await fetch(
+            `${baseURL}/get_table_data/${countryFileName}?${countryParams.toString()}`,
+            {
+              method: "GET",
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+              cache: "no-store",
+            }
+          );
+          if (!countryResponse.ok) {
+            throw new Error(`Could not load ${market.toUpperCase()} reconciliation data (${countryResponse.status}).`);
+          }
+        }));
+
+        res = await fetch(url, {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          cache: "no-store",
+        });
+      }
+
+      if (!res.ok) {
+        if (isGlobalPage && res.status === 404) {
+          throw new Error("Global reconciliation data is unavailable for this period. Select UK or US above to view that marketplace's data.");
+        }
+        throw new Error(`Failed to fetch referral data (${res.status})`);
+      }
 
       const json: any = await res.json();
 
@@ -3124,7 +3165,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [month, year, country, fileName, isGlobalPage, homeCurrency, range, selectedQuarter]);
+  }, [month, year, country, userId, fileName, isGlobalPage, homeCurrency, range, selectedQuarter]);
 
 
   useEffect(() => {
@@ -3835,8 +3876,28 @@ export default function ReferralFeesDashboard(): JSX.Element {
           </div>
         </div>
 
-        {/* RIGHT: Filters */}
-        <div className="flex w-full md:w-auto justify-start md:justify-end mb-2 ">
+        {/* RIGHT: Country selector and filters */}
+        <div className="flex w-full flex-wrap items-center justify-start gap-3 mb-2 md:w-auto md:justify-end">
+          <div className="inline-flex items-center rounded-xl border border-gray-300 bg-white p-1 shadow-sm" role="group" aria-label="Marketplace">
+            {(["global", "uk", "us"] as const).map((market) => {
+              const active = effectiveCountry === market;
+              const targetMonth = (month || routeMonth || "November").toLowerCase();
+              const targetYear = year || routeYear || String(new Date().getFullYear());
+              return (
+                <Link
+                  key={market}
+                  href={`/expense-reconciliation/${market}/${encodeURIComponent(targetMonth)}/${encodeURIComponent(targetYear)}`}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${active
+                    ? "bg-[#5EA68E] text-white shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                >
+                  {market === "global" ? "Global" : market.toUpperCase()}
+                </Link>
+              );
+            })}
+          </div>
           <PeriodFiltersTable
             range={range}
             selectedMonth={month}
