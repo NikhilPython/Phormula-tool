@@ -70,7 +70,7 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v30_uk_historical_fba_surcharge"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v32_unavailable_fba_zero_totals"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
 UK_FBA_SURCHARGE_START = date(2026, 4, 17)
 UK_FBA_SURCHARGE_INCREASE = date(2026, 11, 2)
@@ -179,7 +179,11 @@ def _recalculate_fba_source_fees(frame, user_id, country):
         uk_fee_per_unit = {
             str(fee.sku).strip(): (
                 fba_number(fee.expected_domestic_fulfilment_fee_per_unit),
-                getattr(fee, "synced_at", None),
+                (
+                    getattr(fee, "synced_at", None)
+                    or getattr(fee, "updated_at", None)
+                    or getattr(fee, "created_at", None)
+                ),
             )
             for fee in fee_rows
             if fba_number(fee.expected_domestic_fulfilment_fee_per_unit) is not None
@@ -294,8 +298,13 @@ def _nullable_fee(value):
 
 
 def _sum_expected_fees(values):
-    values = list(values)
-    return None if any(value is None or pd.isna(value) for value in values) else float(sum(values))
+    # Missing estimates are treated as zero in reconciliation totals so one
+    # unavailable SKU does not make the entire applicable-fee total unusable.
+    return float(sum(
+        float(value)
+        for value in values
+        if value is not None and pd.notna(value)
+    ))
 
 
 def _calculate_us_referral_fee_applicable(
@@ -1158,24 +1167,26 @@ def _materialize_expense_reconciliation_table(
         sort=False,
     )
 
-    # Missing estimates must survive legacy numeric filling and group sums.
-    # A subtotal is unavailable if any contributing order lacks an estimate.
+    # Preserve the per-order unavailable flag for diagnostics, but count a
+    # missing expected fee as zero in SKU, status, and grand-total sums.
     if status_source_df is not None and not status_source_df.empty:
         # Match the raw-status filtering above, including for other marketplaces.
         fba_source = raw_status.copy()
-        fba_source["_expected"] = pd.to_numeric(fba_source["fbaanswer"], errors="coerce")
-        fba_source.loc[fba_source["fba_unavailable_count"].gt(0), "_expected"] = float("nan")
-        by_product = fba_source.groupby(["sku", "product_name"], dropna=False)["_expected"].agg(
-            lambda s: s.sum(skipna=False)
-        )
-        by_status = fba_source.groupby(["sku", "product_name", "status"], dropna=False)["_expected"].agg(
-            lambda s: s.sum(skipna=False)
-        )
+        fba_source["_expected"] = pd.to_numeric(
+            fba_source["fbaanswer"], errors="coerce"
+        ).fillna(0)
+        fba_source.loc[fba_source["fba_unavailable_count"].gt(0), "_expected"] = 0.0
+        by_product = fba_source.groupby(
+            ["sku", "product_name"], dropna=False
+        )["_expected"].sum()
+        by_status = fba_source.groupby(
+            ["sku", "product_name", "status"], dropna=False
+        )["_expected"].sum()
         rows["fba_fees_applicable"] = [
-            by_product.get((r.sku, r.product_name), float("nan")) for r in rows.itertuples()
+            by_product.get((r.sku, r.product_name), 0.0) for r in rows.itertuples()
         ]
         is_grand = rows["product_name"].eq("Grand Total")
-        rows.loc[is_grand, "fba_fees_applicable"] = fba_source["_expected"].sum(skipna=False)
+        rows.loc[is_grand, "fba_fees_applicable"] = fba_source["_expected"].sum()
         detail_mask = cached_status_rows["record_type"].eq("detail")
         cached_status_rows.loc[detail_mask, "fba_fees_applicable"] = fba_source["_expected"].to_numpy()
         cached_status_rows.loc[detail_mask, "fba_estimate_status"] = fba_source["fba_estimate_status"].to_numpy()
@@ -1183,7 +1194,7 @@ def _materialize_expense_reconciliation_table(
             cached_status_rows.loc[detail_mask, "fba_quantity"] = fba_source["fba_quantity"].to_numpy()
         summary_mask = ~detail_mask
         cached_status_rows.loc[summary_mask, "fba_fees_applicable"] = [
-            by_status.get((r.sku, r.product_name, r.status), float("nan"))
+            by_status.get((r.sku, r.product_name, r.status), 0.0)
             for r in cached_status_rows.loc[summary_mask].itertuples()
         ]
     else:
@@ -4871,6 +4882,15 @@ def get_table_data(file_name):
         else:
             df["errorstatus"] = ""
 
+        # Preserve which expected referral fees were actually supplied. Filling
+        # nulls below is useful for other calculations, but a missing UK source
+        # answer must be recalculated from the order instead of treated as £0.
+        source_answer_mask = (
+            pd.to_numeric(df["answer"], errors="coerce").notna()
+            if "answer" in df.columns
+            else pd.Series(False, index=df.index)
+        )
+
         numeric_cols = [
             "product_sales", "shipping_credits", "gift_wrap_credits", "promotional_rebates", "other",
             "selling_fees", "answer", "difference", "quantity", "return_quantity",
@@ -4943,6 +4963,61 @@ def get_table_data(file_name):
             df = _recalculate_us_referral_source_fees(df)
 
         df = _recalculate_fba_source_fees(df, user_id, country)
+
+        if reconciliation_country == "uk":
+            # Repair only rows whose source report omitted the expected fee.
+            # UK referral fees use the buyer-paid amount (item price, tax,
+            # delivery and promotion adjustments) and the supplied category
+            # rate; keep valid source answers unchanged.
+            missing_answer = ~source_answer_mask.reindex(df.index, fill_value=False)
+            if missing_answer.any():
+                fallback_qty = pd.to_numeric(
+                    df.get("quantity", pd.Series(0, index=df.index)),
+                    errors="coerce",
+                ).fillna(0).where(lambda values: values != 0, 1)
+                referral_rates = pd.to_numeric(
+                    df.get("referral_fee", pd.Series(0, index=df.index)),
+                    errors="coerce",
+                ).fillna(0)
+                buyer_paid = pd.Series(0.0, index=df.index)
+                for column in (
+                    "product_sales",
+                    "product_sales_tax",
+                    "shipping_credits",
+                    "gift_wrap_credits",
+                    "promotional_rebates",
+                ):
+                    buyer_paid = buyer_paid.add(
+                        pd.to_numeric(df.get(column, 0), errors="coerce").fillna(0)
+                        if isinstance(df.get(column, 0), pd.Series)
+                        else float(df.get(column, 0) or 0),
+                        fill_value=0,
+                    )
+                unit_values = buyer_paid.div(fallback_qty).clip(lower=0)
+                per_unit_estimate = [
+                    max(
+                        float((
+                            Decimal(str(unit_value)) * Decimal(str(rate)) / Decimal("100")
+                        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+                        0.25,
+                    ) if rate > 0 and unit_value > 0 else 0.0
+                    for unit_value, rate in zip(unit_values, referral_rates)
+                ]
+                calculated_answers = pd.Series(
+                    [
+                        fee * quantity if sales != 0 else 0.0
+                        for fee, quantity, sales in zip(
+                            per_unit_estimate,
+                            fallback_qty,
+                            pd.to_numeric(
+                                df.get("product_sales", pd.Series(0, index=df.index)),
+                                errors="coerce",
+                            ).fillna(0),
+                        )
+                    ],
+                    index=df.index,
+                )
+                df.loc[missing_answer, "answer"] = calculated_answers.loc[missing_answer]
 
         if reconciliation_country in {"us", "uk"} and "order_id" in df.columns:
             order_ids = df["order_id"].fillna("").astype(str).str.strip()
@@ -5108,6 +5183,10 @@ def get_table_data(file_name):
                     df["product_sales"]
                     + df["product_sales_tax"]
                     + df["shipping_credits"]
+                    + pd.to_numeric(
+                        df.get("gift_wrap_credits", pd.Series(0, index=df.index)),
+                        errors="coerce",
+                    ).fillna(0)
                     + df["promotional_rebates"]
                 )
                 df["total_value"] = [
