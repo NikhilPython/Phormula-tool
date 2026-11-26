@@ -29,7 +29,9 @@ db_url3 = os.getenv("DATABASE_AMAZON_URL")
 phormula_engine = create_engine(db_url)
 chatbot_engine = create_engine(db_url2)
 amazon_engine = create_engine(db_url3)
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Avoid retry storms for permanent quota exhaustion (429 insufficient_quota).
+# The summary route converts that response into a user-facing service message.
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=0)
 
 
 MONTH_NUM_TO_NAME = {

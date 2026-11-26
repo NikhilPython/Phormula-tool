@@ -9122,14 +9122,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         cache: "no-store",
       });
 
+      const data: any = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         if (requestId !== aiRequestIdRef.current) return;
         setAiPanel(null);
-        setAiPanelError("Failed to fetch AI summary");
+        setAiPanelError(
+          data?.error || "AI insights are temporarily unavailable. Please try again later."
+        );
         return;
       }
-
-      const data: any = await res.json();
 
       if (requestId !== aiRequestIdRef.current) return;
 
