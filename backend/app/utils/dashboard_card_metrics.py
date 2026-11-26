@@ -198,6 +198,7 @@ def _units(source: Mapping[str, Any]) -> float:
 def _ads(source: Mapping[str, Any]) -> float:
     return abs(_first_non_zero(
         source,
+        "total_advertising_cost",
         "advertising_total_final",
         "total_ads",
         "advertising_fees",
@@ -208,6 +209,10 @@ def _ads(source: Mapping[str, Any]) -> float:
 
 def _tacos_ad_cost(source: Mapping[str, Any]) -> float:
     """Total advertising cost for TACoS: Ads Spend + Cost of Advertisement bucket."""
+    total_advertising_cost = abs(_first(source, "total_advertising_cost"))
+    if total_advertising_cost:
+        return total_advertising_cost
+
     deals = abs(_first(source, "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads"))
     brand_or_visible = abs(_first_non_zero(source, "brand_spend", "visible_ads"))
 
@@ -229,6 +234,19 @@ def _tacos_ad_cost(source: Mapping[str, Any]) -> float:
         "total_ads",
         "ads_spend",
     ))
+
+
+def calculate_pnl_cost_of_advertisement(source: Mapping[str, Any]) -> float:
+    """Return the separate visibility ads and deals cost bucket."""
+    visible_ads = abs(_first_non_zero(source, "brand_spend", "visible_ads"))
+    deals = abs(_first(source, "dealsvouchar_ads", "dealsvoucher_ads", "dealvouchars_ads"))
+    return visible_ads + deals
+
+
+def calculate_pnl_total_advertising_cost(source: Mapping[str, Any]) -> float:
+    """Return Ads Spend plus the separate Cost of Advertisement bucket."""
+    ads_spend = abs(_first_non_zero(source, "ads_spend", "advertising_total"))
+    return ads_spend + calculate_pnl_cost_of_advertisement(source)
 
 
 def calculate_pnl_tacos(source: Mapping[str, Any]) -> float:

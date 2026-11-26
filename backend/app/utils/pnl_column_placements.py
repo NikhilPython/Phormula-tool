@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from app.utils.dashboard_card_metrics import (
+    calculate_pnl_cost_of_advertisement,
+    calculate_pnl_tacos,
+    calculate_pnl_total_advertising_cost,
+)
 
-VALID_PROMOTIONS_PLACEMENTS = {"in_net_sales", "before_cm1", "after_cm1", "in_ads_spend"}
+
+VALID_PROMOTIONS_PLACEMENTS = {"in_net_sales", "in_ads_spend"}
 VALID_AMAZON_FEES_PLACEMENTS = {"before_cm1", "after_cm1", "in_ads_spend"}
 
 
@@ -29,7 +35,6 @@ def apply_pnl_column_placements(
     promotions_detached = promotions_placement != "in_net_sales"
     promotions_in_ads = promotions_placement == "in_ads_spend"
     fees_in_ads = amazon_fees_placement == "in_ads_spend"
-    promotions_after_cm1 = promotions_placement == "after_cm1"
     amazon_fees_after_cm1 = amazon_fees_placement == "after_cm1"
     if not promotions_detached and not amazon_fees_after_cm1 and not fees_in_ads:
         return
@@ -42,7 +47,7 @@ def apply_pnl_column_placements(
             _number(row, "promotional_rebates")
             or _number(row, "promotions")
         )
-        net_sales_delta = promotions if promotions_detached and not promotions_in_ads else 0.0
+        net_sales_delta = promotions if promotions_detached else 0.0
         amazon_fees = (
             abs(_number(row, "amazon_fees"))
             or abs(_number(row, "marketplace_fees"))
@@ -50,7 +55,7 @@ def apply_pnl_column_placements(
             or (abs(_number(row, "selling_fees")) + abs(_number(row, "fba_fees")))
         )
         cm1_delta = 0.0
-        if promotions_after_cm1:
+        if promotions_in_ads:
             cm1_delta += promotions
         if amazon_fees_after_cm1:
             cm1_delta += amazon_fees
@@ -61,21 +66,34 @@ def apply_pnl_column_placements(
         cm2_profit = _number(row, "cm2_profit")
         ads_addition = (promotions if promotions_in_ads else 0.0) + (amazon_fees if fees_in_ads else 0.0)
         if ads_addition:
+            row["net_sales"] = net_sales
             ads_spend = _number(row, "ads_spend") + ads_addition
             row["ads_spend"] = ads_spend
             row["ads_spend_raw"] = _number(row, "ads_spend_raw") + ads_addition
-            for key in ("advertising_total_final", "total_ads", "advertising_fees"):
+            for key in (
+                "advertising_total_final",
+                "advertising_total",
+                "total_ads",
+                "advertising_fees",
+            ):
                 if key in row:
                     row[key] = _number(row, key) + ads_addition
             row["acos"] = ads_spend / net_sales * 100 if net_sales else 0.0
-            row["cm2_profit"] = cm2_profit - ads_addition
+            row["cm2_profit"] = cm2_profit - ads_addition + cm1_delta
             row["cm2_profit_per"] = row["cm2_profit"] / net_sales * 100 if net_sales else 0.0
             if "total_cm2_profit" in row:
-                row["total_cm2_profit"] = _number(row, "total_cm2_profit") - ads_addition
-            if "tacos_total_advertising_cost_of_sale" in row:
-                row["tacos_total_advertising_cost_of_sale"] = ads_spend / net_sales * 100 if net_sales else 0.0
-            if "tacos" in row:
-                row["tacos"] = ads_spend / net_sales * 100 if net_sales else 0.0
+                row["total_cm2_profit"] = (
+                    _number(row, "total_cm2_profit") - ads_addition + cm1_delta
+                )
+            row["cost_of_advertisement"] = calculate_pnl_cost_of_advertisement(row)
+            row["total_advertising_cost"] = calculate_pnl_total_advertising_cost(row)
+            tacos = calculate_pnl_tacos(row)
+            for key in (
+                "tacos_total_advertising_cost_of_sale",
+                "tacos",
+            ):
+                if key in row:
+                    row[key] = tacos
             cm2_profit = row["cm2_profit"]
 
         row["net_sales"] = net_sales
@@ -143,7 +161,9 @@ def apply_pnl_column_placements_to_payload(
                 "cm2_profit_per",
                 "promotional_rebates_percentage", "ads_spend", "ads_spend_raw",
                 "acos", "cm2_profit", "cm2_profit_per", "total_cm2_profit",
-                "tacos_total_advertising_cost_of_sale", "total_ads",
+                "tacos_total_advertising_cost_of_sale", "tacos", "total_ads",
+                "advertising_total_final", "advertising_total", "advertising_fees",
+                "cost_of_advertisement", "total_advertising_cost",
             ):
                 if key in total_row:
                     totals[key] = total_row[key]

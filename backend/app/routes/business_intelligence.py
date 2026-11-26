@@ -19,6 +19,9 @@ from app.utils.dashboard_card_metrics import (
     add_cashflow_summary_fields,
     build_cashflow_card_metrics,
     build_pnl_card_metrics,
+    calculate_pnl_cost_of_advertisement,
+    calculate_pnl_tacos,
+    calculate_pnl_total_advertising_cost,
 )
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.models.user_models import UserObjective
@@ -1477,22 +1480,25 @@ def _rolling_rows_have_cm2_data(rows):
 
 
 def _apply_rolling_promotions_placement(rows, placement):
-    if placement == "in_net_sales":
-        return rows
-
     for row in rows:
         adjustment = abs(_rolling_number(row.get("promotional_rebates")))
-        net_sales = _rolling_number(row.get("net_sales")) + (0 if placement == "in_ads_spend" else adjustment)
+        net_sales = _rolling_number(row.get("net_sales")) + (
+            adjustment if placement != "in_net_sales" else 0
+        )
         profit = _rolling_number(row.get("profit"))
-        if placement == "after_cm1":
-            profit += adjustment
         if placement == "in_ads_spend":
+            profit += adjustment
             ads = _rolling_number(row.get("ads_spend"), row.get("advertising_total"), row.get("advertising_total_final")) + adjustment
             row["ads_spend"] = ads
+            for key in (
+                "advertising_total",
+                "advertising_total_final",
+                "advertising_fees",
+                "total_ads",
+            ):
+                if key in row:
+                    row[key] = _rolling_number(row.get(key)) + adjustment
             row["acos"] = round(ads / net_sales * 100, 2) if net_sales else 0
-            row["total_cm2_profit"] = _rolling_number(row.get("total_cm2_profit"), row.get("cm2_profit")) - adjustment
-            if "cm2_profit" in row:
-                row["cm2_profit"] = _rolling_number(row.get("cm2_profit")) - adjustment
         quantity = _rolling_number(row.get("total_quantity"))
 
         row["net_sales"] = round(net_sales, 2)
@@ -1507,6 +1513,11 @@ def _apply_rolling_promotions_placement(rows, placement):
         row["promotional_rebates_percentage"] = (
             round(adjustment / net_sales * 100, 2) if net_sales else 0
         )
+        row["cost_of_advertisement"] = calculate_pnl_cost_of_advertisement(row)
+        row["total_advertising_cost"] = calculate_pnl_total_advertising_cost(row)
+        tacos = calculate_pnl_tacos(row)
+        row["tacos_total_advertising_cost_of_sale"] = tacos
+        row["tacos"] = tacos
 
         if "Net_Sales" in row:
             row["Net_Sales"] = row["net_sales"]
@@ -1530,12 +1541,6 @@ def _apply_rolling_promotions_placement(rows, placement):
         )
         if "acos" in row:
             row["acos"] = round(ads_spend / net_sales * 100, 2) if net_sales else 0
-        if "tacos_total_advertising_cost_of_sale" in row:
-            row["tacos_total_advertising_cost_of_sale"] = (
-                round(ads_spend / net_sales * 100, 2) if net_sales else 0
-            )
-        if "tacos" in row:
-            row["tacos"] = round(ads_spend / net_sales * 100, 2) if net_sales else 0
         cm2_profit = _rolling_number(
             row.get("total_cm2_profit"),
             row.get("cm2_profit_total"),
@@ -1802,13 +1807,7 @@ def get_rolling_12_month_sku_data():
         promotions_placement = (
             request.args.get("promotionsPlacement") or "in_net_sales"
         ).strip().lower()
-        if promotions_placement not in {
-            "in_net_sales",
-            "after_net_sales",
-            "before_cm1",
-            "after_cm1",
-            "in_ads_spend",
-        }:
+        if promotions_placement not in {"in_net_sales", "in_ads_spend"}:
             return jsonify({'error': 'Invalid promotionsPlacement'}), 400
         allow_after_cm1 = (
             request.args.get("allowAfterCm1", "").strip().lower() == "true"
@@ -1912,12 +1911,6 @@ def get_rolling_12_month_sku_data():
             )
             has_cm2_data = _rolling_rows_have_cm2_data(rows)
             effective_promotions_placement = promotions_placement
-            if (
-                effective_promotions_placement == "after_cm1"
-                and not has_cm2_data
-                and not allow_after_cm1
-            ):
-                effective_promotions_placement = "before_cm1"
             effective_amazon_placement = (
                 amazon_fees_placement
                 if has_cm2_data or allow_after_cm1
@@ -1952,12 +1945,6 @@ def get_rolling_12_month_sku_data():
                     )
                     has_month_cm2_data = _rolling_rows_have_cm2_data(monthly_rows)
                     effective_month_promotions = promotions_placement
-                    if (
-                        effective_month_promotions == "after_cm1"
-                        and not has_month_cm2_data
-                        and not allow_after_cm1
-                    ):
-                        effective_month_promotions = "before_cm1"
                     effective_month_placement = (
                         amazon_fees_placement
                         if has_month_cm2_data or allow_after_cm1

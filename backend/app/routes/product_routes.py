@@ -25,7 +25,9 @@ from app.utils.fba_fee_calculator import estimate_fba_fee, number as fba_number,
 from app.utils.dashboard_card_metrics import (
     add_per_unit_fields,
     build_pnl_card_metrics,
+    calculate_pnl_cost_of_advertisement,
     calculate_pnl_tacos,
+    calculate_pnl_total_advertising_cost,
     persist_per_unit_fields,
 )
 load_dotenv()
@@ -2283,9 +2285,6 @@ def _sync_total_advertising_components(rows):
 
 _PROMOTIONS_PLACEMENTS = {
     "in_net_sales",
-    "after_net_sales",
-    "before_cm1",
-    "after_cm1",
     "in_ads_spend",
 }
 
@@ -2294,8 +2293,6 @@ def _read_promotions_placement(allow_after_cm1=True):
     placement = (request.args.get("promotionsPlacement") or "in_net_sales").strip().lower()
     if placement not in _PROMOTIONS_PLACEMENTS:
         return None
-    if not allow_after_cm1 and placement == "after_cm1":
-        return "before_cm1"
     return placement
 
 
@@ -2338,17 +2335,13 @@ def _has_cm2_data(rows):
 
 
 def _apply_promotions_placement(rows, placement):
-    if placement == "in_net_sales":
-        return rows
-
     for row in rows:
         promotion = safe_float(row.get("promotional_rebates"))
         adjustment = abs(promotion)
-        net_sales = safe_float(row.get("net_sales")) + (0 if placement == "in_ads_spend" else adjustment)
+        net_sales = safe_float(row.get("net_sales")) + (adjustment if placement != "in_net_sales" else 0)
         profit = safe_float(row.get("profit"))
-        if placement == "after_cm1":
+        if placement == "in_ads_spend":
             profit += adjustment
-
         quantity = safe_float(row.get("total_quantity"))
         cm2_profit = safe_float(row.get("cm2_profit"))
         cm2_total_profit = safe_float(
@@ -2369,11 +2362,21 @@ def _apply_promotions_placement(rows, placement):
         )
         if placement == "in_ads_spend":
             row["ads_spend"] = safe_float(row.get("ads_spend")) + adjustment
+            for key in (
+                "advertising_total_final",
+                "advertising_total",
+                "total_ads",
+                "advertising_fees",
+            ):
+                if key in row:
+                    row[key] = safe_float(row.get(key)) + adjustment
             row["acos"] = round(row["ads_spend"] / net_sales * 100, 2) if net_sales else 0
-            row["cm2_profit"] = safe_float(row.get("cm2_profit")) - adjustment
-            if "total_cm2_profit" in row:
-                row["total_cm2_profit"] = safe_float(row.get("total_cm2_profit")) - adjustment
-            row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
+            row["cm2_profit"] = cm2_profit
+        row["cost_of_advertisement"] = calculate_pnl_cost_of_advertisement(row)
+        row["total_advertising_cost"] = calculate_pnl_total_advertising_cost(row)
+        tacos = calculate_pnl_tacos(row)
+        row["tacos_total_advertising_cost_of_sale"] = tacos
+        row["tacos"] = tacos
 
         if "Net_Sales" in row:
             row["Net_Sales"] = row["net_sales"]

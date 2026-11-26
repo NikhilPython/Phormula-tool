@@ -7458,7 +7458,8 @@ export default function DashboardPage() {
             "previous_net_sales", "net_sales_delta", "net_sales_per_unit", "promotional_rebates",
             "cogs", "fba_fees", "selling_fees", "amazon_fees", "marketplace_fees",
             "ads_spend", "total_ads", "advertising_total", "advertising_total_final",
-            "advertising_fees", "product_spend", "sponsored_product", "Sponsored_Product",
+            "advertising_fees", "cost_of_advertisement", "total_advertising_cost",
+            "product_spend", "sponsored_product", "Sponsored_Product",
             "display_spend", "sponsored_display", "Sponsored_Display", "brand_spend",
             "sponsored_brand", "display_brand", "Display_brand", "Sponsored_Brand",
             "cm2_profit", "total_cm2_profit", "profit", "cm1_profit", "cm1_profit_per_unit",
@@ -7499,18 +7500,22 @@ export default function DashboardPage() {
             const total = findSkuwiseTotalRow(rows) ?? {};
             const units = toNumber(total.total_quantity ?? total.net_quantity ?? total.quantity);
             const netSales = toNumber(total.net_sales);
-            const ads = toNumber(total.advertising_total_final ?? total.total_ads ?? total.advertising_fees ?? total.ads_spend);
+            const ads = toNumber(total.total_advertising_cost ?? total.advertising_total_final ?? total.total_ads ?? total.advertising_fees ?? total.ads_spend);
             const cm2 = toNumber(total.total_cm2_profit ?? total.cm2_profit);
             const promotions = toNumber(total.promotional_rebates);
+            const tacos = toNumber(total.tacos_total_advertising_cost_of_sale ?? total.tacos ?? total.acos);
             return {
                 units: { value: units },
-                asp: { value: toNumber(total.asp ?? (units ? netSales / units : 0)) },
+                asp: { value: toNumber(total.asp) },
                 gross_sales: { value: toNumber(total.gross_sales) },
                 net_sales: { value: netSales },
                 cost_of_ads: { value: ads },
-                tacos: { value: netSales ? (ads / netSales) * 100 : 0 },
-                cm2_profit: { value: cm2, percentage: netSales ? (cm2 / netSales) * 100 : 0 },
-                promotions: { value: Math.abs(promotions), percentage: netSales ? (promotions / netSales) * 100 : 0 },
+                tacos: { value: tacos },
+                cm2_profit: {
+                    value: cm2,
+                    percentage: toNumber(total.cm2_profit_per ?? total.cm2_margins ?? total.cm2_profit_percentage),
+                },
+                promotions: { value: Math.abs(promotions), percentage: toNumber(total.promotional_rebates_percentage) },
             };
         };
 
@@ -9974,6 +9979,14 @@ export default function DashboardPage() {
                 : 0;
         }
 
+        if (dashboardPromotionsPlacement.stage === "in_ads_spend") {
+            const placedTacos =
+                grandTotalRowRaw?.tacos_total_advertising_cost_of_sale ??
+                (data as any)?.derived_totals?.tacos_total_advertising_cost_of_sale ??
+                (data as any)?.tacos_total_advertising_cost_of_sale;
+            if (placedTacos != null) return toNumber(placedTacos);
+        }
+
         // Primary source:
         // exact same DB-backed TACoS returned by /dashboard/action-items
         if (dashboardActionSourceMetrics?.tacos != null) {
@@ -9994,6 +10007,8 @@ export default function DashboardPage() {
         pnlMarketplace,
         marketplaceCardMetrics,
         comparisonPeriod,
+        dashboardPromotionsPlacement.stage,
+        grandTotalRowRaw?.tacos_total_advertising_cost_of_sale,
         last30CurrentSkuTotal,
         liveBiPayload?.last30_totals?.tacos_total_advertising_cost_of_sale,
         liveBiPayload?.last30_totals?.advertising_total,
@@ -10406,7 +10421,9 @@ export default function DashboardPage() {
     const mtdCostOfAdsCurrentDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.current
         : comparisonPeriod === "last30" && last30CurrentSkuTotal
-            ? toNumber(last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend)
+            ? toNumber(last30CurrentSkuTotal.total_advertising_cost ?? last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend)
+        : dashboardPromotionsPlacement.stage === "in_ads_spend"
+            ? toNumber(backendDashboardMetric("cost_of_ads").current)
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_advertising)
             : adsSpendTotal;
@@ -10420,9 +10437,9 @@ export default function DashboardPage() {
     const mtdCostOfAdsCurrentPerUnitDisplay = shouldShowDummyUi
         ? dummyStatData.costOfAds.currentPerUnit
         : comparisonPeriod === "last30" && last30CurrentSkuTotal
-            ? toNumber(last30CurrentSkuTotal.cost_of_ads_per_unit ??
-                ((last30CurrentSkuTotal.total_ads ?? last30CurrentSkuTotal.advertising_total ?? last30CurrentSkuTotal.ads_spend ?? 0) /
-                    (last30CurrentSkuTotal.total_quantity || last30CurrentSkuTotal.quantity || 1)))
+            ? toNumber(last30CurrentSkuTotal.cost_of_ads_per_unit)
+        : dashboardPromotionsPlacement.stage === "in_ads_spend"
+            ? toNumber(backendDashboardMetric("cost_of_ads").current_per_unit)
         : hasSelectedPeriodBiData
             ? toNumber(biAlignedTotals?.total_current_cost_of_ads_per_unit)
             : toNumber(backendDashboardMetric("cost_of_ads").current_per_unit);
@@ -10452,6 +10469,9 @@ export default function DashboardPage() {
         ? dummyStatData.tacos.current
         : comparisonPeriod === "last30"
             ? toNumber(last30CurrentSkuTotal?.tacos_total_advertising_cost_of_sale ?? biAlignedTotals?.total_current_tacos)
+            : dashboardPromotionsPlacement.stage === "in_ads_spend" &&
+                grandTotalRowRaw?.tacos_total_advertising_cost_of_sale != null
+            ? toNumber(grandTotalRowRaw.tacos_total_advertising_cost_of_sale)
             : dashboardActionSourceMetrics?.tacos != null
             ? toNumber(dashboardActionSourceMetrics.tacos)
             : hasSelectedPeriodBiData

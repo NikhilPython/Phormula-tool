@@ -1257,52 +1257,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
       "tacos",
       "tacos_pct",
     ]);
-    if (backendTacos !== null) return backendTacos;
-
-    const netSales = toNumber(totals.net_sales) || toNumber((backendTotalRow as any)?.net_sales);
-    const adsSpend = Math.abs(
-      firstNonZeroNumber(
-        getOptionalNumber(backendTotalRow, ["ads_spend"]),
-        toNumber(totals.ads_spend),
-        getOptionalNumber(backendTotalRow, ["total_ads"]),
-        toNumber(totals.total_ads)
-      )
-    );
-    const dealsVouchersAds = Math.abs(
-      toNumber(
-        getOptionalNumber(backendTotalRow, [
-          "dealsvouchar_ads",
-          "dealsvoucher_ads",
-          "dealvouchars_ads",
-        ]) ?? totals.dealsvouchar_ads
-      )
-    );
-    const visibilityAds = Math.abs(
-      toNumber(
-        hasCm2Data
-          ? getOptionalNumber(backendTotalRow, ["brand_spend"]) ?? totals.brand_spend ?? totals.visible_ads
-          : getOptionalNumber(backendTotalRow, ["visible_ads"]) ?? totals.visible_ads ?? totals.brand_spend
-      )
-    );
-    const costOfAds = visibilityAds + dealsVouchersAds;
-
-    if (netSales > 0 && (adsSpend !== 0 || costOfAds !== 0)) {
-      return ((adsSpend + costOfAds) / netSales) * 100;
-    }
-
-    const adsCost = Math.abs(toNumber(totals.advertising_total_final));
-    return netSales > 0 ? (adsCost / netSales) * 100 : 0;
+    return backendTacos ?? 0;
   }, [
     rawTotalRow,
     tableData,
-    totals.net_sales,
-    totals.ads_spend,
-    totals.total_ads,
-    totals.dealsvouchar_ads,
-    totals.brand_spend,
-    totals.visible_ads,
-    totals.advertising_total_final,
-    hasCm2Data,
   ]);
 
   const visibilityAdsValue = useMemo(() => {
@@ -1312,42 +1270,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
   }, [hasCm2Data, totals.brand_spend, totals.visible_ads]);
 
   const costOfAdvertisementValue = useMemo(() => {
-    const childTotal =
-      Math.abs(toNumber(visibilityAdsValue)) +
-      Math.abs(toNumber(totals.dealsvouchar_ads));
-
-    // The visible breakdown components are authoritative for every period,
-    // including stored yearly and quarterly summaries.
-    if (childTotal !== 0) return childTotal;
-    if (hasCm2Data) return Math.abs(toNumber(totals.advertising_total));
-
-    const requestedAdSpend =
-      nonZeroOrNull(totals.advertising_fees) ??
-      nonZeroOrNull(totals.ads_spend) ??
-      nonZeroOrNull(totals.total_ads) ??
-      nonZeroOrNull(totals.advertising_total_final) ??
-      nonZeroOrNull(totals.advertising_total);
-
-    if (requestedAdSpend !== null) return Math.abs(requestedAdSpend);
-
-    const hasRequestedAdField =
-      rawTotalRow &&
-      typeof rawTotalRow === "object" &&
-      ["advertising_fees", "ads_spend", "total_ads"].some((key) =>
-        Object.prototype.hasOwnProperty.call(rawTotalRow, key)
-      );
-
-    return hasRequestedAdField ? 0 : toNumber(totals.advertising_total);
+    return Math.abs(
+      toNumber(
+        getOptionalNumber(rawTotalRow as Record<string, unknown> | null, [
+          "cost_of_advertisement",
+        ]) ?? totals.cost_of_advertisement
+      )
+    );
   }, [
-    hasCm2Data,
     rawTotalRow,
-    totals.advertising_total,
-    totals.advertising_total_final,
-    totals.advertising_fees,
-    totals.ads_spend,
-    totals.total_ads,
-    totals.dealsvouchar_ads,
-    visibilityAdsValue,
+    totals.cost_of_advertisement,
   ]);
 
   const [tableSort, setTableSort] = useState<{
@@ -4362,9 +4294,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 }
                 draggableColKeys={
                   isRearrangingColumns &&
-                  isUsCountry &&
-                  effectivePromotionsPlacement.stage === "in_net_sales" &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
+                    && (effectivePromotionsPlacement.stage === "in_ads_spend" ||
+                      (isUsCountry && effectivePromotionsPlacement.stage === "in_net_sales"))
                     ? ["promotional_rebates"]
                     : []
                 }
@@ -4387,13 +4319,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 dropTargetGroupIds={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? ["ads_spend_breakdown"]
+                    ? ["ads_spend_breakdown", "sales"]
                     : []
                 }
                 dropTargetColKeys={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? ["ads_spend"]
+                    ? ["ads_spend", "net_sales"]
                     : []
                 }
                 onColumnDrop={(sourceKey, targetKey, side) => {
@@ -4409,8 +4341,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return;
                   }
                   if (["promotional_rebates", "promotional_rebates_percentage", "promotions_breakdown"].includes(sourceKey)) {
-                    if (!adsSpendTargets.includes(targetKey)) return;
-                    setDraftPromotionsPlacement({ anchor: "ads_spend_breakdown", side: "before", stage: "in_ads_spend" });
+                    if (adsSpendTargets.includes(targetKey)) {
+                      setDraftPromotionsPlacement({ anchor: "ads_spend_breakdown", side: "before", stage: "in_ads_spend" });
+                      return;
+                    }
+                    if (targetKey === "sales" || targetKey === "net_sales") {
+                      setDraftPromotionsPlacement({ anchor: "net_sales", side: "after", stage: "in_net_sales" });
+                    }
                     return;
                   }
                   if (sourceKey === "unused_amazon_breakdown") {

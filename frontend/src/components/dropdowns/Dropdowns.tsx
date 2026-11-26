@@ -1494,13 +1494,6 @@ const parseDispatchWorkbookSummary = async (
   };
 };
 
-const calculateTacos = (netSales: any, adsCost: any) => {
-  const sales = toNum(netSales);
-  const ads = Math.abs(toNum(adsCost));
-
-  return sales > 0 ? (ads / sales) * 100 : 0;
-};
-
 const pickFirstNonZeroNum = (...values: any[]) => {
   let fallback = 0;
   let hasFallback = false;
@@ -1540,6 +1533,9 @@ const hasOwnAdSpendField = (row: any) =>
   );
 
 const getNoCm2AdvertisingValue = (row: any) => {
+  const totalAdvertisingCost = pickFirstNonZeroOrNull(row?.total_advertising_cost);
+  if (totalAdvertisingCost !== null) return totalAdvertisingCost;
+
   const requestedValue = pickFirstNonZeroOrNull(
     row?.advertising_fees,
     row?.ads_spend,
@@ -1588,6 +1584,7 @@ const hasSkuCm2Data = (rows: any[] = []) => {
 const getAdvertisingTotalValue = (row: any, hasCm2Columns = true) =>
   hasCm2Columns
     ? pickFirstNonZeroNum(
+      row?.total_advertising_cost,
       row?.advertising_total_final,
       row?.advertising_total,
       row?.total_ads,
@@ -6747,13 +6744,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         if (!month || !yearValue) return [];
         const totals = rawTotals as Record<string, unknown>;
         const netSales = toNum(totals.net_sales);
-        const monthlyAdsCost = Math.abs(
-          toNum(totals.total_ads) ||
-          toNum(totals.ads_spend) ||
-          toNum(totals.advertising_total_final) ||
-          toNum(totals.advertising_fees) ||
-          toNum(totals.advertising_total)
-        );
         const otherTransactions =
           toNum(totals.other_transaction_fees) ||
           toNum(totals.other_transactions);
@@ -6774,9 +6764,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           total_profit: cm1Profit,
           other_transaction_fees: otherTransactions,
           other_transactions: otherTransactions,
-          tacos_total_advertising_cost_of_sale: netSales
-            ? (monthlyAdsCost / Math.abs(netSales)) * 100
-            : 0,
+          tacos_total_advertising_cost_of_sale: toNum(
+            totals.tacos_total_advertising_cost_of_sale ?? totals.tacos ?? totals.acos
+          ),
+          cost_of_advertisement: toNum(totals.cost_of_advertisement),
+          total_advertising_cost: toNum(totals.total_advertising_cost),
           cm2_profit: cm2Profit,
           cm2_profit_total: cm2Profit,
           total_cm2_profit: cm2Profit,
@@ -6817,34 +6809,24 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       }
     });
 
-    const units = toNum(total.total_quantity);
-    const netSales = toNum(total.net_sales);
     const cm2Profit = toNum(
       total.total_cm2_profit ?? total.cm2_profit_total ?? total.cm2_profit
     );
-    const cm1Profit = toNum(total.profit);
-    const adsSpend = toNum(
-      total.ads_spend ?? total.total_ads ?? total.advertising_total
-    );
-    const promotionalRebates = toNum(total.promotional_rebates);
-
     total.product_name = "Total";
     total.sku = "Total";
-    total.asp = units ? netSales / units : 0;
-    total.unit_wise_profitability = units ? cm1Profit / units : 0;
+    total.asp = toNum(total.asp);
+    total.unit_wise_profitability = toNum(total.unit_wise_profitability);
     total.cm2_profit = cm2Profit;
     total.cm2_profit_total = cm2Profit;
     total.total_cm2_profit = cm2Profit;
-    total.cm2_margins = netSales ? (cm2Profit / netSales) * 100 : 0;
+    total.cm2_margins = toNum(total.cm2_margins ?? total.cm2_profit_percentage);
     total.cm2_profit_percentage = total.cm2_margins;
-    total.total_cm2_margins = total.cm2_margins;
-    total.cm2_profit_per = netSales ? (cm2Profit / netSales) * 100 : 0;
-    total.promotional_rebates_percentage = netSales
-      ? (Math.abs(promotionalRebates) / Math.abs(netSales)) * 100
-      : 0;
-    total.tacos_total_advertising_cost_of_sale = netSales
-      ? (Math.abs(adsSpend) / Math.abs(netSales)) * 100
-      : 0;
+    total.total_cm2_margins = toNum(total.total_cm2_margins ?? total.cm2_margins);
+    total.cm2_profit_per = toNum(total.cm2_profit_per ?? total.cm2_margins);
+    total.promotional_rebates_percentage = toNum(total.promotional_rebates_percentage);
+    total.tacos_total_advertising_cost_of_sale = toNum(
+      total.tacos_total_advertising_cost_of_sale ?? total.tacos ?? total.acos
+    );
     total.sales_mix = 100;
     total.profit_mix = 100;
     return total;
@@ -8144,14 +8126,6 @@ const Dropdowns: React.FC<DropdownsProps> = ({
               const monthName = monthNames[monthIndex];
               if (!yearValue || !monthName) return [];
               const totals = rawTotals as Record<string, unknown>;
-              const netSales = toNum(totals.net_sales);
-              const monthlyAdsCost = Math.abs(
-                toNum(totals.total_ads) ||
-                toNum(totals.ads_spend) ||
-                toNum(totals.advertising_total_final) ||
-                toNum(totals.advertising_fees) ||
-                toNum(totals.advertising_total)
-              );
               const otherTransactions =
                 toNum(totals.other_transaction_fees) ||
                 toNum(totals.other_transactions);
@@ -8170,9 +8144,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                 _rolling_index: rollingIndex,
                 other_transaction_fees: otherTransactions,
                 other_transactions: otherTransactions,
-                tacos_total_advertising_cost_of_sale: netSales
-                  ? (monthlyAdsCost / Math.abs(netSales)) * 100
-                  : 0,
+                tacos_total_advertising_cost_of_sale: toNum(
+                  totals.tacos_total_advertising_cost_of_sale ?? totals.tacos ?? totals.acos
+                ),
               }];
             });
 
@@ -8284,13 +8258,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
       advertising_total: advertisingTotal,
       advertising_total_final: advertisingTotalFinal,
+      total_advertising_cost: toNum(row?.total_advertising_cost),
       advertising_fees: toNum(row?.advertising_fees),
       ads_spend: toNum(row?.ads_spend),
       total_ads: toNum(row?.total_ads),
 
       total_amazon_fee: toNum(row?.amazon_fee),
 
-      tacos: calculateTacos(netSales, advertisingTotalFinal),
+      tacos: toNum(
+        row?.tacos_total_advertising_cost_of_sale ?? row?.tacos ?? row?.acos
+      ),
     };
   };
 
@@ -8357,7 +8334,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       promotional_rebates: promotionalRebates,
       promotional_rebates_percentage: promotionalRebatesPercentage,
 
-      tacos: calculateTacos(netSales, advertisingTotalFinal),
+      tacos: toNum(row?.tacos_total_advertising_cost_of_sale ?? row?.tacos ?? row?.acos),
     };
   };
 
@@ -10744,6 +10721,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 
         advertising_total: advertisingTotal,
         advertising_total_final: advertisingTotalFinal,
+        total_advertising_cost: toNum(row?.total_advertising_cost),
         advertising_fees: toNum(row.advertising_fees),
         ads_spend: toNum(row.ads_spend),
         total_ads: toNum(row.total_ads),
@@ -11021,7 +10999,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         promotional_rebates: promotionalRebates,
         promotional_rebates_percentage: promotionalRebatesPercentage,
 
-        tacos: calculateTacos(netSales, advertisingTotalFinal),
+        tacos: toNum((totalRow as any)?.tacos_total_advertising_cost_of_sale ?? (totalRow as any)?.tacos ?? (totalRow as any)?.acos),
       },
     ];
   };
@@ -11178,16 +11156,10 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         currentSummary.cm2_profit_per
       );
 
-    const costOfAds =
-      currentMetrics?.cost_of_ads ??
-      currentSummary.advertising_total_final ??
-      currentSummary.advertising_total ??
-      0;
-
     const tacos =
       currentMetrics?.tacos_pct ??
       currentSummary.tacos ??
-      calculateTacos(currentSummary.total_sales, costOfAds);
+      0;
 
     const useCm2ForSkuProfit =
       range === "monthly" && hasSkuCm2Data(displaySkuRows);
@@ -12114,25 +12086,18 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     // Cost of Advertisement total.
                     const costOfAds = Math.abs(toNum(
                       hasAdsSpendColumn
-                        ? currentCardMetrics?.cost_of_ads ?? summary.advertising_total_final ?? summary.advertising_total
-                        : summary.advertising_total ?? summary.advertising_total_final
+                        ? currentCardMetrics?.cost_of_ads ?? summary.total_advertising_cost ?? summary.advertising_total_final ?? summary.advertising_total
+                        : summary.total_advertising_cost ?? summary.advertising_total ?? summary.advertising_total_final
                     ));
                     const costOfAdsPerUnit = hasAdsSpendColumn
                       ? currentCardMetrics?.cost_of_ads_per_unit ?? 0
                       : summary.unit_sold > 0 ? costOfAds / summary.unit_sold : 0;
 
-                    const getRoas = (s?: Summary) => {
-                      const ns = s?.total_sales ?? 0;            // net sales
-                      const ads = Math.abs(toNum(
-                        s?.advertising_total ?? s?.advertising_total_final
-                      ));                                      // same ads total as P&L breakdown
-                      return ns > 0 ? (ads / ns) * 100 : 0;
-                    };
-
-
-                    const roas = hasAdsSpendColumn && currentCardMetrics?.tacos_pct !== undefined
-                      ? currentCardMetrics.tacos_pct
-                      : netSales > 0 ? (costOfAds / netSales) * 100 : getRoas(summary);
+                    const roas = toNum(
+                      currentCardMetrics?.tacos_pct ??
+                      summary.tacos ??
+                      summary.tacos_total_advertising_cost_of_sale
+                    );
 
                     const formatRoas = (val: number) =>
                       `${val.toLocaleString(undefined, {
@@ -12983,20 +12948,17 @@ const Dropdowns: React.FC<DropdownsProps> = ({
 }
                     monthWiseKpiValues={{
                       adsSpend: Math.abs(toNum(
-                        range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
-                          ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
-                          : displayData?.advertising_total ?? displayData?.advertising_total_final
+                        uploadsData?.card_metrics?.current?.cost_of_ads ??
+                        displayData?.total_advertising_cost ??
+                        displayData?.advertising_total_final ??
+                        displayData?.advertising_total
                       )),
-                      acos: range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? []) &&
-                        uploadsData?.card_metrics?.current?.tacos_pct !== undefined
-                        ? toNum(uploadsData.card_metrics.current.tacos_pct)
-                        : (toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales) > 0
-                          ? (Math.abs(toNum(
-                            range === "monthly" && hasSkuCm2Data((uploadsData?.current_data as any[]) ?? [])
-                              ? uploadsData?.card_metrics?.current?.cost_of_ads ?? displayData?.advertising_total_final ?? displayData?.advertising_total
-                              : displayData?.advertising_total ?? displayData?.advertising_total_final
-                          )) / toNum(uploadsData?.card_metrics?.current?.net_sales ?? displayData?.total_sales)) * 100
-                          : 0),
+                      acos: toNum(
+                        uploadsData?.card_metrics?.current?.tacos_pct ??
+                        displayData?.tacos_total_advertising_cost_of_sale ??
+                        displayData?.tacos ??
+                        displayData?.acos
+                      ),
                       cm2Profit: toNum(uploadsData?.card_metrics?.current?.cm2_profit ?? displayData?.cm2_profit),
                     }}
                     loading={displaySkuLoading}

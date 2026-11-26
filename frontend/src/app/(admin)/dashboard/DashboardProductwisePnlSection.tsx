@@ -403,8 +403,13 @@ export default function DashboardProductwisePnlSection({
             }
             const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
             if (isPromotionsSource) {
-                if (!adsTargets.includes(targetKey)) return;
-                setDraftPromotionsPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
+                if (adsTargets.includes(targetKey)) {
+                    setDraftPromotionsPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
+                    return;
+                }
+                if (targetKey === "sales" || targetKey === "net_sales") {
+                    setDraftPromotionsPlacement({ anchor: "sales", side: "before", stage: "in_net_sales" });
+                }
                 return;
             }
             if (sourceKey === "unused_marketplace_fees") {
@@ -441,11 +446,6 @@ export default function DashboardProductwisePnlSection({
                 let stage: DashboardColumnPlacement["stage"] = "before_cm1";
                 if (targetAnchor === "profit" && side === "after") {
                     stage = "after_cm1";
-                } else if (
-                    targetAnchor === "promotions" &&
-                    activePromotionsPlacement.stage === "after_cm1"
-                ) {
-                    stage = "after_cm1";
                 } else if (["ads_spend", "acos", "cm2_profit"].includes(targetAnchor)) {
                     stage = "after_cm1";
                 }
@@ -453,75 +453,6 @@ export default function DashboardProductwisePnlSection({
                 return;
             }
 
-            const isLegacyPromotionsSource = [
-                "promotions",
-                "promotional_rebates",
-                "promotional_rebates_percentage",
-            ].includes(sourceKey);
-            if (
-                !isLegacyPromotionsSource ||
-                ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(
-                    targetKey
-                )
-            ) return;
-            if (targetKey === "sales") {
-                setDraftPromotionsPlacement({
-                    anchor: "sales",
-                    side: "after",
-                    stage: "before_cm1",
-                });
-                return;
-            }
-            if (
-                targetKey === "promotional_rebates" ||
-                targetKey === "promotional_rebates_percentage"
-            ) {
-                setDraftPromotionsPlacement({
-                    anchor: "sales",
-                    side: "before",
-                    stage: "in_net_sales",
-                });
-                return;
-            }
-            if (targetKey === "net_sales") {
-                setDraftPromotionsPlacement(
-                    side === "before"
-                        ? {
-                            anchor: "sales",
-                            side: "before",
-                            stage: "in_net_sales",
-                        }
-                        : {
-                            anchor: "sales",
-                            side: "after",
-                            stage: "before_cm1",
-                        }
-                );
-                return;
-            }
-            const targetAnchor = ({
-                gross_sales: "sales",
-                refund_sales: "sales",
-                tax: "other_transactions",
-                credits: "other_transactions",
-                misc_transaction: "other_transactions",
-                cm1_profit_per_unit: "profit",
-                cm1_profit_per: "profit",
-                product_spend: "ads_spend",
-                display_spend: "ads_spend",
-                cm2_profit_per_unit: "cm2_profit",
-                cm2_profit_per: "cm2_profit",
-            } as Record<string, string>)[targetKey] || targetKey;
-            let stage: DashboardColumnPlacement["stage"] = "before_cm1";
-            if (
-                (targetAnchor === "profit" && side === "after") ||
-                (targetAnchor === "marketplace_fees" &&
-                    activeAmazonFeesPlacement.stage === "after_cm1") ||
-                ["ads_spend", "acos", "cm2_profit"].includes(targetAnchor)
-            ) {
-                stage = "after_cm1";
-            }
-            setDraftPromotionsPlacement({ anchor: targetAnchor, side, stage });
         },
         [
             activeAmazonFeesPlacement.stage,
@@ -2679,8 +2610,8 @@ export default function DashboardProductwisePnlSection({
                             }
                             draggableColKeys={
                                 isRearrangingColumns &&
-                                    isUsPnlSkuLayout &&
-                                    activePromotionsPlacement.stage === "in_net_sales"
+                                    (activePromotionsPlacement.stage === "in_ads_spend" ||
+                                        (isUsPnlSkuLayout && activePromotionsPlacement.stage === "in_net_sales"))
                                     ? ["promotional_rebates", "promotional_rebates_percentage"]
                                     : []
                             }
