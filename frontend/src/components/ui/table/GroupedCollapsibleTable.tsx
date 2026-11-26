@@ -264,6 +264,67 @@ export default function GroupedCollapsibleTable<RowT>({
     );
   const canDropOnColumn = (key: string) =>
     dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key);
+  const promotionDragKeys = new Set([
+    "promotions",
+    "promotions_breakdown",
+    "promotional_rebates",
+    "promotional_rebates_percentage",
+  ]);
+  const amazonFeesDragKeys = new Set([
+    "marketplace_fees",
+    "amazon_breakdown",
+    "amazon_fees_in_sales",
+    "selling_fees",
+    "fba_fees",
+    "marketplace_total",
+    "amazon_fee",
+  ]);
+  const salesTargetKeys = new Set([
+    "sales",
+    "net_sales",
+    "gross_sales",
+    "product_sales",
+    "refund_sales",
+    "tex_and_credits",
+    "net_sales_tax_and_credits",
+  ]);
+  const adsTargetKeys = new Set([
+    "ads_spend_breakdown",
+    "ads_spend",
+    "product_spend",
+    "display_spend",
+    "brand_spend",
+  ]);
+  const feesReturnTargetKeys = new Set(["cost_of_unit_sold", "cogs"]);
+  const dragContextExemptKeys = new Set(["sno", "product_name", "sku"]);
+  const isSourceColumn = (key: string) => {
+    if (!draggingColumnKey) return false;
+    if (key === draggingColumnKey || getDragSourceKey(key) === draggingColumnKey) return true;
+    const sourceGroup = groups.find((group) => group.id === draggingColumnKey);
+    if (sourceGroup && [...sourceGroup.collapsedCols, ...sourceGroup.expandedCols].some((column) => column.key === key)) {
+      return true;
+    }
+    return Boolean(
+      draggableColumnGroups
+        .find((group) => group.id === draggingColumnKey)
+        ?.colKeys.includes(key)
+    );
+  };
+  const getDragContextClassName = (key: string) => {
+    if (!draggingColumnKey || dragContextExemptKeys.has(key)) return "";
+    if (isSourceColumn(key)) return "sku-drag-context-source";
+    if (promotionDragKeys.has(draggingColumnKey)) {
+      return salesTargetKeys.has(key) || adsTargetKeys.has(key)
+        ? ""
+        : "sku-drag-context-muted";
+    }
+    if (amazonFeesDragKeys.has(draggingColumnKey)) {
+      return salesTargetKeys.has(key) || feesReturnTargetKeys.has(key)
+        ? ""
+        : "sku-drag-context-muted";
+    }
+    return "";
+  };
   const hasDraggableColumns =
     draggableGroupIds.length > 0 ||
     draggableColKeys.length > 0 ||
@@ -334,6 +395,12 @@ export default function GroupedCollapsibleTable<RowT>({
       setDraggingColumnKey(dragSourceKey);
       event.dataTransfer.setData("text/plain", dragSourceKey);
       event.dataTransfer.effectAllowed = "move";
+      // The browser's default drag preview can cover sticky identity columns.
+      // Keep the source in place and use the table's boundary cue as feedback.
+      const transparentDragImage = document.createElement("canvas");
+      transparentDragImage.width = 1;
+      transparentDragImage.height = 1;
+      event.dataTransfer.setDragImage(transparentDragImage, 0, 0);
     },
     onDragOver: (event: React.DragEvent<HTMLTableCellElement>) => {
       if (!canDropOnColumn(targetKey)) return;
@@ -1287,7 +1354,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 colSpan={cols.length}
                 rowSpan={groupRowSpan}
                 style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-                className={`${thBase} text-center ${canDragColumn(g.id) ? "cursor-grab sku-draggable-boundary-cell" : canDropOnColumn(g.id) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(g.id) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${g.headerClassName || ""}`}
+                className={`${thBase} text-center ${getDragContextClassName(g.id)} ${canDragColumn(g.id) ? "cursor-grab sku-draggable-boundary-cell" : canDropOnColumn(g.id) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(g.id) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${g.headerClassName || ""}`}
                 {...dragColumnProps(g.id, g.id)}
               >
                 <div className="flex w-full min-w-0 flex-col items-center justify-center gap-1 text-center leading-tight">
@@ -1365,7 +1432,7 @@ export default function GroupedCollapsibleTable<RowT>({
               {...dragBoundaryCellProps(c.key, false, true)}
               rowSpan={anyGroupExpanded ? 2 : 1}
               style={itemIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${c.thClassName || ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.sortable ? "cursor-pointer select-none" : ""
+              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${getDragContextClassName(c.key)} ${c.thClassName || ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.sortable ? "cursor-pointer select-none" : ""
                 }`}
               {...dragColumnProps(c.key, c.key)}
             >
@@ -1390,7 +1457,7 @@ export default function GroupedCollapsibleTable<RowT>({
               key={c.key}
               {...dragBoundaryCellProps(c.key, false, true)}
               style={colIndex === 0 ? getStickyBoundaryNeighborStyle(stickyLeftCount) : undefined}
-              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.thClassName || ""}`}
+              className={`${thBase} ${alignClass(c.align)} ${getDragBoundaryEdges(c.key, false, true) ? "sku-draggable-boundary-cell" : ""} ${getDragContextClassName(c.key)} ${canDragColumn(c.key) ? "cursor-grab" : canDropOnColumn(c.key) ? "cursor-copy" : ""} ${draggingColumnKey && canDropOnColumn(c.key) ? "ring-2 ring-inset ring-[#f8edcf]" : ""} ${c.thClassName || ""}`}
               {...dragColumnProps(c.key, c.key)}
             >
               {renderHeaderContent(c)}
@@ -1413,7 +1480,7 @@ export default function GroupedCollapsibleTable<RowT>({
               {...dragBoundaryCellProps(c.key)}
               data-sticky-col-index={colIndex < stickyLeftCount ? colIndex : undefined}
               style={getStickyLeftStyle(colIndex, "sign") ?? getStickyBoundaryNeighborStyle(colIndex)}
-              className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getDragBoundaryEdges(c.key) ? "sku-draggable-boundary-cell" : ""} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
+              className={`border-0 border-r border-b border-gray-200 ${cellPadding} ${getDragBoundaryEdges(c.key) ? "sku-draggable-boundary-cell" : ""} ${getDragContextClassName(c.key)} ${getStickyLeftClassName(colIndex, "sign")} ${colIndex < stickyLeftCount ? "bg-white" : ""} ${sign?.className || ""}`}
             >
               {sign?.text || ""}
               {renderStickyLeftHorizontalDivider(colIndex, "sign")}
@@ -1451,6 +1518,7 @@ export default function GroupedCollapsibleTable<RowT>({
                 c.key === "sku" ? "text-left" : alignClass(c.align),
                 "overflow-hidden truncate",
                 getDragBoundaryEdges(c.key) ? "sku-draggable-boundary-cell" : "",
+                getDragContextClassName(c.key),
                 c.tdClassName || "",
               ].join(" ")}
             >

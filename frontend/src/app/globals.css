@@ -11,6 +11,19 @@
   position: relative;
 }
 
+.sku-drag-context-muted {
+  opacity: 0.28;
+  filter: blur(1px);
+  transition: opacity 140ms ease, filter 140ms ease;
+}
+
+.sku-drag-context-source {
+  position: relative;
+  /* Stay below sticky S.No, Product Name, and SKU cells while dragging. */
+  z-index: 1;
+  isolation: isolate;
+}
+
 .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
 .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
   animation: sku-draggable-boundary-pulse 1.2s ease-in-out infinite;
