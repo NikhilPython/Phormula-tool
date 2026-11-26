@@ -2369,7 +2369,7 @@ export default function InventoryFlowPage() {
               <tr>
                 <th className="px-4 py-3 text-center">S. No.</th>
                 <th className="px-4 py-3 text-center">Product Name</th>
-                <th className="px-4 py-3 text-center">SKU</th>
+                {selectedForecastCountry !== 'global' && <th className="px-4 py-3 text-center">SKU</th>}
                 <th className="px-4 py-3 text-center">Inventory At Month End</th>
                 <th className="px-4 py-3 text-center">Coverage Ratio Before Dispatch</th>
                 <th className="px-4 py-3 text-center">Dispatch</th>
@@ -2382,7 +2382,7 @@ export default function InventoryFlowPage() {
                 <tr key={idx} className="border-b border-slate-100">
                   <td className="px-4 py-3 text-center">{row.sNo}</td>
                   <td className="px-4 py-3 text-center">{row.productName}</td>
-                  <td className="px-4 py-3 text-center">{row.sku}</td>
+                  {selectedForecastCountry !== 'global' && <td className="px-4 py-3 text-center">{row.sku}</td>}
                   <td className="px-4 py-3 text-center">{row.inventoryAtMonthEnd}</td>
                   <td className="px-4 py-3 text-center">{row.coverageRatioBeforeDispatch}</td>
                   <td className="px-4 py-3 text-center">{row.dispatch}</td>

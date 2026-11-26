@@ -1235,6 +1235,7 @@ export default function CurrentInventorySection({
         <div className="w-full min-w-0 rounded-xl overflow-x-auto [-webkit-overflow-scrolling:touch]">
           <div className="min-w-0">
             <DataTable
+              marketplace={isGlobalInventory ? selectedInventoryCountry : region}
               columns={columns}
               data={tableRows}
               loading={false}

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import clsx from "clsx";
+import { useHideSkuColumn, filterSkuColumns } from "./skuColumnVisibility";
 
 export type Row = Record<string, React.ReactNode>;
 
@@ -30,6 +31,7 @@ type GroupedDataTableProps<T extends Row> = {
     baseColumns: BaseColumn<T>[];     // left columns (rowSpan=2)
     groupedColumns: GroupColumn<T>[]; // grouped columns (colSpan)
     data: T[];
+    marketplace?: string;
 
     className?: string;
     tableClassName?: string;
@@ -44,8 +46,9 @@ type GroupedDataTableProps<T extends Row> = {
 };
 
 export default function GroupedDataTable<T extends Row>({
-    baseColumns,
-    groupedColumns,
+    baseColumns: allBaseColumns,
+    groupedColumns: allGroupedColumns,
+    marketplace,
     data,
     className,
     tableClassName,
@@ -55,6 +58,12 @@ export default function GroupedDataTable<T extends Row>({
     emptyMessage = "No data found.",
     stickyHeader = true,
 }: GroupedDataTableProps<T>) {
+    const hideSku = useHideSkuColumn(marketplace);
+    const baseColumns = React.useMemo(() => filterSkuColumns(allBaseColumns, hideSku), [allBaseColumns, hideSku]);
+    const groupedColumns = React.useMemo(() => hideSku ? allGroupedColumns.map((group) => ({
+        ...group,
+        columns: filterSkuColumns(group.columns, true),
+    })).filter((group) => group.columns.length > 0) : allGroupedColumns, [allGroupedColumns, hideSku]);
     const hasData = Array.isArray(data) && data.length > 0;
 
     const allLeafColumns = React.useMemo(() => {

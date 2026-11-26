@@ -1557,8 +1557,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
         width: isMonthWiseView ? "9%" : "17%",
         tdClassName: "!whitespace-normal !text-clip break-words align-middle",
       },
+      ...(!isGlobalPage && !isMonthWiseView ? [{
+        key: "sku",
+        label: "SKU",
+        align: "left" as const,
+        width: "11%",
+        wideMinWidth: 155,
+      }] : []),
     ],
-    [isMonthWiseView]
+    [isGlobalPage, isMonthWiseView]
   );
 
   const requestedAmazonFeesPlacement = isRearrangingColumns
@@ -1580,18 +1587,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
         },
       ],
       expandedCols: [
-        ...(!isGlobalPage && !isMonthWiseView
-          ? [
-            {
-              key: "sku",
-              label: "SKU",
-              align: "left" as const,
-              width: "11%",
-              wideMinWidth: 155,
-            },
-          ]
-          : []),
-
         {
           key: "units_sold",
           label: "Units Sold",
@@ -4225,6 +4220,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
             <div className="w-full">
               <GroupedCollapsibleTable<TableRow>
                 rows={noDataFound ? [] : displayRows}
+                marketplace={countryName}
                 leftCols={LEFT_COLS}
                 groups={groups}
                 singleCols={SINGLE_COLS}

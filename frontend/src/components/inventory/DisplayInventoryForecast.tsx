@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import useStickyTableHeaderVisibility from '@/components/ui/table/useStickyTableHeaderVisibility';
+import { useHideSkuColumn } from '@/components/ui/table/skuColumnVisibility';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -86,6 +87,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
   externalErrorMessage = null,
 }) => {
   const { data: userData } = useGetUserDataQuery();
+  const hideSku = useHideSkuColumn(countryName);
 
   const companyName =
     (userData as any)?.companyName ||
@@ -715,14 +717,14 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
           <tr className="font-normal">
             <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">S.No</th>
             <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-left">Product Name</th>
-            <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">SKU</th>
+            {!hideSku && <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">SKU</th>}
             <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">Last 3 Months</th>
             <th className="p-3 border border-slate-200 bg-green-500 text-yellow-200 font-semibold text-center">Forecasted Months</th>
           </tr>
         </thead>
         <tbody>
           <tr className="bg-white">
-            <td colSpan={5} className="py-14 text-center">
+            <td colSpan={hideSku ? 4 : 5} className="py-14 text-center">
               <div className="flex flex-col items-center justify-center">
                 {/* <p className="text-sm font-medium text-slate-700">No table data available</p> */}
                 <p className="mt-1 text-sm text-slate-500">
@@ -808,7 +810,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
     <colgroup>
       <col style={{ width: "70px" }} />
       <col style={{ width: "200px" }} />
-      <col style={{ width: "220px" }} />
+      {!hideSku && <col style={{ width: "220px" }} />}
       {Array.from({ length: 6 }).map((_, index) => (
         <col key={index} style={{ width: "120px" }} />
       ))}
@@ -824,9 +826,11 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
         <th rowSpan={2} className={`w-50 ${tableHeaderCell} text-left`}>
           Product Name
         </th>
-        <th rowSpan={2} className={`w-55 ${tableHeaderCell} text-left`}>
-          SKU
-        </th>
+        {!hideSku && (
+          <th rowSpan={2} className={`w-55 ${tableHeaderCell} text-left`}>
+            SKU
+          </th>
+        )}
         <th colSpan={3} className={tableHeaderCell}>
           Last 3 Months
         </th>
@@ -1073,19 +1077,21 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                             </div>
                           </td>
 
-                          <td className={tableSkuCell}>
-                            <div className="max-w-full whitespace-normal wrap-break-word leading-snug text-left">
-                              {String(row.sku)
-                                .split(",")
-                                .map((sku, index, arr) => (
-                                  <React.Fragment key={`${sku}-${index}`}>
-                                    {sku.trim()}
-                                    {index < arr.length - 1 && ","}
-                                    {index < arr.length - 1 && <br />}
-                                  </React.Fragment>
-                                ))}
-                            </div>
-                          </td>
+                          {!hideSku && (
+                            <td className={tableSkuCell}>
+                              <div className="max-w-full whitespace-normal wrap-break-word leading-snug text-left">
+                                {String(row.sku)
+                                  .split(",")
+                                  .map((sku, index, arr) => (
+                                    <React.Fragment key={`${sku}-${index}`}>
+                                      {sku.trim()}
+                                      {index < arr.length - 1 && ","}
+                                      {index < arr.length - 1 && <br />}
+                                    </React.Fragment>
+                                  ))}
+                              </div>
+                            </td>
+                          )}
                           <td className={tableBodyCell}>{row.sold1}</td>
                           <td className={tableBodyCell}>{row.sold2}</td>
                           <td className={tableBodyCell}>{row.sold3}</td>
@@ -1108,7 +1114,7 @@ const DisplayInventoryForecast: React.FC<DisplayInventoryForecastProps> = ({
                         Total
                       </td>
 
-                      <td className={tableTotalCell}></td>
+                      {!hideSku && <td className={tableTotalCell}></td>}
 
                       <td className={tableTotalCell}>
                         {totalsRow.sold1}

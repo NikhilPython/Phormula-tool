@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useHideSkuColumn, filterSkuColumns } from "./skuColumnVisibility";
 import { FaArrowDownLong } from "react-icons/fa6";
 import { LuArrowUpDown } from "react-icons/lu";
 
@@ -34,6 +35,7 @@ type Props<RowT> = {
   getRowKey?: (row: RowT, index: number) => string | number;
 
   // RowSpan=2 columns on left (like Product Name, Net Units Sold, ASP...)
+  marketplace?: string;
   leftCols: LeafCol<RowT>[];
 
   // Groups that expand/collapse (like Sales, Promotions, Amazon Fees, Others)
@@ -87,9 +89,10 @@ const alignClass = (align?: Align) => {
 export default function GroupedCollapsibleTables<RowT>({
   rows,
   getRowKey,
-  leftCols,
-  groups,
-  singleCols,
+  marketplace,
+  leftCols: allLeftCols,
+  groups: allGroups,
+  singleCols: allSingleCols,
   initialCollapsed,
   collapsedState,
   onCollapsedChange,
@@ -109,6 +112,15 @@ export default function GroupedCollapsibleTables<RowT>({
   onSortChange,
   bodyMaxHeight,
 }: Props<RowT>) {
+  const hideSku = useHideSkuColumn(marketplace);
+  const leftCols = useMemo(() => filterSkuColumns(allLeftCols, hideSku), [allLeftCols, hideSku]);
+  const singleCols = useMemo(() => filterSkuColumns(allSingleCols, hideSku), [allSingleCols, hideSku]);
+  const groups = useMemo(() => hideSku ? allGroups.map((group) => ({
+    ...group,
+    collapsedCols: filterSkuColumns(group.collapsedCols, true),
+    expandedCols: filterSkuColumns(group.expandedCols, true),
+  })) : allGroups, [allGroups, hideSku]);
+
   const [internalCollapsed, setInternalCollapsed] = useState<Record<string, boolean>>(() => {
     const base: Record<string, boolean> = {};
     for (const g of groups) base[g.id] = true;

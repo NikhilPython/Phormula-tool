@@ -12917,7 +12917,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     month={range === "monthly" ? selectedMonth : ""}
                     quarter={range === "quarterly" ? selectedQuarter : ""}
                     year={selectedYear}
-                    countryName={isDemoMode ? "global" : countryName}
+                    countryName={countryName}
                     homeCurrency={isDemoMode ? "usd" : financialCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
@@ -13138,6 +13138,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </div>
 
                       <InventoryInsightsSection
+                        marketplace={
+                          isGlobalPage && availableGlobalInventoryCountries.length === 0
+                            ? countryName
+                            : inventoryInsightsCountry
+                        }
                         heatmapBuckets={inventoryInsightsData.heatmapBuckets}
                         heatmapData={inventoryInsightsData.heatmapData}
                         isHeatmapRowDiscontinued={(row) => {

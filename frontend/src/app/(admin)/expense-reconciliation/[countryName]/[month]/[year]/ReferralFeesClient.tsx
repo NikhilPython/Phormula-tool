@@ -4888,6 +4888,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
                   <div className="w-full max-w-full overflow-hidden rounded-xl border border-gray-300 [&_table]:w-full">
                     <GroupedCollapsibleTable<any>
+                      marketplace={country}
                       rows={groupedSkuTableDisplay}
                       getRowKey={(row, index) =>
                         row._isTotal

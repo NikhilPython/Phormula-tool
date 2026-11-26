@@ -3158,7 +3158,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                   <tr className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                     <th className="border px-3 py-2">Shipment ID</th>
                     <th className="border px-3 py-2">Status</th>
-                    <th className="border px-3 py-2">SKU</th>
+                    {countryUsed !== "global" && <th className="border px-3 py-2">SKU</th>}
                     <th className="border px-3 py-2">Units</th>
                     <th className="border px-3 py-2">Created At</th>
                     <th className="border px-3 py-2">Updated At</th>
@@ -3172,7 +3172,7 @@ const AmazonFinancialDashboard: React.FC<Props> = ({
                     <tr key={row.shipment_id} className="text-gray-700">
                       <td className="border px-3 py-2 font-medium">{row.shipment_id}</td>
                       <td className="border px-3 py-2">{row.shipment_status || "-"}</td>
-                      <td className="border px-3 py-2 max-w-[220px] whitespace-normal break-words">{row.sku || "-"}</td>
+                      {countryUsed !== "global" && <td className="border px-3 py-2 max-w-[220px] whitespace-normal break-words">{row.sku || "-"}</td>}
                       <td className="border px-3 py-2 text-center">{row.expected_unit_quantity ?? 0}</td>
                       <td className="border px-3 py-2">{row.created_at ? row.created_at.slice(0, 10) : "-"}</td>
                       <td className="border px-3 py-2">{row.updated_at ? row.updated_at.slice(0, 10) : "-"}</td>

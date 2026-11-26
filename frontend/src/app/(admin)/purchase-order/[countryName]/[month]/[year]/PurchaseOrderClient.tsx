@@ -1101,6 +1101,7 @@ export default function PurchaseOrderPage({
         </div>
       ) : (
         <DataTable<Row>
+          marketplace={countryName}
           columns={tableColumns}
           data={tableData}
           paginate={false}
