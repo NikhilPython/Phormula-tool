@@ -10,7 +10,7 @@ from app.utils.dashboard_card_metrics import (
 
 
 VALID_PROMOTIONS_PLACEMENTS = {"in_net_sales", "in_ads_spend"}
-VALID_AMAZON_FEES_PLACEMENTS = {"before_cm1", "after_cm1", "in_ads_spend"}
+VALID_AMAZON_FEES_PLACEMENTS = {"before_cm1", "in_net_sales"}
 
 
 def _number(row: dict[str, Any], key: str) -> float:
@@ -34,9 +34,8 @@ def apply_pnl_column_placements(
 
     promotions_detached = promotions_placement != "in_net_sales"
     promotions_in_ads = promotions_placement == "in_ads_spend"
-    fees_in_ads = amazon_fees_placement == "in_ads_spend"
-    amazon_fees_after_cm1 = amazon_fees_placement == "after_cm1"
-    if not promotions_detached and not amazon_fees_after_cm1 and not fees_in_ads:
+    fees_in_net_sales = amazon_fees_placement == "in_net_sales"
+    if not promotions_detached and not fees_in_net_sales:
         return
 
     for row in rows:
@@ -54,17 +53,20 @@ def apply_pnl_column_placements(
             or abs(_number(row, "marketplace_total"))
             or (abs(_number(row, "selling_fees")) + abs(_number(row, "fba_fees")))
         )
-        cm1_delta = 0.0
-        if promotions_in_ads:
-            cm1_delta += promotions
-        if amazon_fees_after_cm1:
-            cm1_delta += amazon_fees
+        if fees_in_net_sales:
+            net_sales_delta -= amazon_fees
+        cm1_delta = promotions if promotions_in_ads else 0.0
 
         net_sales = _number(row, "net_sales") + net_sales_delta
-        cm1_profit = _number(row, "profit") + cm1_delta
+        base_cm1_profit = (
+            _number(row, "profit")
+            if "profit" in row
+            else _number(row, "cm1_profit")
+        )
+        cm1_profit = base_cm1_profit + cm1_delta
         quantity = _number(row, "total_quantity") or _number(row, "quantity")
         cm2_profit = _number(row, "cm2_profit")
-        ads_addition = (promotions if promotions_in_ads else 0.0) + (amazon_fees if fees_in_ads else 0.0)
+        ads_addition = promotions if promotions_in_ads else 0.0
         if ads_addition:
             row["net_sales"] = net_sales
             ads_spend = _number(row, "ads_spend") + ads_addition
@@ -108,6 +110,9 @@ def apply_pnl_column_placements(
         row["net_sales_per_unit"] = net_sales / quantity if quantity else 0.0
         row["asp"] = row["net_sales_per_unit"]
         row["cm2_profit_per"] = cm2_profit / net_sales * 100 if net_sales else 0.0
+        row["acos"] = _number(row, "ads_spend") / net_sales * 100 if net_sales else 0.0
+        row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
+        row["tacos"] = row["tacos_total_advertising_cost_of_sale"]
 
         if "net_sales_tax_and_credits" in row:
             row["net_sales_tax_and_credits"] = (
@@ -154,6 +159,8 @@ def apply_pnl_column_placements_to_payload(
                 continue
             for key in (
                 "net_sales",
+                "net_sales_per_unit", "asp", "profit_percentage",
+                "unit_wise_profitability",
                 "profit",
                 "cm1_profit",
                 "cm1_profit_per",

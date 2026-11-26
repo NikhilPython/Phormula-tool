@@ -284,14 +284,25 @@ export default function DashboardProductwisePnlSection({
     }, [isRearrangingColumns, promotionsPlacement, amazonFeesPlacement]);
 
     const activeProductwiseGroups = React.useMemo(() => {
-        if (
-            activePromotionsPlacement.stage === "in_net_sales"
-        ) {
-            return SKUWISE_GROUPS;
-        }
-
         return SKUWISE_GROUPS.flatMap((group: any) => {
+            if (group.id === "marketplace_fees" && activeAmazonFeesPlacement.stage === "in_net_sales") return [];
             if (activePromotionsPlacement.stage === "in_ads_spend" && group.id === "promotions") return [];
+            if (group.id === "sales") {
+                let expandedCols = [...group.expandedCols];
+                if (activePromotionsPlacement.stage === "in_ads_spend") {
+                    expandedCols = expandedCols.filter((column: any) => column.key !== "promotional_rebates");
+                }
+                if (activeAmazonFeesPlacement.stage === "in_net_sales") {
+                    const netSalesIndex = expandedCols.findIndex((column: any) => column.key === "net_sales");
+                    expandedCols.splice(
+                        netSalesIndex < 0 ? expandedCols.length : netSalesIndex,
+                        0,
+                        { key: "selling_fees", label: "Selling Fees", align: "center", width: "8%" },
+                        { key: "fba_fees", label: "FBA Fees", align: "center", width: "8%" },
+                    );
+                }
+                return [{ ...group, expandedCols }];
+            }
             if (activePromotionsPlacement.stage === "in_ads_spend" && group.id === "ads_spend") {
                 return [{ ...group, expandedCols: [
                     ...group.expandedCols.filter((column: any) => column.key !== "ads_spend"),
@@ -300,19 +311,9 @@ export default function DashboardProductwisePnlSection({
                     group.expandedCols.find((column: any) => column.key === "ads_spend"),
                 ].filter(Boolean) }];
             }
-            return group.id === "sales"
-                ? [{
-                    ...group,
-                    collapsedCols: group.collapsedCols.filter(
-                        (column: any) => column.key !== "promotional_rebates"
-                    ),
-                    expandedCols: group.expandedCols.filter(
-                        (column: any) => column.key !== "promotional_rebates"
-                    ),
-                }]
-                : [group];
+            return [group];
         });
-    }, [SKUWISE_GROUPS, isUsPnlSkuLayout, activePromotionsPlacement.stage]);
+    }, [SKUWISE_GROUPS, activeAmazonFeesPlacement.stage, activePromotionsPlacement.stage, isUsPnlSkuLayout]);
 
     const productwiseLayout = React.useMemo<DashboardTableLayoutItem[]>(() => {
         const layout: DashboardTableLayoutItem[] = [
@@ -327,7 +328,9 @@ export default function DashboardProductwisePnlSection({
                     ? []
                     : [{ type: "group" as const, id: "promotions" }]),
             { type: "single", key: "cogs" },
-            { type: "group", id: "marketplace_fees" },
+            ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                ? []
+                : [{ type: "group" as const, id: "marketplace_fees" }]),
             { type: "group", id: "other_transactions" },
             { type: "group", id: "profit" },
             { type: "group", id: "ads_spend" },
@@ -367,25 +370,6 @@ export default function DashboardProductwisePnlSection({
             layout.splice(insertionIndex, 0, { type: "group", id: "promotions" });
         }
 
-        const feesIndex = findIndex("marketplace_fees");
-        if (feesIndex >= 0) layout.splice(feesIndex, 1);
-        const salesIndex = findIndex("sales");
-        const profitIndex = findIndex("profit");
-        const cm2Index = findIndex("cm2_profit");
-        const feesAnchorIndex = findIndex(activeAmazonFeesPlacement.anchor);
-        let feesInsertionIndex =
-            feesAnchorIndex < 0
-                ? salesIndex + 1
-                : feesAnchorIndex + (activeAmazonFeesPlacement.side === "after" ? 1 : 0);
-
-        feesInsertionIndex = Math.max(feesInsertionIndex, salesIndex + 1);
-        if (activeAmazonFeesPlacement.stage === "after_cm1") {
-            feesInsertionIndex = Math.max(feesInsertionIndex, profitIndex + 1);
-            feesInsertionIndex = Math.min(feesInsertionIndex, cm2Index);
-        } else {
-            feesInsertionIndex = Math.min(feesInsertionIndex, profitIndex);
-        }
-        layout.splice(feesInsertionIndex, 0, { type: "group", id: "marketplace_fees" });
         return layout;
     }, [
         activeAmazonFeesPlacement,
@@ -397,8 +381,16 @@ export default function DashboardProductwisePnlSection({
         (sourceKey: string, targetKey: string, side: "before" | "after") => {
             const adsTargets = ["ads_spend", "product_spend", "display_spend"];
             if (sourceKey === "marketplace_fees") {
-                if (!adsTargets.includes(targetKey)) return;
-                setDraftAmazonFeesPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
+                if (targetKey !== "sales" && targetKey !== "net_sales") return;
+                setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
+                return;
+            }
+            if (
+                activeAmazonFeesPlacement.stage === "in_net_sales" &&
+                ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
+                targetKey === "cogs"
+            ) {
+                setDraftAmazonFeesPlacement({ anchor: "cogs", side: "after", stage: "before_cm1" });
                 return;
             }
             const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
@@ -412,47 +404,6 @@ export default function DashboardProductwisePnlSection({
                 }
                 return;
             }
-            if (sourceKey === "unused_marketplace_fees") {
-                if (
-                    targetKey === "marketplace_fees" ||
-                    ["selling_fees", "fba_fees", "marketplace_total"].includes(targetKey)
-                ) return;
-                if (
-                    targetKey === "sales" ||
-                    targetKey === "net_sales" ||
-                    targetKey === "quantity" ||
-                    targetKey === "asp"
-                ) {
-                    setDraftAmazonFeesPlacement({
-                        anchor: "sales",
-                        side: "after",
-                        stage: "before_cm1",
-                    });
-                    return;
-                }
-                const targetAnchor = ({
-                    gross_sales: "sales",
-                    refund_sales: "sales",
-                    tax: "other_transactions",
-                    credits: "other_transactions",
-                    misc_transaction: "other_transactions",
-                    cm1_profit_per_unit: "profit",
-                    cm1_profit_per: "profit",
-                    product_spend: "ads_spend",
-                    display_spend: "ads_spend",
-                    cm2_profit_per_unit: "cm2_profit",
-                    cm2_profit_per: "cm2_profit",
-                } as Record<string, string>)[targetKey] || targetKey;
-                let stage: DashboardColumnPlacement["stage"] = "before_cm1";
-                if (targetAnchor === "profit" && side === "after") {
-                    stage = "after_cm1";
-                } else if (["ads_spend", "acos", "cm2_profit"].includes(targetAnchor)) {
-                    stage = "after_cm1";
-                }
-                setDraftAmazonFeesPlacement({ anchor: targetAnchor, side, stage });
-                return;
-            }
-
         },
         [
             activeAmazonFeesPlacement.stage,
@@ -2600,7 +2551,7 @@ export default function DashboardProductwisePnlSection({
                             draggableGroupIds={
                                 isRearrangingColumns
                                     ? [
-                                        "marketplace_fees",
+                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales" ? [] : ["marketplace_fees"]),
                                         ...(!isUsPnlSkuLayout ||
                                             (activePromotionsPlacement.stage !== "in_net_sales" && activePromotionsPlacement.stage !== "in_ads_spend")
                                             ? ["promotions"]
@@ -2611,21 +2562,29 @@ export default function DashboardProductwisePnlSection({
                             draggableColKeys={
                                 isRearrangingColumns &&
                                     (activePromotionsPlacement.stage === "in_ads_spend" ||
-                                        (isUsPnlSkuLayout && activePromotionsPlacement.stage === "in_net_sales"))
-                                    ? ["promotional_rebates", "promotional_rebates_percentage"]
+                                        (isUsPnlSkuLayout && activePromotionsPlacement.stage === "in_net_sales") ||
+                                        activeAmazonFeesPlacement.stage === "in_net_sales")
+                                    ? [
+                                        ...(activePromotionsPlacement.stage === "in_ads_spend" ||
+                                            (isUsPnlSkuLayout && activePromotionsPlacement.stage === "in_net_sales")
+                                            ? ["promotional_rebates", "promotional_rebates_percentage"]
+                                            : []),
+                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                                            ? ["selling_fees", "fba_fees"]
+                                            : []),
+                                    ]
                                     : []
                             }
                             draggableColumnGroups={
-                                isRearrangingColumns &&
-                                    isUsPnlSkuLayout &&
-                                    activePromotionsPlacement.stage === "in_net_sales"
-                                    ? [{
-                                        id: "promotions",
-                                        colKeys: [
-                                            "promotional_rebates",
-                                            "promotional_rebates_percentage",
-                                        ],
-                                    }]
+                                isRearrangingColumns
+                                    ? [
+                                        ...(isUsPnlSkuLayout && activePromotionsPlacement.stage === "in_net_sales"
+                                            ? [{ id: "promotions", colKeys: ["promotional_rebates", "promotional_rebates_percentage"] }]
+                                            : []),
+                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                                            ? [{ id: "amazon_fees_in_sales", colKeys: ["selling_fees", "fba_fees"] }]
+                                            : []),
+                                    ]
                                     : []
                             }
                             dropTargetGroupIds={

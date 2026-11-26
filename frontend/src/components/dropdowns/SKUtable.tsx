@@ -71,7 +71,7 @@ export type PromotionsPlacement = {
 export type AmazonFeesPlacement = {
   anchor: string;
   side: "before" | "after";
-  stage: "before_cm1" | "after_cm1" | "in_ads_spend";
+  stage: "before_cm1" | "in_net_sales";
 };
 
 type SKUColumnLayoutItem =
@@ -1561,6 +1561,11 @@ const SKUtable: React.FC<SKUtableProps> = ({
     [isMonthWiseView]
   );
 
+  const requestedAmazonFeesPlacement = isRearrangingColumns
+    ? draftAmazonFeesPlacement
+    : amazonFeesPlacement;
+  const activeAmazonFeesPlacement = requestedAmazonFeesPlacement;
+
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
       id: "units_breakdown",
@@ -1647,6 +1652,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 width: "8%",
                 info: <InfoTip text={TERM_DEFINITIONS.promotional_rebates} />,
               }]
+            : []),
+          ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+            ? [
+                { key: "selling_fees", label: "Selling Fees", align: "center" as const, width: "8%" },
+                { key: "fba_fees", label: "FBA Fees", align: "center" as const, width: "8%" },
+              ]
             : []),
           {
             key: "net_sales",
@@ -2018,7 +2029,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
         } as ColGroup<TableRow>,
       ]
       : []),
-  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView, effectivePromotionsPlacement]);
+  ], [hasCm2Data, isUsCountry, isGlobalPage, isMonthWiseView, effectivePromotionsPlacement, activeAmazonFeesPlacement.stage]);
 
   const baseTableLayout = useMemo<SKUColumnLayoutItem[]>(
     () => [
@@ -2033,7 +2044,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
           ? []
           : []),
       { type: "single", key: "cost_of_unit_sold" },
-      { type: "group", id: "amazon_breakdown" },
+      ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+        ? []
+        : [{ type: "group" as const, id: "amazon_breakdown" }]),
       { type: "group", id: "other_transactions_breakdown" },
       { type: "group", id: "profit_breakdown" },
       ...(hasCm2Data
@@ -2061,21 +2074,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
       isMonthWiseView,
       isUsCountry,
       effectivePromotionsPlacement.stage,
+      activeAmazonFeesPlacement.stage,
     ]
   );
 
-  const requestedAmazonFeesPlacement = isRearrangingColumns
-    ? draftAmazonFeesPlacement
-    : amazonFeesPlacement;
-  const activeAmazonFeesPlacement =
-    requestedAmazonFeesPlacement.stage === "after_cm1" &&
-    (!canMovePastCm1 || !hasCm2Data)
-      ? {
-          anchor: "profit_breakdown",
-          side: "before" as const,
-          stage: "before_cm1" as const,
-        }
-      : requestedAmazonFeesPlacement;
   const tableLayout = useMemo<SKUColumnLayoutItem[]>(() => {
     const layout = [...baseTableLayout];
     const anchorIndex = layout.findIndex(
@@ -2161,8 +2163,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
     baseTableLayout,
     effectivePromotionsPlacement,
     activeAmazonFeesPlacement,
-    canMovePastCm1,
-    hasCm2Data,
   ]);
 
   const anyGroupExpanded = useMemo(() => {
@@ -4286,7 +4286,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
                     ? [
-                        "amazon_breakdown",
+                        ...(activeAmazonFeesPlacement.stage === "in_net_sales" ? [] : ["amazon_breakdown"]),
                         "promotional_rebates",
                         "promotions_breakdown",
                       ]
@@ -4296,24 +4296,30 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
                     && (effectivePromotionsPlacement.stage === "in_ads_spend" ||
-                      (isUsCountry && effectivePromotionsPlacement.stage === "in_net_sales"))
-                    ? ["promotional_rebates"]
+                      (isUsCountry && effectivePromotionsPlacement.stage === "in_net_sales") ||
+                      activeAmazonFeesPlacement.stage === "in_net_sales")
+                    ? [
+                        ...(effectivePromotionsPlacement.stage === "in_ads_spend" ||
+                          (isUsCountry && effectivePromotionsPlacement.stage === "in_net_sales")
+                          ? ["promotional_rebates"]
+                          : []),
+                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                          ? ["selling_fees", "fba_fees"]
+                          : []),
+                      ]
                     : []
                 }
                 draggableColumnGroups={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? [{
-                        id:
-                          isUsCountry ||
-                          effectivePromotionsPlacement.stage !== "in_net_sales"
-                            ? "promotions_breakdown"
-                            : "promotional_rebates",
-                        colKeys: [
-                          "promotional_rebates",
-                          "promotional_rebates_percentage",
-                        ],
-                      }]
+                    ? [
+                        ...((isUsCountry || effectivePromotionsPlacement.stage !== "in_net_sales")
+                          ? [{ id: "promotions_breakdown", colKeys: ["promotional_rebates", "promotional_rebates_percentage"] }]
+                          : [{ id: "promotional_rebates", colKeys: ["promotional_rebates", "promotional_rebates_percentage"] }]),
+                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                          ? [{ id: "amazon_fees_in_sales", colKeys: ["selling_fees", "fba_fees"] }]
+                          : []),
+                      ]
                     : []
                 }
                 dropTargetGroupIds={
@@ -4325,7 +4331,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 dropTargetColKeys={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? ["ads_spend", "net_sales"]
+                    ? ["ads_spend", "net_sales", "cost_of_unit_sold"]
                     : []
                 }
                 onColumnDrop={(sourceKey, targetKey, side) => {
@@ -4336,8 +4342,16 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   ) return;
                   const adsSpendTargets = ["ads_spend_breakdown", "product_spend", "display_spend", "brand_spend", "ads_spend"];
                   if (sourceKey === "amazon_breakdown") {
-                    if (!adsSpendTargets.includes(targetKey)) return;
-                    setDraftAmazonFeesPlacement({ anchor: "ads_spend_breakdown", side: "before", stage: "in_ads_spend" });
+                    if (targetKey !== "sales" && targetKey !== "net_sales") return;
+                    setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
+                    return;
+                  }
+                  if (
+                    activeAmazonFeesPlacement.stage === "in_net_sales" &&
+                    ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
+                    targetKey === "cost_of_unit_sold"
+                  ) {
+                    setDraftAmazonFeesPlacement({ anchor: "cost_of_unit_sold", side: "after", stage: "before_cm1" });
                     return;
                   }
                   if (["promotional_rebates", "promotional_rebates_percentage", "promotions_breakdown"].includes(sourceKey)) {
@@ -4347,112 +4361,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     }
                     if (targetKey === "sales" || targetKey === "net_sales") {
                       setDraftPromotionsPlacement({ anchor: "net_sales", side: "after", stage: "in_net_sales" });
-                    }
-                    return;
-                  }
-                  if (sourceKey === "unused_amazon_breakdown") {
-                    if (
-                      targetKey === "amazon_breakdown" ||
-                      ["selling_fees", "fba_fees", "amazon_fee"].includes(targetKey)
-                    ) return;
-
-                    let anchor: string | null = null;
-                    let placementSide = side;
-                    const salesColumns = [
-                      "product_sales",
-                      "refund_sales",
-                      "tex_and_credits",
-                      "net_sales",
-                      "promotional_rebates",
-                    ];
-                    const marketplaceColumns = [
-                      "selling_fees",
-                      "fba_fees",
-                      "amazon_fee",
-                    ];
-                    const transactionColumns = [
-                      "net_taxes",
-                      "net_credits",
-                      "misc_transaction",
-                      "other_transactions",
-                    ];
-                    const cm1Columns = [
-                      "profit",
-                      "unit_wise_profitability",
-                      "profit_percentage",
-                    ];
-                    const adsColumns = [
-                      "product_spend",
-                      "display_spend",
-                      "brand_spend",
-                      "ads_spend",
-                    ];
-                    const cm2Columns = [
-                      "cm2_profit",
-                      "unit_wise_cm2_profitability",
-                      "cm2_margins",
-                    ];
-
-                    if (targetKey === "sales" || salesColumns.includes(targetKey)) {
-                      anchor = "sales";
-                      placementSide = "after";
-                    } else if (targetKey === "promotions_breakdown") {
-                      anchor = "promotions_breakdown";
-                    } else if (targetKey === "promotional_rebates_percentage") {
-                      anchor =
-                        effectivePromotionsPlacement.stage === "in_net_sales"
-                          ? "promotional_rebates_percentage"
-                          : "promotions_breakdown";
-                    } else if (targetKey === "cost_of_unit_sold") {
-                      anchor = targetKey;
-                    } else if (
-                      targetKey === "amazon_breakdown" ||
-                      marketplaceColumns.includes(targetKey)
-                    ) {
-                      return;
-                    } else if (
-                      targetKey === "other_transactions_breakdown" ||
-                      transactionColumns.includes(targetKey)
-                    ) {
-                      anchor = "other_transactions_breakdown";
-                    } else if (
-                      targetKey === "profit_breakdown" ||
-                      cm1Columns.includes(targetKey)
-                    ) {
-                      anchor = "profit_breakdown";
-                    } else if (
-                      targetKey === "ads_spend_breakdown" ||
-                      targetKey === "acos" ||
-                      adsColumns.includes(targetKey)
-                    ) {
-                      if (!canMovePastCm1 || !hasCm2Data) return;
-                      anchor =
-                        targetKey === "acos" ? "acos" : "ads_spend_breakdown";
-                    } else if (
-                      targetKey === "cm2_profit_breakdown" ||
-                      cm2Columns.includes(targetKey)
-                    ) {
-                      if (!canMovePastCm1 || !hasCm2Data) return;
-                      anchor = "cm2_profit_breakdown";
-                    }
-
-                    if (anchor) {
-                      setDraftAmazonFeesPlacement({
-                        anchor,
-                        side: placementSide,
-                        stage:
-                          canMovePastCm1 &&
-                          hasCm2Data &&
-                          (anchor === "profit_breakdown"
-                            ? placementSide === "after"
-                            : [
-                                "ads_spend_breakdown",
-                                "acos",
-                                "cm2_profit_breakdown",
-                              ].includes(anchor))
-                            ? "after_cm1"
-                            : "before_cm1",
-                      });
                     }
                     return;
                   }

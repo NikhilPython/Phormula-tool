@@ -6637,10 +6637,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       rangeType !== "monthly" && placement.stage === "after_cm1"
         ? "before_cm1"
         : placement.stage;
-    const resolvedAmazonStage =
-      rangeType === "monthly" && amazonPlacement.stage === "after_cm1"
-        ? "after_cm1"
-        : "before_cm1";
+    const resolvedAmazonStage = amazonPlacement.stage;
 
     if (rangeType === "monthly") {
       const url = new URL(
@@ -6652,7 +6649,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       url.searchParams.set("year", String(yearVal));
       url.searchParams.set("promotionsPlacement", resolvedStage);
       url.searchParams.set("amazonFeesPlacement", resolvedAmazonStage);
-      if (placement.stage === "after_cm1" || amazonPlacement.stage === "after_cm1") {
+      if (placement.stage === "after_cm1") {
         url.searchParams.set("allowAfterCm1", "true");
       }
 
@@ -8081,10 +8078,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
     url.searchParams.set("month", monthVal.toLowerCase());
     url.searchParams.set("year", String(yearVal));
     url.searchParams.set("promotionsPlacement", placement.stage);
-    url.searchParams.set(
-      "amazonFeesPlacement",
-      amazonPlacement.stage === "after_cm1" ? "after_cm1" : "before_cm1"
-    );
+    url.searchParams.set("amazonFeesPlacement", amazonPlacement.stage);
     if (allowAfterCm1) {
       url.searchParams.set("allowAfterCm1", "true");
     }
@@ -8432,9 +8426,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         );
         url.searchParams.set(
           "amazonFeesPlacement",
-          amazonFeesPlacement.stage === "after_cm1"
-            ? "after_cm1"
-            : "before_cm1"
+          amazonFeesPlacement.stage
         );
         url.searchParams.set("allowAfterCm1", "true");
       }
@@ -8516,11 +8508,8 @@ const Dropdowns: React.FC<DropdownsProps> = ({
           rangeType !== "monthly" && promotionsPlacement.stage === "after_cm1"
             ? { ...promotionsPlacement, stage: "before_cm1" }
             : promotionsPlacement,
-          rangeType === "monthly" && amazonFeesPlacement.stage === "after_cm1"
-            ? amazonFeesPlacement
-            : { ...amazonFeesPlacement, stage: "before_cm1" },
-          promotionsPlacement.stage === "after_cm1" ||
-            amazonFeesPlacement.stage === "after_cm1"
+          amazonFeesPlacement,
+          promotionsPlacement.stage === "after_cm1"
         );
 
         const prevRes = await fetch(prevUrl.toString(), {

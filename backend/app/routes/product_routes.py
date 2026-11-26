@@ -2485,10 +2485,8 @@ def _read_promotions_placement(allow_after_cm1=True):
 
 def _read_amazon_fees_placement(allow_after_cm1=True):
     placement = (request.args.get("amazonFeesPlacement") or "before_cm1").strip().lower()
-    if placement not in {"before_cm1", "after_cm1", "in_ads_spend"}:
+    if placement not in {"before_cm1", "in_net_sales"}:
         return None
-    if not allow_after_cm1 and placement == "after_cm1":
-        return "before_cm1"
     return placement
 
 
@@ -2526,7 +2524,13 @@ def _apply_promotions_placement(rows, placement):
         promotion = safe_float(row.get("promotional_rebates"))
         adjustment = abs(promotion)
         net_sales = safe_float(row.get("net_sales")) + (adjustment if placement != "in_net_sales" else 0)
-        profit = safe_float(row.get("profit"))
+        profit = safe_float(
+            row.get("profit")
+            if row.get("profit") is not None
+            else row.get("cm1_profit")
+            if row.get("cm1_profit") is not None
+            else row.get("total_profit")
+        )
         if placement == "in_ads_spend":
             profit += adjustment
         quantity = safe_float(row.get("total_quantity"))
@@ -2612,42 +2616,42 @@ def _apply_promotions_placement(rows, placement):
 
 
 def _apply_amazon_fees_placement(rows, placement):
-    if placement not in {"after_cm1", "in_ads_spend"}:
+    if placement != "in_net_sales":
         return rows
 
     for row in rows:
-        amazon_fees = abs(safe_float(row.get("amazon_fee")))
-        if placement == "in_ads_spend":
-            net_sales = safe_float(row.get("net_sales"))
-            row["ads_spend"] = safe_float(row.get("ads_spend")) + amazon_fees
-            row["acos"] = round(row["ads_spend"] / net_sales * 100, 2) if net_sales else 0
-            row["cm2_profit"] = safe_float(row.get("cm2_profit")) - amazon_fees
-            row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
-            continue
-        profit = safe_float(row.get("profit")) + amazon_fees
-        net_sales = safe_float(row.get("net_sales"))
+        amazon_fees = abs(
+            safe_float(row.get("amazon_fee"))
+            or safe_float(row.get("marketplace_fees"))
+            or safe_float(row.get("marketplace_total"))
+            or safe_float(row.get("selling_fees")) + safe_float(row.get("fba_fees"))
+        )
+        net_sales = safe_float(row.get("net_sales")) - amazon_fees
         quantity = safe_float(row.get("total_quantity"))
+        profit = safe_float(row.get("profit"))
 
-        row["profit"] = round(profit, 2)
-        row["profit_percentage"] = (
-            round(profit / net_sales * 100, 2) if net_sales else 0
-        )
-        row["unit_wise_profitability"] = (
-            round(profit / quantity, 2) if quantity else 0
-        )
-
+        row["net_sales"] = round(net_sales, 2)
+        row["net_sales_per_unit"] = round(net_sales / quantity, 2) if quantity else 0
+        row["asp"] = row["net_sales_per_unit"]
+        row["acos"] = round(safe_float(row.get("ads_spend")) / net_sales * 100, 2) if net_sales else 0
+        row["profit_percentage"] = round(profit / net_sales * 100, 2) if net_sales else 0
+        row["unit_wise_profitability"] = round(profit / quantity, 2) if quantity else 0
+        row["tacos_total_advertising_cost_of_sale"] = calculate_pnl_tacos(row)
+        row["tacos"] = row["tacos_total_advertising_cost_of_sale"]
         if "Profit" in row:
-            row["Profit"] = row["profit"]
+            row["Profit"] = profit
         if "total_profit" in row:
-            row["total_profit"] = row["profit"]
+            row["total_profit"] = profit
         if "cm1_profit" in row:
-            row["cm1_profit"] = row["profit"]
+            row["cm1_profit"] = profit
         if "cm1_profit_per_unit" in row:
             row["cm1_profit_per_unit"] = row["unit_wise_profitability"]
         if "cm1_profit_per" in row:
             row["cm1_profit_per"] = row["profit_percentage"]
         if "cm1_profit_percentage" in row:
             row["cm1_profit_percentage"] = row["profit_percentage"]
+        if "cm2_profit_per" in row:
+            row["cm2_profit_per"] = round(safe_float(row.get("cm2_profit")) / net_sales * 100, 2) if net_sales else 0
 
     return rows
 
