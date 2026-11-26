@@ -10,7 +10,7 @@ import json
 import time
 import traceback
 from contextlib import contextmanager
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from dotenv import load_dotenv
 from app.routes.business_intelligence import get_sku_monthly_history
 from app.utils.token_utils import get_effective_user_id_from_token
@@ -33,7 +33,9 @@ db_url2 = os.getenv('DATABASE_AMAZON_URL')
 db_url_chatbot = os.getenv('DATABASE_CHATBOT_URL')
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Product summaries can be requested concurrently; do not retry permanent
+# insufficient-quota errors several times before returning a useful response.
+client = OpenAI(api_key=OPENAI_API_KEY, max_retries=0)
 skuwise_bp = Blueprint('skuwise_bp', __name__)
 
 # Create engines once only.
@@ -3553,6 +3555,8 @@ def generate_product_ai_summary(product_name, country, home_currency, payload):
             return response.choices[0].message.content.strip()
 
         except Exception as e:
+            if isinstance(e, RateLimitError):
+                raise
             last_error = e
             if attempt == 0:
                 time.sleep(0.5)
@@ -3718,6 +3722,38 @@ def product_summary_ai():
             "summary": summary,
             "summary_payload": summary_payload,
         }), 200
+
+    except RateLimitError as e:
+        error_body = getattr(e, "body", None)
+        nested_error = error_body.get("error", {}) if isinstance(error_body, dict) else {}
+        error_code = (
+            getattr(e, "code", None)
+            or (nested_error.get("code") if isinstance(nested_error, dict) else None)
+        )
+        error_type = nested_error.get("type") if isinstance(nested_error, dict) else None
+
+        if error_code in {"insufficient_quota", "credit_balance_exhausted"} or error_type == "insufficient_quota":
+            current_app.logger.warning(
+                "ProductSummaryAI unavailable: AI service quota is exhausted."
+            )
+            return jsonify({
+                "success": False,
+                "error": (
+                    "The product summary is temporarily unavailable because the AI "
+                    "service has reached its usage limit. Please try again after the "
+                    "account quota is restored, or contact your administrator."
+                ),
+                "code": "ai_quota_exhausted",
+                "retryable": False,
+            }), 503
+
+        current_app.logger.warning("ProductSummaryAI temporarily rate limited.")
+        return jsonify({
+            "success": False,
+            "error": "Product insights are temporarily busy. Please try again shortly.",
+            "code": "ai_rate_limited",
+            "retryable": True,
+        }), 429
 
     except Exception as e:
         log_route_exception("ProductSummaryAI", e)
