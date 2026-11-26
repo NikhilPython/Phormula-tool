@@ -378,12 +378,12 @@ export default function DashboardProductwisePnlSection({
     ]);
 
     const handleColumnDrop = React.useCallback(
-        (sourceKey: string, targetKey: string, side: "before" | "after") => {
+        (sourceKey: string, targetKey: string, side: "before" | "after"): boolean => {
             const adsTargets = ["ads_spend", "product_spend", "display_spend"];
             if (sourceKey === "marketplace_fees") {
-                if (targetKey !== "sales" && targetKey !== "net_sales") return;
+                if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                 setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
-                return;
+                return true;
             }
             if (
                 activeAmazonFeesPlacement.stage === "in_net_sales" &&
@@ -391,19 +391,21 @@ export default function DashboardProductwisePnlSection({
                 targetKey === "cogs"
             ) {
                 setDraftAmazonFeesPlacement({ anchor: "cogs", side: "after", stage: "before_cm1" });
-                return;
+                return true;
             }
             const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
             if (isPromotionsSource) {
                 if (adsTargets.includes(targetKey)) {
                     setDraftPromotionsPlacement({ anchor: "ads_spend", side: "before", stage: "in_ads_spend" });
-                    return;
+                    return true;
                 }
                 if (targetKey === "sales" || targetKey === "net_sales") {
                     setDraftPromotionsPlacement({ anchor: "sales", side: "before", stage: "in_net_sales" });
+                    return true;
                 }
-                return;
+                return false;
             }
+            return false;
         },
         [
             activeAmazonFeesPlacement.stage,

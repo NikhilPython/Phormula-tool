@@ -2,31 +2,18 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@property --sku-boundary-shake-x {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --sku-boundary-shake-y {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-@keyframes sku-draggable-boundary-shake {
-  0%, 100% { --sku-boundary-shake-x: -2px; --sku-boundary-shake-y: 0px; }
-  25% { --sku-boundary-shake-x: 0px; --sku-boundary-shake-y: -2px; }
-  50% { --sku-boundary-shake-x: 2px; --sku-boundary-shake-y: 0px; }
-  75% { --sku-boundary-shake-x: 0px; --sku-boundary-shake-y: 2px; }
-}
-
-.sku-column-boundary-shake {
-  animation: sku-draggable-boundary-shake 320ms linear infinite;
+@keyframes sku-draggable-boundary-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
 }
 
 .sku-draggable-boundary-cell {
   position: relative;
+}
+
+.sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
+.sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
+  animation: sku-draggable-boundary-pulse 1.2s ease-in-out infinite;
 }
 
 .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
@@ -36,10 +23,9 @@
   bottom: 0;
   z-index: 20;
   width: 0;
-  border-left: 2px solid #37455F;
+  border-left: 2px solid rgb(94 166 142 / 88%);
   content: "";
   pointer-events: none;
-  transform: translate(var(--sku-boundary-shake-x), var(--sku-boundary-shake-y));
 }
 
 .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before {
@@ -56,15 +42,16 @@
 }
 
 .sku-draggable-boundary-cell[data-drag-boundary~="top"] {
-  box-shadow: inset 0 calc(2px + var(--sku-boundary-shake-y)) 0 0 #37455F;
+  box-shadow: inset 0 2px 0 0 rgb(94 166 142 / 88%);
 }
 
 .sku-draggable-boundary-cell[data-drag-boundary~="bottom"] {
-  box-shadow: inset 0 calc(-2px - var(--sku-boundary-shake-y)) 0 0 #37455F;
+  box-shadow: inset 0 -2px 0 0 rgb(94 166 142 / 88%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sku-column-boundary-shake {
+  .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
+  .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
     animation: none;
   }
 }

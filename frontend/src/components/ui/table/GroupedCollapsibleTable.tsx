@@ -98,7 +98,7 @@ type Props<RowT> = {
     sourceKey: string,
     targetKey: string,
     side: "before" | "after"
-  ) => void;
+  ) => boolean | void;
 };
 
 export type SummaryRow<RowT> = {
@@ -267,27 +267,39 @@ export default function GroupedCollapsibleTable<RowT>({
       )
     );
     const isDraggableGroup = Boolean(group && draggableGroupIds.includes(group.id));
+    const draggableColumnGroup = draggableColumnGroups.find((candidate) =>
+      candidate.colKeys.includes(colKey)
+    );
     const isDraggableLeaf =
       draggableColKeys.includes(colKey) ||
-      draggableColumnGroups.some((group) => group.colKeys.includes(colKey)) ||
+      Boolean(draggableColumnGroup) ||
       (colKey === "promotional_rebates_percentage" &&
         draggableColKeys.includes("promotional_rebates"));
     if (!isDraggableGroup && !isDraggableLeaf) return undefined;
     const groupKeys = isDraggableGroup && group
       ? new Set([...group.collapsedCols, ...group.expandedCols].map((column) => column.key))
-      : new Set([colKey]);
+      : draggableColumnGroup
+        ? new Set(draggableColumnGroup.colKeys)
+        : new Set([colKey]);
     const groupIndexes = visibleLeafCols
       .map((column, index) => (groupKeys.has(column.key) ? index : -1))
       .filter((index) => index >= 0);
     const columnIndex = visibleLeafCols.findIndex((column) => column.key === colKey);
     if (!groupIndexes.length || columnIndex < 0) return undefined;
+    const contiguousRanges: number[][] = [];
+    groupIndexes.forEach((index) => {
+      const currentRange = contiguousRanges[contiguousRanges.length - 1];
+      if (!currentRange || index !== currentRange[currentRange.length - 1] + 1) {
+        contiguousRanges.push([index]);
+      } else {
+        currentRange.push(index);
+      }
+    });
+    const containingRange = contiguousRanges.find((range) => range.includes(columnIndex));
     const edges = [
-      columnIndex === groupIndexes[0] ? "left" : "",
-      columnIndex === groupIndexes[groupIndexes.length - 1] ? "right" : "",
-      isHeader &&
-      ["promotional_rebates", "promotional_rebates_percentage"].includes(colKey)
-        ? "top"
-        : "",
+      containingRange?.[0] === columnIndex ? "left" : "",
+      containingRange?.[containingRange.length - 1] === columnIndex ? "right" : "",
+      isHeader ? "top" : "",
       isTableBottom ? "bottom" : "",
     ].filter(Boolean);
     return edges.join(" ") || undefined;
@@ -1589,7 +1601,7 @@ export default function GroupedCollapsibleTable<RowT>({
 
   if (!bodyMaxHeight) {
     return (
-      <div className={`w-full ${hasDraggableColumns ? "sku-column-boundary-shake" : ""}`}>
+      <div className={`w-full ${hasDraggableColumns ? "sku-column-boundary-pulse" : ""}`}>
         <div
           ref={headerScrollContainerRef}
           className="relative z-10 w-full overflow-hidden bg-white"
@@ -1628,7 +1640,7 @@ export default function GroupedCollapsibleTable<RowT>({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className={`w-full overflow-auto ${hasDraggableColumns ? "sku-column-boundary-shake" : ""}`}
+      className={`w-full overflow-auto ${hasDraggableColumns ? "sku-column-boundary-pulse" : ""}`}
       style={{ maxHeight: `${bodyMaxHeight}px` }}
     >
       <table ref={tableRef} className={tableClassName} style={tableStyle}>

@@ -4339,12 +4339,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     !isRearrangingColumns ||
                     (!onPromotionsPlacementChange &&
                       !onAmazonFeesPlacementChange)
-                  ) return;
+                  ) return false;
                   const adsSpendTargets = ["ads_spend_breakdown", "product_spend", "display_spend", "brand_spend", "ads_spend"];
                   if (sourceKey === "amazon_breakdown") {
-                    if (targetKey !== "sales" && targetKey !== "net_sales") return;
+                    if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                     setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
-                    return;
+                    return true;
                   }
                   if (
                     activeAmazonFeesPlacement.stage === "in_net_sales" &&
@@ -4352,20 +4352,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     targetKey === "cost_of_unit_sold"
                   ) {
                     setDraftAmazonFeesPlacement({ anchor: "cost_of_unit_sold", side: "after", stage: "before_cm1" });
-                    return;
+                    return true;
                   }
                   if (["promotional_rebates", "promotional_rebates_percentage", "promotions_breakdown"].includes(sourceKey)) {
                     if (adsSpendTargets.includes(targetKey)) {
                       setDraftPromotionsPlacement({ anchor: "ads_spend_breakdown", side: "before", stage: "in_ads_spend" });
-                      return;
+                      return true;
                     }
                     if (targetKey === "sales" || targetKey === "net_sales") {
                       setDraftPromotionsPlacement({ anchor: "net_sales", side: "after", stage: "in_net_sales" });
+                      return true;
                     }
-                    return;
+                    return false;
                   }
                   if (!["promotional_rebates", "promotions_breakdown"].includes(sourceKey)) {
-                    return;
+                    return false;
                   }
                   const salesColumns = [
                     "product_sales",
@@ -4406,7 +4407,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side: "after",
                       stage: "before_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (salesColumns.includes(targetKey)) {
                     setDraftPromotionsPlacement({
@@ -4414,7 +4415,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side: targetKey === "product_sales" ? "after" : side,
                       stage: "in_net_sales",
                     });
-                    return;
+                    return true;
                   }
                   if (targetKey === "net_sales") {
                     setDraftPromotionsPlacement(
@@ -4430,7 +4431,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                             stage: "before_cm1",
                           }
                     );
-                    return;
+                    return true;
                   }
                   if (targetKey === "profit_breakdown" || cm1Columns.includes(targetKey)) {
                     const placementSide =
@@ -4443,26 +4444,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side: placementSide,
                       stage: placementSide === "after" ? "after_cm1" : "before_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (
                     targetKey === "cm2_profit_breakdown" ||
                     cm2Columns.includes(targetKey)
                   ) {
-                    if (!canMovePastCm1 || !hasCm2Data) return;
+                    if (!canMovePastCm1 || !hasCm2Data) return false;
                     setDraftPromotionsPlacement({
                       anchor: "cm2_profit_breakdown",
                       side: "before",
                       stage: "after_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (
                     targetKey === "ads_spend_breakdown" ||
                     targetKey === "acos" ||
                     adsColumns.includes(targetKey)
                   ) {
-                    if (!canMovePastCm1 || !hasCm2Data) return;
+                    if (!canMovePastCm1 || !hasCm2Data) return false;
                     const anchor =
                       targetKey === "acos" ? "acos" : "ads_spend_breakdown";
                     setDraftPromotionsPlacement({
@@ -4470,7 +4471,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side,
                       stage: "after_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (
                     targetKey === "amazon_breakdown" ||
@@ -4481,7 +4482,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side,
                       stage: "before_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (
                     targetKey === "other_transactions_breakdown" ||
@@ -4492,7 +4493,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side,
                       stage: "before_cm1",
                     });
-                    return;
+                    return true;
                   }
                   if (
                     targetKey === "cost_of_unit_sold" ||
@@ -4503,7 +4504,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       side,
                       stage: "before_cm1",
                     });
+                    return true;
                   }
+                  return false;
                 }}
                 initialCollapsed={{
                   units_breakdown: true,
