@@ -68,8 +68,10 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v29_uk_fba_preview_global_merge"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v30_uk_historical_fba_surcharge"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
+UK_FBA_SURCHARGE_START = date(2026, 4, 17)
+UK_FBA_SURCHARGE_INCREASE = date(2026, 11, 2)
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -173,7 +175,10 @@ def _recalculate_fba_source_fees(frame, user_id, country):
             Fee.sku.in_(frame["sku"].dropna().astype(str).str.strip().unique().tolist()),
         ).all()
         uk_fee_per_unit = {
-            str(fee.sku).strip(): fba_number(fee.expected_domestic_fulfilment_fee_per_unit)
+            str(fee.sku).strip(): (
+                fba_number(fee.expected_domestic_fulfilment_fee_per_unit),
+                getattr(fee, "synced_at", None),
+            )
             for fee in fee_rows
             if fba_number(fee.expected_domestic_fulfilment_fee_per_unit) is not None
         }
@@ -212,9 +217,37 @@ def _recalculate_fba_source_fees(frame, user_id, country):
             elif normalized_channel in {"MERCHANT", "MFN", "FBM", "DEFAULT", "SELLER"}:
                 amount, reason = 0.0, "merchant_fulfilled"
             else:
-                fee_per_unit = uk_fee_per_unit.get(str(row.get("sku", "")).strip())
-                amount = float(fee_per_unit * quantity) if fee_per_unit is not None else None
-                reason = "uk_fee_preview_domestic_fulfilment" if amount is not None else "missing_uk_fee_preview"
+                fee_preview = uk_fee_per_unit.get(str(row.get("sku", "")).strip())
+                if fee_preview is None:
+                    amount, reason = None, "missing_uk_fee_preview"
+                elif shipped_on is None:
+                    amount, reason = None, "missing_shipment_date"
+                elif fee_preview[1] is None:
+                    amount, reason = None, "missing_uk_fee_preview_date"
+                else:
+                    fee_per_unit, preview_synced_at = fee_preview
+                    preview_date = pd.to_datetime(preview_synced_at, errors="coerce")
+                    if pd.isna(preview_date):
+                        amount, reason = None, "missing_uk_fee_preview_date"
+                    else:
+                        preview_date = preview_date.date()
+                        target_surcharge = (
+                            Decimal("0.02") if shipped_on >= UK_FBA_SURCHARGE_INCREASE
+                            else Decimal("0.015") if shipped_on >= UK_FBA_SURCHARGE_START
+                            else Decimal("0")
+                        )
+                        preview_surcharge = (
+                            Decimal("0.02") if preview_date >= UK_FBA_SURCHARGE_INCREASE
+                            else Decimal("0.015") if preview_date >= UK_FBA_SURCHARGE_START
+                            else Decimal("0")
+                        )
+                        base_fee = fee_per_unit / (Decimal("1") + preview_surcharge)
+                        historical_fee = base_fee * (Decimal("1") + target_surcharge)
+                        amount = float(
+                            historical_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                            * quantity
+                        )
+                        reason = "uk_fee_preview_historical_surcharge_adjusted"
             amounts.append(amount)
             reasons.append(reason)
             continue
@@ -494,7 +527,14 @@ def _recalculate_us_referral_source_fees(frame):
     ]
     frame = _apply_us_referral_fee_price_bands(frame)
     frame["answer"] = [
-        round(value * (rate / 100.0), 2) * quantity if sales != 0 else 0.0
+        float(
+            max(
+                (Decimal(str(value)) * Decimal(str(rate)) / Decimal("100")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                ),
+                US_MINIMUM_REFERRAL_FEE_PER_UNIT,
+            ) * Decimal(str(quantity))
+        ) if sales != 0 and rate > 0 else 0.0
         for value, rate, quantity, sales in zip(
             frame["total_value"], frame["referral_fee"], units, frame["product_sales"]
         )
@@ -5075,7 +5115,10 @@ def get_table_data(file_name):
                     df["answer"] = pd.to_numeric(df["answer"], errors="coerce").fillna(0)
                 else:
                     applicable_per_unit = [
-                        _round_half_up(total_value * (rate / 100.0))
+                        max(
+                            _round_half_up(total_value * (rate / 100.0)),
+                            0.25,
+                        ) if rate > 0 else 0.0
                         for total_value, rate in zip(df["total_value"], df["referral_fee"])
                     ]
                     df["answer"] = [

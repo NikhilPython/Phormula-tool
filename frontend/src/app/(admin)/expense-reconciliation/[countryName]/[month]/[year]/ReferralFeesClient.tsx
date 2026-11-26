@@ -3878,26 +3878,28 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
         {/* RIGHT: Country selector and filters */}
         <div className="flex w-full flex-wrap items-center justify-start gap-3 mb-2 md:w-auto md:justify-end">
-          <div className="inline-flex items-center rounded-xl border border-gray-300 bg-white p-1 shadow-sm" role="group" aria-label="Marketplace">
-            {(["global", "uk", "us"] as const).map((market) => {
-              const active = effectiveCountry === market;
-              const targetMonth = (month || routeMonth || "November").toLowerCase();
-              const targetYear = year || routeYear || String(new Date().getFullYear());
-              return (
-                <Link
-                  key={market}
-                  href={`/expense-reconciliation/${market}/${encodeURIComponent(targetMonth)}/${encodeURIComponent(targetYear)}`}
-                  aria-current={active ? "page" : undefined}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${active
-                    ? "bg-[#5EA68E] text-white shadow-sm"
-                    : "text-gray-700 hover:bg-gray-100"
-                    }`}
-                >
-                  {market === "global" ? "Global" : market.toUpperCase()}
-                </Link>
-              );
-            })}
-          </div>
+          {isGlobalPage && (
+            <div className="inline-flex items-center rounded-xl border border-gray-300 bg-white p-1 shadow-sm" role="group" aria-label="Marketplace">
+              {(["global", "uk", "us"] as const).map((market) => {
+                const active = effectiveCountry === market;
+                const targetMonth = (month || routeMonth || "November").toLowerCase();
+                const targetYear = year || routeYear || String(new Date().getFullYear());
+                return (
+                  <Link
+                    key={market}
+                    href={`/expense-reconciliation/${market}/${encodeURIComponent(targetMonth)}/${encodeURIComponent(targetYear)}`}
+                    aria-current={active ? "page" : undefined}
+                    className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${active
+                      ? "bg-[#5EA68E] text-white shadow-sm"
+                      : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                  >
+                    {market === "global" ? "Global" : market.toUpperCase()}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
           <PeriodFiltersTable
             range={range}
             selectedMonth={month}
