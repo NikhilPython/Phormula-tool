@@ -450,6 +450,8 @@ export default function WorkspaceSetupOnboarding({
   const productOnlyView = view === "productControls";
 
   const handlePlanPayment = () => {
+    // Temporary demo payment only. Replace with server-verified payment before production.
+    if (!hasSkuSheet || isLoading || hasPlanAccess) return;
     const planPaymentKey = `workspace-plan-paid:${String(data?.email || data?.id || "current-user").toLowerCase()}`;
     window.localStorage.setItem(planPaymentKey, "true");
     setIsPlanPaid(true);
@@ -1705,7 +1707,29 @@ export default function WorkspaceSetupOnboarding({
               }
               className="min-h-[175px]"
             >
-              <div className="min-h-[165px]" />
+              <div className="flex min-h-[165px] flex-col items-center justify-center gap-3 text-center">
+                {hasPlanAccess ? (
+                  <p className="flex items-center gap-2 text-sm font-semibold text-green-500">
+                    <FiCheckCircle size={18} /> Plan activated
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-xs text-[#78847E]">
+                      {hasSkuSheet
+                        ? "Complete the demo payment to unlock integrations. No charge will be made."
+                        : "Upload your SKU sheet first to unlock payment."}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handlePlanPayment}
+                      disabled={!hasSkuSheet || isLoading}
+                    >
+                      Pay
+                    </Button>
+                  </>
+                )}
+              </div>
             </InfoCard>
           )}
 

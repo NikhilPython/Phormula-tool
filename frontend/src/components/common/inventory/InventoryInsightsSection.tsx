@@ -23,6 +23,7 @@ import ActionBasedDashboard, {
 } from "@/components/common/inventory/ActionBasedDashboard";
 
 type InventoryInsightsSectionProps = {
+    marketplace?: string;
     heatmapBuckets: AgeingBucket[];
     heatmapData: AgeingRiskHeatmapRow[];
     donutData: DonutChartItem[];
@@ -86,6 +87,7 @@ type InventoryInsightsSectionProps = {
 };
 
 const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
+    marketplace,
     heatmapBuckets,
     heatmapData,
     donutData,
@@ -160,6 +162,7 @@ const InventoryInsightsSection: React.FC<InventoryInsightsSectionProps> = ({
 
                 {hasHeatmap && (
                     <AgeingRiskHeatmap
+                        marketplace={marketplace}
                         title="Ageing Risk Heatmap"
                         subtitle="Quickly identify products with old inventory"
                         data={heatmapData}

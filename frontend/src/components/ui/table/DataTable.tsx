@@ -5,6 +5,7 @@ import clsx from "clsx";
 import Loader from "@/components/loader/Loader";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 import useStickyTableHeaderVisibility from "./useStickyTableHeaderVisibility";
+import { useHideSkuColumn, filterSkuColumns } from "./skuColumnVisibility";
 
 export type Row = Record<string, React.ReactNode>;
 
@@ -25,6 +26,7 @@ export type ColumnDef<T extends Row> = {
 
 type DataTableProps<T extends Row> = {
   columns: ColumnDef<T>[];
+  marketplace?: string;
   data: T[];
 
   className?: string;
@@ -57,7 +59,8 @@ type DataTableProps<T extends Row> = {
 };
 
 export default function DataTable<T extends Row>({
-  columns,
+  columns: allColumns,
+  marketplace,
   data,
   className,
   tableClassName,
@@ -80,6 +83,8 @@ export default function DataTable<T extends Row>({
   headerMaxWidth = 130,
   stickyColumnKeys = [],
 }: DataTableProps<T>) {
+  const hideSku = useHideSkuColumn(marketplace);
+  const columns = React.useMemo(() => filterSkuColumns(allColumns, hideSku), [allColumns, hideSku]);
   const containerStyle: React.CSSProperties = {
     maxHeight: scrollY
       ? typeof maxHeight === "number"

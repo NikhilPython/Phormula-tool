@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useHideSkuColumn, filterSkuColumns } from "./skuColumnVisibility";
 import { FaArrowDownLong } from "react-icons/fa6";
 import { LuArrowUpDown } from "react-icons/lu";
 import useStickyTableHeaderVisibility from "./useStickyTableHeaderVisibility";
@@ -45,6 +46,7 @@ type Props<RowT> = {
   rows: RowT[];
   getRowKey?: (row: RowT, index: number) => string | number;
   onAnyGroupExpandedChange?: (expanded: boolean) => void;
+  marketplace?: string;
   leftCols: LeafCol<RowT>[];
   groups: ColGroup<RowT>[];
   singleCols: LeafCol<RowT>[];
@@ -156,9 +158,10 @@ export default function GroupedCollapsibleTable<RowT>({
   rows,
   getRowKey,
   onAnyGroupExpandedChange,
-  leftCols,
-  groups,
-  singleCols,
+  marketplace,
+  leftCols: allLeftCols,
+  groups: allGroups,
+  singleCols: allSingleCols,
   layout,
   initialCollapsed,
   collapsedState,
@@ -196,6 +199,15 @@ export default function GroupedCollapsibleTable<RowT>({
   onColumnDrop,
 
 }: Props<RowT>) {
+  const hideSku = useHideSkuColumn(marketplace);
+  const leftCols = useMemo(() => filterSkuColumns(allLeftCols, hideSku), [allLeftCols, hideSku]);
+  const singleCols = useMemo(() => filterSkuColumns(allSingleCols, hideSku), [allSingleCols, hideSku]);
+  const groups = useMemo(() => hideSku ? allGroups.map((group) => ({
+    ...group,
+    collapsedCols: filterSkuColumns(group.collapsedCols, true),
+    expandedCols: filterSkuColumns(group.expandedCols, true),
+  })) : allGroups, [allGroups, hideSku]);
+
   /* ---------------- State ---------------- */
 
   const buildDefaultCollapsed = () => {
@@ -510,12 +522,12 @@ export default function GroupedCollapsibleTable<RowT>({
   const resolvedLayout: LayoutItem<RowT>[] = useMemo(
     () =>
       layout?.length
-        ? layout
+        ? layout.filter((item) => item.type === "group" ? groupMap.has(item.id) : singleMap.has(item.key))
         : [
           ...groups.map((g) => ({ type: "group" as const, id: g.id })),
           ...singleCols.map((c) => ({ type: "single" as const, key: c.key })),
         ],
-    [layout, groups, singleCols]
+    [layout, groups, singleCols, groupMap, singleMap]
   );
 
   const iconButtonClass =

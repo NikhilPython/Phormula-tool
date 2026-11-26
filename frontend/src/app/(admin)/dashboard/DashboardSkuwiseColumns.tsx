@@ -59,6 +59,13 @@ export function buildSkuwiseTableColumns(
             width: "14%",
             tdClassName: "!whitespace-normal !text-clip break-words align-middle",
         },
+        ...(!hideSku ? [{
+            key: "sku",
+            label: "SKU",
+            align: "left" as const,
+            width: "7%",
+            wideMinWidth: 155,
+        }] : []),
     ];
 
     const SKUWISE_GROUPS = [
@@ -102,18 +109,6 @@ export function buildSkuwiseTableColumns(
             ],
 
             expandedCols: [
-                ...(!hideSku
-                    ? [
-                        {
-                            key: "sku",
-                            label: "SKU",
-                            align: "left" as const,
-                            width: "7%",
-                            wideMinWidth: 155,
-                        },
-                    ]
-                    : []),
-
                 {
                     key: "quantity",
                     label: "Units Sold",

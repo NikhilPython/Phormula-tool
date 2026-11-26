@@ -109,6 +109,11 @@ export default function DashboardInventoryInsightsTab({
                                 </div>
 
                                 <InventoryInsightsSection
+                                    marketplace={
+                                        platform === "global" && globalInventoryCountryOptions.length > 0
+                                            ? selectedGlobalInventoryCountry
+                                            : countryName
+                                    }
                                     heatmapBuckets={inventoryInsightsData.heatmapBuckets}
                                     heatmapData={inventoryInsightsData.heatmapData}
                                     donutData={inventoryInsightsData.donutData}

@@ -9122,14 +9122,16 @@ const Dropdowns: React.FC<DropdownsProps> = ({
         cache: "no-store",
       });
 
+      const data: any = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         if (requestId !== aiRequestIdRef.current) return;
         setAiPanel(null);
-        setAiPanelError("Failed to fetch AI summary");
+        setAiPanelError(
+          data?.error || "AI insights are temporarily unavailable. Please try again later."
+        );
         return;
       }
-
-      const data: any = await res.json();
 
       if (requestId !== aiRequestIdRef.current) return;
 
@@ -12915,7 +12917,7 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     month={range === "monthly" ? selectedMonth : ""}
                     quarter={range === "quarterly" ? selectedQuarter : ""}
                     year={selectedYear}
-                    countryName={isDemoMode ? "global" : countryName}
+                    countryName={countryName}
                     homeCurrency={isDemoMode ? "usd" : financialCurrency}
                     rows={skuRowsWithStatus}
                     monthWiseRows={monthWiseSkuRows}
@@ -13136,6 +13138,11 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                       </div>
 
                       <InventoryInsightsSection
+                        marketplace={
+                          isGlobalPage && availableGlobalInventoryCountries.length === 0
+                            ? countryName
+                            : inventoryInsightsCountry
+                        }
                         heatmapBuckets={inventoryInsightsData.heatmapBuckets}
                         heatmapData={inventoryInsightsData.heatmapData}
                         isHeatmapRowDiscontinued={(row) => {

@@ -85,6 +85,7 @@ const splitActionSkuValues = (value: unknown) =>
         .filter(Boolean);
 
 type AgeingRiskHeatmapProps = {
+    marketplace?: string;
     title?: string;
     subtitle?: string;
     data: AgeingRiskHeatmapRow[];
@@ -590,6 +591,7 @@ const getUnitSalesSortValue = (
 };
 
 const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
+    marketplace,
     title = "Ageing Risk Heatmap",
     subtitle = "Quickly identify products with old inventory",
     data,
@@ -2000,6 +2002,7 @@ const AgeingRiskHeatmap: React.FC<AgeingRiskHeatmapProps> = ({
                     </div>
                 ) : (
                     <GroupedCollapsibleTable<HeatmapTableRow>
+                        marketplace={marketplace}
                         rows={displayRows}
                         leftCols={tableConfig.leftCols}
                         groups={tableConfig.groups}

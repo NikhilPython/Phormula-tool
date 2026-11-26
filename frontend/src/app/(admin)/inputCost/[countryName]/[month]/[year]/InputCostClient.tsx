@@ -7867,6 +7867,7 @@ export default function InputCostPage({ params }: Params) {
                   </div>
 
                   <InventoryInsightsSection
+                    marketplace={globalInventoryCountryOptions.length ? inventoryInsightsReportCountry : countryName}
                     heatmapBuckets={displayedInventoryInsightsData.heatmapBuckets}
                     heatmapData={displayedInventoryInsightsData.heatmapData}
                     donutData={displayedInventoryInsightsData.donutData}
@@ -7919,6 +7920,7 @@ export default function InputCostPage({ params }: Params) {
               ) : tableData.length > 0 ? (
                 <div className="mt-5">
                   <DataTable<TableRow>
+                    marketplace={globalInventoryCountryOptions.length ? skuInfoCountryName : countryName}
                     columns={columns}
                     data={tableData}
                     stickyColumnKeys={["s_no", "product_name"]}
@@ -7953,6 +7955,7 @@ export default function InputCostPage({ params }: Params) {
                 </div>
               ) : warehouseTableData.length > 0 ? (
                 <DataTable<Record<string, any>>
+                  marketplace={globalInventoryCountryOptions.length ? skuInfoCountryName : countryName}
                   columns={warehouseTableColumns}
                   data={warehouseTableData}
                   paginate={false}

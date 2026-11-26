@@ -2450,6 +2450,7 @@ export default function DashboardProductwisePnlSection({
                     <div className="w-full max-w-full">
 
                         <GroupedCollapsibleTable<any>
+                            marketplace={countryName}
                             rows={actionTableRows}
                             onAnyGroupExpandedChange={setProductwiseAnyGroupExpanded}
                             tableClassName={[

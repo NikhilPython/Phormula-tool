@@ -64,10 +64,13 @@ export default function ErrorStatusPage() {
 
   // Compute displayed columns from data
   const columns = useMemo(() => {
-    if (tableData.length === 0) return selectedColumns;
+    const visibleColumns = effectiveCountry === "global"
+      ? selectedColumns.filter((column) => column !== "sku")
+      : selectedColumns;
+    if (tableData.length === 0) return visibleColumns;
     const present = new Set(Object.keys(tableData[0] || {}));
-    return selectedColumns.filter((c) => present.has(c));
-  }, [tableData]);
+    return visibleColumns.filter((column) => present.has(column));
+  }, [tableData, effectiveCountry]);
 
   // Keep the URL in sync with the current selections (no button needed)
   useEffect(() => {

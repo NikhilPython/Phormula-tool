@@ -9,6 +9,7 @@ from app.models.user_models import HistoricAISummary, UserObjective, MidMonthTar
 from app.utils.monthwise_ai_summary_utils import get_or_create_summary, get_or_create_global_summary
 from app.utils.token_utils import get_effective_user_id_from_token
 from app.utils.history_graph_utils import get_performance_trend
+from openai import RateLimitError
 
 summary_bp = Blueprint("summary_bp", __name__)
 
@@ -197,6 +198,33 @@ def summary():
 
     except jwt.InvalidTokenError:
         return jsonify({"error": "Invalid token"}), 401
+
+    except RateLimitError as e:
+        db.session.rollback()
+        error_body = getattr(e, "body", None)
+        nested_error = error_body.get("error", {}) if isinstance(error_body, dict) else {}
+        error_code = (
+            getattr(e, "code", None)
+            or (nested_error.get("code") if isinstance(nested_error, dict) else None)
+        )
+        error_type = nested_error.get("type") if isinstance(nested_error, dict) else None
+
+        if error_code in {"insufficient_quota", "credit_balance_exhausted"} or error_type == "insufficient_quota":
+            return jsonify({
+                "error": (
+                    "AI insights are temporarily unavailable because the AI service "
+                    "has reached its usage limit. Please try again after the account "
+                    "quota is restored, or contact your administrator."
+                ),
+                "code": "ai_quota_exhausted",
+                "retryable": False,
+            }), 503
+
+        return jsonify({
+            "error": "AI insights are temporarily busy. Please try again shortly.",
+            "code": "ai_rate_limited",
+            "retryable": True,
+        }), 429
 
     except Exception as e:
         traceback.print_exc()

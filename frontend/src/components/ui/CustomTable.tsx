@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import { isSkuColumn, useHideSkuColumn } from "./table/skuColumnVisibility";
 
 export type CustomTableProps = {
   headers: React.ReactNode[];
@@ -18,6 +19,10 @@ export default function CustomTable({
   headerClassName,
   cellClassName,
 }: CustomTableProps) {
+  const hideSku = useHideSkuColumn();
+  const skuColumnIndexes = new Set(headers.flatMap((header, index) => (
+    hideSku && isSkuColumn(header) ? [index] : []
+  )));
   const base =
     "w-full border border-neutral-200 rounded-lg overflow-hidden bg-white";
   const th =
@@ -32,7 +37,7 @@ export default function CustomTable({
       <table className={`${base} border-collapse`}>
         <thead>
           <tr className="bg-white">
-            {headers.map((h, i) => (
+            {headers.map((h, i) => !skuColumnIndexes.has(i) && (
               <th key={i} className={th}>
                 {h}
               </th>
@@ -42,7 +47,7 @@ export default function CustomTable({
         <tbody>
           {rows.map((r, i) => (
             <tr className="bg-white" key={i}>
-              {r.map((c, j) => (
+              {r.map((c, j) => !skuColumnIndexes.has(j) && (
                 <td key={j} className={td}>
                   {c}
                 </td>

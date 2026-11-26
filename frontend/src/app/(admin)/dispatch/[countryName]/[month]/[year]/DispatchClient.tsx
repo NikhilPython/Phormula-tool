@@ -2860,6 +2860,7 @@ export default function DispatchPage({
           }
         >
           <DataTable<InboundShipmentTableRow>
+            marketplace={countryName}
             columns={columns}
             data={rows}
             paginate={false}
@@ -3203,6 +3204,7 @@ export default function DispatchPage({
                 </div>
               ) : (
                 <GroupedCollapsibleTable<DispatchTableRow>
+                  marketplace={countryName}
                   rows={tableRows}
                   getRowKey={(row, index) =>
                     row.__isTotal ? 'total' : row.__isOthers ? 'others' : index

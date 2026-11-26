@@ -1111,6 +1111,7 @@ const SkuAnalysisSection: React.FC<Props> = ({
 
                 <div className="pt-6">
                     <DataTable<TableRow>
+                        marketplace={countryName}
                         columns={columns}
                         data={buildTableRows}
                         stickyHeader

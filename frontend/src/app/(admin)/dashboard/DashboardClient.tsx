@@ -9027,13 +9027,13 @@ export default function DashboardPage() {
         () =>
             buildSkuwiseTableColumns(formatDisplayAmount, {
                 isUsSkuLayout: isUsPnlSkuLayout,
-                hideSku: platform === "global",
+                hideSku: pnlCountryName === "global",
                 promotionsPlacement: "in_net_sales",
             }),
         [
             formatDisplayAmount,
             isUsPnlSkuLayout,
-            platform,
+            pnlCountryName,
         ]
     );
 
