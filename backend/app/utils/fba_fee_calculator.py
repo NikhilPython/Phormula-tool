@@ -182,7 +182,7 @@ def estimate_fba_fee(product, *, quantity, unit_price, shipped_on, marketplace_i
     # Verified Amazon shipping measurements take precedence over current catalog
     # inputs only for the configured seller, SKU/ASIN, marketplace and period.
     # Rates still come from the normal price/date/size/weight rate-card lookup.
-    verified = next((m for m in VERIFIED_MEASUREMENTS
+    verified = next((m for m in (VERIFIED_MEASUREMENTS or ())
                      if str(product.get("user_id")) == str(m["user_id"])
                      and product.get("sku") == m["sku"]
                      and product.get("asin") == m["asin"]

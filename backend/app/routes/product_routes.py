@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify , send_file 
 from io import BytesIO
 import jwt
+import logging
 import os
 import re
 import threading
@@ -69,8 +70,10 @@ MONTHS = [
     "january", "february", "march", "april", "may", "june",
     "july", "august", "september", "october", "november", "december"
 ]
-EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v28_product_name_resolution"
+EXPENSE_RECONCILIATION_CACHE_VERSION = "expense_reconciliation_v30_uk_historical_fba_surcharge"
 US_MINIMUM_REFERRAL_FEE_PER_UNIT = Decimal("0.30")
+UK_FBA_SURCHARGE_START = date(2026, 4, 17)
+UK_FBA_SURCHARGE_INCREASE = date(2026, 11, 2)
 _expense_reconciliation_locks = {}
 _expense_reconciliation_locks_guard = threading.Lock()
 
@@ -166,6 +169,21 @@ def _recalculate_fba_source_fees(frame, user_id, country):
         "package_dimensions", "package_weight_value", "package_weight_unit", "attributes",
     )
     catalog = {p.sku: {field: getattr(p, field) for field in fields} for p in products}
+    uk_fee_per_unit = {}
+    if marketplace == "A1F83G8C2ARO7P" and not frame.empty:
+        fee_rows = Fee.query.filter(
+            Fee.user_id == user_id,
+            Fee.marketplace_id == marketplace,
+            Fee.sku.in_(frame["sku"].dropna().astype(str).str.strip().unique().tolist()),
+        ).all()
+        uk_fee_per_unit = {
+            str(fee.sku).strip(): (
+                fba_number(fee.expected_domestic_fulfilment_fee_per_unit),
+                getattr(fee, "synced_at", None),
+            )
+            for fee in fee_rows
+            if fba_number(fee.expected_domestic_fulfilment_fee_per_unit) is not None
+        }
     if catalog and str(country or "").strip().lower() == "us":
         preview_fields = ("user_id", "sku", "asin", "marketplace_id", "longest_side", "median_side",
                           "shortest_side", "unit_of_dimension", "item_package_weight", "unit_of_weight")
@@ -189,6 +207,52 @@ def _recalculate_fba_source_fees(frame, user_id, country):
         channel = next((row.get(key) for key in ("fulfillment", "fulfilment", "fulfillment_channel")
                         if pd.notna(row.get(key)) and str(row.get(key)).strip().lower()
                         not in {"", "none", "null", "nan", "0", "0.0"}), None)
+        if marketplace == "A1F83G8C2ARO7P":
+            transaction_type = str(row.get("type") or "order").strip().lower()
+            normalized_channel = str(
+                channel or catalog.get(str(row.get("sku", "")).strip(), {}).get("fulfillment_channel") or ""
+            ).strip().upper()
+            if transaction_type not in {"order", "shipment", "shipped", "sale"}:
+                amount, reason = 0.0, "not_fulfillment_sale"
+            elif quantity is None or quantity <= 0:
+                amount, reason = (0.0, "no_shipped_units") if quantity == 0 else (None, "invalid_quantity")
+            elif normalized_channel in {"MERCHANT", "MFN", "FBM", "DEFAULT", "SELLER"}:
+                amount, reason = 0.0, "merchant_fulfilled"
+            else:
+                fee_preview = uk_fee_per_unit.get(str(row.get("sku", "")).strip())
+                if fee_preview is None:
+                    amount, reason = None, "missing_uk_fee_preview"
+                elif shipped_on is None:
+                    amount, reason = None, "missing_shipment_date"
+                elif fee_preview[1] is None:
+                    amount, reason = None, "missing_uk_fee_preview_date"
+                else:
+                    fee_per_unit, preview_synced_at = fee_preview
+                    preview_date = pd.to_datetime(preview_synced_at, errors="coerce")
+                    if pd.isna(preview_date):
+                        amount, reason = None, "missing_uk_fee_preview_date"
+                    else:
+                        preview_date = preview_date.date()
+                        target_surcharge = (
+                            Decimal("0.02") if shipped_on >= UK_FBA_SURCHARGE_INCREASE
+                            else Decimal("0.015") if shipped_on >= UK_FBA_SURCHARGE_START
+                            else Decimal("0")
+                        )
+                        preview_surcharge = (
+                            Decimal("0.02") if preview_date >= UK_FBA_SURCHARGE_INCREASE
+                            else Decimal("0.015") if preview_date >= UK_FBA_SURCHARGE_START
+                            else Decimal("0")
+                        )
+                        base_fee = fee_per_unit / (Decimal("1") + preview_surcharge)
+                        historical_fee = base_fee * (Decimal("1") + target_surcharge)
+                        amount = float(
+                            historical_fee.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                            * quantity
+                        )
+                        reason = "uk_fee_preview_historical_surcharge_adjusted"
+            amounts.append(amount)
+            reasons.append(reason)
+            continue
         amount, reason = estimate_fba_fee(
             catalog.get(str(row.get("sku", "")).strip()), quantity=quantity,
             unit_price=price, shipped_on=shipped_on, marketplace_id=marketplace,
@@ -465,7 +529,14 @@ def _recalculate_us_referral_source_fees(frame):
     ]
     frame = _apply_us_referral_fee_price_bands(frame)
     frame["answer"] = [
-        round(value * (rate / 100.0), 2) * quantity if sales != 0 else 0.0
+        float(
+            max(
+                (Decimal(str(value)) * Decimal(str(rate)) / Decimal("100")).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                ),
+                US_MINIMUM_REFERRAL_FEE_PER_UNIT,
+            ) * Decimal(str(quantity))
+        ) if sales != 0 and rate > 0 else 0.0
         for value, rate, quantity, sales in zip(
             frame["total_value"], frame["referral_fee"], units, frame["product_sales"]
         )
@@ -1198,6 +1269,122 @@ def _load_expense_reconciliation_table(*, user_id, country, month, year, range_,
         return None
 
     return table_name, rows, status_table_name, status_rows
+
+
+def _load_global_expense_reconciliation_from_countries(*, user_id, month, year, range_):
+    """Build a Global reconciliation response from the UK and US cached reports."""
+    if range_ != "monthly":
+        return None
+
+    uk = _load_expense_reconciliation_table(
+        user_id=user_id, country="uk", month=month, year=year,
+        range_=range_, quarter=None,
+    )
+    us = _load_expense_reconciliation_table(
+        user_id=user_id, country="us", month=month, year=year,
+        range_=range_, quarter=None,
+    )
+    if uk is None or us is None:
+        return None
+
+    try:
+        month_name = MONTHS[int(month) - 1] if str(month).isdigit() else str(month).strip().lower()
+        target_currency = (request.args.get("homeCurrency") or "USD").strip().lower()
+        with admin_engine.connect() as conn:
+            rate_rows = conn.execute(text("""
+                SELECT lower(user_currency) AS currency, conversion_rate
+                  FROM currency_conversion
+                 WHERE lower(selected_currency)='usd'
+                   AND lower(month)=:month AND year=:year
+                 ORDER BY id DESC
+            """), {"month": month_name, "year": int(year)}).mappings().all()
+        rates = {}
+        for rate_row in rate_rows:
+            rates.setdefault(str(rate_row["currency"]).lower(), float(rate_row["conversion_rate"]))
+        rates["usd"] = 1.0
+        target_per_usd = rates.get(target_currency)
+        gbp_per_usd = rates.get("gbp")
+        if target_per_usd is None or gbp_per_usd is None or gbp_per_usd == 0:
+            return None
+        multipliers = {"us": target_per_usd, "uk": target_per_usd / gbp_per_usd}
+
+        row_money_columns = (
+            "net_sales", "referral_fees_applicable", "referral_fees_charged",
+            "fba_fees_applicable", "fba_fees_charged", "platform_fees_applicable",
+            "platform_fees_charged", "other_fees_applicable", "other_fees_charged",
+            "referral_fees_accurate", "referral_fees_undercharged",
+            "referral_fees_overcharged",
+        )
+        status_money_columns = (
+            "gross_sales", "net_sales", "total_amount", "product_sales",
+            "shipping_credits", "promotional_rebates", "gift_wrap_credits",
+            "referral_fees_applicable", "referral_fees_charged",
+            "fba_fees_applicable", "fba_fees_charged", "difference",
+        )
+
+        converted_rows = []
+        converted_status_rows = []
+        for country, cached in (("uk", uk), ("us", us)):
+            _, rows, _, status_rows = cached
+            factor = multipliers[country]
+            country_rows = rows.copy()
+            country_status = status_rows.copy()
+            for frame, columns in (
+                (country_rows, row_money_columns),
+                (country_status, status_money_columns),
+            ):
+                for column in columns:
+                    if column in frame.columns:
+                        values = pd.to_numeric(frame[column], errors="coerce")
+                        frame[column] = values * factor
+            if country == "us" and "source_order" in country_status.columns:
+                max_source_order = max(
+                    (int(pd.to_numeric(previous["source_order"], errors="coerce").max())
+                     for previous in converted_status_rows
+                     if "source_order" in previous.columns and not previous.empty),
+                    default=-1,
+                )
+                country_status["source_order"] = (
+                    pd.to_numeric(country_status["source_order"], errors="coerce").fillna(0)
+                    + max_source_order + 1
+                )
+            converted_rows.append(country_rows)
+            converted_status_rows.append(country_status)
+
+        combined_rows = pd.concat(converted_rows, ignore_index=True, sort=False)
+        grouping = [column for column in ("sku", "product_name") if column in combined_rows.columns]
+        if grouping:
+            aggregations = {}
+            row_sum_columns = set(row_money_columns) | {"units"}
+            for column in combined_rows.columns:
+                if column in grouping:
+                    continue
+                if column == "fba_fees_applicable":
+                    aggregations[column] = lambda values: (
+                        values.sum() if values.notna().all() else None
+                    )
+                elif column in row_sum_columns:
+                    aggregations[column] = "sum"
+                else:
+                    aggregations[column] = "first"
+            combined_rows = combined_rows.groupby(grouping, as_index=False, dropna=False).agg(aggregations)
+        combined_status = pd.concat(converted_status_rows, ignore_index=True, sort=False)
+        return _expense_reconciliation_api_response(
+            table_name=_expense_reconciliation_table_name(
+                user_id=user_id, country="global", month=month, year=year,
+                range_=range_, quarter=None,
+            ),
+            rows=combined_rows,
+            status_table_name=_expense_reconciliation_status_table_name(
+                user_id=user_id, country="global", month=month, year=year,
+                range_=range_, quarter=None,
+            ),
+            status_rows=combined_status,
+            range_=range_,
+        )
+    except (SQLAlchemyError, TypeError, ValueError, KeyError):
+        logging.exception("Failed to build Global expense reconciliation from UK/US reports")
+        return None
 
 
 def _fee_percentage_metrics(
@@ -4462,6 +4649,16 @@ def get_table_data(file_name):
                 range_=range_,
             ))
 
+        if str(country or "").strip().lower() == "global":
+            combined_global_response = _load_global_expense_reconciliation_from_countries(
+                user_id=user_id,
+                month=month,
+                year=year,
+                range_=range_,
+            )
+            if combined_global_response is not None:
+                return jsonify(combined_global_response), 200
+
         engine = user_engine
         conn = engine.connect()
         inspector = inspect(engine)
@@ -4646,7 +4843,8 @@ def get_table_data(file_name):
 
 
 
-        df["other"] = pd.to_numeric(df.get("other", 0), errors="coerce").fillna(0)
+        other_values = df["other"] if "other" in df.columns else pd.Series(0, index=df.index)
+        df["other"] = pd.to_numeric(other_values, errors="coerce").fillna(0)
         other_total = float(df["other"].sum())
 
         # ✅ advertising_total sum
@@ -4920,7 +5118,10 @@ def get_table_data(file_name):
                     df["answer"] = pd.to_numeric(df["answer"], errors="coerce").fillna(0)
                 else:
                     applicable_per_unit = [
-                        _round_half_up(total_value * (rate / 100.0))
+                        max(
+                            _round_half_up(total_value * (rate / 100.0)),
+                            0.25,
+                        ) if rate > 0 else 0.0
                         for total_value, rate in zip(df["total_value"], df["referral_fee"])
                     ]
                     df["answer"] = [
@@ -5304,6 +5505,13 @@ def get_table_data(file_name):
         })
 
     except Exception as e:
+        logging.exception(
+            "Expense reconciliation table load failed (country=%s, month=%s, year=%s, range=%s)",
+            country,
+            month,
+            year,
+            range_,
+        )
         return jsonify({"error": str(e)}), 500
 
 

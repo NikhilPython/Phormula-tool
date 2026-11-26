@@ -32,6 +32,8 @@ import SummaryMetricCard from "@/components/dropdowns/SummaryMetricCard";
 import { motion, AnimatePresence } from "framer-motion";
 import Productinfoinpopup from "@/components/businessInsight/Productinfoinpopup";
 import ActionDiagnosisPanel from "@/components/dashboard/ActionDiagnosisPanel";
+import { usePlatform } from "@/components/context/PlatformContext";
+import SegmentedToggle from "@/components/ui/SegmentedToggle";
 
 /* ===================== Overlap Plugin ===================== */
 const overlapPlugin = {
@@ -2045,6 +2047,14 @@ function PreviewLockedSection({
   );
 }
 
+type ReferralMarket = "global" | "uk" | "us";
+
+const REFERRAL_MARKET_OPTIONS: { value: ReferralMarket; label: string }[] = [
+  { value: "global", label: "Global" },
+  { value: "uk", label: "UK" },
+  { value: "us", label: "US" },
+];
+
 /* ===================== MAIN DASHBOARD PAGE ===================== */
 export default function ReferralFeesDashboard(): JSX.Element {
   const routeParams = useParams();
@@ -2055,8 +2065,9 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const brandName = useAppSelector(
     (state) => state.auth.user?.brand_name || ""
   );
-  // ✅ IMPORTANT: pick platform/country from URL
-  const country = ((routeParams?.countryName as string) || "global").toLowerCase();
+  const { platform } = usePlatform();
+  const routeCountry = ((routeParams?.countryName as string | undefined) ?? "").trim().toLowerCase();
+  const [market, setMarket] = useState<ReferralMarket>("global");
 
   const routeMonth = (routeParams?.month as string | undefined) ?? "";
   const routeYear = (routeParams?.year as string | undefined) ?? "";
@@ -2080,21 +2091,23 @@ export default function ReferralFeesDashboard(): JSX.Element {
   const [showDeepDive, setShowDeepDive] = useState(false);
   const [skuStatusMap, setSkuStatusMap] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    setShowAllProductRows(false);
-    setShowDeepDive(false);
-  }, [country, month, range, selectedQuarter, year]);
-
   const isPreviewMode =
     routeMonth.toUpperCase() === "NA" ||
     routeYear.toUpperCase() === "NA";
 
-  const effectiveCountry = isPreviewMode
-    ? "global"
-    : country;
+  const showMarketplaceToggle = platform === "global" && routeCountry === "global" && !isPreviewMode;
+  const country = showMarketplaceToggle ? market : routeCountry;
+  const effectiveCountry = isPreviewMode ? "global" : country;
+  const isCombinedReport = effectiveCountry === "global";
 
-  // ✅ Global vs country behavior
-  const isGlobalPage = effectiveCountry === "global";
+  useEffect(() => {
+    if (!showMarketplaceToggle) setMarket("global");
+  }, [showMarketplaceToggle]);
+
+  useEffect(() => {
+    setShowAllProductRows(false);
+    setShowDeepDive(false);
+  }, [country, month, range, selectedQuarter, year]);
 
   useEffect(() => {
     if (isPreviewMode) return;
@@ -2145,8 +2158,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
   }, [effectiveCountry, isPreviewMode]);
 
   // ✅ get home currency ONLY for global formatting + api param
-  const { homeCurrency: rawHomeCurrency } = useHomeCurrencyContext(country);
-  const homeCurrency = isGlobalPage ? (rawHomeCurrency || "USD").toUpperCase() : "";
+  const { homeCurrency: rawHomeCurrency } = useHomeCurrencyContext(routeCountry);
+  const homeCurrency = isCombinedReport ? (rawHomeCurrency || "USD").toUpperCase() : "";
 
   // ✅ formatting currency code (NO fallback to homeCurrency on country pages)
   const displayCurrencyCode = useMemo(() => {
@@ -2450,7 +2463,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     feeImpact: 0,
   });
   const [feeSummaryRows, setFeeSummaryRows] = useState<FeeSummaryRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [settledReportKey, setSettledReportKey] = useState("");
   const [userId, setUserId] = useState<string>("unknown");
   const [allOrdersByStatus, setAllOrdersByStatus] = useState<any[]>([]);
   const [fbaOrders, setFbaOrders] = useState<any[]>([]);
@@ -2575,6 +2588,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         });
 
         const data: any = await response.json().catch(() => ({}));
+        if (controller.signal.aborted) return;
 
         if (!response.ok) {
           throw new Error(data?.error || "Failed to fetch AI product insights");
@@ -2637,7 +2651,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         });
         setDrawerAiError(error?.message || "Failed to load product insights");
       } finally {
-        setDrawerAiLoading(false);
+        if (!controller.signal.aborted) setDrawerAiLoading(false);
       }
     };
 
@@ -2692,10 +2706,13 @@ export default function ReferralFeesDashboard(): JSX.Element {
     [userId, country, month, year]
   );
 
+  const reportKey = JSON.stringify([fileName, range, selectedQuarter, homeCurrency, isPreviewMode]);
+  const loading = settledReportKey !== reportKey;
+
   /* ===================== API Fetch ===================== */
-  const fetchReferralData = useCallback(async () => {
+  const fetchReferralData = useCallback(async (signal: AbortSignal) => {
     if (isPreviewMode) {
-      setLoading(false);
+      setSettledReportKey(reportKey);
       setError(null);
 
       setRows(DUMMY_ROWS);
@@ -2713,6 +2730,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       return;
     }
     if (!month || !year || !country) {
+      setSettledReportKey(reportKey);
       setError("Please select both month and year to view referral fees.");
       setRows([]);
       setSkuwiseRows([]);
@@ -2727,7 +2745,8 @@ export default function ReferralFeesDashboard(): JSX.Element {
       return;
     }
 
-    setLoading(true);
+    if (!userId || userId === "unknown") return;
+
     setError(null);
 
     try {
@@ -2750,20 +2769,59 @@ export default function ReferralFeesDashboard(): JSX.Element {
       }
 
       // ✅ ONLY GLOBAL sends homeCurrency
-      if (isGlobalPage && homeCurrency) {
+      if (isCombinedReport && homeCurrency) {
         params.set("homeCurrency", homeCurrency.toLowerCase());
       }
 
       const url = `${baseURL}/get_table_data/${fileName}?${params.toString()}`;
 
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal,
       });
 
-      if (!res.ok) throw new Error(`Failed to fetch referral data (${res.status})`);
+      if (isCombinedReport && res.status === 404 && range === "monthly") {
+        // Global reconciliation is built from each marketplace's saved report.
+        // Prime both country reports first so the API can combine their cached rows.
+        await Promise.all((["uk", "us"] as const).map(async (market) => {
+          const countryParams = new URLSearchParams({
+            country: market,
+            month,
+            year,
+          });
+          const countryFileName = `user_${userId}_${market}_${month}${year}_data`.toLowerCase();
+          const countryResponse = await fetch(
+            `${baseURL}/get_table_data/${countryFileName}?${countryParams.toString()}`,
+            {
+              method: "GET",
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+              signal,
+              cache: "no-store",
+            }
+          );
+          if (!countryResponse.ok) {
+            throw new Error(`Could not load ${market.toUpperCase()} reconciliation data (${countryResponse.status}).`);
+          }
+        }));
+
+        res = await fetch(url, {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal,
+          cache: "no-store",
+        });
+      }
+
+      if (!res.ok) {
+        if (isCombinedReport && res.status === 404) {
+          throw new Error("Global reconciliation data is unavailable for this period. Select UK or US above to view that marketplace's data.");
+        }
+        throw new Error(`Failed to fetch referral data (${res.status})`);
+      }
 
       const json: any = await res.json();
+      if (signal.aborted) return;
 
       const apiFeePercentages = json?.fee_percentages ?? {};
       setFeePercentages({
@@ -3110,6 +3168,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
 
       setSummary({ ordersUnits: totalUnits, totalSales, feeImpact });
     } catch (e: any) {
+      if (signal.aborted) return;
       setError(e?.message || "Failed to load data");
       setRows([]);
       setSkuwiseRows([]);
@@ -3122,13 +3181,14 @@ export default function ReferralFeesDashboard(): JSX.Element {
       setReferralFeeInsight(EMPTY_REFERRAL_FEE_INSIGHT);
       setSummary({ ordersUnits: 0, totalSales: 0, feeImpact: 0 });
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setSettledReportKey(reportKey);
     }
-  }, [month, year, country, fileName, isGlobalPage, homeCurrency, range, selectedQuarter]);
-
+  }, [month, year, country, userId, fileName, isCombinedReport, homeCurrency, range, selectedQuarter, isPreviewMode, reportKey]);
 
   useEffect(() => {
-    fetchReferralData();
+    const controller = new AbortController();
+    void fetchReferralData(controller.signal);
+    return () => controller.abort();
   }, [fetchReferralData]);
 
   /* ===================== Derived ===================== */
@@ -3534,7 +3594,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
     const rows = skuTableDisplay.map((row: any) => {
       const name = normalizeStatusKey(row.productName);
       const skus = String(row.sku || "").split(/[,;|/]+/).map(normalizeStatusKey);
-      const markets = isGlobalPage ? ["uk", "us"] : [effectiveCountry];
+      const markets = isCombinedReport ? ["uk", "us"] : [effectiveCountry];
       const statuses = markets.flatMap((market) => [
         skuStatusMap[`${market}|${name}`],
         ...skus.map((sku: string) => skuStatusMap[`${market}|sku:${sku}`]),
@@ -3580,7 +3640,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       ...row,
       sno: row._isTotal ? "" : serialNumber++,
     }));
-  }, [skuTableDisplay, skuStatusMap, isGlobalPage, effectiveCountry]);
+  }, [skuTableDisplay, skuStatusMap, isCombinedReport, effectiveCountry]);
 
 
   const handleDownloadFbaExcel = useCallback(() => {
@@ -3807,7 +3867,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         <div className="w-full flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-1 py-2 mb-2"> */}
       <div className="sticky top-0 z-40 w-full flex flex-col
   bg-[#F7F7F7]
-  sm:flex-row md:items-center md:justify-between gap-1 sm:gap-4
+  md:flex-row md:items-center md:justify-between gap-1 sm:gap-4
   border-b border-gray-200">
 
         {/* LEFT: Title */}
@@ -3835,8 +3895,19 @@ export default function ReferralFeesDashboard(): JSX.Element {
           </div>
         </div>
 
-        {/* RIGHT: Filters */}
-        <div className="flex w-full md:w-auto justify-start md:justify-end mb-2 ">
+        {/* RIGHT: Country selector and filters */}
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 mb-2 md:w-auto">
+          {showMarketplaceToggle && (
+            <div role="group" aria-label="Referral fee marketplace">
+              <SegmentedToggle
+                value={market}
+                options={REFERRAL_MARKET_OPTIONS}
+                onChange={setMarket}
+                textSizeClass="text-[10px] sm:text-xs 2xl:text-sm"
+                compact
+              />
+            </div>
+          )}
           <PeriodFiltersTable
             range={range}
             selectedMonth={month}
@@ -3903,7 +3974,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
         </div>
       </div>
 
-      {referralActionDiagnosis && (
+      {canShowContent && referralActionDiagnosis && (
         <ActionDiagnosisPanel
           title={referralActionDiagnosis.title}
           description={referralActionDiagnosis.description}
@@ -4983,7 +5054,7 @@ export default function ReferralFeesDashboard(): JSX.Element {
       )}
 
       <ReferralProductDrawer
-        open={Boolean(selectedDrawerProduct)}
+        open={!loading && Boolean(selectedDrawerProduct)}
         onClose={() => setSelectedDrawerProduct(null)}
         block={selectedDrawerBlock}
         productName={selectedDrawerProduct?.name || ""}
