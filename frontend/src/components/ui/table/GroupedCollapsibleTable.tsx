@@ -256,14 +256,18 @@ export default function GroupedCollapsibleTable<RowT>({
 
   const getDragSourceKey = (key: string) =>
     draggableColumnGroups.find((group) => group.colKeys.includes(key))?.id ?? key;
+  const nonInteractiveDragKeys = new Set(["cogs", "cost_of_unit_sold"]);
   const canDragColumn = (key: string) =>
-    draggableGroupIds.includes(key) ||
-    draggableColKeys.includes(key) ||
-    draggableColumnGroups.some(
-      (group) => group.id === key || group.colKeys.includes(key)
+    !nonInteractiveDragKeys.has(key) && (
+      draggableGroupIds.includes(key) ||
+      draggableColKeys.includes(key) ||
+      draggableColumnGroups.some(
+        (group) => group.id === key || group.colKeys.includes(key)
+      )
     );
   const canDropOnColumn = (key: string) =>
-    dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key);
+    !nonInteractiveDragKeys.has(key) &&
+    (dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key));
   const promotionDragKeys = new Set([
     "promotions",
     "promotions_breakdown",
@@ -295,7 +299,7 @@ export default function GroupedCollapsibleTable<RowT>({
     "display_spend",
     "brand_spend",
   ]);
-  const feesReturnTargetKeys = new Set(["cost_of_unit_sold", "cogs"]);
+  const feesReturnTargetKeys = new Set(["other_transactions", "other_transactions_breakdown"]);
   const dragContextExemptKeys = new Set(["sno", "product_name", "sku"]);
   const isSourceColumn = (key: string) => {
     if (!draggingColumnKey) return false;
@@ -339,15 +343,11 @@ export default function GroupedCollapsibleTable<RowT>({
         (column) => column.key === colKey
       )
     );
-    const isDraggableGroup = Boolean(group && draggableGroupIds.includes(group.id));
+    const isDraggableGroup = Boolean(group && canDragColumn(group.id));
     const draggableColumnGroup = draggableColumnGroups.find((candidate) =>
       candidate.colKeys.includes(colKey)
     );
-    const isDraggableLeaf =
-      draggableColKeys.includes(colKey) ||
-      Boolean(draggableColumnGroup) ||
-      (colKey === "promotional_rebates_percentage" &&
-        draggableColKeys.includes("promotional_rebates"));
+    const isDraggableLeaf = canDragColumn(colKey);
     if (!isDraggableGroup && !isDraggableLeaf) return undefined;
     const groupKeys = isDraggableGroup && group
       ? new Set([...group.collapsedCols, ...group.expandedCols].map((column) => column.key))

@@ -380,17 +380,21 @@ export default function DashboardProductwisePnlSection({
     const handleColumnDrop = React.useCallback(
         (sourceKey: string, targetKey: string, side: "before" | "after"): boolean => {
             const adsTargets = ["ads_spend", "product_spend", "display_spend"];
-            if (sourceKey === "marketplace_fees") {
-                if (targetKey !== "sales" && targetKey !== "net_sales") return false;
-                setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
-                return true;
-            }
             if (
                 activeAmazonFeesPlacement.stage === "in_net_sales" &&
                 ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
-                targetKey === "cogs"
+                targetKey === "other_transactions"
             ) {
-                setDraftAmazonFeesPlacement({ anchor: "cogs", side: "after", stage: "before_cm1" });
+                setDraftAmazonFeesPlacement({
+                    anchor: "other_transactions",
+                    side: "before",
+                    stage: "before_cm1",
+                });
+                return true;
+            }
+            if (sourceKey === "marketplace_fees") {
+                if (targetKey !== "sales" && targetKey !== "net_sales") return false;
+                setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
                 return true;
             }
             const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
@@ -2136,7 +2140,7 @@ export default function DashboardProductwisePnlSection({
 
                 {isRearrangingColumns && (
                     <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-                        ← Tailor your profitability methodology: Drag Promotions and Amazon Fees to the stages used in your calculations →
+                        Drag Promotions to Ads Spend · Drag Amazon Fees to Sales
                     </div>
                 )}
 
@@ -2600,7 +2604,9 @@ export default function DashboardProductwisePnlSection({
                                             ? ["promotions"]
                                             : []),
                                         "marketplace_fees",
-                                        "other_transactions",
+                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
+                                            ? ["other_transactions"]
+                                            : []),
                                         "profit",
                                         "ads_spend",
                                         "cm2_profit",
@@ -2616,7 +2622,6 @@ export default function DashboardProductwisePnlSection({
                                         "net_sales",
                                         "promotional_rebates",
                                         "promotional_rebates_percentage",
-                                        "cogs",
                                         "tax",
                                         "credits",
                                         "misc_transaction",

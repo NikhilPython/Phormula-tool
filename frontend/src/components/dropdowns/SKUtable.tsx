@@ -4105,7 +4105,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {isRearrangingColumns && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-              ← Tailor your profitability methodology: Drag Promotions and Amazon Fees to the stages used in your calculations →
+              Drag Promotions to Ads Spend · Drag Amazon Fees to Sales
             </div>
           )}
 
@@ -4321,13 +4321,13 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 dropTargetGroupIds={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? ["ads_spend_breakdown", "sales"]
+                    ? ["ads_spend_breakdown", "sales", "other_transactions_breakdown"]
                     : []
                 }
                 dropTargetColKeys={
                   isRearrangingColumns &&
                   (onPromotionsPlacementChange || onAmazonFeesPlacementChange)
-                    ? ["ads_spend", "net_sales", "cost_of_unit_sold"]
+                    ? ["ads_spend", "net_sales"]
                     : []
                 }
                 onColumnDrop={(sourceKey, targetKey, side) => {
@@ -4337,17 +4337,21 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       !onAmazonFeesPlacementChange)
                   ) return false;
                   const adsSpendTargets = ["ads_spend_breakdown", "product_spend", "display_spend", "brand_spend", "ads_spend"];
-                  if (sourceKey === "amazon_breakdown") {
-                    if (targetKey !== "sales" && targetKey !== "net_sales") return false;
-                    setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
-                    return true;
-                  }
                   if (
                     activeAmazonFeesPlacement.stage === "in_net_sales" &&
                     ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
-                    targetKey === "cost_of_unit_sold"
+                    targetKey === "other_transactions_breakdown"
                   ) {
-                    setDraftAmazonFeesPlacement({ anchor: "cost_of_unit_sold", side: "after", stage: "before_cm1" });
+                    setDraftAmazonFeesPlacement({
+                      anchor: "other_transactions_breakdown",
+                      side: "before",
+                      stage: "before_cm1",
+                    });
+                    return true;
+                  }
+                  if (sourceKey === "amazon_breakdown") {
+                    if (targetKey !== "sales" && targetKey !== "net_sales") return false;
+                    setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
                     return true;
                   }
                   if (["promotional_rebates", "promotional_rebates_percentage", "promotions_breakdown"].includes(sourceKey)) {
@@ -4492,7 +4496,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     return true;
                   }
                   if (
-                    targetKey === "cost_of_unit_sold" ||
                     targetKey === "promotional_rebates_percentage"
                   ) {
                     setDraftPromotionsPlacement({
