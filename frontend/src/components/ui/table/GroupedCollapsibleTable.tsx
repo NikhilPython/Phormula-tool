@@ -229,6 +229,7 @@ export default function GroupedCollapsibleTable<RowT>({
     buildDefaultCollapsed
   );
   const [draggingColumnKey, setDraggingColumnKey] = useState<string | null>(null);
+  const [draggingSourceColumnKey, setDraggingSourceColumnKey] = useState<string | null>(null);
 
   const collapsed = collapsedState ?? internalCollapsed;
 
@@ -318,6 +319,20 @@ export default function GroupedCollapsibleTable<RowT>({
   };
   const getDragContextClassName = (key: string) => {
     if (!draggingColumnKey || dragContextExemptKeys.has(key)) return "";
+    if (
+      promotionDragKeys.has(draggingColumnKey) &&
+      draggingSourceColumnKey === "promotional_rebates"
+    ) {
+      if (key === draggingSourceColumnKey) return "";
+      return adsTargetKeys.has(key) ? "" : "sku-drag-context-muted";
+    }
+    if (
+      promotionDragKeys.has(draggingColumnKey) &&
+      draggingSourceColumnKey === "promotional_rebates_percentage" &&
+      key === "sales"
+    ) {
+      return "sku-drag-context-muted";
+    }
     if (isSourceColumn(key)) return "";
     if (promotionDragKeys.has(draggingColumnKey)) {
       return salesTargetKeys.has(key) || adsTargetKeys.has(key)
@@ -395,6 +410,7 @@ export default function GroupedCollapsibleTable<RowT>({
       if (!canDragColumn(sourceKey)) return;
       const dragSourceKey = getDragSourceKey(sourceKey);
       setDraggingColumnKey(dragSourceKey);
+      setDraggingSourceColumnKey(sourceKey);
       onDraggingColumnChange?.(dragSourceKey);
       event.dataTransfer.setData("text/plain", dragSourceKey);
       event.dataTransfer.effectAllowed = "move";
@@ -421,10 +437,12 @@ export default function GroupedCollapsibleTable<RowT>({
         onColumnDrop?.(draggedKey, targetKey, side);
       }
       setDraggingColumnKey(null);
+      setDraggingSourceColumnKey(null);
       onDraggingColumnChange?.(null);
     },
     onDragEnd: () => {
       setDraggingColumnKey(null);
+      setDraggingSourceColumnKey(null);
       onDraggingColumnChange?.(null);
     },
     title: canDragColumn(sourceKey)
@@ -1293,6 +1311,41 @@ export default function GroupedCollapsibleTable<RowT>({
     }, 220);
   };
 
+  const handleTableDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!draggingColumnKey) return;
+
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const bounds = scrollContainer.getBoundingClientRect();
+    const edgeZone = Math.min(88, bounds.width * 0.16);
+    let direction = 0;
+    let proximity = 0;
+
+    if (event.clientX < bounds.left + edgeZone) {
+      direction = -1;
+      proximity = (bounds.left + edgeZone - event.clientX) / edgeZone;
+    } else if (event.clientX > bounds.right - edgeZone) {
+      direction = 1;
+      proximity = (event.clientX - (bounds.right - edgeZone)) / edgeZone;
+    }
+
+    if (!direction) return;
+
+    const maxScrollLeft = scrollContainer.scrollWidth - scrollContainer.clientWidth;
+    const scrollStep = Math.min(42, 10 + Math.round(Math.min(proximity, 1) * 32));
+    const nextScrollLeft = Math.max(
+      0,
+      Math.min(maxScrollLeft, scrollContainer.scrollLeft + direction * scrollStep)
+    );
+
+    if (Math.abs(nextScrollLeft - scrollContainer.scrollLeft) < 0.5) return;
+    scrollContainer.scrollLeft = nextScrollLeft;
+    if (headerScrollContainerRef.current) {
+      headerScrollContainerRef.current.scrollLeft = nextScrollLeft;
+    }
+  };
+
   /* ---------------- Render ---------------- */
 
   /* ---------------- Render ---------------- */
@@ -1692,6 +1745,7 @@ export default function GroupedCollapsibleTable<RowT>({
       <div className={`w-full ${hasDraggableColumns ? "sku-column-boundary-pulse" : ""}`}>
         <div
           ref={headerScrollContainerRef}
+          onDragOver={handleTableDragOver}
           className="relative z-10 w-full overflow-hidden bg-white"
           style={{
             visibility: isPageStickyHeaderVisible ? "visible" : "hidden",
@@ -1706,6 +1760,7 @@ export default function GroupedCollapsibleTable<RowT>({
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
+          onDragOver={handleTableDragOver}
           className="w-full overflow-x-auto"
         >
           <table ref={bodyTableRef} className={tableClassName} style={tableStyle}>
@@ -1728,6 +1783,7 @@ export default function GroupedCollapsibleTable<RowT>({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
+      onDragOver={handleTableDragOver}
       className={`w-full overflow-auto ${hasDraggableColumns ? "sku-column-boundary-pulse" : ""}`}
       style={{ maxHeight: `${bodyMaxHeight}px` }}
     >
