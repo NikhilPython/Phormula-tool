@@ -7067,6 +7067,76 @@ const Dropdowns: React.FC<DropdownsProps> = ({
       side: "after",
       stage: "before_cm1",
     });
+  const historicPnlLayoutLoadedScopeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const scope = `${countryName.toLowerCase()}`;
+    if (!scope || isDemoMode || historicPnlLayoutLoadedScopeRef.current === scope) return;
+    const controller = new AbortController();
+
+    const loadSavedPnlLayout = async () => {
+      const token = localStorage.getItem("jwtToken");
+      if (!token) return;
+      try {
+        const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/pnl/column-layout`);
+        url.searchParams.set("surface", "historic_pnl");
+        url.searchParams.set("country", scope);
+        const response = await fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Could not load saved P&L layout (${response.status})`);
+        const payload = await response.json();
+        if (controller.signal.aborted) return;
+        const layout = payload?.layout || {};
+        setPromotionsPlacement(layout.promotions || {
+          anchor: "net_sales",
+          side: "before",
+          stage: "in_net_sales",
+        });
+        setAmazonFeesPlacement(layout.amazonFees || {
+          anchor: "cost_of_unit_sold",
+          side: "after",
+          stage: "before_cm1",
+        });
+        historicPnlLayoutLoadedScopeRef.current = scope;
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("Could not load saved Historic P&L column layout", error);
+        }
+      }
+    };
+
+    void loadSavedPnlLayout();
+    return () => controller.abort();
+  }, [countryName, isDemoMode]);
+
+  const applyHistoricPnlColumnPlacements = useCallback(
+    async (promotions: PromotionsPlacement, amazonFees: AmazonFeesPlacement) => {
+      if (isDemoMode) return;
+      const token = localStorage.getItem("jwtToken");
+      if (!token) throw new Error("Please sign in again to save this layout.");
+      const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/pnl/column-layout`);
+      url.searchParams.set("surface", "historic_pnl");
+      url.searchParams.set("country", countryName.toLowerCase());
+      const response = await fetch(url.toString(), {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ promotions, amazonFees }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Could not save the P&L column layout.");
+      }
+      setPromotionsPlacement(promotions);
+      setAmazonFeesPlacement(amazonFees);
+    },
+    [countryName, isDemoMode]
+  );
 
   const [skuStatusMap, setSkuStatusMap] = useState<
     Record<string, "Active" | "Discontinued">
@@ -12928,6 +12998,9 @@ const Dropdowns: React.FC<DropdownsProps> = ({
                     amazonFeesPlacement={amazonFeesPlacement}
                     onAmazonFeesPlacementChange={
                       isDemoMode ? undefined : setAmazonFeesPlacement
+                    }
+                    onApplyColumnPlacements={
+                      isDemoMode ? undefined : applyHistoricPnlColumnPlacements
                     }
                     yearlyTotalRow={
   (skuRowsWithStatus || []).find((row: any) => {

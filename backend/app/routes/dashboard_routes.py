@@ -21,7 +21,7 @@ import pandas as pd
 from config import Config
 SECRET_KEY = Config.SECRET_KEY
 
-from app.models.user_models import User , CountryProfile
+from app.models.user_models import User, CountryProfile, UserPnlColumnLayout
 from app import db
 from dotenv import load_dotenv
 from datetime import datetime
@@ -36,6 +36,84 @@ db_url_amazon = os.getenv('DATABASE_AMAZON_URL')
 
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
+
+
+@dashboard_bp.route('/pnl/column-layout', methods=['GET', 'PUT'])
+def pnl_column_layout():
+    """Read or save a user's P&L column arrangement for one page and marketplace."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Authorization token is missing or invalid'}), 401
+
+    try:
+        _, user_id, _ = get_effective_user_id_from_token(auth_header.split(' ', 1)[1])
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid token'}), 401
+    except Exception:
+        return jsonify({'error': 'Invalid token payload'}), 401
+
+    surface = (request.args.get('surface') or '').strip().lower()
+    country = (request.args.get('country') or '').strip().lower()
+    if surface not in {'live_dashboard', 'historic_pnl'}:
+        return jsonify({'error': 'Invalid P&L layout surface'}), 400
+    if not re.fullmatch(r'[a-z0-9_-]{2,16}', country):
+        return jsonify({'error': 'Invalid country'}), 400
+
+    try:
+        record = UserPnlColumnLayout.query.filter_by(
+            user_id=user_id, surface=surface, country=country
+        ).one_or_none()
+
+        if request.method == 'GET':
+            return jsonify({'layout': record.layout if record else {}}), 200
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({'error': 'Layout must be an object'}), 400
+
+        layout = dict(record.layout or {}) if record else {}
+        allowed_stages = {
+            'promotions': {'in_net_sales', 'after_net_sales', 'before_cm1', 'after_cm1', 'in_ads_spend'},
+            'amazonFees': {'before_cm1', 'after_cm1', 'in_net_sales'},
+        }
+        for key, stage_values in allowed_stages.items():
+            if key not in payload:
+                continue
+            placement = payload[key]
+            if not isinstance(placement, dict):
+                return jsonify({'error': f'{key} placement must be an object'}), 400
+            anchor = placement.get('anchor')
+            side = placement.get('side')
+            stage = placement.get('stage')
+            if (
+                not isinstance(anchor, str)
+                or not re.fullmatch(r'[a-z0-9_-]{1,64}', anchor)
+                or side not in {'before', 'after'}
+                or stage not in stage_values
+            ):
+                return jsonify({'error': f'Invalid {key} placement'}), 400
+            layout[key] = {'anchor': anchor, 'side': side, 'stage': stage}
+
+        if not any(key in payload for key in allowed_stages):
+            return jsonify({'error': 'No supported P&L placements provided'}), 400
+
+        if record:
+            record.layout = layout
+        else:
+            db.session.add(UserPnlColumnLayout(
+                user_id=user_id,
+                surface=surface,
+                country=country,
+                layout=layout,
+            ))
+        db.session.commit()
+        return jsonify({'layout': layout}), 200
+    except Exception as exc:
+        db.session.rollback()
+        logging.exception('Could not load or save P&L column layout')
+        return jsonify({'error': 'Could not save P&L column layout'}), 500
 
 
 @dashboard_bp.route('/dashboard/card-deltas', methods=['POST'])

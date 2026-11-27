@@ -4815,8 +4815,26 @@ export default function DashboardPage() {
             promotions: DashboardPnlPlacement,
             amazonFees: DashboardPnlPlacement
         ) => {
-            const previous = dashboardPnlPlacementsRef.current;
             const next = { promotions, amazonFees };
+            const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+            if (!token) throw new Error("Please sign in again to save this layout.");
+            const layoutUrl = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/pnl/column-layout`);
+            layoutUrl.searchParams.set("surface", "live_dashboard");
+            layoutUrl.searchParams.set("country", String(pnlCountryName || "global").toLowerCase());
+
+            const saveResponse = await fetch(layoutUrl.toString(), {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(next),
+            });
+            const savePayload = await saveResponse.json().catch(() => ({}));
+            if (!saveResponse.ok) {
+                throw new Error(savePayload?.error || "Could not save the P&L column layout.");
+            }
+
             dashboardPnlPlacementsRef.current = next;
             setDashboardPromotionsPlacement(promotions);
             setDashboardAmazonFeesPlacement(amazonFees);
@@ -4836,17 +4854,61 @@ export default function DashboardPage() {
                 setBiDailySeries(last30Payload.daily_series || null);
                 setBiPeriods(last30Payload.periods || null);
             } catch (error) {
-                dashboardPnlPlacementsRef.current = previous;
-                setDashboardPromotionsPlacement(previous.promotions);
-                setDashboardAmazonFeesPlacement(previous.amazonFees);
+                // Keep the saved arrangement active if refreshing its backend
+                // calculations fails; the preference itself was committed.
                 last30PayloadCacheRef.current = null;
                 throw error;
             } finally {
                 setLast30Loading(false);
             }
         },
-        [fetchAmazon, fetchAndCacheLast30Payload]
+        [fetchAmazon, fetchAndCacheLast30Payload, pnlCountryName]
     );
+
+    const dashboardPnlLayoutLoadedScopeRef = useRef<string | null>(null);
+    React.useEffect(() => {
+        const scope = String(pnlCountryName || "global").toLowerCase();
+        if (isMonthYearNA || dashboardPnlLayoutLoadedScopeRef.current === scope) return;
+        const controller = new AbortController();
+
+        const loadSavedLayout = async () => {
+            const token = typeof window !== "undefined" ? localStorage.getItem("jwtToken") : null;
+            if (!token) return;
+            try {
+                const url = new URL(`${process.env.NEXT_PUBLIC_API_BASE_URL}/pnl/column-layout`);
+                url.searchParams.set("surface", "live_dashboard");
+                url.searchParams.set("country", scope);
+                const response = await fetch(url.toString(), {
+                    headers: { Authorization: `Bearer ${token}` },
+                    cache: "no-store",
+                    signal: controller.signal,
+                });
+                if (!response.ok) throw new Error(`Could not load saved P&L layout (${response.status})`);
+                const payload = await response.json();
+                if (controller.signal.aborted) return;
+                const layout = payload?.layout || {};
+                const promotions = layout.promotions || {
+                    anchor: "sales",
+                    side: "before",
+                    stage: "in_net_sales",
+                };
+                const amazonFees = layout.amazonFees || {
+                    anchor: "cogs",
+                    side: "after",
+                    stage: "before_cm1",
+                };
+                await applyDashboardPnlColumnPlacements(promotions, amazonFees);
+                dashboardPnlLayoutLoadedScopeRef.current = scope;
+            } catch (error) {
+                if (!controller.signal.aborted) {
+                    console.error("Could not load saved Live Dashboard P&L column layout", error);
+                }
+            }
+        };
+
+        void loadSavedLayout();
+        return () => controller.abort();
+    }, [applyDashboardPnlColumnPlacements, isMonthYearNA, pnlCountryName]);
 
     /* ===================== SHOPIFY STORE INFO ===================== */
     useEffect(() => {

@@ -233,6 +233,21 @@ class User(db.Model):
     integration_updated_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
 
+class UserPnlColumnLayout(db.Model):
+    __tablename__ = "user_pnl_column_layout"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    surface = db.Column(db.String(32), nullable=False)
+    country = db.Column(db.String(16), nullable=False)
+    layout = db.Column(db.JSON, nullable=False, default=dict)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "surface", "country", name="uq_user_pnl_column_layout_scope"),
+    )
+
+
 class Category(db.Model):
     __tablename__ = 'category'
     __bind_key__ = 'superadmin'

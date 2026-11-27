@@ -115,6 +115,10 @@ type SKUtableProps = {
   onPromotionsPlacementChange?: (placement: PromotionsPlacement) => void;
   amazonFeesPlacement?: AmazonFeesPlacement;
   onAmazonFeesPlacementChange?: (placement: AmazonFeesPlacement) => void;
+  onApplyColumnPlacements?: (
+    promotions: PromotionsPlacement,
+    amazonFees: AmazonFeesPlacement
+  ) => Promise<void>;
 };
 
 type TopBottomRow = {
@@ -880,6 +884,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
     stage: "before_cm1",
   },
   onAmazonFeesPlacementChange,
+  onApplyColumnPlacements,
   // metricSortMetrics = ["units", "sales", "profit", "marketplace_fees"],
 }) => {
   // const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
@@ -893,6 +898,8 @@ const SKUtable: React.FC<SKUtableProps> = ({
   });
   const [showAllRows, setShowAllRows] = useState(false);
   const [isRearrangingColumns, setIsRearrangingColumns] = useState(false);
+  const [isSavingColumnLayout, setIsSavingColumnLayout] = useState(false);
+  const [columnLayoutSaveError, setColumnLayoutSaveError] = useState("");
   const [activeDragSourceKey, setActiveDragSourceKey] = useState<string | null>(null);
   const [draftPromotionsPlacement, setDraftPromotionsPlacement] =
     useState<PromotionsPlacement>(promotionsPlacement);
@@ -2246,7 +2253,26 @@ const SKUtable: React.FC<SKUtableProps> = ({
     restoreSalesGroupCollapse();
   };
 
-  const handleConfirmColumnRearrangement = () => {
+  const handleConfirmColumnRearrangement = async () => {
+    setColumnLayoutSaveError("");
+    if (onApplyColumnPlacements) {
+      setIsSavingColumnLayout(true);
+      try {
+        await onApplyColumnPlacements(
+          draftPromotionsPlacement,
+          draftAmazonFeesPlacement
+        );
+        setIsRearrangingColumns(false);
+        restoreSalesGroupCollapse();
+      } catch (error) {
+        setColumnLayoutSaveError(
+          error instanceof Error ? error.message : "Could not save column layout."
+        );
+      } finally {
+        setIsSavingColumnLayout(false);
+      }
+      return;
+    }
     if (
       onPromotionsPlacementChange &&
       (draftPromotionsPlacement.anchor !== promotionsPlacement.anchor ||
@@ -4160,9 +4186,10 @@ const SKUtable: React.FC<SKUtableProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmColumnRearrangement}
-                  title="Apply column arrangement"
+                  disabled={isSavingColumnLayout}
+                  title={isSavingColumnLayout ? "Saving column arrangement" : "Apply column arrangement"}
                   aria-label="Apply column arrangement"
-                  className="inline-flex rounded-md border border-green-500 bg-green-500 p-1.5 text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md"
+                  className="inline-flex rounded-md border border-green-500 bg-green-500 p-1.5 text-yellow-200 transition-all duration-200 ease-out hover:-translate-y-[2px] hover:shadow-lg active:translate-y-0 active:shadow-md disabled:cursor-wait disabled:opacity-60"
                 >
                   <Check size={18} />
                 </button>
@@ -4211,6 +4238,12 @@ const SKUtable: React.FC<SKUtableProps> = ({
             )}
           </div>
         </div>
+
+        {columnLayoutSaveError && (
+          <p role="alert" className="mb-3 text-sm text-red-600">
+            {columnLayoutSaveError}
+          </p>
+        )}
 
         <div
           className={`transition-opacity opacity-100
