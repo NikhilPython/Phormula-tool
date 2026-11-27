@@ -17,13 +17,6 @@
   transition: opacity 140ms ease, filter 140ms ease;
 }
 
-.sku-drag-context-source {
-  position: relative;
-  /* Stay below sticky S.No, Product Name, and SKU cells while dragging. */
-  z-index: 1;
-  isolation: isolate;
-}
-
 .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
 .sku-column-boundary-pulse .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
   animation: sku-draggable-boundary-pulse 1.2s ease-in-out infinite;
@@ -34,7 +27,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 20;
+  z-index: 1;
   width: 0;
   border-left: 2px solid rgb(94 166 142 / 88%);
   content: "";
@@ -47,11 +40,6 @@
 
 .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
   right: 0;
-}
-
-.dashboard-pnl-table .sku-draggable-boundary-cell[data-drag-boundary~="left"]::before,
-.dashboard-pnl-table .sku-draggable-boundary-cell[data-drag-boundary~="right"]::after {
-  z-index: 1;
 }
 
 .sku-draggable-boundary-cell[data-drag-boundary~="top"] {

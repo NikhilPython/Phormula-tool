@@ -316,7 +316,7 @@ export default function GroupedCollapsibleTable<RowT>({
   };
   const getDragContextClassName = (key: string) => {
     if (!draggingColumnKey || dragContextExemptKeys.has(key)) return "";
-    if (isSourceColumn(key)) return "sku-drag-context-source";
+    if (isSourceColumn(key)) return "";
     if (promotionDragKeys.has(draggingColumnKey)) {
       return salesTargetKeys.has(key) || adsTargetKeys.has(key)
         ? ""
@@ -732,6 +732,7 @@ export default function GroupedCollapsibleTable<RowT>({
     if (col.key === "sno") return 58;
     if (col.key === "product_name") return 220;
     if (col.key === "sku") return 135;
+    if (col.key === "cogs" || col.key === "cost_of_unit_sold") return 135;
 
     if (
       col.key === "quantity" ||

@@ -438,7 +438,14 @@ export function buildSkuwiseTableColumns(
             align: "center" as const,
             width: "7%",
         },
-        { key: "cogs", label: "COGS", align: "center" as const, },
+        {
+            key: "cogs",
+            label: "COGS",
+            align: "center" as const,
+            width: "9%",
+            noWrap: true,
+            thClassName: "whitespace-nowrap",
+        },
         {
             key: "promotional_rebates_percentage",
             label: (

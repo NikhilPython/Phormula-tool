@@ -2284,7 +2284,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
         key: "cost_of_unit_sold",
         label: "COGS",
         align: "center",
-        width: "7%",
+        width: "9%",
+        noWrap: true,
+        thClassName: "whitespace-nowrap",
       },
       ...(hasCm2Data
         ? [
