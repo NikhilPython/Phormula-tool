@@ -1580,7 +1580,9 @@ const SKUtable: React.FC<SKUtableProps> = ({
   ].includes(activeDragSourceKey || "")
     ? "Drag Promotions/Promotions % to Ads Spend"
     : ["amazon_breakdown", "amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(activeDragSourceKey || "")
-      ? "Drag Amazon Fees to Sales"
+      ? activeAmazonFeesPlacement.stage === "in_net_sales"
+        ? "Drag Amazon Fees before Other Transactions"
+        : "Drag Amazon Fees to Sales"
       : "Drag Promotions to Ads Spend · Drag Amazon Fees to Sales";
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
@@ -4353,6 +4355,14 @@ const SKUtable: React.FC<SKUtableProps> = ({
                   if (sourceKey === "amazon_breakdown") {
                     if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                     setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
+                    return true;
+                  }
+                  if (
+                    activeAmazonFeesPlacement.stage === "in_net_sales" &&
+                    sourceKey === "amazon_fees_in_sales"
+                  ) {
+                    if (targetKey !== "other_transactions_breakdown") return false;
+                    setDraftAmazonFeesPlacement({ anchor: "other_transactions_breakdown", side: "before", stage: "before_cm1" });
                     return true;
                   }
                   if (["promotional_rebates", "promotional_rebates_percentage", "promotions_breakdown"].includes(sourceKey)) {

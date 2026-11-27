@@ -285,7 +285,9 @@ export default function DashboardProductwisePnlSection({
     ].includes(activeDragSourceKey || "")
         ? "Drag Promotions/Promotions % to Ads Spend"
         : ["marketplace_fees", "amazon_breakdown", "amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(activeDragSourceKey || "")
-            ? "Drag Amazon Fees to Sales"
+            ? activeAmazonFeesPlacement.stage === "in_net_sales"
+                ? "Drag Amazon Fees before Other Transactions"
+                : "Drag Amazon Fees to Sales"
             : "Drag Promotions to Ads Spend · Drag Amazon Fees to Sales";
 
     React.useEffect(() => {
@@ -394,6 +396,14 @@ export default function DashboardProductwisePnlSection({
             if (sourceKey === "marketplace_fees") {
                 if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                 setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
+                return true;
+            }
+            if (
+                activeAmazonFeesPlacement.stage === "in_net_sales" &&
+                sourceKey === "amazon_fees_in_sales"
+            ) {
+                if (targetKey !== "other_transactions") return false;
+                setDraftAmazonFeesPlacement({ anchor: "other_transactions", side: "before", stage: "before_cm1" });
                 return true;
             }
             const isPromotionsSource = ["promotions", "promotional_rebates", "promotional_rebates_percentage"].includes(sourceKey);
@@ -2603,6 +2613,7 @@ export default function DashboardProductwisePnlSection({
                                             ? ["promotions"]
                                             : []),
                                         "marketplace_fees",
+                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales" ? ["other_transactions"] : []),
                                         "profit",
                                         "ads_spend",
                                         "cm2_profit",
