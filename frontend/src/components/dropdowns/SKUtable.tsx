@@ -4350,18 +4350,6 @@ const SKUtable: React.FC<SKUtableProps> = ({
                       !onAmazonFeesPlacementChange)
                   ) return false;
                   const adsSpendTargets = ["ads_spend_breakdown", "product_spend", "display_spend", "brand_spend", "ads_spend"];
-                  if (
-                    activeAmazonFeesPlacement.stage === "in_net_sales" &&
-                    ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
-                    targetKey === "other_transactions_breakdown"
-                  ) {
-                    setDraftAmazonFeesPlacement({
-                      anchor: "other_transactions_breakdown",
-                      side: "before",
-                      stage: "before_cm1",
-                    });
-                    return true;
-                  }
                   if (sourceKey === "amazon_breakdown") {
                     if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                     setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });

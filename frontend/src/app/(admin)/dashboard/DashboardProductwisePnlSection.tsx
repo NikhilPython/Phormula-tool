@@ -391,18 +391,6 @@ export default function DashboardProductwisePnlSection({
     const handleColumnDrop = React.useCallback(
         (sourceKey: string, targetKey: string, side: "before" | "after"): boolean => {
             const adsTargets = ["ads_spend", "product_spend", "display_spend"];
-            if (
-                activeAmazonFeesPlacement.stage === "in_net_sales" &&
-                ["amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(sourceKey) &&
-                targetKey === "other_transactions"
-            ) {
-                setDraftAmazonFeesPlacement({
-                    anchor: "other_transactions",
-                    side: "before",
-                    stage: "before_cm1",
-                });
-                return true;
-            }
             if (sourceKey === "marketplace_fees") {
                 if (targetKey !== "sales" && targetKey !== "net_sales") return false;
                 setDraftAmazonFeesPlacement({ anchor: "sales", side: "after", stage: "in_net_sales" });
@@ -2615,9 +2603,6 @@ export default function DashboardProductwisePnlSection({
                                             ? ["promotions"]
                                             : []),
                                         "marketplace_fees",
-                                        ...(activeAmazonFeesPlacement.stage === "in_net_sales"
-                                            ? ["other_transactions"]
-                                            : []),
                                         "profit",
                                         "ads_spend",
                                         "cm2_profit",

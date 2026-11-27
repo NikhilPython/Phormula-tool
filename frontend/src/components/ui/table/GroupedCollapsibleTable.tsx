@@ -268,9 +268,6 @@ export default function GroupedCollapsibleTable<RowT>({
         (group) => group.id === key || group.colKeys.includes(key)
       )
     );
-  const canDropOnColumn = (key: string) =>
-    !nonInteractiveDragKeys.has(key) &&
-    (dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key));
   const promotionDragKeys = new Set([
     "promotions",
     "promotions_breakdown",
@@ -286,6 +283,13 @@ export default function GroupedCollapsibleTable<RowT>({
     "marketplace_total",
     "amazon_fee",
   ]);
+  const canDropOnColumn = (key: string) =>
+    !nonInteractiveDragKeys.has(key) &&
+    (dropTargetGroupIds.includes(key) || dropTargetColKeys.includes(key)) &&
+    (!draggingColumnKey ||
+      !amazonFeesDragKeys.has(draggingColumnKey) ||
+      key === "sales" ||
+      key === "net_sales");
   const salesTargetKeys = new Set([
     "sales",
     "net_sales",
@@ -302,7 +306,6 @@ export default function GroupedCollapsibleTable<RowT>({
     "display_spend",
     "brand_spend",
   ]);
-  const feesReturnTargetKeys = new Set(["other_transactions", "other_transactions_breakdown"]);
   const dragContextExemptKeys = new Set(["sno", "product_name", "sku"]);
   const isSourceColumn = (key: string) => {
     if (!draggingColumnKey) return false;
@@ -340,7 +343,7 @@ export default function GroupedCollapsibleTable<RowT>({
         : "sku-drag-context-muted";
     }
     if (amazonFeesDragKeys.has(draggingColumnKey)) {
-      return salesTargetKeys.has(key) || feesReturnTargetKeys.has(key)
+      return salesTargetKeys.has(key)
         ? ""
         : "sku-drag-context-muted";
     }
