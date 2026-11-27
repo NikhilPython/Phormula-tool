@@ -1250,7 +1250,10 @@ def send_live_bi_email(
 
         def money(value, decimals=0):
             value = finite_number(value)
-            return f"{currency_symbol}{value:,.{decimals}f}" if value is not None else "—"
+            if value is None:
+                return "—"
+            sign = "-" if value < 0 else ""
+            return f"{sign}{currency_symbol}{abs(value):,.{decimals}f}"
 
         actual = finite_number(dashboard_current.get("net_sales")) if has_dashboard_snapshot else finite_number(totals.get("total_current_net_sales"))
         target = finite_number((dashboard_recap or {}).get("target_sales")) if has_dashboard_snapshot else None
@@ -1476,7 +1479,7 @@ def send_live_bi_email(
             high_alert_html = f"""
             <div style="
                 margin-top:14px;
-                background:#F8FAFC;
+                background:#FFFFFF;
                 border:1px solid #B75A5A;
                 border-top:4px solid #B75A5A;
                 border-radius:10px;
@@ -2005,6 +2008,7 @@ def send_live_bi_email(
       def _render_metric_box(metric: dict) -> str:
           label = str(metric.get("label") or "").strip()
           value = str(metric.get("value") or "").strip()
+          value = re.sub(r"^([^\w\s\d.,+-])\s*-\s*(?=\d)", r"-\1", value)
           change = metric.get("change")
 
           if not label and not value:
