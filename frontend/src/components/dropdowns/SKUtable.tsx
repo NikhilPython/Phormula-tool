@@ -257,6 +257,7 @@ rembursement_fee?: number | string;
 type Totals = {
   advertising_total: number;
   advertising_total_final?: number;
+  cost_of_advertisement?: number;
   advertising_fees: number;
   total_ads: number;
   visible_ads: number;

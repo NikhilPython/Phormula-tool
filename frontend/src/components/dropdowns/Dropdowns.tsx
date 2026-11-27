@@ -81,11 +81,14 @@ type Summary = {
   otherwplatform?: number;
   advertising_total?: number;
   advertising_total_final?: number;
+  total_advertising_cost?: number;
   advertising_fees?: number;
   ads_spend?: number;
   total_ads?: number;
   total_amazon_fee?: number;
   tacos?: number;
+  tacos_total_advertising_cost_of_sale?: number;
+  acos?: number;
 };
 
 type PnlCardMetricValues = {
