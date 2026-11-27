@@ -96,6 +96,7 @@ type Props<RowT> = {
   draggableColumnGroups?: { id: string; colKeys: string[] }[];
   dropTargetGroupIds?: string[];
   dropTargetColKeys?: string[];
+  onDraggingColumnChange?: (sourceKey: string | null) => void;
   onColumnDrop?: (
     sourceKey: string,
     targetKey: string,
@@ -196,6 +197,7 @@ export default function GroupedCollapsibleTable<RowT>({
   draggableColumnGroups = [],
   dropTargetGroupIds = [],
   dropTargetColKeys = [],
+  onDraggingColumnChange,
   onColumnDrop,
 
 }: Props<RowT>) {
@@ -393,6 +395,7 @@ export default function GroupedCollapsibleTable<RowT>({
       if (!canDragColumn(sourceKey)) return;
       const dragSourceKey = getDragSourceKey(sourceKey);
       setDraggingColumnKey(dragSourceKey);
+      onDraggingColumnChange?.(dragSourceKey);
       event.dataTransfer.setData("text/plain", dragSourceKey);
       event.dataTransfer.effectAllowed = "move";
       // The browser's default drag preview can cover sticky identity columns.
@@ -418,8 +421,12 @@ export default function GroupedCollapsibleTable<RowT>({
         onColumnDrop?.(draggedKey, targetKey, side);
       }
       setDraggingColumnKey(null);
+      onDraggingColumnChange?.(null);
     },
-    onDragEnd: () => setDraggingColumnKey(null),
+    onDragEnd: () => {
+      setDraggingColumnKey(null);
+      onDraggingColumnChange?.(null);
+    },
     title: canDragColumn(sourceKey)
       ? "Drag to reposition"
       : canDropOnColumn(targetKey)

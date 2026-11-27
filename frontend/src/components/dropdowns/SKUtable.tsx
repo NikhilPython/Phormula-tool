@@ -893,6 +893,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
   });
   const [showAllRows, setShowAllRows] = useState(false);
   const [isRearrangingColumns, setIsRearrangingColumns] = useState(false);
+  const [activeDragSourceKey, setActiveDragSourceKey] = useState<string | null>(null);
   const [draftPromotionsPlacement, setDraftPromotionsPlacement] =
     useState<PromotionsPlacement>(promotionsPlacement);
   const [draftAmazonFeesPlacement, setDraftAmazonFeesPlacement] =
@@ -1572,6 +1573,15 @@ const SKUtable: React.FC<SKUtableProps> = ({
     ? draftAmazonFeesPlacement
     : amazonFeesPlacement;
   const activeAmazonFeesPlacement = requestedAmazonFeesPlacement;
+  const rearrangementBadgeText = [
+    "promotions_breakdown",
+    "promotional_rebates",
+    "promotional_rebates_percentage",
+  ].includes(activeDragSourceKey || "")
+    ? "Drag Promotions/Promotions % to Ads Spend"
+    : ["amazon_breakdown", "amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(activeDragSourceKey || "")
+      ? "Drag Amazon Fees to Sales"
+      : "Drag Promotions to Ads Spend · Drag Amazon Fees to Sales";
 
   const groups = useMemo<ColGroup<TableRow>[]>(() => [
     {
@@ -4107,7 +4117,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
 
           {isRearrangingColumns && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-              Drag Promotions to Ads Spend · Drag Amazon Fees to Sales
+              {rearrangementBadgeText}
             </div>
           )}
 
@@ -4332,6 +4342,7 @@ const SKUtable: React.FC<SKUtableProps> = ({
                     ? ["ads_spend", "net_sales"]
                     : []
                 }
+                onDraggingColumnChange={setActiveDragSourceKey}
                 onColumnDrop={(sourceKey, targetKey, side) => {
                   if (
                     !isRearrangingColumns ||

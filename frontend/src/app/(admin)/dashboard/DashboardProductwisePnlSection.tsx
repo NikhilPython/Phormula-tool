@@ -263,6 +263,7 @@ export default function DashboardProductwisePnlSection({
 
     const router = useRouter();
     const [isRearrangingColumns, setIsRearrangingColumns] = React.useState(false);
+    const [activeDragSourceKey, setActiveDragSourceKey] = React.useState<string | null>(null);
     const [isApplyingColumnPlacements, setIsApplyingColumnPlacements] = React.useState(false);
     const [columnPlacementError, setColumnPlacementError] = React.useState("");
     const salesCollapsedBeforeRearranging = React.useRef<boolean | null>(null);
@@ -276,6 +277,16 @@ export default function DashboardProductwisePnlSection({
     const activeAmazonFeesPlacement = isRearrangingColumns
         ? draftAmazonFeesPlacement
         : amazonFeesPlacement;
+    const rearrangementBadgeText = [
+        "promotions",
+        "promotions_breakdown",
+        "promotional_rebates",
+        "promotional_rebates_percentage",
+    ].includes(activeDragSourceKey || "")
+        ? "Drag Promotions/Promotions % to Ads Spend"
+        : ["marketplace_fees", "amazon_breakdown", "amazon_fees_in_sales", "selling_fees", "fba_fees"].includes(activeDragSourceKey || "")
+            ? "Drag Amazon Fees to Sales"
+            : "Drag Promotions to Ads Spend · Drag Amazon Fees to Sales";
 
     React.useEffect(() => {
         if (isRearrangingColumns) return;
@@ -2140,7 +2151,7 @@ export default function DashboardProductwisePnlSection({
 
                 {isRearrangingColumns && (
                     <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-semibold text-slate-600 shadow-sm">
-                        Drag Promotions to Ads Spend · Drag Amazon Fees to Sales
+                        {rearrangementBadgeText}
                     </div>
                 )}
 
@@ -2640,6 +2651,7 @@ export default function DashboardProductwisePnlSection({
                                     : []
                             }
                             onColumnDrop={handleColumnDrop}
+                            onDraggingColumnChange={setActiveDragSourceKey}
 
                             getSortValue={(row: any, colKey: string) => {
                                 const direction = plSortConfig.direction;
